@@ -85,3 +85,51 @@ export function requireCronAuth(request: NextRequest, workerName: string): NextR
 
   return null
 }
+
+/**
+ * Dual-path guard for workers that are ALSO triggered from the authenticated UI.
+ *
+ * `warehouse-receiving-worker` is fetched by the warehouse dashboard from the
+ * browser, which cannot send CRON_SECRET (that would ship the credential to the
+ * client). Requiring strict cron auth there would break the receiving flow, so
+ * this accepts EITHER:
+ *   - a valid `Authorization: Bearer <CRON_SECRET>` (server/cron caller), or
+ *   - a signed-in Supabase session (same-origin fetch sends the cookies)
+ *
+ * Anonymous callers are still rejected.
+ */
+export async function requireCronOrSessionAuth(
+  request: NextRequest,
+  workerName: string
+): Promise<NextResponse | null> {
+  const secret = getCronSecret()
+  const header = request.headers.get('authorization')
+
+  // Path 1: a correct cron credential is sufficient on its own.
+  if (secret && header) {
+    const separatorIndex = header.indexOf(' ')
+    if (separatorIndex > 0) {
+      const scheme = header.slice(0, separatorIndex)
+      const token = header.slice(separatorIndex + 1).trim()
+      if (scheme.toLowerCase() === 'bearer' && token.length > 0 && safeEqual(token, secret)) {
+        return null
+      }
+    }
+  }
+
+  // Path 2: an authenticated user session.
+  try {
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+    if (!error && user) return null
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(`[CronAuth] ${workerName}: session check failed (${message})`)
+  }
+
+  return unauthorized(workerName, 'no valid cron credential and no authenticated session')
+}

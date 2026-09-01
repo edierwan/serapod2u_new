@@ -136,12 +136,13 @@ beforeEach(() => {
   bodyEntries = []
   bodyGate = null
   openBodyGate = null
-  process.env.NODE_ENV = 'production'
+  vi.stubEnv('NODE_ENV', 'production')
   process.env.CRON_SECRET = SECRET
   delete process.env.WORKER_SECRET
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   process.env = { ...originalEnv }
 })
 

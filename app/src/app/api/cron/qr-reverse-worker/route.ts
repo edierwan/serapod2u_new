@@ -5,6 +5,15 @@ import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
 const WORKER = WORKER_NAMES.qrReverse
 
+export const dynamic = 'force-dynamic'
+// Bounded well below the 180s worker lease so a run cannot outlive its own
+// lease and let a second execution start. 60s of margin is left for graceful
+// completion and lease release.
+// NOTE: on this self-hosted standalone deployment (`node server.js`) Next.js
+// does NOT enforce maxDuration - it is a platform hint. The real protection is
+// the lease plus the per-job `status = 'queued'` CAS claim.
+export const maxDuration = 120
+
 /**
  * Mode C Background Worker - Intelligent Buffer Assignment
  * 

@@ -23,11 +23,15 @@ export async function GET(request: NextRequest) {
   if (unauthorized) return unauthorized
 
   const supabase = createAdminClient()
-  const outcome = await withWorkerLease(supabase, WORKER, () => runGeneration(supabase))
+  const requestOrigin = request.nextUrl.origin
+  const outcome = await withWorkerLease(supabase, WORKER, () => runGeneration(supabase, requestOrigin))
   return outcome.status === 'ran' ? outcome.result : outcome.response
 }
 
-async function runGeneration(supabase: ReturnType<typeof createAdminClient>): Promise<NextResponse> {
+async function runGeneration(
+  supabase: ReturnType<typeof createAdminClient>,
+  requestOrigin: string
+): Promise<NextResponse> {
   const startTime = Date.now()
 
   try {
@@ -313,7 +317,7 @@ async function runGeneration(supabase: ReturnType<typeof createAdminClient>): Pr
             total_master_codes: qrBatch.totalMasterCodes.toString(),
             total_unique_codes: qrBatch.totalUniqueCodes.toString(),
             generated_at: new Date().toLocaleString('en-GB'),
-            order_url: `${request.nextUrl.origin}/supply-chain`
+            order_url: `${requestOrigin}/supply-chain`
           }
           const queueResult = await queueNotificationEvent(supabase, {
             orgId: order.buyer_org_id || order.company_id,

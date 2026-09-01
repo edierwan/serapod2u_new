@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCronAuth } from '@/lib/cron/auth'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * DEBUG / DIAGNOSTIC ONLY - not a production worker.
+ *
+ * This traces the warehouse receiving worker step by step and returns internal
+ * diagnostics (org structure, warranty bonus, order details, raw DB errors).
+ * Step 7 also performs a real write to qr_codes and reverts it, so this is NOT
+ * side-effect free.
+ *
+ * It is therefore DISABLED in production and returns 404, matching the
+ * behaviour of a route that does not exist. Outside production it still
+ * requires a cron credential when one is configured.
+ */
+function guardDebugRoute(request: NextRequest, name: string): NextResponse | null {
+  if (process.env.NODE_ENV === 'production') {
+    console.warn(`[DebugRoute] ${name}: blocked in production`)
+    return NextResponse.json({ error: 'Not Found' }, { status: 404 })
+  }
+  return requireCronAuth(request, name)
+}
 
 /**
  * Debug endpoint that simulates the warehouse receiving worker step by step.
@@ -9,6 +30,9 @@ export const dynamic = 'force-dynamic'
  * Usage: GET /api/warehouse/debug-worker?batchId=xxx
  */
 export async function GET(request: NextRequest) {
+  const blocked = guardDebugRoute(request, 'warehouse/debug-worker')
+  if (blocked) return blocked
+
   const batchId = request.nextUrl.searchParams.get('batchId')
   if (!batchId) {
     return NextResponse.json({ error: 'batchId required' }, { status: 400 })

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { markWarrantyBufferReceived, promoteModeCBufferUsedForReceivedCases } from '@/lib/warehouse/qrEligibility'
+import { requireCronOrSessionAuth } from '@/lib/cron/auth'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
@@ -33,6 +34,13 @@ function generateWorkerId(): string {
  * - High throughput via larger batches
  */
 export async function GET(request: NextRequest) {
+  // This worker is triggered BOTH by server-side callers and by the warehouse
+  // dashboard in the browser (WarehouseReceiveView2), which cannot hold
+  // CRON_SECRET. Accept a cron credential OR an authenticated session; reject
+  // anonymous callers.
+  const unauthorized = await requireCronOrSessionAuth(request, 'warehouse-receiving-worker')
+  if (unauthorized) return unauthorized
+
   const workerId = generateWorkerId()
   const startTime = Date.now()
   const supabase = createAdminClient(120_000) // 2-minute timeout for batch operations
@@ -554,8 +562,10 @@ async function claimBatch(supabase: any, workerId: string): Promise<{
       const isMine = batch.receiving_worker_id === workerId
 
       if (isStale || isMine) {
-        // Re-claim this batch
-        await supabase
+        // Re-claim this batch.
+        // CAS on the previous owner so two workers that both observe the same
+        // stale batch cannot both take it - only the first re-claim matches.
+        const { data: reclaimed } = await supabase
           .from('qr_batches')
           .update({
             receiving_worker_id: workerId,
@@ -563,6 +573,13 @@ async function claimBatch(supabase: any, workerId: string): Promise<{
             last_error: isStale ? `Re-claimed from stale worker ${batch.receiving_worker_id}` : null
           })
           .eq('id', batch.id)
+          .eq('receiving_worker_id', batch.receiving_worker_id)
+          .select('id')
+
+        if (!reclaimed || reclaimed.length === 0) {
+          console.log(`⏭️  [${workerId}] Batch ${batch.id} re-claimed by another worker first - skipping`)
+          return { batch: null, reason: 'active_worker', activeWorker: batch.receiving_worker_id }
+        }
 
         console.log(`🔄 [${workerId}] ${isStale ? 'Re-claimed stale' : 'Resumed'} batch ${batch.id}`)
         return { batch }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { requireCronAuth } from './auth'
 
@@ -12,13 +12,19 @@ function req(authorization?: string): NextRequest {
 
 const originalEnv = { ...process.env }
 
+/** NODE_ENV is typed readonly, so go through vi.stubEnv. */
+function setNodeEnv(value: string) {
+  vi.stubEnv('NODE_ENV', value)
+}
+
 beforeEach(() => {
-  process.env.NODE_ENV = 'production'
+  setNodeEnv('production')
   process.env.CRON_SECRET = SECRET
   delete process.env.WORKER_SECRET
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   process.env = { ...originalEnv }
 })
 
@@ -72,13 +78,13 @@ describe('requireCronAuth', () => {
   })
 
   it('still enforces a configured secret outside production', () => {
-    process.env.NODE_ENV = 'development'
+    setNodeEnv('development')
     expect(requireCronAuth(req(), 'w')?.status).toBe(401)
     expect(requireCronAuth(req(`Bearer ${SECRET}`), 'w')).toBeNull()
   })
 
   it('only allows an unauthenticated run outside production when NO secret is configured', () => {
-    process.env.NODE_ENV = 'development'
+    setNodeEnv('development')
     delete process.env.CRON_SECRET
     expect(requireCronAuth(req(), 'w')).toBeNull()
   })

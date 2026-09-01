@@ -31,26 +31,32 @@ export type WorkerName = (typeof WORKER_NAMES)[keyof typeof WORKER_NAMES]
  *   - qr-generation-worker        maxDuration 60s (internal budget 45-50s)
  *   - manufacturer-packing-worker maxDuration 60s (internal budget 50s)
  *   - notification-outbox-worker  maxDuration 30s
- *   - qr-reverse-worker           no maxDuration export (see caveat below)
+ *   - qr-reverse-worker           maxDuration 120s (added by this hotfix)
  *
  * 180s gives 3x headroom over the longest bounded worker while capping stale
  * lock recovery after a hard crash at three missed 60s ticks. The lease is
  * released in a `finally` on every normal completion, so the TTL only governs
  * crash recovery.
  *
- * Caveat: qr-reverse-worker is unbounded, so a pathological run exceeding 180s
- * could see its lease expire and a second run begin. That worker therefore also
- * carries a per-job `status = 'queued'` CAS claim, so an individual job still
- * cannot be processed twice even if two runs overlap.
+ * Caveat: on this self-hosted standalone deployment (`node server.js`) Next.js
+ * does NOT enforce maxDuration - it is a platform hint. A pathological run can
+ * therefore still exceed 180s and see its lease expire. Every worker that
+ * consumes a queue additionally carries a row-level CAS claim, so an individual
+ * job cannot be processed twice even if two runs overlap.
  */
 export const DEFAULT_LEASE_TTL_SECONDS = 180
 
 /** Response marker for a harmless overlapping invocation. */
 export const LEASE_SKIPPED = 'SKIPPED_ALREADY_RUNNING'
 
-/** Minimal shape we need - avoids coupling to the generated Supabase types. */
+/**
+ * Minimal shape we need - avoids coupling to the generated Supabase types.
+ * Parameters are intentionally loose so a real SupabaseClient (whose rpc has a
+ * heavily generic signature) is structurally assignable.
+ */
 export interface LeaseCapableClient {
-  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rpc: (...args: any[]) => PromiseLike<{ data: any; error: { message: string } | null }>
 }
 
 /** Unique per execution: worker + process + random. */
