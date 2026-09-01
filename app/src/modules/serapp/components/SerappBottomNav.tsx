@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   MessageCircle,
-  ClipboardList,
+  Package,
   History,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -12,11 +12,11 @@ import { useSerapp } from './SerappContext'
 
 const allTabs = [
   { href: '/serapp/conversation', label: 'Chat', icon: MessageCircle, badgeKey: 'chat' as const },
-  { href: '/serapp/order', label: 'Order', icon: ClipboardList, badgeKey: null },
+  { href: '/serapp/order', label: 'Products', icon: Package, badgeKey: null },
   { href: '/serapp/history', label: 'History', icon: History, badgeKey: null },
 ] as const
 
-/** Distributor: Chat · Order · History */
+/** Distributor: Chat · Products · History */
 const distributorTabs = allTabs
 
 /** HQ admin support: Chat · History only */

@@ -177,7 +177,7 @@ export default function SerappHistoryView() {
 
       {!loading && !error && orders.length === 0 && (
         <div className="serapp-card rounded-2xl px-4 py-6 text-center text-sm text-[var(--sera-muted)]">
-          No orders yet. Confirm a list from the Order tab to see it here.
+          No orders yet. Confirm a list from the Products tab to see it here.
         </div>
       )}
 
