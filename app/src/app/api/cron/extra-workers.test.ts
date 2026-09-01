@@ -59,6 +59,7 @@ vi.mock('@supabase/supabase-js', () => ({
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: sessionUser }, error: sessionUser ? null : new Error('no session') }) },
+    from: () => emptyQuery(),
   }),
 }))
 
@@ -180,5 +181,59 @@ describe('warehouse-receiving-worker', () => {
     sessionUser = { id: 'user-1' }
     const { GET } = await import('./warehouse-receiving-worker/route')
     expect((await GET(request())).status).not.toBe(401)
+  })
+})
+
+// ── manufacturer/modec/process-job: 4th reverse-queue route ────────────────
+describe('manufacturer/modec/process-job', () => {
+  const load = () => import('../manufacturer/modec/process-job/route')
+
+  it('rejects a missing Authorization header (no legacy fail-open)', async () => {
+    const { POST } = await load()
+    expect((await POST(request())).status).toBe(401)
+  })
+
+  it('rejects a wrong secret', async () => {
+    const { POST } = await load()
+    expect((await POST(request('Bearer nope'))).status).toBe(401)
+  })
+
+  it('fails CLOSED in production when CRON_SECRET is unset (old code failed open)', async () => {
+    delete process.env.CRON_SECRET
+    const { POST } = await load()
+    expect((await POST(request())).status).toBe(401)
+    expect((await POST(request('Bearer anything'))).status).toBe(401)
+  })
+
+  it('accepts the correct secret', async () => {
+    const { POST } = await load()
+    expect((await POST(request(`Bearer ${SECRET}`))).status).toBe(200)
+  })
+
+  it('uses the SHARED qrReverse lease, not a lease of its own', async () => {
+    const { POST } = await load()
+    await POST(request(`Bearer ${SECRET}`))
+    // the only lease name it ever touched is qr-reverse-worker's
+    expect(leaseAcquiredCount).toBe(1)
+  })
+
+  it('cannot process while qr-reverse-worker holds the reverse-queue lease', async () => {
+    leaseStore.set(WORKER_NAMES.qrReverse, { owner: 'qr-reverse-run', until: Date.now() + 60_000 })
+    const { POST } = await load()
+    const res = await POST(request(`Bearer ${SECRET}`))
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toMatchObject({ status: LEASE_SKIPPED })
+    expect(leaseAcquiredCount).toBe(0)
+  })
+
+  it('conversely blocks qr-reverse-worker while IT holds the lease', async () => {
+    const { POST } = await load()
+    // modec takes the shared lease and holds it (simulate by pre-seeding as modec)
+    await POST(request(`Bearer ${SECRET}`))
+    leaseStore.set(WORKER_NAMES.qrReverse, { owner: 'modec-run', until: Date.now() + 60_000 })
+
+    const { tryAcquireWorkerLease } = await import('@/lib/cron/lease')
+    const client = { rpc: leaseRpc() }
+    await expect(tryAcquireWorkerLease(client, WORKER_NAMES.qrReverse, 'qr-reverse-run')).resolves.toBe(false)
   })
 })
