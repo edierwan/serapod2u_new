@@ -30,6 +30,7 @@ import { createClient } from '@/lib/supabase/client'
 import { isMineSerappMessage } from '@/lib/serapp/conversation-access'
 import { useSerapp } from './SerappContext'
 import SerappReviewLinePicker from './SerappReviewLinePicker'
+import SerappMissingQtyPicker from './SerappMissingQtyPicker'
 import SerappConversationAvatar from './SerappConversationAvatar'
 import { SerappHqDistributorPicker, useSerappHqDistributors } from './SerappHqDistributorPicker'
 import { cn } from '@/lib/utils'
@@ -475,6 +476,30 @@ export default function SerappChatThread() {
     }
   }
 
+  const applyChatLineQty = async (line: number, quantity: number) => {
+    if (!conversationId || resolvingLine) return
+    setResolvingLine(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/serapp/conversations/${conversationId}/resolve-line`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          line,
+          quantity,
+          distributorId: hq.selectedId || conversation?.distributor_org_id || undefined,
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Could not set quantity.')
+      if (payload?.session) setSession(payload.session)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not set quantity.')
+    } finally {
+      setResolvingLine(false)
+    }
+  }
+
   const confirmDelete = async () => {
     if (!conversationId || !canDelete) return
     setDeleting(true)
@@ -706,6 +731,7 @@ export default function SerappChatThread() {
                   interactive={session?.lastCheck?.pasteText === msg.card.check.pasteText}
                   disabled={sending || resolvingLine}
                   onPick={applyChatLinePick}
+                  onSetQty={applyChatLineQty}
                 />
               )}
               {msg.card?.kind === 'order_confirmed' && msg.card.confirm && (
@@ -897,11 +923,13 @@ function CheckSummaryCard({
   interactive,
   disabled,
   onPick,
+  onSetQty,
 }: {
   check: SerappChatCheckPayload
   interactive?: boolean
   disabled?: boolean
   onPick?: (line: number, variantId: string) => void
+  onSetQty?: (line: number, quantity: number) => void
 }) {
   const productLines = check.results.filter((r) => r.status !== 'section_header')
   const visible = productLines.slice(0, 12)
@@ -927,9 +955,9 @@ function CheckSummaryCard({
           : pickableLines.length > 0
             ? 'Tap the product you meant below, or send the code (e.g. CV - 50).'
             : qtyMissingLines.length > 0 && !hasUnmatched
-              ? 'These items are in the catalog — add quantity (e.g. Orange - 5) and send the list again.'
+              ? 'Enter quantity below for each item, then reply confirm.'
               : qtyMissingLines.length > 0
-                ? 'Add quantity where shown, fix unmatched items, then send again.'
+                ? 'Enter quantity below, fix other items, then reply confirm.'
                 : 'Some items didn\'t match. Send the correct code, or paste a new list.'
 
   const okLines = visible.filter((line) => {
@@ -1025,6 +1053,18 @@ function CheckSummaryCard({
           Next step: {nextStep}
         </p>
       </div>
+      {interactive && onSetQty && qtyMissingLines.length > 0 && (
+        <div className="mt-2 max-h-72 space-y-3 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2">
+          {qtyMissingLines.map((line) => (
+            <SerappMissingQtyPicker
+              key={`qty-picker-${line.line}-${line.raw}`}
+              result={line}
+              disabled={disabled}
+              onSetQty={onSetQty}
+            />
+          ))}
+        </div>
+      )}
       {interactive && onPick && pickableLines.length > 0 && (
         <div className="mt-2 max-h-72 space-y-3 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2">
           <p className="text-[11px] font-semibold text-[var(--sera-ink)]">

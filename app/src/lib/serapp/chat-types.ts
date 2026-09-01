@@ -77,6 +77,7 @@ export interface SerappChatSessionState {
   lastConfirm: SerappChatConfirmPayload | null
   distributorId: string | null
   lineResolutions: Array<{ line: number; variantId: string }>
+  quantityResolutions: Array<{ line: number; quantity: number }>
   /**
    * After HQ/admin joins the thread, bot stays quiet except for clear order commands
    * (paste list, confirm, cancel hold, new order, help).

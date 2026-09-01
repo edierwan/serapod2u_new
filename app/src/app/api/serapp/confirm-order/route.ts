@@ -22,6 +22,7 @@ export async function POST(request: Request) {
         ? body.fulfillmentWarehouseId
         : null,
       lineResolutions: body?.lineResolutions,
+      quantityResolutions: body?.quantityResolutions,
       request,
     })
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { parseSerappLineResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
+import { parseSerappLineResolutions, parseSerappQuantityResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
 import { loadSerappCatalog, resolveSerappDistributorContext } from '@/lib/serapp/order-context'
 
 /**
@@ -23,7 +23,8 @@ export async function POST(request: Request) {
 
     const catalog = await loadSerappCatalog(ctx)
     const resolutions = parseSerappLineResolutions(body?.lineResolutions)
-    const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions)
+    const quantityResolutions = parseSerappQuantityResolutions(body?.quantityResolutions)
+    const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions, quantityResolutions)
 
     return NextResponse.json({
       sideEffects: 'none',

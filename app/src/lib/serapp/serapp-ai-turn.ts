@@ -285,7 +285,8 @@ export async function trySerappAiTurn(input: {
       const check = await runSerappStockCheck({
         pasteText: action.pasteText,
         distributorId: input.distributorId || session.distributorId || undefined,
-        lineResolutions: session.lineResolutions,
+        lineResolutions: session.lineResolutions || [],
+        quantityResolutions: session.quantityResolutions || [],
       })
       session = {
         phase: 'checked',
@@ -294,6 +295,7 @@ export async function trySerappAiTurn(input: {
         lastConfirm: null,
         distributorId: input.distributorId || session.distributorId,
         lineResolutions: session.lineResolutions || [],
+        quantityResolutions: session.quantityResolutions || [],
         humanHandoff: session.humanHandoff,
       }
       const intro = formatCheckIntro(check.summary, check.warehouseName, {
@@ -345,6 +347,7 @@ export async function trySerappAiTurn(input: {
       idempotencyKey,
       distributorId: input.distributorId || session.distributorId || undefined,
       lineResolutions: session.lineResolutions || [],
+      quantityResolutions: session.quantityResolutions || [],
       request: input.request,
     })
 

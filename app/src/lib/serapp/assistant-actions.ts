@@ -2,7 +2,7 @@ import { validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
-import { parseSerappLineResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
+import { parseSerappLineResolutions, parseSerappQuantityResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
 import { cancelSerappOrderHoldByDistributor, registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import {
   buildSerappConfirmItems,
@@ -16,13 +16,15 @@ export async function runSerappStockCheck(input: {
   pasteText: string
   distributorId?: string | null
   lineResolutions?: unknown
+  quantityResolutions?: unknown
 }): Promise<SerappChatCheckPayload> {
   const ctx = await resolveSerappDistributorContext({
     distributorId: input.distributorId || null,
   })
   const catalog = await loadSerappCatalog(ctx)
   const resolutions = parseSerappLineResolutions(input.lineResolutions)
-  const checked = runSerappPasteCheck(input.pasteText, catalog.variants, resolutions)
+  const quantityResolutions = parseSerappQuantityResolutions(input.quantityResolutions)
+  const checked = runSerappPasteCheck(input.pasteText, catalog.variants, resolutions, quantityResolutions)
 
   return {
     summary: checked.summary,
@@ -83,6 +85,7 @@ export async function runSerappConfirmOrder(input: {
   acceptAvailableOnly?: boolean
   idempotencyKey?: string | null
   lineResolutions?: unknown
+  quantityResolutions?: unknown
   /** Optional cookie/request URL for best-effort notification fan-out. */
   request?: Request | null
 }): Promise<SerappConfirmOrderResult> {
@@ -103,7 +106,8 @@ export async function runSerappConfirmOrder(input: {
 
   const catalog = await loadSerappCatalog(ctx)
   const resolutions = parseSerappLineResolutions(input.lineResolutions)
-  const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions)
+  const quantityResolutions = parseSerappQuantityResolutions(input.quantityResolutions)
+  const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions, quantityResolutions)
   const { results, summary } = checked
 
   if (summary.bucket === 'unmatched_or_review' || summary.bucket === 'out_of_stock') {

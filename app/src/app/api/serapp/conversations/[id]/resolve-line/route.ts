@@ -6,7 +6,7 @@ import {
   parseSession,
   updateConversationSession,
 } from '@/lib/serapp/conversation-service'
-import { parseSerappLineResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
+import { parseSerappLineResolutions, parseSerappQuantityResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
 import { loadSerappCatalog, resolveSerappDistributorContext } from '@/lib/serapp/order-context'
 import type { SerappChatCheckPayload } from '@/lib/serapp/chat-types'
 
@@ -26,8 +26,11 @@ export async function POST(
     const body = await request.json().catch(() => null)
     const line = Number(body?.line)
     const variantId = typeof body?.variantId === 'string' ? body.variantId.trim() : ''
-    if (!Number.isInteger(line) || line < 1 || !variantId) {
-      return NextResponse.json({ error: 'line and variantId are required.' }, { status: 400 })
+    const quantity = Number(body?.quantity)
+    const hasVariantPick = Number.isInteger(line) && line >= 1 && Boolean(variantId)
+    const hasQuantityPick = Number.isInteger(line) && line >= 1 && Number.isFinite(quantity) && quantity > 0
+    if (!hasVariantPick && !hasQuantityPick) {
+      return NextResponse.json({ error: 'line and variantId or quantity are required.' }, { status: 400 })
     }
 
     const admin = createAdminClient()
@@ -57,9 +60,13 @@ export async function POST(
     const catalog = await loadSerappCatalog(ctx)
     const lineResolutions = parseSerappLineResolutions([
       ...(session.lineResolutions || []),
-      { line, variantId },
+      ...(hasVariantPick ? [{ line, variantId }] : []),
     ])
-    const checked = runSerappPasteCheck(pasteText, catalog.variants, lineResolutions)
+    const quantityResolutions = parseSerappQuantityResolutions([
+      ...(session.quantityResolutions || []),
+      ...(hasQuantityPick ? [{ line, quantity: Math.floor(quantity) }] : []),
+    ])
+    const checked = runSerappPasteCheck(pasteText, catalog.variants, lineResolutions, quantityResolutions)
 
     const check: SerappChatCheckPayload = {
       summary: checked.summary,
@@ -76,6 +83,7 @@ export async function POST(
       lastCheck: check,
       lastConfirm: null,
       lineResolutions,
+      quantityResolutions,
     }
     await updateConversationSession(admin, id, session, {
       distributorOrgId: ctx.distributorId,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import {
   applySerappLineResolutions,
+  applySerappQuantityResolutions,
   parseSerappLineResolutions,
   runSerappPasteCheck,
 } from './line-resolutions'
@@ -147,6 +148,27 @@ describe('applySerappLineResolutions', () => {
       status: 'matched',
       selectedVariantId: tea.id,
       inventoryOutcome: 'insufficient_stock',
+    })
+  })
+})
+
+describe('applySerappQuantityResolutions', () => {
+  it('fills missing quantity and marks the line matched', () => {
+    const [result] = applySerappQuantityResolutions(
+      [line({
+        status: 'missing_quantity',
+        quantity: null,
+        selectedVariantId: tea.id,
+        candidates: [tea],
+      })],
+      [tea],
+      [{ line: 1, quantity: 3 }],
+    )
+    expect(result).toMatchObject({
+      status: 'matched',
+      quantity: 3,
+      selectedVariantId: tea.id,
+      inventoryOutcome: 'matched',
     })
   })
 })

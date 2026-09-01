@@ -7,6 +7,11 @@ export interface SerappLineResolution {
   variantId: string
 }
 
+export interface SerappQuantityResolution {
+  line: number
+  quantity: number
+}
+
 export interface SerappCatalogPriceRow {
   id: string
   product_id?: string
@@ -31,6 +36,22 @@ export function parseSerappLineResolutions(raw: unknown): SerappLineResolution[]
     if (seen.has(line)) continue
     seen.add(line)
     parsed.push({ line, variantId })
+  }
+  return parsed
+}
+
+export function parseSerappQuantityResolutions(raw: unknown): SerappQuantityResolution[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<number>()
+  const parsed: SerappQuantityResolution[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const line = Number((entry as { line?: unknown }).line)
+    const quantity = Number((entry as { quantity?: unknown }).quantity)
+    if (!Number.isInteger(line) || line < 1 || !Number.isFinite(quantity) || quantity <= 0) continue
+    if (seen.has(line)) continue
+    seen.add(line)
+    parsed.push({ line, quantity: Math.floor(quantity) })
   }
   return parsed
 }
@@ -70,6 +91,37 @@ export function applySerappLineResolutions<T extends SerappCatalogPriceRow>(
   })
 }
 
+/**
+ * Apply distributor-entered quantities onto missing-qty paste lines.
+ */
+export function applySerappQuantityResolutions<T extends SerappCatalogPriceRow>(
+  results: PasteMatchResult[],
+  variants: T[],
+  resolutions: SerappQuantityResolution[],
+): PasteMatchResult[] {
+  if (resolutions.length === 0) return results
+  const byLine = new Map(resolutions.map((item) => [item.line, item.quantity]))
+  const byId = new Map(variants.map((variant) => [variant.id, variant]))
+
+  return results.map((result) => {
+    const quantity = byLine.get(result.line)
+    if (!quantity || result.status !== 'missing_quantity') return result
+
+    const variantId = result.selectedVariantId
+      || (result.candidates.length === 1 ? result.candidates[0].id : undefined)
+    const variant = variantId ? byId.get(variantId) : undefined
+    if (!variant) return { ...result, quantity }
+
+    return {
+      ...result,
+      quantity,
+      status: 'matched',
+      selectedVariantId: variantId,
+      inventoryOutcome: resolvePasteInventoryOutcome(quantity, variant),
+    }
+  })
+}
+
 export function estimateSerappMatchedValue(
   results: PasteMatchResult[],
   variants: SerappCatalogPriceRow[],
@@ -86,13 +138,15 @@ export function estimateSerappMatchedValue(
 export function runSerappPasteCheck<T extends SerappCatalogPriceRow>(
   pasteText: string,
   variants: T[],
-  resolutions: SerappLineResolution[] = [],
+  lineResolutions: SerappLineResolution[] = [],
+  quantityResolutions: SerappQuantityResolution[] = [],
 ) {
-  const results = applySerappLineResolutions(
+  const matched = applySerappLineResolutions(
     matchPastedOrder(pasteText, variants),
     variants,
-    resolutions,
+    lineResolutions,
   )
+  const results = applySerappQuantityResolutions(matched, variants, quantityResolutions)
   return {
     results,
     summary: summarizeSerappPasteCheck(results),

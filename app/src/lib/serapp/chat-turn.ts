@@ -313,12 +313,16 @@ async function assistantTurn(input: {
     const lineResolutions = intent.type === 'check_again'
       ? (session.lineResolutions || [])
       : []
+    const quantityResolutions = intent.type === 'check_again'
+      ? (session.quantityResolutions || [])
+      : []
 
     try {
       const check = await runSerappStockCheck({
         pasteText,
         distributorId: input.distributorId || session.distributorId || undefined,
         lineResolutions,
+        quantityResolutions,
       })
 
       session = {
@@ -328,6 +332,8 @@ async function assistantTurn(input: {
         lastConfirm: null,
         distributorId: input.distributorId || session.distributorId,
         lineResolutions,
+        quantityResolutions,
+        humanHandoff: session.humanHandoff,
       }
 
       return {
@@ -391,6 +397,7 @@ async function assistantTurn(input: {
       idempotencyKey,
       distributorId: input.distributorId || session.distributorId || undefined,
       lineResolutions: session.lineResolutions || [],
+      quantityResolutions: session.quantityResolutions || [],
       request: input.request,
     })
 
