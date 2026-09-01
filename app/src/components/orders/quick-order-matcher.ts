@@ -566,13 +566,22 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         || resolved.method === 'bracket_flavour'
         || resolved.method === 'alternative_name'
       const singleCandidate = candidates.length === 1 && (resolved.totalMatches ?? candidates.length) === 1
+      const wordBagWinners = candidates.filter((candidate) =>
+        wordsMatchRegardlessOfOrder(name, candidate, activeSection || undefined),
+      )
+      const hasWordBagWinner = wordBagWinners.length === 1
       const strongSingleMatch = Boolean(
         singleCandidate
         && candidates[0]
         && isStrongSingleCandidateMatch(name, candidates[0], resolved.method, activeSection || undefined),
       )
-      const autoSelectable = (confidentMethod && singleCandidate) || strongSingleMatch
-      const exactVariantId = autoSelectable && candidates[0] ? candidates[0].id : undefined
+      const autoSelectCandidate = hasWordBagWinner
+        ? wordBagWinners[0]
+        : (confidentMethod && singleCandidate) || strongSingleMatch
+          ? candidates[0]
+          : undefined
+      const autoSelectable = Boolean(autoSelectCandidate)
+      const exactVariantId = autoSelectCandidate?.id
       // Duplicate keys are section-aware so the same flavour can appear once under
       // HERO and once under ZERO without being treated as a paste duplicate.
       const sectionKey = activeSection || 'global'
@@ -618,7 +627,10 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         duplicateOfLine,
         matchMethod: resolved.method,
         inventoryOutcome: duplicateOfLine === undefined
-          ? resolvePasteInventoryOutcome(quantity, exactVariantId ? candidates[0] : undefined)
+          ? resolvePasteInventoryOutcome(
+            quantity,
+            exactVariantId ? candidates.find((candidate) => candidate.id === exactVariantId) : undefined,
+          )
           : undefined,
         sectionProductLine: activeSection || undefined,
       })

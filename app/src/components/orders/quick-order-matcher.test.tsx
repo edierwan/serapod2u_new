@@ -203,6 +203,38 @@ describe('Quick Order paste matching', () => {
     })
   })
 
+  it('auto-matches Peach Mango under a Cellera Zero section header', () => {
+    const zeroVariants = [
+      {
+        id: 'mango-peach',
+        variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-MP',
+        manufacturer_sku: 'SKU-Z-MP',
+        available_qty: 5314,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-mango',
+        variant_name: 'Fruity Cellera Cartridge [ Strawberry Mango ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SM',
+        manufacturer_sku: 'SKU-Z-SM',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    const result = matchPastedOrder('Cellera Zero\nPeach Mango - 50', zeroVariants)[1]
+    expect(result).toMatchObject({
+      name: 'Peach Mango',
+      status: 'matched',
+      selectedVariantId: 'mango-peach',
+    })
+  })
+
   it('prioritizes exact Product Code and SKU matches', () => {
     const results = matchPastedOrder('CEL-TEH - 2\nSKU-KEL: 3', variants)
     expect(results.map(result => result.matchMethod)).toEqual(['code_or_sku', 'code_or_sku'])
