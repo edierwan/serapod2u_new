@@ -486,7 +486,11 @@ async function assistantTurn(input: {
       }
     }
 
-    const data = await runSerappCancelHold({ orderId })
+    const data = await runSerappCancelHold({
+      orderId,
+      notifyChat: false,
+      request: input.request,
+    })
 
     if (!data.ok) {
       return {

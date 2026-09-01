@@ -392,7 +392,11 @@ export async function trySerappAiTurn(input: {
         session,
       }
     }
-    const data = await runSerappCancelHold({ orderId })
+    const data = await runSerappCancelHold({
+      orderId,
+      notifyChat: false,
+      request: input.request,
+    })
     if (!data.ok) {
       return {
         text: reply || data.error || 'Cancel failed.',

@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { parseSerappLineResolutions, parseSerappQuantityResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
 import { canShowSerappConfirmButton } from '@/lib/serapp/chat-bot'
+import { buildOrderEventPayload, queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
+import { notifySerappOrderCancelled } from '@/lib/serapp/order-status-notify'
 import { cancelSerappOrderHoldByDistributor, registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import {
   buildSerappConfirmItems,
@@ -296,6 +298,9 @@ export type SerappCancelHoldResult = {
  */
 export async function runSerappCancelHold(input: {
   orderId: string
+  /** When false, skip chat insert (chat bot turn already replies). Default true. */
+  notifyChat?: boolean
+  request?: Request | null
 }): Promise<SerappCancelHoldResult> {
   const orderId = input.orderId.trim()
   if (!orderId) {
@@ -362,6 +367,34 @@ export async function runSerappCancelHold(input: {
       orderId,
       cancelledBy: user.id,
     })
+
+    const notifyChat = input.notifyChat !== false
+
+    if (notifyChat) {
+      await notifySerappOrderCancelled(admin, orderId).catch((error) => {
+        console.warn('[serapp/cancel-hold] chat notify failed', error)
+      })
+    }
+
+    try {
+      const baseUrl = input.request ? new URL(input.request.url).origin : undefined
+      const { orgId, payload } = await buildOrderEventPayload(admin, {
+        orderId,
+        eventCode: 'order_rejected',
+        baseUrl,
+      })
+      await queueNotificationEvent(admin, {
+        orgId,
+        eventCode: 'order_rejected',
+        payload,
+        dedupePayload: { order_no: payload.order_no },
+      })
+      if (input.request) {
+        fetch(new URL('/api/cron/notification-outbox-worker', input.request.url)).catch(() => {})
+      }
+    } catch (error) {
+      console.warn('[serapp/cancel-hold] notification queue failed', error)
+    }
 
     return {
       ok: true,
