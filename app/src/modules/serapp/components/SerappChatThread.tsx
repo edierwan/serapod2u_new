@@ -932,7 +932,7 @@ function CheckSummaryCard({
       <div className="space-y-2 text-[12px] text-[var(--sera-ink)]">
         {okLines.length > 0 && (
           <div>
-            <p className="font-semibold text-[var(--sera-muted)]">Matched</p>
+            <p className="text-sm font-bold text-[var(--sera-ink)] underline">Matched</p>
             <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
               {okLines.map((line, idx) => (
                 <li key={`ok-${line.line}-${idx}`} className="flex justify-between gap-2">
@@ -948,7 +948,7 @@ function CheckSummaryCard({
 
         {problemLines.length > 0 && (
           <div>
-            <p className="font-semibold text-[var(--sera-muted)]">Couldn&apos;t match</p>
+            <p className="text-sm font-bold text-[var(--sera-ink)] underline">Couldn&apos;t match</p>
             <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
               {problemLines.map((line, idx) => (
                 <li key={`unclear-${line.line}-${idx}`} className="flex justify-between gap-2">
