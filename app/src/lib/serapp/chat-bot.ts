@@ -1,4 +1,9 @@
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
+import {
+  shouldSkipPastePhysicalLine,
+  stripListMarkers,
+  stripTrailingWhatsAppMarkers,
+} from '@/components/orders/quick-order-matcher'
 import type { SerappChatQuickReply, SerappChatSessionState } from '@/lib/serapp/chat-types'
 import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
 import {
@@ -92,9 +97,26 @@ export function shouldRunSerappBot(input: {
   return { run: false, session: input.session }
 }
 
-const LINE_QTY =
-  /^.+?\s*[-–—xX×]\s*\d+(\.\d+)?\s*$/m
-const SECTION = /^(HERO|ZERO|CLASSIC|ICE|SERIES)\s*$/im
+const SECTION_HEADER =
+  /^(?:HERO|ZERO|CLASSIC|ICE|SERIES|CELLERA\s+(?:HERO|ZERO)|SERAPOD(?:\s+CELLERA)?\s+(?:HERO|ZERO))\s*$/i
+/** Name + qty, optional trailing WhatsApp status emoji (already stripped before test). */
+const PRODUCT_QTY_LINE = /^.+?\s*(?:[-–—xX×]\s*\d+(?:\.\d+)?|\s+\d+(?:\.\d+)?)\s*$/u
+/** Name + trailing dash when qty was left blank (e.g. "Orange-"). */
+const PRODUCT_QTY_MISSING = /^.+?\s*[-–—xX×]\s*$/u
+
+function normalizeOrderListLine(line: string): string {
+  return stripTrailingWhatsAppMarkers(stripListMarkers(line.trim()))
+}
+
+function looksLikeOrderLine(line: string): boolean {
+  if (shouldSkipPastePhysicalLine(line)) return false
+  const cleaned = normalizeOrderListLine(line)
+  if (!cleaned) return false
+  if (SECTION_HEADER.test(cleaned)) return true
+  if (PRODUCT_QTY_LINE.test(cleaned)) return true
+  if (PRODUCT_QTY_MISSING.test(cleaned)) return true
+  return false
+}
 
 /**
  * Heuristic: multi-line paste that looks like a distributor order list.
@@ -104,10 +126,9 @@ export function looksLikeOrderList(text: string): boolean {
   if (!trimmed) return false
   const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   if (lines.length < 2) {
-    // Single product line with qty still counts
-    return LINE_QTY.test(trimmed)
+    return looksLikeOrderLine(trimmed)
   }
-  const productish = lines.filter((line) => LINE_QTY.test(line) || SECTION.test(line))
+  const productish = lines.filter(looksLikeOrderLine)
   return productish.length >= 2 || (productish.length >= 1 && lines.length >= 2)
 }
 

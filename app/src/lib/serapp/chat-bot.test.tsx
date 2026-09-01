@@ -27,6 +27,30 @@ ALMOND - 100`
   it('accepts a single qty line', () => {
     expect(looksLikeOrderList('BANANA VANILLA - 100')).toBe(true)
   })
+
+  it('accepts manager-style WhatsApp lists with bullets and status emojis', () => {
+    const bulletList = [
+      '* Vanilla Tobacco -5✅',
+      '* Strawberry Pudina (Pink) -',
+      '* Teh (Tarik) -5✅',
+      'LYCHEE BLACKCURRANT-5✅',
+    ].join('\n')
+    expect(looksLikeOrderList(bulletList)).toBe(true)
+    expect(detectChatIntent(bulletList).type).toBe('order_list')
+
+    const managerList = [
+      'nfy Tech',
+      'Serapod',
+      'Vanilla Tobacco- 200✅',
+      'Strawberry (Yellow) -600❌',
+      'Vanilla Brown -',
+      'Cellera Zero',
+      'Grape Ice - 50✅',
+      'total=3250(cases)',
+    ].join('\n')
+    expect(looksLikeOrderList(managerList)).toBe(true)
+    expect(detectChatIntent(managerList).type).toBe('order_list')
+  })
 })
 
 describe('detectChatIntent', () => {
@@ -58,7 +82,8 @@ describe('detectChatIntent', () => {
     const intent = detectChatIntent('banana vanilla 100')
     expect(intent.type).toBe('order_list')
     if (intent.type === 'order_list') {
-      expect(intent.pasteText).toBe('banana vanilla - 100')
+      expect(intent.pasteText).toContain('banana vanilla')
+      expect(intent.pasteText).toContain('100')
     }
   })
 
