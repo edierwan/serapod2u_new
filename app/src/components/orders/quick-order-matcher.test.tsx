@@ -540,6 +540,84 @@ describe('Quick Order paste matching', () => {
     expect(results.some((result) => result.name === 'per box')).toBe(false)
   })
 
+  it('skips order dates and device-line headers; scopes cartridge category rows', () => {
+    const catalog = [
+      {
+        id: 'oxford',
+        variant_name: 'Oxford Blue',
+        product_name: 'Serapod S Line V2',
+        product_code: 'SL-OX',
+        manufacturer_sku: 'SKU-OX',
+        available_qty: 10,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'mango-hero',
+        variant_name: 'Fruity Cellera Cartridge [ Mango ]',
+        product_name: 'Cellera Hero',
+        product_code: 'H-M',
+        manufacturer_sku: 'SKU-H-M',
+        available_qty: 50,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-corn',
+        variant_name: 'Fruity Cellera Cartridge [ Strawberry Corn ]',
+        product_name: 'Cellera Hero',
+        product_code: 'H-SC',
+        manufacturer_sku: 'SKU-H-SC',
+        available_qty: 0,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'guava-zero',
+        variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+        product_name: 'Cellera Zero',
+        product_code: 'Z-G',
+        manufacturer_sku: 'SKU-Z-G',
+        available_qty: 20,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    const text = [
+      'Order 28/8/2026',
+      'Vous vape',
+      'SERAPOD S LINE V2',
+      'OXFORD BLUE - 1',
+      'CELLERA CARTRIDGE',
+      'MANGO - 5',
+      'STRWBERY CORN - 5',
+      'ZERO CARTRIDGE',
+      'GUAVA - 3',
+    ].join('\n')
+
+    const results = matchPastedOrder(text, catalog)
+    expect(results.map((result) => result.name)).toEqual([
+      'OXFORD BLUE',
+      'CELLERA CARTRIDGE',
+      'MANGO',
+      'STRWBERY CORN',
+      'ZERO CARTRIDGE',
+      'GUAVA',
+    ])
+    expect(results[1]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results[4]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results.some((result) => result.name.includes('Order'))).toBe(false)
+    expect(results.find((result) => result.name === 'MANGO')).toMatchObject({
+      status: 'matched',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(results.find((result) => result.name === 'GUAVA')).toMatchObject({
+      status: 'matched',
+      sectionProductLine: 'Cellera Zero',
+    })
+    expect(results.find((result) => result.name === 'STRWBERY CORN')).toMatchObject({
+      status: 'matched',
+      inventoryOutcome: 'no_available_stock',
+    })
+  })
+
   it('strips only recognized trailing markers and preserves identifier characters', () => {
     expect(stripTrailingWhatsAppMarkers('SKU-✔-123 - 20✅')).toBe('SKU-✔-123 - 20')
     expect(stripTrailingWhatsAppMarkers('CODE✖VALUE - 10❌')).toBe('CODE✖VALUE - 10')

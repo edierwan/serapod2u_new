@@ -113,6 +113,9 @@ export const shouldSkipPastePhysicalLine = (line: string): boolean => {
   if (/^serapod\s*$/i.test(trimmed)) return true
   const withoutTrailingColon = trimmed.replace(/:\s*$/, '')
   if (PASTE_TEMPLATE_HEADER.test(withoutTrailingColon)) return true
+  const normalizedHeader = normalizeOrderText(withoutTrailingColon)
+  if (PASTE_TITLE_ROW.test(normalizedHeader)) return true
+  if (SECTION_HEADER_ALIASES.has(normalizedHeader)) return false
   if (!/\d/.test(trimmed) && !/[-–—:=\t]/.test(trimmed)) {
     const headerCandidate = trimmed.replace(/^\(([^)]+)\)$/, '$1').trim()
     const normalized = normalizeOrderText(headerCandidate)
@@ -273,7 +276,15 @@ const SECTION_HEADER_ALIASES = new Map<string, SectionProductLine>([
   ['SERAPOD ZERO', SECTION_PRODUCT_LINES.zero],
   ['SERAPOD CELLERA HERO', SECTION_PRODUCT_LINES.hero],
   ['SERAPOD CELLERA ZERO', SECTION_PRODUCT_LINES.zero],
+  ['CELLERA CARTRIDGE', SECTION_PRODUCT_LINES.hero],
+  ['CELLERA HERO CARTRIDGE', SECTION_PRODUCT_LINES.hero],
+  ['FRUITY CELLERA CARTRIDGE', SECTION_PRODUCT_LINES.hero],
+  ['ZERO CARTRIDGE', SECTION_PRODUCT_LINES.zero],
+  ['CELLERA ZERO CARTRIDGE', SECTION_PRODUCT_LINES.zero],
 ])
+
+/** Category / title rows distributors paste — never product lines. */
+const PASTE_TITLE_ROW = /^(?:ORDER\s+[\d/.\-]+|SERAPOD\s+S\s+LINE(?:\s+V?\d+)?)\s*$/i
 
 export type SectionHeaderKind = 'section_header' | 'requires_review'
 
