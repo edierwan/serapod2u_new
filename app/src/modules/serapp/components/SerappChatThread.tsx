@@ -925,7 +925,7 @@ function CheckSummaryCard({
         : check.summary.bucket === 'out_of_stock'
           ? 'Paste a new list with other products.'
           : pickableLines.length > 0
-            ? 'I couldn\'t match some items — tap what you meant below, or send the correct code.'
+            ? 'Tap the product you meant below, or send the code (e.g. CV - 50).'
             : qtyMissingLines.length > 0 && !hasUnmatched
               ? 'These items are in the catalog — add quantity (e.g. Orange - 5) and send the list again.'
               : qtyMissingLines.length > 0
@@ -936,9 +936,15 @@ function CheckSummaryCard({
     if (line.status === 'missing_quantity') return false
     if (!line.selectedVariantId) return false
     const status = lineStatusShort(line)
-    return status !== 'Out of stock' && status !== 'Not found'
+    return status !== 'Out of stock' && status !== 'Not in catalog'
   })
   const problemLines = visible.filter((line) => !okLines.includes(line) && !qtyMissingLines.includes(line))
+  const pickProductLines = problemLines.filter(
+    (line) => line.status === 'ambiguous' || line.status === 'suggestion',
+  )
+  const unmatchedLines = problemLines.filter(
+    (line) => line.status !== 'ambiguous' && line.status !== 'suggestion',
+  )
 
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
@@ -975,11 +981,27 @@ function CheckSummaryCard({
           </div>
         )}
 
-        {problemLines.length > 0 && (
+        {pickProductLines.length > 0 && (
+          <div>
+            <p className="text-sm font-bold text-[var(--sera-ink)] underline">Pick a product</p>
+            <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
+              {pickProductLines.map((line, idx) => (
+                <li key={`pick-${line.line}-${idx}`} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">{cleanSerappLineLabel(line.name || line.raw)}</span>
+                  <span className="shrink-0 font-semibold text-[var(--sera-orange-deep)]">
+                    {lineStatusShort(line)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {unmatchedLines.length > 0 && (
           <div>
             <p className="text-sm font-bold text-[var(--sera-ink)] underline">Couldn&apos;t match</p>
             <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
-              {problemLines.map((line, idx) => (
+              {unmatchedLines.map((line, idx) => (
                 <li key={`unclear-${line.line}-${idx}`} className="flex justify-between gap-2">
                   <span className="min-w-0 truncate">{cleanSerappLineLabel(line.name || line.raw)}</span>
                   <span className="shrink-0 font-semibold text-[var(--sera-orange-deep)]">

@@ -48,7 +48,7 @@ export function describeSerappLineAvailability(
   if (result.status === 'section_header') {
     return `Section: ${result.sectionProductLine || result.name}`
   }
-  if (result.status === 'requires_review') return 'Unclear'
+  if (result.status === 'requires_review') return 'Check the name'
   if (result.status === 'missing_quantity') {
     const variant = result.selectedVariantId
       ? result.candidates.find((candidate) => candidate.id === result.selectedVariantId)
@@ -62,12 +62,18 @@ export function describeSerappLineAvailability(
     if (variant) return 'Found · add qty'
     return 'Add qty'
   }
-  if (result.status === 'invalid_quantity') return 'Invalid quantity'
+  if (result.status === 'invalid_quantity') return 'Check quantity'
   if (result.status === 'duplicate') return 'Duplicate line'
-  if (!result.selectedVariantId && result.candidates.length > 0) {
-    return 'Unclear'
+  if (result.status === 'ambiguous' && result.candidates.length > 1) {
+    return `${result.candidates.length} options · pick below`
   }
-  if (!result.selectedVariantId) return 'Not found'
+  if (result.status === 'suggestion' && result.candidates.length === 1) {
+    return 'Tap to confirm'
+  }
+  if (!result.selectedVariantId && result.candidates.length > 0) {
+    return 'Pick below'
+  }
+  if (!result.selectedVariantId) return 'Not in catalog'
 
   const variant = selectedVariant
     ?? (result.selectedVariantId
