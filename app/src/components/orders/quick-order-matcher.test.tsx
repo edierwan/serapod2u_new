@@ -518,6 +518,28 @@ describe('Quick Order paste matching', () => {
     expect(results.filter((result) => result.name === 'Serapod')).toHaveLength(0)
   })
 
+  it('skips distributor template headers like Available line up and per box', () => {
+    const text = [
+      'Order Max Vaper',
+      '',
+      '(Hero)',
+      'Available line up:',
+      'per box',
+      '• Vanilla Potato (Cultured Milk) -5',
+      '• Teh (Tarik) -5',
+    ].join('\n')
+
+    const results = matchPastedOrder(text, variants)
+    expect(results.map((result) => result.name)).toEqual([
+      '(Hero)',
+      'Vanilla Potato (Cultured Milk)',
+      'Teh (Tarik)',
+    ])
+    expect(results[0]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results.some((result) => /line\s*up/i.test(result.name))).toBe(false)
+    expect(results.some((result) => result.name === 'per box')).toBe(false)
+  })
+
   it('strips only recognized trailing markers and preserves identifier characters', () => {
     expect(stripTrailingWhatsAppMarkers('SKU-✔-123 - 20✅')).toBe('SKU-✔-123 - 20')
     expect(stripTrailingWhatsAppMarkers('CODE✖VALUE - 10❌')).toBe('CODE✖VALUE - 10')

@@ -102,14 +102,20 @@ export const splitInvalidQuantityTail = (value: string): { name: string; invalid
   return { name: value.replace(INVALID_QTY_TAIL, '').trim(), invalidQuantity: true }
 }
 
+/** Distributor template rows (not products): "Available line up:", "per box", etc. */
+const PASTE_TEMPLATE_HEADER = /^(?:available\s+line\s*up|line\s*up|per\s+(?:box|case|carton|ctn|pcs?)|price\s*list|product\s*list|flavour\s*list|flavor\s*list)\s*:?\s*$/i
+
 /** Distributor paste noise: totals, brand headers, company title rows — not products. */
 export const shouldSkipPastePhysicalLine = (line: string): boolean => {
   const trimmed = stripListMarkers(line).trim()
   if (!trimmed) return true
   if (/^total\s*[=:]/i.test(trimmed)) return true
   if (/^serapod\s*$/i.test(trimmed)) return true
+  const withoutTrailingColon = trimmed.replace(/:\s*$/, '')
+  if (PASTE_TEMPLATE_HEADER.test(withoutTrailingColon)) return true
   if (!/\d/.test(trimmed) && !/[-–—:=\t]/.test(trimmed)) {
-    const normalized = normalizeOrderText(trimmed)
+    const headerCandidate = trimmed.replace(/^\(([^)]+)\)$/, '$1').trim()
+    const normalized = normalizeOrderText(headerCandidate)
     if (SECTION_HEADER_ALIASES.has(normalized)) return false
     // e.g. "nfy Tech" — title row, not a product line.
     if (/[a-z]/.test(trimmed)) return true
@@ -285,7 +291,8 @@ export function resolveSectionHeader(
   name: string,
   quantity: number | null,
 ): SectionHeaderResolution | null {
-  const normalized = normalizeOrderText(name)
+  const unwrapped = stripListMarkers(name).trim().replace(/^\(([^)]+)\)$/, '$1').trim()
+  const normalized = normalizeOrderText(unwrapped)
   const productLine = SECTION_HEADER_ALIASES.get(normalized)
   if (!productLine) return null
 
