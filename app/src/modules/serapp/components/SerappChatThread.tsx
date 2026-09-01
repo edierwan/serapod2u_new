@@ -908,7 +908,15 @@ function CheckSummaryCard({
   const pickableLines = visible.filter(
     (line) => isSerappReviewLine(line.status) && !line.selectedVariantId && line.candidates && line.candidates.length > 0,
   )
+  const qtyMissingLines = visible.filter((line) => line.status === 'missing_quantity')
   const warehouse = check.warehouseName || 'Warehouse'
+  const hasUnmatched = visible.some((line) =>
+    line.status === 'not_found'
+    || line.status === 'ambiguous'
+    || line.status === 'suggestion'
+    || line.status === 'requires_review'
+    || line.status === 'invalid_quantity',
+  )
   const nextStep =
     check.summary.bucket === 'available'
       ? 'Reply confirm to place this order.'
@@ -918,14 +926,19 @@ function CheckSummaryCard({
           ? 'Paste a new list with other products.'
           : pickableLines.length > 0
             ? 'I couldn\'t match some items — tap what you meant below, or send the correct code.'
-            : 'Some items didn\'t match. Send the correct code, or paste a new list.'
+            : qtyMissingLines.length > 0 && !hasUnmatched
+              ? 'These items are in the catalog — add quantity (e.g. Orange - 5) and send the list again.'
+              : qtyMissingLines.length > 0
+                ? 'Add quantity where shown, fix unmatched items, then send again.'
+                : 'Some items didn\'t match. Send the correct code, or paste a new list.'
 
   const okLines = visible.filter((line) => {
+    if (line.status === 'missing_quantity') return false
     if (!line.selectedVariantId) return false
     const status = lineStatusShort(line)
     return status !== 'Out of stock' && status !== 'Not found'
   })
-  const problemLines = visible.filter((line) => !okLines.includes(line))
+  const problemLines = visible.filter((line) => !okLines.includes(line) && !qtyMissingLines.includes(line))
 
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
@@ -938,6 +951,22 @@ function CheckSummaryCard({
                 <li key={`ok-${line.line}-${idx}`} className="flex justify-between gap-2">
                   <span className="min-w-0 truncate">{cleanSerappLineLabel(line.name || line.raw)}</span>
                   <span className="shrink-0 font-semibold tabular-nums text-[var(--sera-ink)]">
+                    {lineStatusShort(line)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {qtyMissingLines.length > 0 && (
+          <div>
+            <p className="text-sm font-bold text-[var(--sera-ink)] underline">Add quantity</p>
+            <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
+              {qtyMissingLines.map((line, idx) => (
+                <li key={`qty-${line.line}-${idx}`} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">{cleanSerappLineLabel(line.name || line.raw)}</span>
+                  <span className="shrink-0 font-semibold text-[var(--sera-orange-deep)]">
                     {lineStatusShort(line)}
                   </span>
                 </li>

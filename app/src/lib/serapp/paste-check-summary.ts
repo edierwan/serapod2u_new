@@ -35,6 +35,7 @@ export function summarizeSerappPasteCheck(results: PasteMatchResult[]): SerappPa
   for (const result of productLines) {
     const needsReview = result.status === 'requires_review'
       || result.status === 'invalid_quantity'
+      || result.status === 'missing_quantity'
       || result.status === 'not_found'
       || result.status === 'ambiguous'
       || result.status === 'suggestion'

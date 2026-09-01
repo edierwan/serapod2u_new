@@ -20,6 +20,8 @@ export type PasteMatchStatus =
   | 'ambiguous'
   | 'not_found'
   | 'invalid_quantity'
+  /** Product identified but pasted line has no quantity (e.g. "Orange-"). */
+  | 'missing_quantity'
   | 'duplicate'
   /** Standalone HERO / ZERO (etc.) section title — not an order line. */
   | 'section_header'
@@ -82,6 +84,33 @@ export const stripListMarkers = (value: string): string => {
     line = line.replace(NUMBERED_LIST_PREFIX, '')
   }
   return line
+}
+
+/** Drop trailing separators distributors leave when qty is missing (e.g. "Orange-"). */
+export const cleanPasteSegmentName = (value: string): string =>
+  value.replace(/[-–—:=]+\s*$/u, '').trim()
+
+const INVALID_QTY_TAIL = /\s[-–—:=]+\s*(zero|none|nil|n\/a|na)\s*$/i
+
+/** Detect lines like "MANGO - zero" where qty text is present but not numeric. */
+export const splitInvalidQuantityTail = (value: string): { name: string; invalidQuantity: boolean } => {
+  if (!INVALID_QTY_TAIL.test(value)) return { name: value, invalidQuantity: false }
+  return { name: value.replace(INVALID_QTY_TAIL, '').trim(), invalidQuantity: true }
+}
+
+/** Distributor paste noise: totals, brand headers, company title rows — not products. */
+export const shouldSkipPastePhysicalLine = (line: string): boolean => {
+  const trimmed = stripListMarkers(line).trim()
+  if (!trimmed) return true
+  if (/^total\s*[=:]/i.test(trimmed)) return true
+  if (/^serapod\s*$/i.test(trimmed)) return true
+  if (!/\d/.test(trimmed) && !/[-–—:=\t]/.test(trimmed)) {
+    const normalized = normalizeOrderText(trimmed)
+    if (SECTION_HEADER_ALIASES.has(normalized)) return false
+    // e.g. "nfy Tech" — title row, not a product line.
+    if (/[a-z]/.test(trimmed)) return true
+  }
+  return false
 }
 
 // Unicode dash variants (en/em/figure/quotation/minus) that users paste from
@@ -416,12 +445,14 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
   let activeSection: SectionProductLine | null = null
 
   text.split(/\r?\n/).forEach((physicalLine, index) => {
-    if (!physicalLine.trim()) return
+    if (shouldSkipPastePhysicalLine(physicalLine)) return
 
     for (const segment of parsePhysicalLine(physicalLine, index + 1, codeSet)) {
       entryNumber += 1
       const line = entryNumber
-      const name = segment.name.trim() || segment.raw.trim()
+      let name = cleanPasteSegmentName(segment.name.trim() || segment.raw.trim())
+      const invalidQuantityTail = splitInvalidQuantityTail(name)
+      name = invalidQuantityTail.name
       const normalizedName = normalizeOrderText(name)
       const quantity = segment.quantity
 
@@ -481,8 +512,13 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         ?? (variantDuplicateKey ? firstLineByVariant.get(variantDuplicateKey) : undefined)
 
       let status: PasteMatchStatus
-      if (quantity === null || quantity <= 0) status = 'invalid_quantity'
-      else if (duplicateOfLine !== undefined) status = 'duplicate'
+      if (invalidQuantityTail.invalidQuantity || (quantity !== null && quantity <= 0)) status = 'invalid_quantity'
+      else if (quantity === null) {
+        if (autoSelectable) status = 'missing_quantity'
+        else if (candidates.length > 1 || (resolved.totalMatches || 0) > 1) status = 'ambiguous'
+        else if (candidates.length === 1) status = 'missing_quantity'
+        else status = 'not_found'
+      } else if (duplicateOfLine !== undefined) status = 'duplicate'
       else if (resolved.method === 'alternative_name' && autoSelectable) status = 'alternative_match'
       else if (autoSelectable) status = 'matched'
       else if (candidates.length > 1 || (resolved.totalMatches || 0) > 1) status = 'ambiguous'
@@ -503,7 +539,12 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         quantity,
         status,
         candidates,
-        selectedVariantId: (status === 'matched' || status === 'alternative_match' || status === 'duplicate') && exactVariantId ? exactVariantId : undefined,
+        selectedVariantId: (
+          status === 'matched'
+          || status === 'alternative_match'
+          || status === 'duplicate'
+          || status === 'missing_quantity'
+        ) && exactVariantId ? exactVariantId : undefined,
         duplicateOfLine,
         matchMethod: resolved.method,
         inventoryOutcome: duplicateOfLine === undefined

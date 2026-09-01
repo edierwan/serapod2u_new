@@ -49,6 +49,19 @@ export function describeSerappLineAvailability(
     return `Section: ${result.sectionProductLine || result.name}`
   }
   if (result.status === 'requires_review') return 'Unclear'
+  if (result.status === 'missing_quantity') {
+    const variant = result.selectedVariantId
+      ? result.candidates.find((candidate) => candidate.id === result.selectedVariantId)
+      : result.candidates.length === 1
+        ? result.candidates[0]
+        : undefined
+    if (variant && typeof variant.available_qty === 'number') {
+      if (variant.available_qty <= 0) return 'Out of stock'
+      return `Add qty · ${variant.available_qty} in stock`
+    }
+    if (variant) return 'Found · add qty'
+    return 'Add qty'
+  }
   if (result.status === 'invalid_quantity') return 'Invalid quantity'
   if (result.status === 'duplicate') return 'Duplicate line'
   if (!result.selectedVariantId && result.candidates.length > 0) {

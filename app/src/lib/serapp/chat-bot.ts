@@ -283,15 +283,27 @@ export function quickRepliesForPhase(
 export function formatCheckIntro(
   summary: SerappPasteCheckSummary,
   _warehouseName?: string | null,
-  _options?: {
+  options?: {
     estimatedOrderValue?: number
     results?: PasteMatchResult[]
   },
 ): string {
+  const productLines = options?.results?.filter((result) => result.status !== 'section_header') ?? []
+  const missingQty = productLines.some((result) => result.status === 'missing_quantity')
+  const needsMatch = productLines.some((result) =>
+    result.status === 'not_found'
+    || result.status === 'ambiguous'
+    || result.status === 'suggestion'
+    || result.status === 'requires_review'
+    || result.status === 'invalid_quantity',
+  )
+
   // Details (qty / warehouse / price / next step) live in the check card — keep intro short.
   if (summary.bucket === 'available') return '✅ **Ready to order**'
   if (summary.bucket === 'partially_available') return '🟡 **Partially available**'
   if (summary.bucket === 'out_of_stock') return '🔴 **Out of stock**'
+  if (missingQty && !needsMatch) return '🟡 **Add quantity**'
+  if (missingQty && needsMatch) return '⚠️ **Review your list**'
   return '⚠️ **Some items didn\'t match**'
 }
 

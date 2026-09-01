@@ -250,6 +250,52 @@ describe('Quick Order paste matching', () => {
   it('strips numbered list prefixes from pasted lines', () => {
     expect(stripListMarkers('1. CEL-TEH - 50')).toBe('CEL-TEH - 50')
     expect(stripListMarkers('2) GU - 100')).toBe('GU - 100')
+    expect(stripListMarkers('* Vanilla Tobacco - 5')).toBe('Vanilla Tobacco - 5')
+  })
+
+  it('marks identified products without quantity as missing_quantity', () => {
+    const results = matchPastedOrder('CEL-TEH -\nOrange-', variants)
+    expect(results[0]).toMatchObject({ name: 'CEL-TEH', status: 'missing_quantity', quantity: null })
+    expect(results[1]).toMatchObject({ name: 'Orange', status: 'not_found', quantity: null })
+  })
+
+  it('parses manager-style asterisk bullets, tight dashes, and skips paste noise', () => {
+    const text = [
+      'nfy Tech',
+      'Serapod',
+      '* Vanilla Tobacco -5✅',
+      '* Teh (Tarik) -5✅',
+      'LYCHEE BLACKCURRANT-5✅',
+      'Lychee Blackcurrant -100✅',
+      'Jagung-50✅',
+      'Orange-',
+      'Tea-',
+      'Cellera Zero',
+      'Grape Ice - 50✅',
+      'total=3250(cases)',
+      'total=33(box)',
+    ].join('\n')
+
+    const results = matchPastedOrder(text, variants)
+    expect(results.map((result) => result.name)).toEqual([
+      'Vanilla Tobacco',
+      'Teh (Tarik)',
+      'LYCHEE BLACKCURRANT',
+      'Lychee Blackcurrant',
+      'Jagung',
+      'Orange',
+      'Tea',
+      'Cellera Zero',
+      'Grape Ice',
+    ])
+    expect(results.map((result) => result.quantity)).toEqual([
+      5, 5, 5, 100, 50, null, null, null, 50,
+    ])
+    expect(results[7]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results.filter((result) => result.name === 'Orange')[0]?.status).toBe('not_found')
+    expect(results.filter((result) => result.name === 'Tea')[0]?.status).toBe('not_found')
+    expect(results.filter((result) => result.name.includes('total='))).toHaveLength(0)
+    expect(results.filter((result) => result.name === 'Serapod')).toHaveLength(0)
   })
 
   it('strips only recognized trailing markers and preserves identifier characters', () => {
@@ -333,7 +379,7 @@ describe('Quick Order multi-entry paste parsing', () => {
   it('isolates one malformed segment without rejecting the valid ones around it', () => {
     const results = matchPastedOrder('TEH - 5 ✅ ??? ✅ KELADI - 3', variants)
     expect(results.map(result => result.name)).toEqual(['TEH', '???', 'KELADI'])
-    expect(results.map(result => result.status)).toEqual(['suggestion', 'invalid_quantity', 'suggestion'])
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'not_found', 'suggestion'])
     expect(results.map(result => result.quantity)).toEqual([5, null, 3])
     // The unparsable segment is preserved for review; the valid ones still resolve.
     expect(results[0].selectedVariantId).toBeUndefined()
