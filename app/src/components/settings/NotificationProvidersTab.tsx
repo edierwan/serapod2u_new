@@ -98,7 +98,7 @@ const SMTP_DEFAULTS = {
   from_name: 'Serapod2U',
   from_email: 'no-reply@serapod2u.com',
   reply_to: 'admin@serapod2u.com',
-  smtp_host: 'mail.getouch.co',
+  smtp_host: 'mail.getouch.my',
   port: 587,
   security: 'starttls',
   username: 'no-reply@serapod2u.com'
@@ -1251,10 +1251,10 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     <div className="space-y-1.5">
                       <Label>SMTP server hostname</Label>
                       <Input value={emailConfig.config_public.smtp_host || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, smtp_host: e.target.value } })} />
-                      <p className="text-xs text-slate-500">Use <span className="font-semibold">mail.getouch.co</span> as the SMTP server hostname because it matches the Mailcow TLS certificate. Sender emails can still use <span className="font-semibold">@serapod2u.com</span>.</p>
+                      <p className="text-xs text-slate-500">Use <span className="font-semibold">mail.getouch.my</span> as the SMTP server hostname because it matches the Mailcow TLS certificate. Sender emails can still use <span className="font-semibold">@serapod2u.com</span>.</p>
                       {String(emailConfig.config_public.smtp_host || '').trim().toLowerCase() === 'mail.serapod2u.com' && (
                         <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs leading-4 text-amber-800">
-                          TLS certificate mismatch: mail.serapod2u.com is not covered by the current Mailcow certificate. Use mail.getouch.co unless the certificate is updated to include mail.serapod2u.com.
+                          TLS certificate mismatch: mail.serapod2u.com is not covered by the current Mailcow certificate. Use mail.getouch.my unless the certificate is updated to include mail.serapod2u.com.
                         </p>
                       )}
                     </div>
@@ -2135,7 +2135,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                 </Badge>
               </div>
             ))}
-            <p className="rounded-lg bg-emerald-50 p-2 text-xs leading-4 text-emerald-800">PTR and the main SMTP host point to <span className="font-semibold">mail.getouch.co</span>. Sender addresses may use <span className="font-semibold">serapod2u.com</span> because Mailcow supports multiple domains.</p>
+            <p className="rounded-lg bg-emerald-50 p-2 text-xs leading-4 text-emerald-800">PTR and the main SMTP host point to <span className="font-semibold">mail.getouch.my</span>. Sender addresses may use <span className="font-semibold">serapod2u.com</span> because Mailcow supports multiple domains.</p>
             <p className="rounded-lg bg-slate-50 p-2 text-xs leading-4 text-slate-500">Status values are placeholders until DNS verification is connected.</p>
           </CardContent>
         </Card>
