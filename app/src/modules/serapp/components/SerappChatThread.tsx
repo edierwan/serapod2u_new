@@ -16,7 +16,7 @@ import {
   CheckCheck,
 } from 'lucide-react'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
-import { cleanSerappLineLabel, describeSerappLineAvailability } from '@/lib/orders/paste-result-display'
+import { cleanSerappLineLabel, describeSerappLineAvailability, isSerappLineStockAvailable } from '@/lib/orders/paste-result-display'
 import { isSerappReviewLine } from '@/lib/serapp/line-resolutions'
 import type {
   SerappChatCheckPayload,
@@ -962,9 +962,7 @@ function CheckSummaryCard({
 
   const okLines = visible.filter((line) => {
     if (line.status === 'missing_quantity') return false
-    if (!line.selectedVariantId) return false
-    const status = lineStatusShort(line)
-    return status !== 'Out of stock' && status !== 'Not in catalog'
+    return isSerappLineStockAvailable(line)
   })
   const problemLines = visible.filter((line) => !okLines.includes(line) && !qtyMissingLines.includes(line))
   const pickProductLines = problemLines.filter(

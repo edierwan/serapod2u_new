@@ -39,12 +39,21 @@ export function describePasteMatchResult(
 
 /**
  * Distributor-friendly SerApp labels (avoid technical "Matched").
- * Example: "50 available", "Only 20 available", "Out of stock".
+ * Example: "✅ 50 available", "❌ Out of stock".
  */
+export function isSerappLineStockAvailable(result: PasteMatchResult): boolean {
+  if (!result.selectedVariantId) return false
+  const outcome = result.inventoryOutcome
+  return outcome === 'matched'
+}
+
 export function describeSerappLineAvailability(
   result: PasteMatchResult,
   selectedVariant?: MatchableVariant | null,
 ): string {
+  const ok = (text: string) => `✅ ${text}`
+  const no = (text: string) => `❌ ${text}`
+
   if (result.status === 'section_header') {
     return `Section: ${result.sectionProductLine || result.name}`
   }
@@ -56,10 +65,10 @@ export function describeSerappLineAvailability(
         ? result.candidates[0]
         : undefined
     if (variant && typeof variant.available_qty === 'number') {
-      if (variant.available_qty <= 0) return 'Out of stock'
-      return `Add qty · ${variant.available_qty} in stock`
+      if (variant.available_qty <= 0) return no('Out of stock')
+      return ok(`Add qty · ${variant.available_qty} in stock`)
     }
-    if (variant) return 'Found · add qty'
+    if (variant) return ok('Found · add qty')
     return 'Add qty'
   }
   if (result.status === 'invalid_quantity') return 'Check quantity'
@@ -73,7 +82,7 @@ export function describeSerappLineAvailability(
   if (!result.selectedVariantId && result.candidates.length > 0) {
     return 'Pick below'
   }
-  if (!result.selectedVariantId) return 'Not in catalog'
+  if (!result.selectedVariantId) return no('Not in catalog')
 
   const variant = selectedVariant
     ?? (result.selectedVariantId
@@ -83,19 +92,19 @@ export function describeSerappLineAvailability(
   const qty = result.quantity
   const outcome = result.inventoryOutcome ?? resolvePasteInventoryOutcome(qty, variant)
 
-  if (outcome === 'no_available_stock') return 'Out of stock'
+  if (outcome === 'no_available_stock') return no('Out of stock')
   if (outcome === 'insufficient_stock') {
     const available = variant?.available_qty
-    if (typeof available === 'number') return `Only ${available} available`
-    return 'Not enough stock'
+    if (typeof available === 'number') return no(`Only ${available} available`)
+    return no('Not enough stock')
   }
   if (outcome === 'inventory_unclassified') {
-    return qty != null ? `${qty} · stock unclear` : 'Stock unclear'
+    return no(qty != null ? `${qty} · stock unclear` : 'Stock unclear')
   }
   if (outcome === 'matched') {
-    return qty != null ? `${qty} available` : 'Available'
+    return ok(qty != null ? `${qty} available` : 'Available')
   }
-  return 'Not found'
+  return no('Not found')
 }
 
 /**
