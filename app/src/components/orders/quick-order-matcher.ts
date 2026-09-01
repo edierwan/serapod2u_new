@@ -69,6 +69,21 @@ const trailingWhatsAppMarkers = /(\d)\s*(?:(?:✅|❌|✔\uFE0F?|✖\uFE0F?|☑\
 
 export const stripTrailingWhatsAppMarkers = (value: string) => value.replace(trailingWhatsAppMarkers, '$1').trimEnd()
 
+/** Leading list markers distributors paste from notes, WhatsApp, or sample templates. */
+const LIST_MARKER_CHARS = /^[\s*•·‣◦▪▫\u2022\u2023\u25E6\u25AA\u2219\u2043\-–—]+/u
+const NUMBERED_LIST_PREFIX = /^\s*\d+[.)]\s+/u
+
+export const stripListMarkers = (value: string): string => {
+  let line = value
+  let prev = ''
+  while (line !== prev) {
+    prev = line
+    line = line.replace(LIST_MARKER_CHARS, '')
+    line = line.replace(NUMBERED_LIST_PREFIX, '')
+  }
+  return line
+}
+
 // Unicode dash variants (en/em/figure/quotation/minus) that users paste from
 // phones and spreadsheets. All are single code points, so replacing them keeps
 // string indices aligned with the untouched original used for `raw` slicing.
@@ -147,7 +162,8 @@ interface ParsedSegment {
 // segments. `raw` is sliced from the untouched original (including its trailing
 // status emoji) so the pasted text is preserved for audit/display.
 const parsePhysicalLine = (original: string, sourceLine: number, codeSet: Set<string>): ParsedSegment[] => {
-  const work = normalizeDashes(original)
+  const line = stripListMarkers(original)
+  const work = normalizeDashes(line)
   const emoji = buildStatusEmojiRegex()
   const boundaries: { contentStart: number; contentEnd: number; rawEnd: number }[] = []
   let last = 0
@@ -167,7 +183,7 @@ const parsePhysicalLine = (original: string, sourceLine: number, codeSet: Set<st
       const originalStart = boundary.contentStart + token.localStart
       // The last token in a chunk owns the trailing status emoji for audit display.
       const originalEnd = index === tokens.length - 1 ? boundary.rawEnd : boundary.contentStart + token.localEnd
-      const raw = original.slice(originalStart, originalEnd).trim()
+      const raw = line.slice(originalStart, originalEnd).trim()
       const quantity = token.quantityText && /^\d+$/.test(token.quantityText) ? Number(token.quantityText) : null
       segments.push({ raw, name: token.name, quantity, sourceLine })
     })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchPastedOrder, normalizeOrderText, stripTrailingWhatsAppMarkers } from './quick-order-matcher'
+import { matchPastedOrder, normalizeOrderText, stripListMarkers, stripTrailingWhatsAppMarkers } from './quick-order-matcher'
 
 const variants = [
   { id: 'lychee', variant_name: 'Lychee Blackcurrant', product_name: 'Cellera Hero', product_code: 'CEL-H', manufacturer_sku: 'SKU-001' },
@@ -237,6 +237,19 @@ describe('Quick Order paste matching', () => {
       200, 300, 1000, 500, 200, 300, 150, 100, 75, 250, 125, 90, 80, 60, 55, 45, 35, 25, 15, 10, 5,
     ])
     expect(results.map(result => result.raw)).toEqual(whatsappList.split('\n'))
+  })
+
+  it('strips leading bullet markers from pasted lines', () => {
+    const text = '• CEL-TEH - 50\n• CEL-KEL - 100\n• banana vanilla - 20'
+    const results = matchPastedOrder(text, variants)
+    expect(results.map((result) => result.name)).toEqual(['CEL-TEH', 'CEL-KEL', 'banana vanilla'])
+    expect(results.map((result) => result.quantity)).toEqual([50, 100, 20])
+    expect(results.every((result) => result.status === 'matched' || result.status === 'alternative_match')).toBe(true)
+  })
+
+  it('strips numbered list prefixes from pasted lines', () => {
+    expect(stripListMarkers('1. CEL-TEH - 50')).toBe('CEL-TEH - 50')
+    expect(stripListMarkers('2) GU - 100')).toBe('GU - 100')
   })
 
   it('strips only recognized trailing markers and preserves identifier characters', () => {
