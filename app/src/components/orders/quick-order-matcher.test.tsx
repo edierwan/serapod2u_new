@@ -618,6 +618,28 @@ describe('Quick Order paste matching', () => {
     })
   })
 
+  it('falls back to a global Guava match when Zero section pool has no Guava variant', () => {
+    const catalog = [
+      {
+        id: 'guava-hero',
+        variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+        product_name: 'Cellera Hero',
+        product_code: 'GU',
+        manufacturer_sku: 'SKU-GU',
+        available_qty: 4947,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('ZERO CARTRIDGE\nGUAVA - 3', catalog).find((result) => result.name === 'GUAVA'))
+      .toMatchObject({
+        status: 'matched',
+        selectedVariantId: 'guava-hero',
+        quantity: 3,
+        matchMethod: 'bracket_flavour',
+      })
+  })
+
   it('strips only recognized trailing markers and preserves identifier characters', () => {
     expect(stripTrailingWhatsAppMarkers('SKU-✔-123 - 20✅')).toBe('SKU-✔-123 - 20')
     expect(stripTrailingWhatsAppMarkers('CODE✖VALUE - 10❌')).toBe('CODE✖VALUE - 10')

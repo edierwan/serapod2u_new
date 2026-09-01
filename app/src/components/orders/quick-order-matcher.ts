@@ -631,11 +631,19 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         continue
       }
 
-      const resolved = resolveCatalogMatch(
+      let resolved = resolveCatalogMatch(
         name,
         variants,
         activeSection || undefined,
       )
+      // Section scope (ZERO CARTRIDGE / HERO) may not list every flavour — fall back globally.
+      if (
+        activeSection
+        && resolved.candidates.length === 0
+        && (resolved.totalMatches ?? 0) === 0
+      ) {
+        resolved = resolveCatalogMatch(name, variants, undefined)
+      }
       const candidates = resolved.candidates
       const confidentMethod = resolved.method === 'code_or_sku'
         || resolved.method === 'exact_name'
