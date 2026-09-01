@@ -67,6 +67,10 @@ export interface PasteMatchResult {
 
 export const normalizeOrderText = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase()
 
+/** Distributor notes in parentheses, e.g. "Vanilla Potato (Cultured Milk)" → "Vanilla Potato". */
+export const stripParentheticalQualifiers = (value: string): string =>
+  value.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
+
 const trailingWhatsAppMarkers = /(\d)\s*(?:(?:✅|❌|✔\uFE0F?|✖\uFE0F?|☑\uFE0F?)\s*)+$/u
 
 export const stripTrailingWhatsAppMarkers = (value: string) => value.replace(trailingWhatsAppMarkers, '$1').trimEnd()
@@ -322,11 +326,49 @@ const flavourWordBag = (flavour: string) => words(flavour)
   .join(' ')
 
 const queryWordBag = (query: string, productLine?: string) => {
-  const flavourQuery = extractFlavourQuery(query, productLine) || normalizeMatchName(query)
+  const baseQuery = stripParentheticalQualifiers(query)
+  const flavourQuery = extractFlavourQuery(baseQuery, productLine) || normalizeMatchName(baseQuery)
   return words(flavourQuery)
     .filter(word => !GENERIC_ORDER_WORDS.has(word))
     .sort()
     .join(' ')
+}
+
+/** All catalog flavour words appear in the pasted query (after stripping parenthetical notes). */
+const fullContainmentScore = (
+  query: string,
+  variant: MatchableVariant,
+  productLine?: string,
+): number => {
+  const baseQuery = stripParentheticalQualifiers(query)
+  const queryWordSet = new Set(
+    words(extractFlavourQuery(baseQuery, productLine) || normalizeMatchName(baseQuery))
+      .filter(word => !GENERIC_ORDER_WORDS.has(word)),
+  )
+  if (queryWordSet.size === 0) return 0
+
+  return Math.max(...flavourNames(variant).map((flavour) => {
+    const flavourWordList = words(flavour).filter(word => !GENERIC_ORDER_WORDS.has(word))
+    if (flavourWordList.length === 0) return 0
+    const fullyContained = flavourWordList.every(word => queryWordSet.has(word))
+    return fullyContained ? flavourWordList.length : 0
+  }))
+}
+
+/** When several keyword hits exist, auto-select the one whose full flavour is in the paste. */
+const pickUniqueFullContainmentWinner = (
+  candidates: MatchableVariant[],
+  query: string,
+  productLine?: string,
+): MatchableVariant | undefined => {
+  const scored = candidates
+    .map(variant => ({ variant, score: fullContainmentScore(query, variant, productLine) }))
+    .filter(entry => entry.score > 0)
+  if (scored.length === 0) return undefined
+
+  const maxScore = Math.max(...scored.map(entry => entry.score))
+  const winners = scored.filter(entry => entry.score === maxScore)
+  return winners.length === 1 ? winners[0].variant : undefined
 }
 
 /**
@@ -442,12 +484,13 @@ export function resolveCatalogMatch(
   const identifierMatches = pool.filter(variant => exactIdentifiers(variant).includes(normalizedName))
   if (identifierMatches.length > 0) return { candidates: identifierMatches.slice(0, 8), method: 'code_or_sku' as const, totalMatches: identifierMatches.length }
 
-  const normalizedMatchName = normalizeMatchName(name)
+  const matchingName = stripParentheticalQualifiers(name)
+  const normalizedMatchName = normalizeMatchName(matchingName)
   // Under an active section, do not re-detect a different product line from the
   // flavour text — the section header already owns the scope.
-  const productLine = forcedProductLine || detectProductLine(name, pool)
+  const productLine = forcedProductLine || detectProductLine(matchingName, pool)
   const scopedVariants = productLine ? pool.filter(variant => variant.product_name === productLine) : pool
-  const flavourQuery = extractFlavourQuery(name, productLine) || normalizedMatchName
+  const flavourQuery = extractFlavourQuery(matchingName, productLine) || normalizedMatchName
 
   const nameMatches = scopedVariants.filter(variant => exactOfficialName(variant) === normalizedMatchName)
   if (nameMatches.length > 0) return { candidates: nameMatches.slice(0, 8), method: 'exact_name' as const, totalMatches: nameMatches.length }
@@ -590,6 +633,7 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         isStrongFuzzySingleMatch(name, candidate, scopedProductLine),
       )
       const hasFuzzyWinner = fuzzyWinners.length === 1
+      const fullContainmentWinner = pickUniqueFullContainmentWinner(candidates, name, scopedProductLine)
       const obviousSingleMatch = isObviousSingleCatalogMatch(
         name,
         candidates,
@@ -603,12 +647,13 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
       )
       const autoSelectCandidate = hasWordBagWinner
         ? wordBagWinners[0]
-        : hasFuzzyWinner
-          ? fuzzyWinners[0]
-          : obviousSingleMatch
-            ?? ((confidentMethod && singleCandidate) || strongSingleMatch
-              ? candidates[0]
-              : undefined)
+        : fullContainmentWinner
+          ?? (hasFuzzyWinner
+            ? fuzzyWinners[0]
+            : obviousSingleMatch
+              ?? ((confidentMethod && singleCandidate) || strongSingleMatch
+                ? candidates[0]
+                : undefined))
       const autoSelectable = Boolean(autoSelectCandidate)
       const exactVariantId = autoSelectCandidate?.id
       // Duplicate keys are section-aware so the same flavour can appear once under

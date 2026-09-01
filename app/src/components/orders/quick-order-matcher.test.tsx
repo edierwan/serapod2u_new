@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchPastedOrder, normalizeOrderText, stripListMarkers, stripTrailingWhatsAppMarkers } from './quick-order-matcher'
+import { matchPastedOrder, normalizeOrderText, stripListMarkers, stripParentheticalQualifiers, stripTrailingWhatsAppMarkers } from './quick-order-matcher'
 
 const variants = [
   { id: 'lychee', variant_name: 'Lychee Blackcurrant', product_name: 'Cellera Hero', product_code: 'CEL-H', manufacturer_sku: 'SKU-001' },
@@ -299,6 +299,78 @@ describe('Quick Order paste matching', () => {
       status: 'matched',
       selectedVariantId: 'strawberry-vanilla',
     })
+  })
+
+  it('auto-matches distributor parenthetical notes against base catalog flavours', () => {
+    const heroVariants = [
+      {
+        id: 'vanilla-potato',
+        variant_name: 'Cellera Hero · [ Vanilla Potato ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-VP',
+        manufacturer_sku: 'SKU-H-VP',
+        available_qty: 8962,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'vanilla-berry',
+        variant_name: 'Cellera Hero · [ Vanilla Berry ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-VB',
+        manufacturer_sku: 'SKU-H-VB',
+        available_qty: 6369,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-corn',
+        variant_name: 'Cellera Hero · [ Strawberry Corn ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-SC',
+        manufacturer_sku: 'SKU-H-SC',
+        available_qty: 10514,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-cheese',
+        variant_name: 'Cellera Hero · [ Strawberry Cheese ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-SCH',
+        manufacturer_sku: 'SKU-H-SCH',
+        available_qty: 500,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-pudina',
+        variant_name: 'Cellera Hero · [ Strawberry Pudina ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-SP',
+        manufacturer_sku: 'SKU-H-SP',
+        available_qty: 13067,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(stripParentheticalQualifiers('Vanilla Potato (Cultured Milk)')).toBe('Vanilla Potato')
+
+    const cases = [
+      ['Vanilla Potato (Cultured Milk) - 50', 'vanilla-potato'],
+      ['Strawberry corn (Cheesecake) - 40', 'strawberry-corn'],
+      ['Vanilla Berry (Custard) - 30', 'vanilla-berry'],
+      ['Strawberry Pudina (Pink) - 20', 'strawberry-pudina'],
+    ] as const
+
+    for (const [pasteLine, expectedId] of cases) {
+      expect(matchPastedOrder(pasteLine, heroVariants)[0]).toMatchObject({
+        status: 'matched',
+        selectedVariantId: expectedId,
+        matchMethod: 'bracket_flavour',
+      })
+    }
   })
 
   it('prioritizes exact Product Code and SKU matches', () => {
