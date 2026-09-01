@@ -272,7 +272,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       // Set initial logo preview (resolve to a browsable URL - self-hosted
       // Supabase requires an apikey query param even on "public" storage URLs)
       setLogoPreview(orgData.logo_url ? getStorageUrl(orgData.logo_url) : null)
-      setSignaturePreview(orgData.signature_url || null)
+      setSignaturePreview(orgData.signature_url ? getStorageUrl(orgData.signature_url) : null)
 
       // Load branding settings from database
       if (settings.branding) {
@@ -484,9 +484,9 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       if (orgSettings.signature_type) {
         updateData.signature_type = orgSettings.signature_type
       }
-      if (signatureUrl) {
-        updateData.signature_url = signatureUrl
-      }
+      // Persist the signature reference even when it is cleared, so "Remove"
+      // is not silently reverted by the reload below.
+      updateData.signature_url = signatureUrl ?? null
 
       const { error } = await (supabase as any)
         .from('organizations')
