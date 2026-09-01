@@ -329,17 +329,21 @@ const queryWordBag = (query: string, productLine?: string) => {
     .join(' ')
 }
 
-/** Peach Mango ↔ Mango Peach when both word sets are identical. */
-const wordsMatchRegardlessOfOrder = (
+/**
+ * True when the pasted flavour words exactly match a catalog flavour (any order).
+ * Used for Peach Mango ↔ Mango Peach, exact Strawberry Vanilla, etc.
+ */
+const isExactFlavourWordBagMatch = (
   query: string,
   variant: MatchableVariant,
   productLine?: string,
 ): boolean => {
   const bag = queryWordBag(query, productLine)
-  const queryWordCount = bag ? bag.split(' ').length : 0
-  if (queryWordCount < 2) return false
+  if (!bag) return false
   return flavourNames(variant).some(flavour => flavourWordBag(flavour) === bag)
 }
+
+const wordsMatchRegardlessOfOrder = isExactFlavourWordBagMatch
 
 const matchesAlternativeCompact = (query: string, variant: MatchableVariant, productLine?: string): boolean => {
   const queryCompact = compactMatchName(extractFlavourQuery(query, productLine) || query)
@@ -359,10 +363,21 @@ const isStrongSingleCandidateMatch = (
   method?: PasteMatchMethod,
   productLine?: string,
 ): boolean => {
-  if (wordsMatchRegardlessOfOrder(query, variant, productLine)) return true
+  if (isExactFlavourWordBagMatch(query, variant, productLine)) return true
   if (matchesAlternativeCompact(query, variant, productLine)) return true
   if ((method === 'fuzzy' || method === 'keyword') && isStrongFuzzySingleMatch(query, variant, productLine)) return true
   return false
+}
+
+/** One catalog hit and the pasted flavour words match exactly — safe to auto-select. */
+const isObviousSingleCatalogMatch = (
+  query: string,
+  candidates: MatchableVariant[],
+  totalMatches: number,
+  productLine?: string,
+): MatchableVariant | undefined => {
+  if (candidates.length !== 1 || totalMatches !== 1 || !candidates[0]) return undefined
+  return isExactFlavourWordBagMatch(query, candidates[0], productLine) ? candidates[0] : undefined
 }
 
 const relevanceScore = (query: string, variant: MatchableVariant) => {
@@ -566,20 +581,34 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         || resolved.method === 'bracket_flavour'
         || resolved.method === 'alternative_name'
       const singleCandidate = candidates.length === 1 && (resolved.totalMatches ?? candidates.length) === 1
+      const scopedProductLine = activeSection || undefined
       const wordBagWinners = candidates.filter((candidate) =>
-        wordsMatchRegardlessOfOrder(name, candidate, activeSection || undefined),
+        isExactFlavourWordBagMatch(name, candidate, scopedProductLine),
       )
       const hasWordBagWinner = wordBagWinners.length === 1
+      const fuzzyWinners = candidates.filter((candidate) =>
+        isStrongFuzzySingleMatch(name, candidate, scopedProductLine),
+      )
+      const hasFuzzyWinner = fuzzyWinners.length === 1
+      const obviousSingleMatch = isObviousSingleCatalogMatch(
+        name,
+        candidates,
+        resolved.totalMatches ?? candidates.length,
+        scopedProductLine,
+      )
       const strongSingleMatch = Boolean(
         singleCandidate
         && candidates[0]
-        && isStrongSingleCandidateMatch(name, candidates[0], resolved.method, activeSection || undefined),
+        && isStrongSingleCandidateMatch(name, candidates[0], resolved.method, scopedProductLine),
       )
       const autoSelectCandidate = hasWordBagWinner
         ? wordBagWinners[0]
-        : (confidentMethod && singleCandidate) || strongSingleMatch
-          ? candidates[0]
-          : undefined
+        : hasFuzzyWinner
+          ? fuzzyWinners[0]
+          : obviousSingleMatch
+            ?? ((confidentMethod && singleCandidate) || strongSingleMatch
+              ? candidates[0]
+              : undefined)
       const autoSelectable = Boolean(autoSelectCandidate)
       const exactVariantId = autoSelectCandidate?.id
       // Duplicate keys are section-aware so the same flavour can appear once under

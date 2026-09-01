@@ -235,6 +235,72 @@ describe('Quick Order paste matching', () => {
     })
   })
 
+  it('auto-matches exact Strawberry Vanilla under Cellera Zero (production-style names)', () => {
+    const zeroVariants = [
+      {
+        id: 'strawberry-vanilla',
+        variant_name: 'Cellera Zero - [ Strawberry Vanilla ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SV',
+        manufacturer_sku: 'SKU-Z-SV',
+        available_qty: 3787,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-mango',
+        variant_name: 'Cellera Zero - [ Strawberry Mango ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SM',
+        manufacturer_sku: 'SKU-Z-SM',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('Cellera Zero\nStrawberry Vanilla - 100', zeroVariants)[1]).toMatchObject({
+      name: 'Strawberry Vanilla',
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+    })
+    expect(matchPastedOrder('Strawberry Vanilla - 100', zeroVariants)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+    })
+  })
+
+  it('auto-matches Starwberry Vanilla typo when Strawberry Mango is also in catalog', () => {
+    const zeroVariants = [
+      {
+        id: 'strawberry-vanilla',
+        variant_name: 'Cellera Zero - [ Strawberry Vanilla ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SV',
+        manufacturer_sku: 'SKU-Z-SV',
+        available_qty: 3787,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-mango',
+        variant_name: 'Cellera Zero - [ Strawberry Mango ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SM',
+        manufacturer_sku: 'SKU-Z-SM',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('Cellera Zero\nStarwberry Vanilla - 100', zeroVariants)[1]).toMatchObject({
+      name: 'Starwberry Vanilla',
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+    })
+  })
+
   it('prioritizes exact Product Code and SKU matches', () => {
     const results = matchPastedOrder('CEL-TEH - 2\nSKU-KEL: 3', variants)
     expect(results.map(result => result.matchMethod)).toEqual(['code_or_sku', 'code_or_sku'])
