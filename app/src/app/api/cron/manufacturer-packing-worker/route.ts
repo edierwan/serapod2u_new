@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Allow up to 60 seconds
 
+const WORKER = WORKER_NAMES.manufacturerPacking
+
 export async function GET(request: NextRequest) {
-  const startTime = Date.now()
+  const unauthorized = requireCronAuth(request, WORKER)
+  if (unauthorized) return unauthorized
+
   const supabase = createAdminClient()
+  const outcome = await withWorkerLease(supabase, WORKER, () => runPacking(supabase))
+  return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runPacking(supabase: ReturnType<typeof createAdminClient>): Promise<NextResponse> {
+  const startTime = Date.now()
 
   try {
     // 1. Find a batch to process (queued or processing)
@@ -24,16 +36,25 @@ export async function GET(request: NextRequest) {
 
     console.log(`📦 Packing batch ${batch.id} (Status: ${batch.packing_status})`)
 
-    // 2. Update status to processing if needed
+    // 2. Update status to processing if needed.
+    // CAS: only claim the batch if it is STILL queued, so a concurrent execution
+    // cannot claim the same batch. Row-level backstop to the worker lease.
     if (batch.packing_status === 'queued') {
-      const { error: updateError } = await supabase
+      const { data: claimed, error: updateError } = await supabase
         .from('qr_batches')
         .update({ packing_status: 'processing' })
         .eq('id', batch.id)
-      
+        .eq('packing_status', 'queued') // optimistic lock
+        .select('id')
+
       if (updateError) {
         console.error('Error updating batch status:', updateError)
         return NextResponse.json({ error: updateError.message }, { status: 500 })
+      }
+
+      if (!claimed || claimed.length === 0) {
+        console.log('⚠️ Batch claimed by another worker, skipping')
+        return NextResponse.json({ message: 'Batch claimed by another worker' })
       }
     }
 

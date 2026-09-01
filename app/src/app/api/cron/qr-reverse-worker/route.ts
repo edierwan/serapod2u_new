@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
+
+const WORKER = WORKER_NAMES.qrReverse
 
 /**
  * Mode C Background Worker - Intelligent Buffer Assignment
@@ -137,36 +141,21 @@ async function recalculateMasterCaseStats(supabase: any, masterId: string, manuf
  * Used by both GET (Vercel cron) and POST (manual trigger)
  */
 async function processJobs(request: NextRequest) {
+  // Strict cron auth. The previous implementation only validated the credential
+  // when an Authorization header happened to be present, so omitting the header
+  // entirely bypassed the check and ran the worker anonymously. That path is gone.
+  const unauthorized = requireCronAuth(request, WORKER)
+  if (unauthorized) return unauthorized
+
+  const supabase = createAdminClient()
+  const outcome = await withWorkerLease(supabase, WORKER, () => runReverseJobs(supabase))
+  return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runReverseJobs(supabase: ReturnType<typeof createAdminClient>): Promise<NextResponse> {
   const startTime = Date.now()
 
   try {
-    // Verify cron authorization
-    const authHeader = request.headers.get('authorization')
-    const isDevelopment = process.env.NODE_ENV === 'development'
-    
-    // Cron scheduler sends: Authorization: Bearer <CRON_SECRET>
-    // Check if it's from cron scheduler (has authorization header) or manual trigger
-    if (!isDevelopment && authHeader) {
-      const cronSecret = process.env.CRON_SECRET
-      
-      // If CRON_SECRET is set, validate it
-      if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-        console.warn('⚠️ Unauthorized worker access attempt - invalid CRON_SECRET')
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        )
-      }
-      
-      console.log('✅ Authorized: Vercel Cron job')
-    } else if (isDevelopment) {
-      console.log('🔓 Development mode: Auth check skipped')
-    } else {
-      console.log('ℹ️ Manual trigger (no auth header)')
-    }
-
-    const supabase = createAdminClient()
-
     // Fetch queued jobs (exclude cancelled)
     // Increased from 10 to 100 to process more jobs per run (large batch support)
     const { data: queuedJobs, error: fetchError } = await supabase
@@ -228,14 +217,30 @@ async function processJobs(request: NextRequest) {
           totalSpoiled: job.total_spoiled,
         })
 
-        // Mark job as running
-        await supabase
+        // Mark job as running.
+        // CAS: only claim the job if it is STILL queued. This is a row-level
+        // backstop to the worker lease - even if two executions ever overlap
+        // (e.g. a pathological run outliving its lease TTL), a single job can
+        // only ever be claimed, and therefore processed, once.
+        const { data: claimedJob, error: claimError } = await supabase
           .from('qr_reverse_jobs')
           .update({
             status: 'running',
             started_at: new Date().toISOString()
           })
           .eq('id', job.id)
+          .eq('status', 'queued') // optimistic lock
+          .select('id')
+
+        if (claimError) {
+          console.error(`❌ Failed to claim job ${job.id}:`, claimError)
+          continue
+        }
+
+        if (!claimedJob || claimedJob.length === 0) {
+          console.log(`⏭️  Job ${job.id} already claimed by another execution - skipping`)
+          continue
+        }
 
         // Get the SPECIFIC master code for THIS case_number
         // CRITICAL: Each case has its own master_code, don't use .limit(1) which could grab a different case!

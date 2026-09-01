@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { generateQRBatch } from '@/lib/qr-generator'
 import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
 /**
  * CRON: /api/cron/qr-generation-worker
@@ -13,16 +15,20 @@ import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Keep each run short to avoid timeouts
 
-export async function GET(request: NextRequest) {
-  // Verify cron secret to prevent unauthorized access
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET || process.env.WORKER_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+const WORKER = WORKER_NAMES.qrGeneration
 
-  const startTime = Date.now()
+export async function GET(request: NextRequest) {
+  // Strict cron auth: a missing/!bearer/wrong credential is always 401.
+  const unauthorized = requireCronAuth(request, WORKER)
+  if (unauthorized) return unauthorized
+
   const supabase = createAdminClient()
+  const outcome = await withWorkerLease(supabase, WORKER, () => runGeneration(supabase))
+  return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runGeneration(supabase: ReturnType<typeof createAdminClient>): Promise<NextResponse> {
+  const startTime = Date.now()
 
   try {
     // 1. Find a batch to process (queued or processing)
