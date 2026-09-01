@@ -5,6 +5,7 @@ import {
   getAccessibleConversation,
   listMessages,
   parseSession,
+  reconcileSerappChatSession,
   updateConversationSession,
   archiveConversation,
 } from '@/lib/serapp/conversation-service'
@@ -98,9 +99,15 @@ export async function GET(
         updated_at: nowIso,
       }, { onConflict: 'user_id' })
 
+    const rawSession = parseSession(conversation.session_json)
+    const session = await reconcileSerappChatSession(admin, rawSession)
+    if (session !== rawSession) {
+      await updateConversationSession(admin, id, session)
+    }
+
     return NextResponse.json({
       conversation: { ...conversation, unread_count: 0 },
-      session: parseSession(conversation.session_json),
+      session,
       messages: hydratedMessages,
       presence: { is_online: true, last_seen_at: nowIso },
     })

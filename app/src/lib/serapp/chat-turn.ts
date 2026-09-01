@@ -481,8 +481,18 @@ async function assistantTurn(input: {
     if (!orderId) {
       return {
         text: '❗ **No active hold** in this chat.',
-        quickReplies: quickRepliesForPhase(session.phase, session.lastCheck?.summary.bucket),
-        session,
+        quickReplies: quickRepliesForPhase(
+          'awaiting_list',
+          session.lastCheck?.summary.bucket,
+          session.lastCheck?.results,
+          session,
+        ),
+        session: {
+          ...DEFAULT_SESSION,
+          phase: 'awaiting_list',
+          distributorId: input.distributorId || session.distributorId,
+          humanHandoff: session.humanHandoff,
+        },
       }
     }
 
@@ -493,9 +503,23 @@ async function assistantTurn(input: {
     })
 
     if (!data.ok) {
+      const staleHold = data.status === 409
+      if (staleHold) {
+        session = {
+          ...DEFAULT_SESSION,
+          phase: 'awaiting_list',
+          distributorId: input.distributorId || session.distributorId,
+          humanHandoff: session.humanHandoff,
+        }
+      }
       return {
         text: data.error || '❗ **Cancel failed**',
-        quickReplies: quickRepliesForPhase('confirmed'),
+        quickReplies: quickRepliesForPhase(
+          staleHold ? 'awaiting_list' : session.phase,
+          session.lastCheck?.summary.bucket,
+          session.lastCheck?.results,
+          session,
+        ),
         session,
       }
     }

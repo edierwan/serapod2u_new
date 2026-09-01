@@ -388,8 +388,13 @@ export async function trySerappAiTurn(input: {
     if (!orderId) {
       return {
         text: reply || 'No active hold in this chat to cancel.',
-        quickReplies: quickRepliesForPhase(session.phase, session.lastCheck?.summary.bucket),
-        session,
+        quickReplies: quickRepliesForPhase('awaiting_list', session.lastCheck?.summary.bucket, session.lastCheck?.results, session),
+        session: {
+          ...DEFAULT_SESSION,
+          phase: 'awaiting_list',
+          distributorId: input.distributorId || session.distributorId,
+          humanHandoff: session.humanHandoff,
+        },
       }
     }
     const data = await runSerappCancelHold({
@@ -398,9 +403,23 @@ export async function trySerappAiTurn(input: {
       request: input.request,
     })
     if (!data.ok) {
+      const staleHold = data.status === 409
+      if (staleHold) {
+        session = {
+          ...DEFAULT_SESSION,
+          phase: 'awaiting_list',
+          distributorId: input.distributorId || session.distributorId,
+          humanHandoff: session.humanHandoff,
+        }
+      }
       return {
         text: reply || data.error || 'Cancel failed.',
-        quickReplies: quickRepliesForPhase('confirmed'),
+        quickReplies: quickRepliesForPhase(
+          staleHold ? 'awaiting_list' : session.phase,
+          session.lastCheck?.summary.bucket,
+          session.lastCheck?.results,
+          session,
+        ),
         session,
       }
     }

@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SERAPP_ORDER_SOURCE_MARKER } from '@/lib/serapp/constants'
-import { bumpUnreadIfOwnerAway } from '@/lib/serapp/conversation-service'
+import { bumpUnreadIfOwnerAway, parseSession, updateConversationSession } from '@/lib/serapp/conversation-service'
+import { DEFAULT_SESSION } from '@/lib/serapp/conversation-types'
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -32,6 +33,7 @@ async function insertSerappBotStatusMessage(
   },
   body: string,
   quickReplies: Array<{ id: string; label: string; sendText: string }>,
+  options?: { resetSessionForOrderId?: string | null },
 ): Promise<{ notified: number; skipped?: string }> {
   const byId = new Map<string, { id: string; kind: string }>()
 
@@ -83,6 +85,25 @@ async function insertSerappBotStatusMessage(
     }
     await bumpUnreadIfOwnerAway(admin, conv.id, patch)
     await admin.from('serapp_conversations').update(patch).eq('id', conv.id)
+
+    const resetOrderId = options?.resetSessionForOrderId
+    if (resetOrderId) {
+      const { data: convRow } = await admin
+        .from('serapp_conversations')
+        .select('session_json')
+        .eq('id', conv.id)
+        .maybeSingle()
+      const session = parseSession(convRow?.session_json)
+      if (session.lastConfirm?.orderId === resetOrderId || session.phase === 'confirmed') {
+        await updateConversationSession(admin, conv.id, {
+          ...DEFAULT_SESSION,
+          phase: 'awaiting_list',
+          distributorId: session.distributorId,
+          humanHandoff: session.humanHandoff,
+        })
+      }
+    }
+
     notified += 1
   }
 
@@ -176,5 +197,6 @@ export async function notifySerappOrderCancelled(
       { id: 'help', label: 'Help', sendText: 'help' },
       { id: 'new', label: 'New order', sendText: 'new order' },
     ],
+    { resetSessionForOrderId: orderId },
   )
 }

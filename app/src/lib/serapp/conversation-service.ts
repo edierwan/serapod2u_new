@@ -546,3 +546,44 @@ export async function updateConversationSession(
 }
 
 export { parseSession }
+
+/**
+ * Drop stale confirmed state when the hold is no longer active (cancelled, expired, accepted).
+ */
+export async function reconcileSerappChatSession(
+  admin: Admin,
+  session: SerappChatSessionState,
+): Promise<SerappChatSessionState> {
+  const orderId = session.lastConfirm?.orderId
+  if (!orderId || session.phase !== 'confirmed') return session
+
+  const { data: hold } = await admin
+    .from('serapp_order_holds')
+    .select('status')
+    .eq('order_id', orderId)
+    .maybeSingle()
+
+  const { data: order } = await admin
+    .from('orders')
+    .select('status')
+    .eq('id', orderId)
+    .maybeSingle()
+
+  const cancellable = hold?.status === 'active' && order?.status === 'submitted'
+  if (cancellable) {
+    if (session.lastConfirm && order?.status && session.lastConfirm.status !== order.status) {
+      return {
+        ...session,
+        lastConfirm: { ...session.lastConfirm, status: order.status },
+      }
+    }
+    return session
+  }
+
+  return {
+    ...DEFAULT_SESSION,
+    phase: 'awaiting_list',
+    distributorId: session.distributorId,
+    humanHandoff: session.humanHandoff,
+  }
+}

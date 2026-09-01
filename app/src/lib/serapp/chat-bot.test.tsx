@@ -138,6 +138,49 @@ describe('quickRepliesForPhase', () => {
       expect(replies.some((r) => r.id === 'repeat')).toBe(false)
     }
   })
+
+  it('hides cancel hold when session has no active submitted order', () => {
+    const replies = quickRepliesForPhase('confirmed', null, null, {
+      phase: 'confirmed',
+      pendingPasteText: null,
+      lastCheck: null,
+      lastConfirm: {
+        orderId: 'ord-1',
+        orderNo: 'SO1',
+        status: 'cancelled',
+        confirmedLines: 1,
+        skippedLines: 0,
+        estimatedOrderValue: 0,
+      },
+      distributorId: null,
+      lineResolutions: [],
+      quantityResolutions: [],
+      humanHandoff: false,
+    })
+    expect(replies.some((r) => r.id === 'cancel')).toBe(false)
+    expect(replies.some((r) => r.id === 'sample')).toBe(true)
+  })
+
+  it('shows cancel hold only for submitted confirmed orders', () => {
+    const replies = quickRepliesForPhase('confirmed', null, null, {
+      phase: 'confirmed',
+      pendingPasteText: null,
+      lastCheck: null,
+      lastConfirm: {
+        orderId: 'ord-1',
+        orderNo: 'SO1',
+        status: 'submitted',
+        confirmedLines: 1,
+        skippedLines: 0,
+        estimatedOrderValue: 0,
+      },
+      distributorId: null,
+      lineResolutions: [],
+      quantityResolutions: [],
+      humanHandoff: false,
+    })
+    expect(replies.some((r) => r.id === 'cancel')).toBe(true)
+  })
 })
 
 describe('canShowSerappConfirmButton', () => {

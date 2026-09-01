@@ -31,6 +31,7 @@ import type {
   SerappChatSessionState,
 } from '@/lib/serapp/chat-types'
 import type { SerappAttachment, SerappConversationRow, SerappMessageRow } from '@/lib/serapp/conversation-types'
+import { parseSession } from '@/lib/serapp/conversation-types'
 import { createClient } from '@/lib/supabase/client'
 import { isMineSerappMessage } from '@/lib/serapp/conversation-access'
 import { useSerapp } from './SerappContext'
@@ -309,6 +310,9 @@ export default function SerappChatThread() {
         (payload) => {
           const row = payload.new as SerappConversationRow
           setConversation((prev) => (prev ? { ...prev, ...row } : (row as SerappConversationRow)))
+          if (row.session_json) {
+            setSession(parseSession(row.session_json))
+          }
         },
       )
       .subscribe()
@@ -530,13 +534,14 @@ export default function SerappChatThread() {
         'checked',
         session.lastCheck.summary.bucket,
         session.lastCheck.results,
+        session,
       )
     }
     if (session?.phase === 'confirmed') {
-      return quickRepliesForPhase('confirmed')
+      return quickRepliesForPhase('confirmed', null, null, session)
     }
     if (session?.phase === 'idle' || session?.phase === 'awaiting_list') {
-      return quickRepliesForPhase(session.phase)
+      return quickRepliesForPhase(session.phase, null, null, session)
     }
     const replies =
       [...messages].reverse().find((m) => m.role === 'bot' && m.quickReplies?.length)?.quickReplies ||

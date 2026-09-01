@@ -59,7 +59,7 @@ export function isAllowedDuringHumanHandoff(
     case 'ack':
       return true
     case 'cancel_hold':
-      return Boolean(session.lastConfirm?.orderId)
+      return hasSerappCancellableHold(session)
     case 'check_again':
       return Boolean(session.pendingPasteText || session.lastCheck?.pasteText)
     case 'repeat_last':
@@ -262,10 +262,20 @@ export function newOrderBotText(): string {
   ].join('\n')
 }
 
+/** True when the chat session still has a distributor-cancellable Serapp hold. */
+export function hasSerappCancellableHold(
+  session: SerappChatSessionState | null | undefined,
+): boolean {
+  const confirm = session?.lastConfirm
+  if (!confirm?.orderId) return false
+  return session?.phase === 'confirmed' && confirm.status === 'submitted'
+}
+
 export function quickRepliesForPhase(
   phase: SerappChatSessionState['phase'],
   bucket?: SerappPasteCheckSummary['bucket'] | null,
   results?: PasteMatchResult[] | null,
+  session?: SerappChatSessionState | null,
 ): SerappChatQuickReply[] {
   if (phase === 'idle' || phase === 'awaiting_list') {
     return [
@@ -307,6 +317,9 @@ export function quickRepliesForPhase(
   }
 
   if (phase === 'confirmed') {
+    if (!hasSerappCancellableHold(session)) {
+      return quickRepliesForPhase('awaiting_list')
+    }
     return [
       { id: 'new', label: 'New order', sendText: 'new order' },
       { id: 'cancel', label: 'Cancel hold', sendText: 'cancel hold' },
