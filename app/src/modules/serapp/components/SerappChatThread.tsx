@@ -18,6 +18,11 @@ import {
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import { cleanSerappLineLabel, describeSerappLineAvailability, isSerappLineStockAvailable } from '@/lib/orders/paste-result-display'
 import { isSerappReviewLine } from '@/lib/serapp/line-resolutions'
+import {
+  canShowSerappConfirmButton,
+  quickRepliesForPhase,
+  serappConfirmButtonLabel,
+} from '@/lib/serapp/chat-bot'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
@@ -519,12 +524,23 @@ export default function SerappChatThread() {
   }
 
   const latestQuickReplies = (() => {
+    if (isHqSupport) return []
+    if (session?.phase === 'checked' && session.lastCheck?.summary) {
+      return quickRepliesForPhase(
+        'checked',
+        session.lastCheck.summary.bucket,
+        session.lastCheck.results,
+      )
+    }
+    if (session?.phase === 'confirmed') {
+      return quickRepliesForPhase('confirmed')
+    }
+    if (session?.phase === 'idle' || session?.phase === 'awaiting_list') {
+      return quickRepliesForPhase(session.phase)
+    }
     const replies =
       [...messages].reverse().find((m) => m.role === 'bot' && m.quickReplies?.length)?.quickReplies ||
       []
-    // HQ joins the distributor group chat for support — hide ordering chips
-    // (Sample list, Confirm, Cancel hold, etc.) that belong to the distributor.
-    if (isHqSupport) return []
     return replies
   })()
 
@@ -732,6 +748,7 @@ export default function SerappChatThread() {
                   disabled={sending || resolvingLine}
                   onPick={applyChatLinePick}
                   onSetQty={applyChatLineQty}
+                  onConfirm={() => void sendText('confirm')}
                 />
               )}
               {msg.card?.kind === 'order_confirmed' && msg.card.confirm && (
@@ -924,12 +941,14 @@ function CheckSummaryCard({
   disabled,
   onPick,
   onSetQty,
+  onConfirm,
 }: {
   check: SerappChatCheckPayload
   interactive?: boolean
   disabled?: boolean
   onPick?: (line: number, variantId: string) => void
   onSetQty?: (line: number, quantity: number) => void
+  onConfirm?: () => void
 }) {
   const productLines = check.results.filter((r) => r.status !== 'section_header')
   const visible = productLines.slice(0, 12)
@@ -938,6 +957,7 @@ function CheckSummaryCard({
   )
   const qtyMissingLines = visible.filter((line) => line.status === 'missing_quantity')
   const warehouse = check.warehouseName || 'Warehouse'
+  const canConfirm = canShowSerappConfirmButton(check.summary, check.results)
   const hasUnmatched = visible.some((line) =>
     line.status === 'not_found'
     || line.status === 'ambiguous'
@@ -946,7 +966,11 @@ function CheckSummaryCard({
     || line.status === 'invalid_quantity',
   )
   const nextStep =
-    check.summary.bucket === 'available'
+    canConfirm
+      ? serappConfirmButtonLabel(check.results) === 'Confirm available only'
+        ? 'Tap Confirm below to order available items only.'
+        : 'Tap Confirm below to place this order.'
+      : check.summary.bucket === 'available'
       ? 'Reply confirm to place this order.'
       : check.summary.bucket === 'partially_available'
         ? 'Reply confirm to order available qty only.'
@@ -955,9 +979,9 @@ function CheckSummaryCard({
           : pickableLines.length > 0
             ? 'Tap the product you meant below, or send the code (e.g. CV - 50).'
             : qtyMissingLines.length > 0 && !hasUnmatched
-              ? 'Enter quantity below for each item, then reply confirm.'
+              ? 'Enter quantity below for each item, then tap Confirm.'
               : qtyMissingLines.length > 0
-                ? 'Enter quantity below, fix other items, then reply confirm.'
+                ? 'Enter quantity below, fix other items, then tap Confirm.'
                 : 'Some items didn\'t match. Send the correct code, or paste a new list.'
 
   const okLines = visible.filter((line) => {
@@ -1077,6 +1101,16 @@ function CheckSummaryCard({
             />
           ))}
         </div>
+      )}
+      {interactive && onConfirm && canConfirm && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onConfirm}
+          className="mt-2 w-full rounded-xl bg-[var(--sera-orange)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {serappConfirmButtonLabel(check.results)}
+        </button>
       )}
     </div>
   )

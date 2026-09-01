@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { parseSerappLineResolutions, parseSerappQuantityResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
+import { canShowSerappConfirmButton } from '@/lib/serapp/chat-bot'
 import { cancelSerappOrderHoldByDistributor, registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import {
   buildSerappConfirmItems,
@@ -110,7 +111,7 @@ export async function runSerappConfirmOrder(input: {
   const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions, quantityResolutions)
   const { results, summary } = checked
 
-  if (summary.bucket === 'unmatched_or_review' || summary.bucket === 'out_of_stock') {
+  if (!canShowSerappConfirmButton(summary, results)) {
     return {
       ok: false,
       error: `Cannot confirm while status is "${summary.label}". Resolve the list and Check again.`,

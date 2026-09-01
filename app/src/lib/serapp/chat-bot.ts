@@ -265,6 +265,7 @@ export function newOrderBotText(): string {
 export function quickRepliesForPhase(
   phase: SerappChatSessionState['phase'],
   bucket?: SerappPasteCheckSummary['bucket'] | null,
+  results?: PasteMatchResult[] | null,
 ): SerappChatQuickReply[] {
   if (phase === 'idle' || phase === 'awaiting_list') {
     return [
@@ -274,6 +275,20 @@ export function quickRepliesForPhase(
   }
 
   if (phase === 'checked') {
+    if (results && canShowSerappConfirmButton(
+      { bucket: bucket || 'unmatched_or_review', label: '' } as SerappPasteCheckSummary,
+      results,
+    )) {
+      return [
+        {
+          id: 'confirm',
+          label: serappConfirmButtonLabel(results),
+          sendText: 'confirm',
+        },
+        { id: 'new', label: 'New order', sendText: 'new order' },
+        { id: 'help', label: 'Help', sendText: 'help' },
+      ]
+    }
     if (bucket === 'available' || bucket === 'partially_available') {
       return [
         {
@@ -299,6 +314,55 @@ export function quickRepliesForPhase(
   }
 
   return [{ id: 'help', label: 'Help', sendText: 'help' }]
+}
+
+/** True when the distributor can tap Confirm (no missing qty or unresolved picks). */
+export function hasSerappConfirmableLines(results: PasteMatchResult[]): boolean {
+  return results.some((result) => {
+    if (result.status === 'section_header') return false
+    if (result.status !== 'matched' && result.status !== 'alternative_match') return false
+    if (!result.selectedVariantId || !result.quantity || result.quantity <= 0) return false
+    return result.inventoryOutcome === 'matched' || result.inventoryOutcome === 'insufficient_stock'
+  })
+}
+
+export function hasBlockingSerappReviewItems(results: PasteMatchResult[]): boolean {
+  return results.some((result) => {
+    if (result.status === 'section_header' || result.status === 'duplicate') return false
+    return result.status === 'missing_quantity'
+      || result.status === 'ambiguous'
+      || result.status === 'suggestion'
+      || result.status === 'requires_review'
+      || result.status === 'invalid_quantity'
+  })
+}
+
+export function canShowSerappConfirmButton(
+  summary: SerappPasteCheckSummary,
+  results: PasteMatchResult[],
+): boolean {
+  void summary
+  return hasSerappConfirmableLines(results) && !hasBlockingSerappReviewItems(results)
+}
+
+export function serappConfirmButtonLabel(
+  results: PasteMatchResult[],
+): string {
+  const hasSkipped = results.some((result) => {
+    if (result.status === 'section_header') return false
+    if (result.status === 'missing_quantity') return false
+    if (result.status === 'ambiguous' || result.status === 'suggestion') return false
+    if (result.status === 'not_found') return true
+    if (result.inventoryOutcome === 'no_available_stock') return true
+    if (
+      (result.status === 'matched' || result.status === 'alternative_match')
+      && result.inventoryOutcome === 'insufficient_stock'
+    ) {
+      return true
+    }
+    return false
+  })
+  return hasSkipped ? 'Confirm available only' : 'Confirm order'
 }
 
 export function formatCheckIntro(

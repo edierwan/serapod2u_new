@@ -1,5 +1,6 @@
 import {
   ackBotText,
+  canShowSerappConfirmButton,
   detectChatIntent,
   formatCheckIntro,
   formatConfirmIntro,
@@ -378,10 +379,11 @@ async function assistantTurn(input: {
     }
 
     const bucket = session.lastCheck.summary.bucket
-    if (bucket !== 'available' && bucket !== 'partially_available') {
+    const { results } = session.lastCheck
+    if (!canShowSerappConfirmButton(session.lastCheck.summary, results)) {
       return {
         text: `❗ **Cannot confirm**\n**Status:** ${session.lastCheck.summary.label}\n**Next:** Pick match or paste fix`,
-        quickReplies: quickRepliesForPhase('checked', bucket),
+        quickReplies: quickRepliesForPhase('checked', bucket, results),
         session,
       }
     }

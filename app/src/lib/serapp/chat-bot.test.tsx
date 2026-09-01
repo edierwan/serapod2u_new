@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canShowSerappConfirmButton,
   detectChatIntent,
   looksLikeOrderList,
   quickRepliesForPhase,
@@ -136,6 +137,39 @@ describe('quickRepliesForPhase', () => {
       const replies = quickRepliesForPhase(phase, 'available')
       expect(replies.some((r) => r.id === 'repeat')).toBe(false)
     }
+  })
+})
+
+describe('canShowSerappConfirmButton', () => {
+  it('shows confirm when partially available and no blocking lines', () => {
+    expect(canShowSerappConfirmButton(
+      { bucket: 'partially_available', label: 'Partially Available' } as never,
+      [
+        { status: 'matched', selectedVariantId: 'a', quantity: 5, inventoryOutcome: 'matched' },
+        { status: 'matched', selectedVariantId: 'b', quantity: 5, inventoryOutcome: 'no_available_stock' },
+      ] as never,
+    )).toBe(true)
+  })
+
+  it('shows confirm when some lines are out of stock but others are orderable', () => {
+    expect(canShowSerappConfirmButton(
+      { bucket: 'unmatched_or_review', label: 'Unmatched / Requires Review' } as never,
+      [
+        { status: 'matched', selectedVariantId: 'a', quantity: 10, inventoryOutcome: 'matched' },
+        { status: 'not_found', selectedVariantId: undefined, quantity: 5 },
+        { status: 'matched', selectedVariantId: 'b', quantity: 5, inventoryOutcome: 'no_available_stock' },
+      ] as never,
+    )).toBe(true)
+  })
+
+  it('hides confirm while quantity is still missing', () => {
+    expect(canShowSerappConfirmButton(
+      { bucket: 'partially_available', label: 'Partially Available' } as never,
+      [
+        { status: 'matched', selectedVariantId: 'a', quantity: 5, inventoryOutcome: 'matched' },
+        { status: 'missing_quantity', selectedVariantId: 'b' },
+      ] as never,
+    )).toBe(false)
   })
 })
 

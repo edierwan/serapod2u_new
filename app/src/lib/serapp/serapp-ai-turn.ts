@@ -2,6 +2,7 @@ import { sendToAi } from '@/lib/ai/aiGateway'
 import { logAiUsage } from '@/lib/server/ai/usageLogger'
 import { runSerappCancelHold, runSerappConfirmOrder, runSerappStockCheck } from '@/lib/serapp/assistant-actions'
 import {
+  canShowSerappConfirmButton,
   formatCheckIntro,
   formatConfirmIntro,
   formatProductInquiryReply,
@@ -328,10 +329,11 @@ export async function trySerappAiTurn(input: {
       }
     }
     const bucket = session.lastCheck.summary.bucket
-    if (bucket !== 'available' && bucket !== 'partially_available') {
+    const { results } = session.lastCheck
+    if (!canShowSerappConfirmButton(session.lastCheck.summary, results)) {
       return {
         text: reply || `Cannot confirm while status is *${session.lastCheck.summary.label}*.`,
-        quickReplies: quickRepliesForPhase('checked', bucket),
+        quickReplies: quickRepliesForPhase('checked', bucket, results),
         session,
       }
     }
