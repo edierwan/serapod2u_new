@@ -5,7 +5,7 @@ import { AlertTriangle, Check, CheckCircle2, CheckSquare, ClipboardCopy, Clipboa
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { variantAlternativeLabel, variantFlavourName, variantIdentityLabel } from '@/lib/inventory/variant-display-label'
+import { variantAlternativeLabel, variantFlavourName, variantIdentityLabel, productVariantIdentityLabel } from '@/lib/inventory/variant-display-label'
 import { groupDisplayName } from '@/lib/orders/group-display-name'
 import { buildPasteResultText } from '@/lib/orders/paste-order-result-text'
 import { resolveProductShortNames } from '@/lib/orders/product-short-name'
@@ -109,12 +109,17 @@ const isPasteResultBlocked = (
  * show, so operators read one identity everywhere.
  */
 const VariantIdentity = ({ variant, withProduct = false }: { variant: QuickVariant; withProduct?: boolean }) => {
-  const identity = variantIdentityLabel(variant.variant_name, variant.variant_product_code)
+  // With the Product folded in this is the full agreed identity
+  // ("Cellera Hero / Strawberry Corn – SC"); without it, only the variant half,
+  // because the Product already leads the row.
+  const identity = withProduct
+    ? productVariantIdentityLabel(variant.product_name, variant.variant_name, variant.variant_product_code)
+    : variantIdentityLabel(variant.variant_name, variant.variant_product_code)
   const alternative = variantAlternativeLabel(variant.alternative_name)
   return (
     <>
       <span className="block font-medium text-gray-900">
-        {withProduct ? `${variant.product_name} - ${identity}` : identity}
+        {identity}
       </span>
       {alternative && <span className="block text-xs font-normal text-[var(--sera-muted)]">{alternative}</span>}
     </>

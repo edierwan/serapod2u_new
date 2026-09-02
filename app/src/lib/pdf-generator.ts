@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { wrapTermsLines } from '@/lib/organizations/terms'
 import {
   compressSignatureForPdf,
   formatFileSize,
@@ -67,6 +68,13 @@ interface OrderData {
   approval_hash?: string
   approver_signature_image?: string | null
   warehouse_org_id?: string | null
+  /**
+   * The issuing organization's own Terms & Conditions
+   * (organizations.settings.terms_conditions), resolved upstream so the
+   * document always carries the terms of the org that issued it. Distinct from
+   * `payment_terms`, which stays the deposit/balance schedule.
+   */
+  organization_terms?: string | null
   buyer_org: PartyOrganization
   seller_org: PartyOrganization
   warehouse_org?: PartyOrganization | null
@@ -1174,6 +1182,59 @@ export class PDFGenerator {
     return summaryTable.finalY + spacingAfterTable
   }
 
+  /**
+   * The issuing organization's Terms & Conditions, rendered verbatim.
+   *
+   * Mirrors the browser order report: its own heading, sitting after the
+   * totals and before the signature trail. Nothing is drawn when the
+   * organization has not saved any terms - there is deliberately no default
+   * or placeholder text. Long terms wrap to the page width and spill onto
+   * further pages rather than overrunning the footer or the signature boxes.
+   */
+  private addTermsSection(terms: string | null | undefined, yPosition: number): number {
+    const value = (terms || '')
+    if (!value.trim()) return yPosition
+
+    const maxWidth = this.pageWidth - this.margin * 2
+    const lineHeight = 4
+    // Keep the heading with at least a couple of lines of text.
+    const bottomLimit = 275
+
+    let y = yPosition + 4
+
+    if (y > bottomLimit - lineHeight * 3) {
+      this.doc.addPage()
+      y = this.margin + 10
+    }
+
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text('TERMS & CONDITIONS', this.margin, y)
+    y += 5
+
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setFontSize(8)
+
+    const lines = wrapTermsLines(value, (text, indent) => {
+      const indentWidth = this.doc.getTextWidth(indent)
+      return this.doc.splitTextToSize(text, Math.max(maxWidth - indentWidth, 10)) as string[]
+    })
+
+    for (const line of lines) {
+      if (y > bottomLimit) {
+        this.doc.addPage()
+        y = this.margin + 10
+      }
+      // Blank source lines advance the cursor without drawing, preserving the
+      // author's paragraph breaks.
+      if (line) this.doc.text(line, this.margin, y)
+      y += lineHeight
+    }
+
+    return y + 3
+  }
+
   private async addSignaturesApprovalTrail(yPosition: number, orderData?: OrderData, documentData?: DocumentData): Promise<number> {
     let y = yPosition
 
@@ -1549,6 +1610,9 @@ export class PDFGenerator {
     // Summary Section
     y = this.addSummarySection(orderData, y)
 
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
+
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData)
 
@@ -1585,6 +1649,9 @@ export class PDFGenerator {
 
     // Summary Section
     y = this.addSummarySection(orderData, y)
+
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
 
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
@@ -1698,6 +1765,9 @@ export class PDFGenerator {
     } else {
       y = this.addSummarySection(orderData, y)
     }
+
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
 
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
@@ -1911,6 +1981,9 @@ export class PDFGenerator {
       grandTotalLabel
     })
 
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
+
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
 
@@ -1988,6 +2061,9 @@ export class PDFGenerator {
       isFinalReceipt
     })
     y += 5
+
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
 
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
@@ -2194,6 +2270,9 @@ export class PDFGenerator {
 
     y += 4
 
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
+
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
 
@@ -2323,6 +2402,9 @@ export class PDFGenerator {
     // Summary Section
     y = this.addSummarySection(orderData, y)
 
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
+
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)
 
@@ -2366,6 +2448,9 @@ export class PDFGenerator {
       // Summary Section - only for non-DH orders
       y = this.addSummarySection(orderData, y)
     }
+
+    // Organization Terms & Conditions (verbatim, omitted when unset)
+    y = this.addTermsSection(orderData.organization_terms, y)
 
     // Signatures / Approval Trail
     y = await this.addSignaturesApprovalTrail(y, orderData, documentData)

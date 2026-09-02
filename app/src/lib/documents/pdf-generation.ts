@@ -9,6 +9,7 @@ import {
 } from '@/lib/pdf-templates'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Buffer } from 'buffer'
+import { resolveOrganizationTerms } from '@/lib/organizations/terms'
 
 /**
  * Extract bucket and path from a Supabase storage public URL.
@@ -188,6 +189,7 @@ export async function generatePdfForOrderDocument(
 
   // Fetch organization's document template setting
   let documentTemplate: DocumentTemplateType = 'detailed' // Default to current detailed format
+  let organizationTerms = ''
   try {
     const { data: orgSettingsData } = await supabase
       .from('organizations')
@@ -202,6 +204,10 @@ export async function generatePdfForOrderDocument(
       if (settings.document_template) {
         documentTemplate = settings.document_template as DocumentTemplateType
       }
+      // Terms & Conditions come from the same issuing organization that
+      // controls the template, so a document never carries another org's
+      // terms. Unrelated to `payment_terms` on the order itself.
+      organizationTerms = resolveOrganizationTerms(orgSettingsData)
     }
     console.log(`📄 Using document template: ${documentTemplate} (from org: ${settingOrgId})`)
   } catch (e) {
@@ -294,7 +300,8 @@ export async function generatePdfForOrderDocument(
     seller_logo_image: sellerLogoImage,
     buyer_signature_image: buyerSignatureImage,
     issuer_signature_image: issuerSignatureImage,
-    creator_signature_image: creatorSignatureImage
+    creator_signature_image: creatorSignatureImage,
+    organization_terms: organizationTerms
   }
 
   if (orderData.approved_by) {

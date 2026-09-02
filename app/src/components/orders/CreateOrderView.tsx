@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, User, Package, CheckSquare, Loader2, Trash2 } from 'lucide-react'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
 import {
+  PRODUCT_SEPARATOR,
   variantIdentityLabel,
   variantNameWithProductCodeBullet,
   variantSelectorLabel,
@@ -1931,7 +1932,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
                           return (
                             <option key={variant.id} value={variant.id}>
-                              {!selectedProductFilter ? `${variant.product_name} - ` : ''}{variantSelectorLabel(variant.variant_name, variant.variant_product_code, attrText)} - RM {formatCurrency(variant.base_cost)}
+                              {!selectedProductFilter ? `${variant.product_name}${PRODUCT_SEPARATOR}` : ''}{variantSelectorLabel(variant.variant_name, variant.variant_product_code, attrText)} - RM {formatCurrency(variant.base_cost)}
                             </option>
                           )
                         })}
