@@ -5,9 +5,20 @@ import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import NotificationFlowDrawer from './NotificationFlowDrawer'
 import { DEFAULT_NOTIFICATION_ADMIN_ROLE } from '@/lib/notifications/recipientRoleCodes'
-import { DELETE_USER_OTP_EVENT } from '@/lib/notifications/notificationEventCatalog'
+import { DELETE_USER_OTP_EVENT, SYSTEM_SMS_CHECK_EVENT } from '@/lib/notifications/notificationEventCatalog'
+import { ORDER_CREATOR_DEFAULT_EVENTS } from '@/lib/notifications/orderOwnerNotify'
 import type { NotificationRoutingPreset } from '@/lib/notifications/routing'
 import {
   AlertTriangle,
@@ -79,6 +90,7 @@ interface NotificationSetting {
       dynamic_org?: boolean
       users?: boolean
       consumer?: boolean
+      order_creator?: boolean
     }
     routing?: RoutingMetadata
   }
@@ -94,7 +106,7 @@ interface NotificationTypesTabProps {
 }
 
 const DEFAULT_PRESET: RoutingPreset = 'whatsapp_email_fallback'
-const DEFAULT_RECIPIENT_TARGETS = { roles: true, dynamic_org: false, users: false, consumer: false }
+const DEFAULT_RECIPIENT_TARGETS = { roles: true, dynamic_org: false, users: false, consumer: false, order_creator: false }
 const EXCLUSIVE_PRESETS: RoutingPreset[] = ['sms_only', 'email_only', 'whatsapp_only']
 
 const PRESETS: Array<{
@@ -111,6 +123,7 @@ const PRESETS: Array<{
 ]
 
 const CATEGORY_LABELS: Record<string, string> = {
+  system: 'System Check',
   security: 'Security & OTP',
   order: 'Order Status',
   document: 'Order Document',
@@ -119,14 +132,23 @@ const CATEGORY_LABELS: Record<string, string> = {
   return: 'Return Product',
   user: 'User Account',
 }
-const CATEGORY_ORDER = ['security', 'order', 'document', 'inventory', 'qr', 'return', 'user']
+const CATEGORY_ORDER = ['system', 'security', 'order', 'document', 'inventory', 'qr', 'return', 'user']
 const FORCED_PRESET: Record<string, RoutingPreset> = {
   stock_count_posting_verification: 'email_only',
+  [SYSTEM_SMS_CHECK_EVENT]: 'sms_only',
+}
+
+function defaultRecipientTargets(eventCode?: string) {
+  if (eventCode && ORDER_CREATOR_DEFAULT_EVENTS.has(eventCode)) {
+    return { roles: false, dynamic_org: false, users: false, consumer: false, order_creator: true }
+  }
+  return { ...DEFAULT_RECIPIENT_TARGETS }
 }
 
 function normalizeRecipientConfig(
   recipientConfig: NotificationSetting['recipient_config'] | null | undefined,
-  fallbackRoles: string[] = [DEFAULT_NOTIFICATION_ADMIN_ROLE]
+  fallbackRoles: string[] = [DEFAULT_NOTIFICATION_ADMIN_ROLE],
+  eventCode?: string,
 ): NonNullable<NotificationSetting['recipient_config']> {
   const raw = recipientConfig && typeof recipientConfig === 'object' ? recipientConfig : {}
   const roles = Array.isArray(raw.roles) && raw.roles.length ? raw.roles : fallbackRoles
@@ -134,14 +156,22 @@ function normalizeRecipientConfig(
     raw.recipient_targets || raw.manual_whatsapp_numbers?.length || raw.recipient_users?.length ||
     String(raw.custom_emails || '').trim() || String(raw.custom_phones || '').trim() || raw.dynamic_target
   )
+  const fallbackTargets = hasSources
+    ? { roles: false, dynamic_org: false, users: false, consumer: false, order_creator: false }
+    : defaultRecipientTargets(eventCode)
+  const recipient_targets = {
+    ...fallbackTargets,
+    ...(raw.recipient_targets || {}),
+  }
+  if (eventCode && ORDER_CREATOR_DEFAULT_EVENTS.has(eventCode) && raw.recipient_targets?.order_creator === undefined) {
+    recipient_targets.order_creator = true
+  }
   return {
     type: raw.type || 'roles',
     include_consumer: raw.include_consumer ?? true,
     ...raw,
     roles,
-    recipient_targets: raw.recipient_targets || (hasSources
-      ? { roles: false, dynamic_org: false, users: false, consumer: false }
-      : DEFAULT_RECIPIENT_TARGETS),
+    recipient_targets,
   }
 }
 
@@ -187,6 +217,7 @@ function CategoryIcon({ category }: { category: string }) {
   if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
   if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />
   if (category === 'return') return <RotateCcw className={`${classes} text-rose-600`} />
+  if (category === 'system') return <MessageSquare className={`${classes} text-orange-500`} />
   return <UserCheck className={`${classes} text-indigo-600`} />
 }
 
@@ -198,6 +229,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   const [settings, setSettings] = useState<Map<string, NotificationSetting>>(new Map())
   const [providerStatus, setProviderStatus] = useState<Record<Channel, boolean>>({ whatsapp: false, email: false, sms: false })
   const [defaultPreset, setDefaultPreset] = useState<RoutingPreset>(DEFAULT_PRESET)
+  const [pendingDefaultPreset, setPendingDefaultPreset] = useState<RoutingPreset | null>(null)
   const [categoryPresets, setCategoryPresets] = useState<Record<string, RoutingPreset | null>>({})
   const [eventPresets, setEventPresets] = useState<Record<string, RoutingPreset | null>>({})
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({ order: true })
@@ -235,8 +267,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         templates: {},
         recipient_config: normalizeRecipientConfig(
           type.event_code === DELETE_USER_OTP_EVENT
-            ? { dynamic_target: 'org_contact', recipient_targets: { roles: false, dynamic_org: true, users: false, consumer: false } }
+            ? { dynamic_target: 'org_contact', recipient_targets: { roles: false, dynamic_org: true, users: false, consumer: false, order_creator: false } }
             : undefined,
+          undefined,
+          type.event_code,
         ),
       })
       })
@@ -247,7 +281,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       ;(existingSettings || []).forEach((row: any) => {
         const matchingType = loadedTypes.find((type) => type.event_code === row.event_code)
         if (!matchingType) return
-        const recipientConfig = normalizeRecipientConfig(row.recipient_config, row.recipient_roles?.length ? row.recipient_roles : undefined)
+        const recipientConfig = normalizeRecipientConfig(row.recipient_config, row.recipient_roles?.length ? row.recipient_roles : undefined, row.event_code)
         const routing = recipientConfig.routing
         const legacyPreset = presetFromChannels(row.channels_enabled || [])
         if (routing?.default_preset) loadedDefault = routing.default_preset
@@ -301,9 +335,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     return acc
   }, {}), [notificationTypes])
 
-  const effectivePreset = (type: NotificationType) => type.event_code === 'stock_count_posting_verification'
-    ? 'email_only'
-    : eventPresets[type.event_code] || categoryPresets[type.category] || defaultPreset
+  const effectivePreset = (type: NotificationType) => FORCED_PRESET[type.event_code]
+    || eventPresets[type.event_code]
+    || categoryPresets[type.category]
+    || defaultPreset
   const presetAvailable = (preset: RoutingPreset) => PRESETS.find((item) => item.id === preset)!.required.every((channel) => providerStatus[channel])
 
   const toggleNotification = (eventCode: string, enabled: boolean) => {
@@ -319,10 +354,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     const type = notificationTypes.find((item) => item.event_code === setting.event_code)!
     const eventPreset = eventPresets[setting.event_code]
     const categoryPreset = categoryPresets[type.category] || null
-    const verificationOnly = setting.event_code === 'stock_count_posting_verification'
-    const preset = verificationOnly ? 'email_only' : eventPreset || categoryPreset || defaultPreset
-    const source: RoutingSource = verificationOnly || eventPreset ? 'event' : categoryPreset ? 'category' : 'default'
-    const recipientConfig = normalizeRecipientConfig(setting.recipient_config)
+    const forcedPreset = FORCED_PRESET[setting.event_code]
+    const preset = forcedPreset || eventPreset || categoryPreset || defaultPreset
+    const source: RoutingSource = forcedPreset || eventPreset ? 'event' : categoryPreset ? 'category' : 'default'
+    const recipientConfig = normalizeRecipientConfig(setting.recipient_config, undefined, setting.event_code)
     return {
       id: setting.id || crypto.randomUUID(),
       org_id: setting.org_id,
@@ -378,6 +413,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   }
 
   const selectedPreset = PRESETS.find((preset) => preset.id === defaultPreset)!
+  const pendingPreset = PRESETS.find((preset) => preset.id === pendingDefaultPreset) || null
+  const eventsInheritingDefault = notificationTypes.filter((type) => !FORCED_PRESET[type.event_code]
+    && !eventPresets[type.event_code]
+    && !categoryPresets[type.category]).length
 
   return (
     <div className="space-y-5 pb-10">
@@ -414,7 +453,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
               {PRESETS.map((preset) => {
                 const available = presetAvailable(preset.id)
                 const selected = defaultPreset === preset.id
-                return <button key={preset.id} type="button" disabled={!available && !selected} onClick={() => setDefaultPreset(preset.id)} className={`relative flex min-h-52 flex-col items-center justify-center rounded-xl border-2 p-4 text-center transition ${selected ? 'border-violet-500 bg-violet-50/70 shadow-sm' : 'border-slate-200 hover:border-violet-200'} ${!available && !selected ? 'cursor-not-allowed opacity-50' : ''}`}>
+                return <button key={preset.id} type="button" disabled={!available && !selected} onClick={() => { if (!selected) setPendingDefaultPreset(preset.id) }} className={`relative flex min-h-52 flex-col items-center justify-center rounded-xl border-2 p-4 text-center transition ${selected ? 'border-violet-500 bg-violet-50/70 shadow-sm' : 'border-slate-200 hover:border-violet-200'} ${!available && !selected ? 'cursor-not-allowed opacity-50' : ''}`}>
                   <PresetIcon preset={preset.id} />
                   <span className="mt-4 font-bold text-slate-950">{preset.title}</span>
                   <span className="mt-2 text-sm leading-5 text-slate-500">{preset.description}</span>
@@ -492,6 +531,40 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         if (!setting || !type) return null
         return <NotificationFlowDrawer open onOpenChange={(open) => !open && setEditingSetting(null)} setting={{ ...setting, channels_enabled: channelsForPreset(effectivePreset(type)) }} type={type} onSave={saveSingleSetting} />
       })()}
+
+      <AlertDialog open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) setPendingDefaultPreset(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Change the default delivery method?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  The default route changes from <strong className="text-slate-900">{selectedPreset.title}</strong> to <strong className="text-slate-900">{pendingPreset?.title}</strong>. {pendingPreset?.description}
+                </p>
+                <p>
+                  {eventsInheritingDefault} event{eventsInheritingDefault === 1 ? '' : 's'} currently inherit the default and will be delivered through the new route. Categories and events with their own override stay unchanged.
+                </p>
+                <p>Nothing changes for live notifications until you press Save Routing Settings.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDefaultPreset) setDefaultPreset(pendingDefaultPreset)
+                setPendingDefaultPreset(null)
+              }}
+              className="bg-violet-600 hover:bg-violet-700 focus:ring-violet-500/35"
+            >
+              Change default
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

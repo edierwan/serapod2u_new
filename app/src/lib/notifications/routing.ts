@@ -21,7 +21,10 @@ export function isNotificationRoutingPreset(value: unknown): value is Notificati
     return typeof value === 'string' && VALID_PRESETS.includes(value as NotificationRoutingPreset)
 }
 
-/** Full send order for synchronous OTP. Outbox queueing still uses first hop only. */
+/**
+ * Full send order. Outbox queueing starts at the first hop; the worker
+ * advances to later hops only after the current hop fails.
+ */
 export function deliveryChainForPreset(preset: NotificationRoutingPreset): NotificationDeliveryChannel[] {
     if (preset === 'email_only') return ['email']
     if (preset === 'sms_only') return ['sms']
@@ -31,6 +34,48 @@ export function deliveryChainForPreset(preset: NotificationRoutingPreset): Notif
 }
 
 const EXCLUSIVE_PRESETS: NotificationRoutingPreset[] = ['sms_only', 'email_only', 'whatsapp_only']
+
+export function isFallbackRoutingPreset(preset: NotificationRoutingPreset): boolean {
+    return preset === 'whatsapp_email_fallback' || preset === 'whatsapp_sms_email_fallback'
+}
+
+export function isRoutingFallbackPayload(payload: Record<string, unknown> | null | undefined): boolean {
+    const row = payload || {}
+    return Boolean(row._routing_fallback || row._routing_fallback_for || row._routing_fallback_reason)
+}
+
+export function nextFallbackChannels(
+    preset: NotificationRoutingPreset,
+    failedChannel: NotificationDeliveryChannel,
+): NotificationDeliveryChannel[] {
+    const chain = deliveryChainForPreset(preset)
+    const index = chain.indexOf(failedChannel)
+    if (index < 0) return []
+    return chain.slice(index + 1)
+}
+
+export function firstAvailableDeliveryChannel(
+    preset: NotificationRoutingPreset,
+    activeChannels: Iterable<string>,
+): NotificationDeliveryChannel | null {
+    const available = new Set(activeChannels)
+    return deliveryChainForPreset(preset).find((channel) => available.has(channel)) || null
+}
+
+/** Queue the next hop when this attempt is terminal, or the provider is missing. */
+export function shouldAdvanceFallback(input: {
+    retryCount?: number | null
+    maxRetries?: number | null
+    outboxStatus?: string | null
+    providerMissing?: boolean
+}): boolean {
+    if (input.providerMissing) return true
+    const status = String(input.outboxStatus || '')
+    if (status === 'failed' || status === 'cancelled') return true
+    const retryCount = Number(input.retryCount || 0)
+    const maxRetries = Number(input.maxRetries ?? 3)
+    return retryCount + 1 >= maxRetries
+}
 
 /**
  * Destructive OTP routing. Prefer an explicit saved preset.

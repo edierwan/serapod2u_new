@@ -487,13 +487,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         description: `Order ${newDisplayNo} has been approved successfully. PO document has been generated.`,
       })
 
-      await fetch('/api/notifications/order-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, eventCode: 'order_approved' })
-      }).catch((queueError) => {
-        console.warn('Failed to queue order_approved notification:', queueError)
-      })
+      // Notification queueing is handled by the trigger_order_notification()
+      // DB trigger, which fires automatically on the status UPDATE inside
+      // orders_approve(). The explicit /api/notifications/order-event call
+      // that used to be here was queueing a second, duplicate notification.
 
       // SerApp chat: tell the distributor Admin approved + next step (best-effort).
       fetch('/api/serapp/notify-order-approved', {
@@ -565,13 +562,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       if (error) throw error
 
-      await fetch('/api/notifications/order-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, eventCode: 'order_rejected' })
-      }).catch((queueError) => {
-        console.warn('Failed to queue order_rejected notification:', queueError)
-      })
+      // Notification queueing is handled by the trigger_order_notification()
+      // DB trigger, which fires automatically on this status UPDATE. The
+      // explicit /api/notifications/order-event call that used to be here
+      // was queueing a second, duplicate notification.
 
       toast({
         title: 'Order Cancelled',

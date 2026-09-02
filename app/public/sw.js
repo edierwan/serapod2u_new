@@ -1,7 +1,8 @@
 /**
  * Serapod2U — site-wide Service Worker
- * Network-first for pages and Next bundles; cache icons/images only.
- * Never cache API/auth data.
+ * Network-first for pages; cache public icons/images only.
+ * Never cache /_next, API, auth, or RSC payloads — stale JS + new HTML
+ * causes an infinite reload loop.
  */
 
 const CACHE_NAME = 'serapod-site-v2'
@@ -47,7 +48,11 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return
   if (url.pathname.startsWith('/api/')) return
+  if (url.pathname.startsWith('/_next/')) return
   if (url.hostname.includes('supabase')) return
+  if (request.headers.get('RSC') === '1') return
+  if (request.headers.get('Next-Router-Prefetch')) return
+  if (request.headers.get('Next-Url')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -61,21 +66,6 @@ self.addEventListener('fetch', (event) => {
             ),
         ),
       ),
-    )
-    return
-  }
-
-  // Next.js CSS/JS hashes change every build — always prefer network to avoid black/unstyled UI.
-  if (url.pathname.startsWith('/_next/static')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (!response.ok) return response
-          const copy = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {})
-          return response
-        })
-        .catch(() => caches.match(request).then((cached) => cached || Response.error())),
     )
     return
   }

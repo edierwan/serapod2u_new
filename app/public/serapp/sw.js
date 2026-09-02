@@ -47,6 +47,10 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return
   if (url.pathname.startsWith('/api/')) return
+  if (url.pathname.startsWith('/_next/')) return
+  if (request.headers.get('RSC') === '1') return
+  if (request.headers.get('Next-Router-Prefetch')) return
+  if (request.headers.get('Next-Url')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -60,21 +64,10 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  if (url.pathname.startsWith('/_next/static')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (!response.ok) return response
-          const copy = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {})
-          return response
-        })
-        .catch(() => caches.match(request).then((cached) => cached || Response.error())),
-    )
-    return
-  }
-
-  if (url.pathname.startsWith('/icons') || url.pathname.startsWith('/brand')) {
+  if (
+    url.pathname.startsWith('/icons') ||
+    url.pathname.startsWith('/brand')
+  ) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached

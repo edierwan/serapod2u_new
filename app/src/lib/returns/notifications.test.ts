@@ -107,4 +107,15 @@ describe('queueReturnNotification', () => {
         expect(res.queued).toBe(1)
         expect(inserted[0].row).toMatchObject({ channel: 'whatsapp', to_phone: '60123456789' })
     })
+
+    it('queues WhatsApp first for WhatsApp → SMS → Email when WhatsApp is available', async () => {
+        const { admin, inserted } = makeAdmin(baseResponses({
+            'notification_settings:single': { enabled: true, recipient_config: { routing: { preset: 'whatsapp_sms_email_fallback' } } },
+            'notification_provider_configs:single': { id: 'wa-provider' },
+        }))
+        const res = await queueReturnNotification(admin, { returnCaseId: 'ret-1', eventCode: 'return_submitted' })
+        expect(res.queued).toBe(1)
+        expect(inserted).toHaveLength(1)
+        expect(inserted[0].row).toMatchObject({ channel: 'whatsapp', status: 'queued' })
+    })
 })

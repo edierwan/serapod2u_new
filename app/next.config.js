@@ -134,6 +134,8 @@ const nextConfig = {
     'pdfkit',
     'googleapis',
     'qrcode',
+    '@vonage/server-sdk',
+    '@vonage/messages',
   ],
 
   experimental: {

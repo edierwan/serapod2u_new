@@ -11,7 +11,10 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import WhatsAppSubTabs from './WhatsAppSubTabs'
+import { toSmsE164 } from '@/lib/notifications/manualPhoneNumbers'
 import {
   Save,
   MessageSquare,
@@ -165,6 +168,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const [emailUsageLoading, setEmailUsageLoading] = useState(false)
   const [testEmail, setTestEmail] = useState('')
   const [emailAction, setEmailAction] = useState<'connection' | 'test-email' | null>(null)
+  const [smsTestOpen, setSmsTestOpen] = useState(false)
+  const [smsTestStep, setSmsTestStep] = useState<'phone' | 'message'>('phone')
+  const [smsTestPhone, setSmsTestPhone] = useState('')
+  const [smsTestMessage, setSmsTestMessage] = useState('')
+  const [smsTestError, setSmsTestError] = useState<string | null>(null)
 
   // Form states for sensitive data (not stored in state)
   const [sensitiveData, setSensitiveData] = useState<Record<string, Record<string, string>>>({
@@ -377,31 +385,21 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         config.config_public.base_url = url;
       }
 
-      // Prepare data for save
-      const saveData = {
-        id: config.id,
-        org_id: userProfile.organizations.id,
-        channel: config.channel,
-        provider_name: config.provider_name,
-        is_active: config.is_active,
-        is_sandbox: config.is_sandbox,
-        config_public: config.config_public,
-        // For now, we'll store sensitive data in config_public (you should implement encryption)
-        // In production, encrypt sensitive data before storing
-        config_encrypted: JSON.stringify(sensitiveData[channel]),
-        config_iv: 'placeholder-iv', // Implement proper encryption
-        updated_at: new Date().toISOString(),
-        created_by: userProfile.id
-      }
-
-      // Use ID for conflict resolution if it exists (update), otherwise try to match on unique keys (insert/upsert)
-      const { error } = await (supabase as any)
-        .from('notification_provider_configs')
-        .upsert(saveData, {
-          onConflict: saveData.id ? 'id' : 'org_id,channel,provider_name'
+      const response = await fetch('/api/settings/notifications/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: config.id,
+          channel: config.channel,
+          provider_name: config.provider_name,
+          is_active: config.is_active,
+          is_sandbox: config.is_sandbox,
+          config_public: config.config_public,
+          credentials: sensitiveData[channel],
         })
-
-      if (error) throw error
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to save configuration')
 
       alert(`${channel.toUpperCase()} provider configuration saved successfully!`)
       await loadProviderConfigs()
@@ -413,7 +411,37 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     }
   }
 
-  const handleTestProvider = async (channel: 'whatsapp' | 'sms' | 'email') => {
+  const openSmsTestDialog = () => {
+    if (!smsConfig?.provider_name) {
+      alert('Please select a provider and configure credentials first')
+      return
+    }
+    setSmsTestPhone(String(smsConfig.config_public?.test_number || '+601163739729'))
+    setSmsTestMessage('SMS Gateway configuration test')
+    setSmsTestError(null)
+    setSmsTestStep('phone')
+    setSmsTestOpen(true)
+  }
+
+  const goToSmsMessageStep = () => {
+    const formatted = toSmsE164(smsTestPhone)
+    if (!('e164' in formatted)) {
+      setSmsTestError(formatted.reason === 'Empty value' ? 'Enter a phone number' : `Invalid phone number: ${formatted.reason}`)
+      return
+    }
+    if (!formatted.e164.startsWith('+60')) {
+      setSmsTestError('SMS number must start with +60. Example: 01163739729 sends as +601163739729')
+      return
+    }
+    setSmsTestPhone(formatted.e164)
+    setSmsTestError(null)
+    setSmsTestStep('message')
+  }
+
+  const handleTestProvider = async (
+    channel: 'whatsapp' | 'sms' | 'email',
+    extras?: { to?: string; message?: string }
+  ) => {
     const config = channel === 'whatsapp' ? whatsappConfig :
       channel === 'sms' ? smsConfig : emailConfig
 
@@ -425,10 +453,37 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     try {
       setSaving(true)
 
-      // Get test number if not in config
-      let testNumber = config.config_public.test_number
-      if (!testNumber) {
+      let testNumber = extras?.to?.trim() || config.config_public.test_number
+      if (!testNumber && channel !== 'sms') {
         testNumber = window.prompt("Enter a phone number to send the test message to:")
+      }
+
+      if (!testNumber) {
+        const missing = 'Recipient number is required to test'
+        if (channel === 'sms') setSmsTestError(missing)
+        else alert(missing)
+        return
+      }
+
+      const testMessage = extras?.message?.trim()
+      if (channel === 'sms' && !testMessage) {
+        setSmsTestError('Enter the SMS message text')
+        return
+      }
+
+      let smsTo = testNumber
+      if (channel === 'sms') {
+        const formatted = toSmsE164(testNumber)
+        if (!('e164' in formatted)) {
+          setSmsTestError(`Invalid phone number: ${formatted.reason}`)
+          return
+        }
+        if (!formatted.e164.startsWith('+60')) {
+          setSmsTestError('SMS number must start with +60. Example: 01163739729 sends as +601163739729')
+          return
+        }
+        smsTo = formatted.e164
+        setSmsTestPhone(smsTo)
       }
 
       const response = await fetch('/api/notifications/test', {
@@ -439,7 +494,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           provider: config.provider_name,
           credentials: sensitiveData[channel],
           config: config.config_public,
-          to: testNumber
+          to: channel === 'sms' ? smsTo : testNumber,
+          message: testMessage || undefined
         })
       })
 
@@ -447,7 +503,12 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
       if (!response.ok) throw new Error(result.error || 'Test failed')
 
-      alert(`Test successful! Message sent.`)
+      if (channel === 'sms') setSmsTestOpen(false)
+      alert(channel === 'sms' && result.message_id
+        ? (result.provider === 'vonage'
+          ? `Vonage test successful. messageUUID=${result.message_id}`
+          : `Test successful. message_id=${result.message_id}${result.external_id ? `, external_id=${result.external_id}` : ''}. Waiting for sms:sent / sms:delivered / sms:failed.`)
+        : (channel === 'sms' && result.to ? `Test successful! Message sent to ${result.to}.` : `Test successful! Message sent.`))
 
       // Update config with test result
       const updatedConfig = {
@@ -471,7 +532,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
     } catch (error: any) {
       console.error(`Error testing ${channel} provider:`, error)
-      alert(`Test failed: ${error.message}`)
+      if (channel === 'sms') setSmsTestError(error.message)
+      else alert(`Test failed: ${error.message}`)
 
       const updatedConfig = {
         ...config,
@@ -582,23 +644,21 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     setEmailConfig(activeConfig)
     try {
       setSaving(true)
-      const saveData = {
-        id: activeConfig.id,
-        org_id: userProfile.organizations.id,
-        channel: activeConfig.channel,
-        provider_name: activeConfig.provider_name,
-        is_active: true,
-        is_sandbox: activeConfig.is_sandbox,
-        config_public: activeConfig.config_public,
-        config_encrypted: JSON.stringify(sensitiveData.email),
-        config_iv: 'placeholder-iv',
-        updated_at: new Date().toISOString(),
-        created_by: userProfile.id
-      }
-      const { error } = await (supabase as any)
-        .from('notification_provider_configs')
-        .upsert(saveData, { onConflict: saveData.id ? 'id' : 'org_id,channel,provider_name' })
-      if (error) throw error
+      const response = await fetch('/api/settings/notifications/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: activeConfig.id,
+          channel: activeConfig.channel,
+          provider_name: activeConfig.provider_name,
+          is_active: true,
+          is_sandbox: activeConfig.is_sandbox,
+          config_public: activeConfig.config_public,
+          credentials: sensitiveData.email,
+        })
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to save configuration')
       alert('Email provider saved and set as active.')
       await loadProviderConfigs()
     } catch (error: any) {
@@ -939,7 +999,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <div className="space-y-2">
                     <Label>From Name/Number</Label>
                     <Input
-                      placeholder="YourBrand or +60123456789"
+                      placeholder="Vonage APIs"
                       value={smsConfig.config_public.from_number || ''}
                       onChange={(e) => setSmsConfig({
                         ...smsConfig,
@@ -974,7 +1034,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <div className="space-y-2 md:col-span-2">
                     <Label>API Endpoint URL</Label>
                     <Input
-                      placeholder="https://api.yoursmsgateway.com/send"
+                      placeholder="https://pregnant-losing-shoulder-accessing.trycloudflare.com/api/v1/messages"
                       value={smsConfig.config_public.api_endpoint || ''}
                       onChange={(e) => setSmsConfig({
                         ...smsConfig,
@@ -1061,6 +1121,49 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <Label>HTTP Method</Label>
+                    <Select
+                      value={smsConfig.config_public.http_method || 'GET'}
+                      onValueChange={(value) => setSmsConfig({
+                        ...smsConfig,
+                        config_public: {
+                          ...smsConfig.config_public,
+                          http_method: value
+                        }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GET">GET</SelectItem>
+                        <SelectItem value="POST">POST</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Request Format</Label>
+                    <Select
+                      value={smsConfig.config_public.request_format || 'query'}
+                      onValueChange={(value) => setSmsConfig({
+                        ...smsConfig,
+                        config_public: {
+                          ...smsConfig.config_public,
+                          request_format: value
+                        }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="query">Query string</SelectItem>
+                        <SelectItem value="form">Form body</SelectItem>
+                        <SelectItem value="json">JSON body</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               )}
 
@@ -1070,7 +1173,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => handleTestProvider('sms')}
+                    onClick={openSmsTestDialog}
                     disabled={saving}
                   >
                     <TestTube className="w-4 h-4 mr-2" />
@@ -1138,18 +1241,18 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   )}
                   {smsConfig.provider_name === 'vonage' && (
                     <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                      <li>Sign up at <a href="https://dashboard.nexmo.com/sign-up" target="_blank" rel="noopener" className="text-blue-600 underline">Vonage API Dashboard</a></li>
-                      <li>Get your API Key and API Secret from Settings</li>
-                      <li>Add credits to your account</li>
-                      <li>Configure sender ID (alphanumeric sender names supported in most countries)</li>
+                      <li>API Key comes from VONAGE_API_KEY in .env (or the field above)</li>
+                      <li>API Secret is always read from VONAGE_API_SECRET in .env</li>
+                      <li>From defaults to &quot;Vonage APIs&quot; unless you set From Name/Number</li>
+                      <li>Test Configuration sends the message text you type, via Vonage Messages API (SMS channel)</li>
                     </ol>
                   )}
                   {smsConfig.provider_name === 'local_my' && (
                     <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                      <li>Contact your Malaysian SMS gateway provider</li>
-                      <li>Get API endpoint URL, username, and password</li>
-                      <li>Register your sender ID with MCMC (Malaysian Communications and Multimedia Commission)</li>
-                      <li>Test with small volume before production</li>
+                      <li>sms-gateway URL: POST /api/v1/messages with Basic Auth</li>
+                      <li>Test Configuration sends JSON: {'{ "to": "+60...", "message": "..." }'}</li>
+                      <li>Configuration passes only on HTTP 200 plus a valid message_id</li>
+                      <li>Delivery updates come from webhooks sms:sent, sms:delivered, sms:failed at /api/webhooks/sms-gateway</li>
                     </ol>
                   )}
                 </CardContent>
@@ -1158,6 +1261,96 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={smsTestOpen} onOpenChange={(open) => { if (!open && !saving) setSmsTestOpen(false) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Test SMS configuration</DialogTitle>
+            <DialogDescription>
+              {smsConfig?.provider_name === 'vonage'
+                ? 'Sends a real SMS through the Vonage Messages API. The message text below is what the recipient receives. API secret is read from VONAGE_API_SECRET in .env.'
+                : 'Sends a real SMS through sms-gateway. Configuration succeeds only if the gateway returns HTTP 200 and a message_id. Delivery is confirmed later by sms:sent / sms:delivered / sms:failed webhooks.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className={smsTestStep === 'phone' ? 'space-y-1.5' : 'hidden'}>
+              <Label htmlFor="sms-test-phone">Phone number</Label>
+              <Input
+                id="sms-test-phone"
+                value={smsTestPhone}
+                onChange={(event) => setSmsTestPhone(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    goToSmsMessageStep()
+                  }
+                }}
+                placeholder="01163739729"
+                disabled={saving}
+              />
+              {(() => {
+                const preview = toSmsE164(smsTestPhone)
+                if (!smsTestPhone.trim() || !('e164' in preview)) return (
+                  <p className="text-xs text-slate-500">Local numbers are sent with +60. Example: 01163739729 → +601163739729</p>
+                )
+                return <p className="text-xs text-slate-600">Will send as <span className="font-mono font-medium">{preview.e164}</span></p>
+              })()}
+            </div>
+            <div className={smsTestStep === 'message' ? 'space-y-1.5' : 'hidden'}>
+              <p className="text-xs text-slate-500">Sending to <span className="font-mono text-slate-800">{smsTestPhone.trim()}</span></p>
+              <Label htmlFor="sms-test-message">Message text</Label>
+              <Textarea
+                id="sms-test-message"
+                value={smsTestMessage}
+                onChange={(event) => setSmsTestMessage(event.target.value)}
+                placeholder="Type the SMS message to send"
+                rows={5}
+                disabled={saving}
+              />
+            </div>
+            {smsTestError ? <p className="text-sm text-red-600">{smsTestError}</p> : null}
+            <DialogFooter>
+              {smsTestStep === 'phone' ? (
+                <>
+                  <Button type="button" variant="outline" onClick={() => setSmsTestOpen(false)} disabled={saving}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={goToSmsMessageStep}
+                    disabled={saving}
+                  >
+                    Next: message text
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSmsTestError(null)
+                      setSmsTestStep('phone')
+                    }}
+                    disabled={saving}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleTestProvider('sms', { to: smsTestPhone, message: smsTestMessage })}
+                    disabled={saving}
+                  >
+                    {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                    Send test
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 

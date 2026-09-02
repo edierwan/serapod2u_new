@@ -8,7 +8,7 @@
  *   • NEVER cache API or Supabase responses (private HR data)
  */
 
-const CACHE_NAME = 'serapod-hr-v1'
+const CACHE_NAME = 'serapod-hr-v2'
 
 // Shell assets to pre-cache on install
 const PRECACHE = ['/hr/mobile/home']
@@ -49,8 +49,12 @@ self.addEventListener('fetch', (event) => {
   // ─ NEVER cache sensitive API/Supabase calls ─────────────────────
   if (
     url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/_next/') ||
     url.hostname.includes('supabase') ||
-    event.request.method !== 'GET'
+    event.request.method !== 'GET' ||
+    event.request.headers.get('RSC') === '1' ||
+    event.request.headers.get('Next-Router-Prefetch') ||
+    event.request.headers.get('Next-Url')
   ) {
     return // let the browser handle it normally
   }
@@ -79,9 +83,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // ─ Static assets → cache-first (JS bundles, CSS, icons) ────────
+  // ─ Static assets → cache-first (icons / images only) ───────────
   if (
-    url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname.startsWith('/images/')
   ) {
