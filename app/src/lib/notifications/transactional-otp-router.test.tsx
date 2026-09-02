@@ -39,10 +39,15 @@ describe('delete_user_otp transactional router (phase 2)', () => {
   })
 
   it('renders catalog templates with OTP variables', () => {
-    const content = resolveOtpChannelContent('sms', null, vars)
-    expect(content.body).toContain('1234')
-    expect(content.body).toContain('Allam Salameh')
-    expect(content.body).toContain('admin@serapod2u.com')
+    const sms = resolveOtpChannelContent('sms', null, vars)
+    expect(sms.body).toContain('1234')
+    expect(sms.body).toContain('Allam Salameh')
+    expect(sms.body).toContain('5 minutes')
+
+    // The SMS catalog is trimmed to a single segment, so the requester is
+    // only named on the channels that are not billed per 160 characters.
+    const whatsapp = resolveOtpChannelContent('whatsapp', null, vars)
+    expect(whatsapp.body).toContain('admin@serapod2u.com')
   })
 
   it('uses a custom saved template body when provided', () => {
