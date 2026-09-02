@@ -1,3 +1,9 @@
+import { getSmsTemplatesForEvent } from './smsTemplates'
+
+/**
+ * WhatsApp and email templates for system events.
+ * SMS bodies live in smsTemplates.ts — that file is what the SMS send path uses.
+ */
 export type Channel = 'whatsapp' | 'sms' | 'email';
 export type NotificationKey =
     | 'order_approved'
@@ -78,7 +84,7 @@ export const notificationTemplates: Record<string, Template[]> = {
             name: 'SMS Approval Alert',
             description: 'Short SMS notification',
             channel: 'sms',
-            body: `[Serapod2U] Order #{{order_no}} submitted by {{customer_name}} for RM {{amount}} needs approval. Review: {{order_url}}`
+            body: `[Serapod2U] Order #{{order_no}} submitted by {{created_by}} for RM {{amount}} needs approval.`
         },
         {
             id: 'os_email_1',
@@ -703,7 +709,7 @@ export const notificationTemplates: Record<string, Template[]> = {
             name: 'User Deletion OTP — WhatsApp',
             description: 'HQ user removal verification code to organization contact',
             channel: 'whatsapp',
-            body: `⚠️ *DELETION VERIFICATION*\n\nCode: *{{verification_code}}*\n\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes. Only enter this code if you authorize this deletion.`
+            body: `⚠️ *Your Deletion Code*\n\n *{{verification_code}}*\n\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes. Only enter this code if you authorize this deletion.`
         },
         {
             id: 'delete_user_otp_sms_1',
@@ -1099,6 +1105,9 @@ export const notificationTemplates: Record<string, Template[]> = {
 };
 
 export const getTemplatesForEvent = (eventCode: string, channel: string): Template[] => {
+    if (channel === 'sms') {
+        return getSmsTemplatesForEvent(eventCode)
+    }
     const templates = notificationTemplates[eventCode] || notificationTemplates['generic'] || [];
     return templates.filter(t => t.channel === channel);
 };

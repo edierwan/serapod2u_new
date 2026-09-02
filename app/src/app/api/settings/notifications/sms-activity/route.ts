@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { extractOrderRef } from '@/lib/notifications/orderRef'
+import { canViewSmsMonitor } from '@/lib/notifications/smsMonitorAccess'
 
 export const dynamic = 'force-dynamic'
 
-export type SmsMonitorStatus = 'pending' | 'delivered' | 'failed'
+export type SmsMonitorStatus = 'pending' | 'sent' | 'delivered' | 'failed'
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -15,8 +17,11 @@ function toMonitorStatus(raw: string): SmsMonitorStatus {
   if (['failed', 'error', 'cancelled', 'canceled', 'undelivered', 'rejected', 'bounced'].includes(status)) {
     return 'failed'
   }
-  if (['sent', 'delivered', 'success', 'ok', 'accepted', 'completed'].includes(status)) {
+  if (['delivered', 'success', 'completed'].includes(status)) {
     return 'delivered'
+  }
+  if (['sent', 'accepted', 'processed'].includes(status)) {
+    return 'sent'
   }
   return 'pending'
 }
@@ -26,6 +31,11 @@ function truncate(value: unknown, max = 2000): string | null {
   const text = typeof value === 'string' ? value : JSON.stringify(value)
   if (!text) return null
   return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+function orderFields(payload: unknown) {
+  const ref = extractOrderRef(payload)
+  return { orderId: ref.orderId, orderNo: ref.orderNo }
 }
 
 function payloadMessage(payload: unknown, eventCode?: string): string {
@@ -38,21 +48,6 @@ function payloadMessage(payload: unknown, eventCode?: string): string {
     return 'Serapod2U SMS check. If you received this, Local Malaysian SMS is working.'
   }
   return ''
-}
-
-async function canViewSmsMonitor(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from('users')
-    .select('organization_id, roles:role_code(role_level, role_code), organizations:organization_id(org_type_code)')
-    .eq('id', userId)
-    .single()
-
-  const role = Array.isArray(data?.roles) ? data.roles[0] : data?.roles
-  const org = Array.isArray(data?.organizations) ? data.organizations[0] : data?.organizations
-  const roleLevel = Number(role?.role_level)
-  const roleCode = String(role?.role_code || '')
-  if (roleLevel <= 20 || ['super_admin', 'admin', 'org_admin'].includes(roleCode)) return true
-  return org?.org_type_code === 'HQ' && roleLevel > 0 && roleLevel <= 40
 }
 
 async function resolveSmsOrgIds(admin: any, userOrgId: string | null) {
@@ -87,6 +82,18 @@ export async function GET(_request: NextRequest) {
 
     const orgIds = await resolveSmsOrgIds(admin, profile?.organization_id || null)
 
+    // NOTE: Do NOT call refreshOpenSmsStatuses() here. This route must always return the
+    // page's data straight from the database, independent of the local SMS gateway's
+    // availability. The gateway can be unreachable (e.g. an expired trycloudflare tunnel),
+    // and refreshOpenSmsStatuses() checks each open message sequentially with a 15s timeout
+    // per message -- with the gateway down that blocked this endpoint for minutes while the
+    // UI sat on "Loading SMS messages...".
+    //
+    // Status refresh already runs safely in the background via
+    // app/api/cron/notification-outbox-worker/route.ts (refreshOpenSmsStatuses call there is
+    // wrapped in .catch() and doesn't block anything else). This page just reads whatever
+    // that worker last wrote, so it stays fast no matter what the gateway is doing.
+
     let logsQuery = admin
       .from('notification_logs')
       .select('id, created_at, queued_at, sent_at, delivered_at, failed_at, status, recipient_value, recipient_type, event_code, provider_name, provider_message_id, error_message, retry_count, provider_response, outbox_id')
@@ -112,10 +119,23 @@ export async function GET(_request: NextRequest) {
     if (outboxRes.error) return NextResponse.json({ error: outboxRes.error.message }, { status: 500 })
 
     const outboxById = new Map((outboxRes.data || []).map((row: any) => [row.id, row]))
+    const missingOutboxIds = Array.from(new Set(
+      (logsRes.data || [])
+        .map((log: any) => log.outbox_id)
+        .filter((id: string | null) => id && !outboxById.has(id)),
+    ))
+    if (missingOutboxIds.length > 0) {
+      const { data: extraOutbox } = await admin
+        .from('notifications_outbox')
+        .select('id, created_at, scheduled_for, sent_at, status, to_phone, event_code, provider_name, provider_message_id, error, retry_count, max_retries, payload_json, template_code, priority')
+        .in('id', missingOutboxIds)
+      for (const row of extraOutbox || []) outboxById.set(row.id, row)
+    }
     const loggedOutboxIds = new Set<string>()
     const messages = []
 
     for (const log of logsRes.data || []) {
+      if (log.outbox_id && loggedOutboxIds.has(log.outbox_id)) continue
       const outbox = log.outbox_id ? outboxById.get(log.outbox_id) : null
       if (log.outbox_id) loggedOutboxIds.add(log.outbox_id)
       const rawStatus = asString(log.status) || asString(outbox?.status)
@@ -142,6 +162,7 @@ export async function GET(_request: NextRequest) {
         priority: asString(outbox?.priority) || null,
         payload: outbox?.payload_json || null,
         messageBody: payloadMessage(outbox?.payload_json, asString(log.event_code) || asString(outbox?.event_code)),
+        ...orderFields(outbox?.payload_json),
         providerResponse: log.provider_response || null,
         statusDetails: truncate(log.provider_response),
       })
@@ -173,6 +194,7 @@ export async function GET(_request: NextRequest) {
         priority: asString(outbox.priority) || null,
         payload: outbox.payload_json || null,
         messageBody: payloadMessage(outbox.payload_json, asString(outbox.event_code)),
+        ...orderFields(outbox.payload_json),
         providerResponse: null,
         statusDetails: null,
       })
@@ -182,6 +204,7 @@ export async function GET(_request: NextRequest) {
 
     const kpis = {
       pending: messages.filter((row) => row.status === 'pending').length,
+      sent: messages.filter((row) => row.status === 'sent').length,
       delivered: messages.filter((row) => row.status === 'delivered').length,
       failed: messages.filter((row) => row.status === 'failed').length,
       total: messages.length,
@@ -272,7 +295,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, saved: true, to: phone.normalized, outbox_id: targetOutboxId })
     }
 
+    if (targetOutboxId) {
+      // Claim the row so the outbox worker cannot send it a second time.
+      await admin.from('notifications_outbox').update({
+        status: 'sent',
+        error: null,
+        to_phone: phone.normalized,
+      }).eq('id', targetOutboxId)
+    }
+
+    const sent = await sendSmsWithActiveProvider(admin, orgId, phone.normalized, message)
+
     if (!targetOutboxId) {
+      const now = new Date().toISOString()
       const { data: queued, error: queueError } = await admin
         .from('notifications_outbox')
         .insert({
@@ -283,19 +318,21 @@ export async function PATCH(request: NextRequest) {
           payload_json: { _sms_body: message, customer_phone: phone.normalized, edited_from: id },
           priority: 'high',
           provider_name: 'local_my',
-          status: 'queued',
+          provider_message_id: sent.messageId || null,
+          status: sent.success ? 'sent' : 'failed',
+          sent_at: sent.success ? now : null,
+          error: sent.success ? null : (sent.error || 'SMS send failed'),
           retry_count: 0,
           max_retries: 3,
         })
         .select('id')
         .single()
       if (queueError || !queued) {
-        return NextResponse.json({ error: queueError?.message || 'Failed to queue SMS' }, { status: 500 })
+        return NextResponse.json({ error: queueError?.message || 'Failed to record SMS' }, { status: 500 })
       }
       targetOutboxId = queued.id
     }
 
-    const sent = await sendSmsWithActiveProvider(admin, orgId, phone.normalized, message)
     await recordSmsDelivery(admin, {
       orgId,
       outboxId: targetOutboxId,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, CheckCheck, Clock, Download, Eye, Loader2, MessageSquare, Pencil, RefreshCw, Search, Send } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import NotificationChannelSwitch from '@/components/settings/NotificationChannelSwitch'
+import { toSmsE164 } from '@/lib/notifications/manualPhoneNumbers'
 
-type MonitorStatus = 'pending' | 'delivered' | 'failed'
+type MonitorStatus = 'pending' | 'sent' | 'delivered' | 'failed'
 
 interface SmsMessage {
   id: string
@@ -38,6 +39,8 @@ interface SmsMessage {
   messageBody: string | null
   providerResponse: unknown
   statusDetails: string | null
+  orderId: string | null
+  orderNo: string | null
 }
 
 function formatTime(value: string | null) {
@@ -52,6 +55,18 @@ function formatEvent(value: string | null) {
   return value.replace(/_/g, ' ')
 }
 
+function formatOrder(row: { orderNo?: string | null; orderId?: string | null }) {
+  return row.orderNo || row.orderId || ''
+}
+
+function formatSmsPhone(value: string | null | undefined) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const phone = toSmsE164(raw)
+  if ('e164' in phone) return phone.e164
+  return raw.startsWith('+') ? raw : /^\d+$/.test(raw) ? `+${raw}` : raw
+}
+
 function KpiCard({
   tone,
   icon,
@@ -59,7 +74,7 @@ function KpiCard({
   value,
   hint,
 }: {
-  tone: 'amber' | 'blue' | 'red'
+  tone: 'amber' | 'blue' | 'green' | 'red'
   icon: React.ReactNode
   label: string
   value: number
@@ -68,6 +83,7 @@ function KpiCard({
   const map = {
     amber: 'bg-amber-50 text-amber-600 border-amber-100',
     blue: 'bg-blue-50 text-blue-600 border-blue-100',
+    green: 'bg-emerald-50 text-emerald-600 border-emerald-100',
     red: 'bg-red-50 text-red-600 border-red-100',
   } as const
 
@@ -90,8 +106,10 @@ function StatusPill({ status }: { status: MonitorStatus }) {
     ? 'bg-blue-100 text-blue-800'
     : status === 'failed'
       ? 'bg-red-100 text-red-800'
-      : 'bg-amber-100 text-amber-800'
-  const label = status === 'delivered' ? 'Delivered' : status === 'failed' ? 'Failed' : 'Pending'
+      : status === 'sent'
+        ? 'bg-emerald-100 text-emerald-800'
+        : 'bg-amber-100 text-amber-800'
+  const label = status === 'delivered' ? 'Delivered' : status === 'failed' ? 'Failed' : status === 'sent' ? 'Sent' : 'Pending'
   return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${tone}`}>{label}</span>
 }
 
@@ -108,7 +126,7 @@ export default function SmsDeliveryMonitor() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [messages, setMessages] = useState<SmsMessage[]>([])
-  const [kpis, setKpis] = useState({ pending: 0, delivered: 0, failed: 0, total: 0 })
+  const [kpis, setKpis] = useState({ pending: 0, sent: 0, delivered: 0, failed: 0, total: 0 })
   const [search, setSearch] = useState('')
   const [statusTab, setStatusTab] = useState<'all' | MonitorStatus>('all')
   const [eventFilter, setEventFilter] = useState('all')
@@ -121,22 +139,62 @@ export default function SmsDeliveryMonitor() {
   const [checkPhone, setCheckPhone] = useState('')
   const [sendingCheck, setSendingCheck] = useState(false)
   const [checkResult, setCheckResult] = useState<string | null>(null)
+  const sendingCheckRef = useRef(false)
+  const [refreshingStatus, setRefreshingStatus] = useState(false)
+  const [statusRefreshInfo, setStatusRefreshInfo] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     setError(null)
     try {
       const response = await fetch('/api/settings/notifications/sms-activity')
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to load SMS activity')
       setMessages(result.messages || [])
-      setKpis(result.kpis || { pending: 0, delivered: 0, failed: 0, total: 0 })
+      setKpis(result.kpis || { pending: 0, sent: 0, delivered: 0, failed: 0, total: 0 })
     } catch (err: any) {
       setError(err.message || 'Failed to load SMS activity')
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [])
+
+  // Explicit, on-demand "ask the gateway now" action. Separate from load() on purpose:
+  // this is the only action that talks to the local SMS gateway, and it's guarded by a
+  // client-side abort timeout so a dead gateway can never freeze this button -- the server
+  // side has its own bounded budget too (see refresh-status/route.ts), this is just a
+  // second, independent safety net.
+  const refreshGatewayStatus = async () => {
+    if (refreshingStatus) return
+    setRefreshingStatus(true)
+    setStatusRefreshInfo(null)
+    const controller = new AbortController()
+    const abortTimer = setTimeout(() => controller.abort(), 10_000)
+    try {
+      const response = await fetch('/api/settings/notifications/sms-activity/refresh-status', {
+        method: 'POST',
+        signal: controller.signal,
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'Failed to check gateway status')
+      const { checked = 0, updated = 0, timedOut = false } = result
+      setStatusRefreshInfo(
+        timedOut
+          ? `Gateway is slow to respond: checked ${checked}, updated ${updated} before timing out. Remaining messages will update on the next automatic check.`
+          : `Checked ${checked} message(s), updated ${updated}.`,
+      )
+    } catch (err: any) {
+      setStatusRefreshInfo(
+        err?.name === 'AbortError'
+          ? 'Gateway did not respond in time. Nothing on this page was blocked -- try again in a moment.'
+          : (err.message || 'Failed to check gateway status'),
+      )
+    } finally {
+      clearTimeout(abortTimer)
+      setRefreshingStatus(false)
+      void load({ silent: true })
+    }
+  }
 
   const sendCheckSms = async () => {
     const to = checkPhone.trim()
@@ -144,6 +202,8 @@ export default function SmsDeliveryMonitor() {
       setCheckResult('Enter a phone number first')
       return
     }
+    if (sendingCheckRef.current) return
+    sendingCheckRef.current = true
     setSendingCheck(true)
     setCheckResult(null)
     try {
@@ -159,6 +219,7 @@ export default function SmsDeliveryMonitor() {
     } catch (err: any) {
       setCheckResult(err.message || 'SMS check failed')
     } finally {
+      sendingCheckRef.current = false
       setSendingCheck(false)
     }
   }
@@ -166,7 +227,7 @@ export default function SmsDeliveryMonitor() {
   const openEdit = (row: SmsMessage) => {
     setSelected(null)
     setEditing(row)
-    setEditPhone(row.phone || '')
+    setEditPhone(formatSmsPhone(row.phone) || row.phone || '')
     setEditMessage(row.messageBody || '')
     setEditError(null)
   }
@@ -214,6 +275,15 @@ export default function SmsDeliveryMonitor() {
     load()
   }, [load])
 
+  useEffect(() => {
+    const hasOpen = messages.some((row) => row.status === 'sent' || row.status === 'pending')
+    if (!hasOpen) return
+    const timer = window.setInterval(() => {
+      void load({ silent: true })
+    }, 15_000)
+    return () => window.clearInterval(timer)
+  }, [messages, load])
+
   const eventOptions = useMemo(() => {
     const codes = Array.from(new Set(messages.map((row) => row.eventCode).filter(Boolean))) as string[]
     return codes.sort()
@@ -227,6 +297,9 @@ export default function SmsDeliveryMonitor() {
       if (!query) return true
       return [
         row.phone,
+        formatSmsPhone(row.phone),
+        row.orderNo,
+        row.orderId,
         row.eventCode,
         row.providerName,
         row.providerMessageId,
@@ -238,10 +311,11 @@ export default function SmsDeliveryMonitor() {
   }, [messages, search, statusTab, eventFilter])
 
   const exportCsv = () => {
-    const header = ['Time', 'Phone', 'Event', 'Status', 'Provider', 'Message ID', 'Error', 'Retries']
+    const header = ['Time', 'Phone', 'Order', 'Event', 'Status', 'Provider', 'Message ID', 'Error', 'Retries']
     const rows = filtered.map((row) => [
       formatTime(row.createdAt),
-      row.phone || '',
+      formatSmsPhone(row.phone) || row.phone || '',
+      formatOrder(row),
       row.eventCode || '',
       row.status,
       row.providerName || '',
@@ -262,6 +336,7 @@ export default function SmsDeliveryMonitor() {
   const tabCounts = {
     all: messages.length,
     pending: kpis.pending,
+    sent: kpis.sent,
     delivered: kpis.delivered,
     failed: kpis.failed,
   }
@@ -276,7 +351,7 @@ export default function SmsDeliveryMonitor() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Notification Monitor</h1>
             <p className="mt-0.5 max-w-2xl text-sm text-slate-500">
-              Track every SMS sent through the Local Malaysian gateway. Status is Pending, Delivered, or Failed.
+              Track every SMS sent through the Local Malaysian gateway. A successful send is Sent until the gateway reports Delivered or Failed.
             </p>
             <div className="mt-3">
               <NotificationChannelSwitch active="sms" />
@@ -285,33 +360,54 @@ export default function SmsDeliveryMonitor() {
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
           <div className="flex items-center gap-2">
-            <Input
-              placeholder="Phone e.g. 0123456789"
-              value={checkPhone}
-              onChange={(event) => setCheckPhone(event.target.value)}
-              className="h-9 w-[190px]"
-            />
-            <Button size="sm" onClick={sendCheckSms} disabled={sendingCheck}>
-              {sendingCheck ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-              Send check SMS
-            </Button>
-            <Button variant="outline" size="sm" onClick={load}>
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void sendCheckSms()
+              }}
+            >
+              <Input
+                placeholder="Phone e.g. 0123456789"
+                value={checkPhone}
+                onChange={(event) => setCheckPhone(event.target.value)}
+                className="h-9 w-[190px]"
+              />
+              <Button type="submit" size="sm" disabled={sendingCheck}>
+                {sendingCheck ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                Send check SMS
+              </Button>
+            </form>
+            <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
               <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void refreshGatewayStatus()}
+              disabled={refreshingStatus}
+              title="Ask the local SMS gateway for the latest delivery status of open messages"
+            >
+              <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${refreshingStatus ? 'animate-spin' : ''}`} />
+              Check gateway status
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Export
             </Button>
           </div>
           {checkResult ? <p className="max-w-md text-right text-xs text-slate-600">{checkResult}</p> : null}
+          {statusRefreshInfo ? <p className="max-w-md text-right text-xs text-slate-600">{statusRefreshInfo}</p> : null}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <KpiCard tone="amber" icon={<Clock className="h-4 w-4" />} label="Pending" value={kpis.pending} hint="Queued or retrying" />
-        <KpiCard tone="blue" icon={<CheckCheck className="h-4 w-4" />} label="Delivered" value={kpis.delivered} hint="Gateway accepted" />
-        <KpiCard tone="red" icon={<AlertCircle className="h-4 w-4" />} label="Failed" value={kpis.failed} hint="Gateway or send error" />
+        <KpiCard tone="green" icon={<Send className="h-4 w-4" />} label="Sent" value={kpis.sent} hint="Accepted, waiting on delivery" />
+        <KpiCard tone="blue" icon={<CheckCheck className="h-4 w-4" />} label="Delivered" value={kpis.delivered} hint="Final success" />
+        <KpiCard tone="red" icon={<AlertCircle className="h-4 w-4" />} label="Failed" value={kpis.failed} hint="Final failure" />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -319,7 +415,7 @@ export default function SmsDeliveryMonitor() {
           <div className="relative min-w-[220px] flex-1">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <Input
-              placeholder="Search phone, event, message ID, or error..."
+              placeholder="Search phone, order, event, message ID, or error..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-9 pl-8"
@@ -354,6 +450,7 @@ export default function SmsDeliveryMonitor() {
           {([
             ['all', 'All', tabCounts.all, 'text-slate-700'],
             ['pending', 'Pending', tabCounts.pending, 'text-amber-600'],
+            ['sent', 'Sent', tabCounts.sent, 'text-emerald-600'],
             ['delivered', 'Delivered', tabCounts.delivered, 'text-blue-600'],
             ['failed', 'Failed', tabCounts.failed, 'text-red-600'],
           ] as const).map(([key, label, count, color]) => (
@@ -377,7 +474,7 @@ export default function SmsDeliveryMonitor() {
           <div className="py-10 text-center text-slate-400">
             <MessageSquare className="mx-auto mb-2 h-8 w-8 text-slate-300" />
             <p className="text-sm">No SMS messages in this view</p>
-            <p className="mt-0.5 text-xs">Use Send check SMS above, then click Refresh. Delivered and Failed appear after the gateway responds.</p>
+            <p className="mt-0.5 text-xs">Use Send check SMS above, then click Refresh. Sent means the gateway accepted it. Delivered and Failed are final.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -386,6 +483,7 @@ export default function SmsDeliveryMonitor() {
                 <tr className="border-b border-slate-100 text-left">
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Time</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Phone</th>
+                  <th className="px-2 py-2 text-xs font-medium text-slate-500">Order</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Event</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Status</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Provider</th>
@@ -398,7 +496,14 @@ export default function SmsDeliveryMonitor() {
                 {filtered.map((row) => (
                   <tr key={`${row.source}-${row.id}`} className="hover:bg-slate-50/60">
                     <td className="px-2 py-2.5 align-top text-xs text-slate-600">{formatTime(row.createdAt)}</td>
-                    <td className="px-2 py-2.5 align-top font-mono text-xs text-slate-800">{row.phone || '-'}</td>
+                    <td className="px-2 py-2.5 align-top font-mono text-xs text-slate-800">{formatSmsPhone(row.phone) || row.phone || '-'}</td>
+                    <td className="px-2 py-2.5 align-top">
+                      {formatOrder(row) ? (
+                        <div className="font-mono text-xs text-slate-800" title={row.orderId || undefined}>{formatOrder(row)}</div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2.5 align-top text-xs capitalize text-slate-600">{formatEvent(row.eventCode)}</td>
                     <td className="px-2 py-2.5 align-top">
                       <StatusPill status={row.status} />
@@ -446,7 +551,9 @@ export default function SmsDeliveryMonitor() {
                 <Badge variant="secondary">{selected.providerName || 'local_my'}</Badge>
               </div>
               <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 px-3">
-                <DetailRow label="Phone" value={selected.phone} />
+                <DetailRow label="Phone" value={formatSmsPhone(selected.phone) || selected.phone} />
+                <DetailRow label="Order" value={formatOrder(selected) || '-'} />
+                {selected.orderId && selected.orderNo ? <DetailRow label="Order ID" value={selected.orderId} /> : null}
                 <DetailRow label="Message" value={selected.messageBody} />
                 <DetailRow label="Event" value={formatEvent(selected.eventCode)} />
                 <DetailRow label="Raw status" value={selected.rawStatus} />

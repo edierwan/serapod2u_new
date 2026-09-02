@@ -3,7 +3,7 @@
  * Minimal shell caching only. Never cache API / private order data.
  */
 
-const CACHE_NAME = 'serapp-v7'
+const CACHE_NAME = 'serapp-v8'
 const PRECACHE = [
   '/icons/serapp-homescreen-192.png',
   '/icons/serapp-homescreen-512.png',
@@ -47,6 +47,10 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return
   if (url.pathname.startsWith('/api/')) return
+  if (url.pathname.startsWith('/_next/')) return
+  if (request.headers.get('RSC') === '1') return
+  if (request.headers.get('Next-Router-Prefetch')) return
+  if (request.headers.get('Next-Url')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -61,7 +65,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (
-    url.pathname.startsWith('/_next/static') ||
     url.pathname.startsWith('/icons') ||
     url.pathname.startsWith('/brand')
   ) {

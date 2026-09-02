@@ -20,7 +20,7 @@ const notificationCards: NotificationsCardItem[] = [
   {
     id: 'failed-notifications',
     label: 'Notification Monitor',
-    description: 'Monitor WhatsApp and SMS delivery, failed notifications, provider status, and recovery actions.',
+    description: 'Monitor WhatsApp, SMS, and Email delivery, failed notifications, provider status, and recovery actions.',
     href: '/notifications/whatsapp-activity-recovery',
     icon: AlertTriangle,
     accent: landingAccents.amber,

@@ -103,6 +103,15 @@ export function toSmsE164(raw: string): { e164: string; normalized: string } | I
     }
 }
 
+/** Digits-only key so +963992240668 and 963992240668 collapse to one recipient. */
+export function notificationPhoneKey(raw: string | null | undefined): string {
+    const value = String(raw || '').trim()
+    if (!value) return ''
+    const parsed = toSmsE164(value)
+    if ('normalized' in parsed) return parsed.normalized
+    return value.replace(/[^\d]/g, '')
+}
+
 function isValid(p: ValidManualPhone | InvalidManualPhone): p is ValidManualPhone {
     return typeof (p as ValidManualPhone).normalized === 'string'
 }

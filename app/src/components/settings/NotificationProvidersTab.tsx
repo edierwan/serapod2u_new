@@ -416,8 +416,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       alert('Please select a provider and configure credentials first')
       return
     }
-    setSmsTestPhone(String(smsConfig.config_public?.test_number || ''))
-    setSmsTestMessage('')
+    setSmsTestPhone(String(smsConfig.config_public?.test_number || '+601163739729'))
+    setSmsTestMessage('SMS Gateway configuration test')
     setSmsTestError(null)
     setSmsTestStep('phone')
     setSmsTestOpen(true)
@@ -504,7 +504,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       if (!response.ok) throw new Error(result.error || 'Test failed')
 
       if (channel === 'sms') setSmsTestOpen(false)
-      alert(channel === 'sms' && result.to ? `Test successful! Message sent to ${result.to}.` : `Test successful! Message sent.`)
+      alert(channel === 'sms' && result.message_id
+        ? (result.provider === 'vonage'
+          ? `Vonage test successful. messageUUID=${result.message_id}`
+          : `Test successful. message_id=${result.message_id}${result.external_id ? `, external_id=${result.external_id}` : ''}. Waiting for sms:sent / sms:delivered / sms:failed.`)
+        : (channel === 'sms' && result.to ? `Test successful! Message sent to ${result.to}.` : `Test successful! Message sent.`))
 
       // Update config with test result
       const updatedConfig = {
@@ -995,7 +999,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <div className="space-y-2">
                     <Label>From Name/Number</Label>
                     <Input
-                      placeholder="YourBrand or +60123456789"
+                      placeholder="Vonage APIs"
                       value={smsConfig.config_public.from_number || ''}
                       onChange={(e) => setSmsConfig({
                         ...smsConfig,
@@ -1030,7 +1034,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <div className="space-y-2 md:col-span-2">
                     <Label>API Endpoint URL</Label>
                     <Input
-                      placeholder="https://api.yoursmsgateway.com/send"
+                      placeholder="https://pregnant-losing-shoulder-accessing.trycloudflare.com/api/v1/messages"
                       value={smsConfig.config_public.api_endpoint || ''}
                       onChange={(e) => setSmsConfig({
                         ...smsConfig,
@@ -1237,19 +1241,18 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   )}
                   {smsConfig.provider_name === 'vonage' && (
                     <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                      <li>Sign up at <a href="https://dashboard.nexmo.com/sign-up" target="_blank" rel="noopener" className="text-blue-600 underline">Vonage API Dashboard</a></li>
-                      <li>Get your API Key and API Secret from Settings</li>
-                      <li>Add credits to your account</li>
-                      <li>Configure sender ID (alphanumeric sender names supported in most countries)</li>
+                      <li>API Key comes from VONAGE_API_KEY in .env (or the field above)</li>
+                      <li>API Secret is always read from VONAGE_API_SECRET in .env</li>
+                      <li>From defaults to &quot;Vonage APIs&quot; unless you set From Name/Number</li>
+                      <li>Test Configuration sends the message text you type, via Vonage Messages API (SMS channel)</li>
                     </ol>
                   )}
                   {smsConfig.provider_name === 'local_my' && (
                     <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                      <li>Contact your Malaysian SMS gateway provider and get the HTTP API URL, username, and password</li>
-                      <li>Default GET uses OneWaySMS-style query params: apiusername, apipassword, mobileno, senderid, message</li>
-                      <li>Or put placeholders in the URL: {'{{username}}'}, {'{{password}}'}, {'{{to}}'}, {'{{message}}'}, {'{{sender_id}}'}</li>
-                      <li>Use POST + JSON/form if your gateway expects a request body</li>
-                      <li>Register your sender ID with MCMC, then click Test Configuration</li>
+                      <li>sms-gateway URL: POST /api/v1/messages with Basic Auth</li>
+                      <li>Test Configuration sends JSON: {'{ "to": "+60...", "message": "..." }'}</li>
+                      <li>Configuration passes only on HTTP 200 plus a valid message_id</li>
+                      <li>Delivery updates come from webhooks sms:sent, sms:delivered, sms:failed at /api/webhooks/sms-gateway</li>
                     </ol>
                   )}
                 </CardContent>
@@ -1264,9 +1267,9 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           <DialogHeader>
             <DialogTitle>Test SMS configuration</DialogTitle>
             <DialogDescription>
-              {smsTestStep === 'phone'
-                ? 'First enter the phone number, then continue to the message text.'
-                : 'Now enter the message text to send.'}
+              {smsConfig?.provider_name === 'vonage'
+                ? 'Sends a real SMS through the Vonage Messages API. The message text below is what the recipient receives. API secret is read from VONAGE_API_SECRET in .env.'
+                : 'Sends a real SMS through sms-gateway. Configuration succeeds only if the gateway returns HTTP 200 and a message_id. Delivery is confirmed later by sms:sent / sms:delivered / sms:failed webhooks.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

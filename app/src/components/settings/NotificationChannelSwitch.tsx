@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { MessageCircle, MessageSquare } from 'lucide-react'
+import { Mail, MessageCircle, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const CHANNELS = [
@@ -17,9 +17,15 @@ const CHANNELS = [
     href: '/notifications/sms-activity',
     icon: MessageSquare,
   },
+  {
+    id: 'email',
+    label: 'Email',
+    href: '/notifications/email-activity',
+    icon: Mail,
+  },
 ] as const
 
-export default function NotificationChannelSwitch({ active }: { active: 'whatsapp' | 'sms' }) {
+export default function NotificationChannelSwitch({ active }: { active: 'whatsapp' | 'sms' | 'email' }) {
   const router = useRouter()
 
   return (

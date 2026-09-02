@@ -31,6 +31,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   'whatsapp-activity-recovery': 'Notification Monitor',
   'whatsapp-activity': 'Notification Monitor',
   'sms-activity': 'Notification Monitor',
+  'email-activity': 'Notification Monitor',
   'delivery-logs': 'Delivery Logs',
   failed: 'Failed Messages',
   organizations: 'Organizations',

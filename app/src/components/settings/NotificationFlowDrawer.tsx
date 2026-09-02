@@ -22,7 +22,7 @@ import { Badge } from "../ui/badge"
 import {
     GitBranch, Users, MessageSquare, TestTube, History,
     ArrowRight, CheckCircle2, AlertCircle, Loader2, Play,
-    User as UserIcon, Building2, MessageCircle, Mail, Copy, RefreshCw, Trash2, Info
+    User as UserIcon, UserCheck, Building2, MessageCircle, Mail, Copy, RefreshCw, Trash2, Info
 } from 'lucide-react'
 import { ScrollArea } from "../ui/scroll-area"
 import { UserMultiSelect } from "./recipients/UserMultiSelect"
@@ -72,7 +72,7 @@ export default function NotificationFlowDrawer({
     // Manual WhatsApp Numbers (raw textarea input + active recipient source focus)
     const [manualRawInput, setManualRawInput] = useState<string>('')
     const [manualEmailRawInput, setManualEmailRawInput] = useState<string>('')
-    const [activeSource, setActiveSource] = useState<'consumer' | 'dynamic_org' | 'users' | 'manual_whatsapp' | 'manual_email' | 'roles'>('consumer')
+    const [activeSource, setActiveSource] = useState<'order_creator' | 'consumer' | 'dynamic_org' | 'users' | 'manual_whatsapp' | 'manual_email' | 'roles'>('consumer')
     const [saveError, setSaveError] = useState<string | null>(null)
     const [savingChanges, setSavingChanges] = useState(false)
 
@@ -80,12 +80,15 @@ export default function NotificationFlowDrawer({
         // Init & Migration Logic
         const existingConfig = setting?.recipient_config || {}
 
+        const isOrderOwnerEvent = ['order_rejected', 'order_approved', 'order_closed'].includes(type.event_code)
+
         // 1. Establish default targets (all false)
         const targets = {
             roles: false,
             dynamic_org: false,
             users: false,
-            consumer: false
+            consumer: false,
+            order_creator: false,
         }
 
         // 2. Migrate old 'type' or 'recipient_mode' to new targets
@@ -98,6 +101,9 @@ export default function NotificationFlowDrawer({
         if (existingConfig.recipient_targets) {
             Object.assign(targets, existingConfig.recipient_targets)
         }
+        if (isOrderOwnerEvent && existingConfig.recipient_targets?.order_creator === undefined) {
+            targets.order_creator = true
+        }
 
         const storedTemplates = setting?.templates || {}
         const verificationPreset = type.event_code === 'stock_count_posting_verification'
@@ -107,11 +113,11 @@ export default function NotificationFlowDrawer({
             ...setting,
             enabled: setting?.enabled ?? false,
             recipient_config: {
-                recipient_targets: targets,
                 roles: [],
-                recipient_users: [], // Ensure this array exists
+                recipient_users: [],
                 dynamic_target: null,
-                ...existingConfig
+                ...existingConfig,
+                recipient_targets: targets,
             },
             channels_enabled: setting?.channels_enabled || [],
             templates: verificationPreset && !storedTemplates.email
@@ -135,11 +141,12 @@ export default function NotificationFlowDrawer({
         // Pick first enabled source as active for the right-side panel
         if (type.event_code === 'stock_count_posting_verification' && targets.users) setActiveSource('users')
         else if (type.event_code === 'stock_count_posting_verification') setActiveSource('manual_email')
+        else if (targets.order_creator) setActiveSource('order_creator')
         else if (targets.consumer) setActiveSource('consumer')
         else if (targets.dynamic_org) setActiveSource('dynamic_org')
         else if (targets.users) setActiveSource('users')
         else if (existingManual.length > 0) setActiveSource('manual_whatsapp')
-        else setActiveSource('consumer')
+        else setActiveSource(isOrderOwnerEvent ? 'order_creator' : 'consumer')
     }, [setting, open])
 
     // Live parse manual whatsapp numbers for the right-side panel
@@ -475,12 +482,14 @@ export default function NotificationFlowDrawer({
                                         <div>
                                             <h4 className="font-semibold text-[var(--sera-ink)]">Resolve Recipients</h4>
                                             <div className="text-sm text-gray-500 flex flex-col gap-1">
+                                                {localSetting.recipient_config?.recipient_targets?.order_creator && <span>• Order creator</span>}
                                                 {localSetting.recipient_config?.recipient_targets?.consumer && <span>• Consumer</span>}
                                                 {localSetting.recipient_config?.recipient_targets?.roles && <span>• Roles: {(localSetting.recipient_config?.roles || []).join(', ')}</span>}
                                                 {localSetting.recipient_config?.recipient_targets?.dynamic_org && <span>• Dynamic: {localSetting.recipient_config?.dynamic_target}</span>}
                                                 {localSetting.recipient_config?.recipient_targets?.users && <span>• Specific Users ({localSetting.recipient_config?.recipient_users?.length || 0})</span>}
 
-                                                {(!localSetting.recipient_config?.recipient_targets?.roles &&
+                                                {(!localSetting.recipient_config?.recipient_targets?.order_creator &&
+                                                    !localSetting.recipient_config?.recipient_targets?.roles &&
                                                     !localSetting.recipient_config?.recipient_targets?.dynamic_org &&
                                                     !localSetting.recipient_config?.recipient_targets?.users &&
                                                     !localSetting.recipient_config?.recipient_targets?.consumer) && (
@@ -530,20 +539,21 @@ export default function NotificationFlowDrawer({
                                         <p className="text-xs text-[var(--sera-orange-deep)]/80 mt-0.5">
                                             {(() => {
                                                 const t = localSetting.recipient_config?.recipient_targets || {}
-                                                const enabledSources = [t.consumer && 'Consumer', t.dynamic_org && 'Related Organization', t.users && 'Specific Users', (manualParse.valid.length > 0) && 'Manual WhatsApp', (manualEmailParse.valid.length > 0) && 'Manual Email'].filter(Boolean) as string[]
+                                                const enabledSources = [t.order_creator && 'Order creator', t.consumer && 'Consumer', t.dynamic_org && 'Related Organization', t.users && 'Specific Users', (manualParse.valid.length > 0) && 'Manual WhatsApp', (manualEmailParse.valid.length > 0) && 'Manual Email'].filter(Boolean) as string[]
                                                 if (enabledSources.length === 0) return 'No recipients selected'
                                                 return enabledSources.join(' • ')
                                             })()}
                                         </p>
                                     </div>
-                                    {(localSetting.recipient_config?.recipient_targets?.consumer ||
+                                    {(localSetting.recipient_config?.recipient_targets?.order_creator ||
+                                        localSetting.recipient_config?.recipient_targets?.consumer ||
                                         localSetting.recipient_config?.recipient_targets?.roles ||
                                         localSetting.recipient_config?.recipient_targets?.dynamic_org ||
                                         localSetting.recipient_config?.recipient_targets?.users ||
                                         manualParse.valid.length > 0 || manualEmailParse.valid.length > 0) && (
                                             <Button variant="ghost" size="sm" className="h-6 text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)]" onClick={() => {
                                                 updateRecipientConfig({
-                                                    recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false },
+                                                    recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false, order_creator: false },
                                                     include_consumer: false,
                                                     manual_whatsapp_numbers: [],
                                                     manual_email_addresses: [],
@@ -571,6 +581,16 @@ export default function NotificationFlowDrawer({
                                         <div className="text-[11px] text-gray-400 -mt-2">Choose one or more sources</div>
 
                                         {([
+                                            {
+                                                key: 'order_creator',
+                                                icon: <UserCheck className="w-4 h-4 text-sky-600" />,
+                                                title: 'Order creator',
+                                                subtitle: 'Send to the user who created the order',
+                                                enabled: !!localSetting.recipient_config?.recipient_targets?.order_creator,
+                                                onToggle: (c: boolean) => updateRecipientConfig({
+                                                    recipient_targets: { ...localSetting.recipient_config.recipient_targets, order_creator: c },
+                                                }),
+                                            },
                                             {
                                                 key: 'consumer',
                                                 icon: <UserIcon className="w-4 h-4 text-[var(--sera-orange)]" />,
@@ -632,6 +652,7 @@ export default function NotificationFlowDrawer({
                                             },
                                         ] as const).filter((src) => {
                                             if (type.event_code === 'stock_count_posting_verification') return src.key === 'users' || src.key === 'manual_email'
+                                            if (src.key === 'order_creator') return String(type.category || '') === 'order' || String(type.event_code || '').startsWith('order_')
                                             if (src.key === 'manual_email') return type.available_channels?.includes('email')
                                             return true
                                         }).map((src) => {
@@ -686,6 +707,34 @@ export default function NotificationFlowDrawer({
 
                                     {/* RIGHT: Active source configuration */}
                                     <div className="rounded-lg border border-gray-200 bg-white p-4 min-h-[380px]">
+                                        {activeSource === 'order_creator' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <UserCheck className="w-4 h-4 text-sky-600" />
+                                                    <h4 className="text-sm font-semibold text-[var(--sera-ink)]">Order creator</h4>
+                                                </div>
+                                                <p className="text-xs text-gray-500">
+                                                    Send the notification to the user who created the order: their phone for WhatsApp/SMS and their email for Email.
+                                                </p>
+                                                <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
+                                                    <Checkbox
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.order_creator}
+                                                        onCheckedChange={(c) => updateRecipientConfig({
+                                                            recipient_targets: {
+                                                                ...localSetting.recipient_config.recipient_targets,
+                                                                order_creator: c,
+                                                            },
+                                                        })}
+                                                    />
+                                                    <span className="text-sm font-medium">Send to the order creator only from this source</span>
+                                                </label>
+                                                <div className="text-[11px] text-sky-800 bg-sky-50 border border-sky-100 rounded-md p-2 flex items-start gap-1.5">
+                                                    <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                                                    <span>Delivery uses this screen: Order creator, roles, and other sources are combined and duplicates are removed. For Order Rejected the default is Order creator only.</span>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {activeSource === 'consumer' && (
                                             <div className="space-y-4">
                                                 <div className="flex items-center gap-2">
@@ -972,15 +1021,17 @@ export default function NotificationFlowDrawer({
                                     const usersCount = t.users ? (localSetting.recipient_config?.recipient_users?.length || 0) : 0
                                     const manualCount = manualParse.valid.length
                                     const manualEmailCount = manualEmailParse.valid.length
+                                    const creatorsCount = t.order_creator ? 1 : 0
                                     const consumersCount = t.consumer ? 1 : 0 // estimated (resolved at runtime)
                                     const orgsCount = t.dynamic_org ? 1 : 0 // estimated
-                                    const totalUnique = usersCount + manualCount + manualEmailCount + consumersCount + orgsCount
+                                    const totalUnique = creatorsCount + usersCount + manualCount + manualEmailCount + consumersCount + orgsCount
                                     return (
                                         <div className="border-t pt-4">
                                             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Final Recipient Preview</div>
                                             <p className="text-[11px] text-gray-400 mb-3">Estimated unique recipients (real counts resolved per-event at send time)</p>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                 {[
+                                                    { label: 'Order creator', value: creatorsCount, icon: <UserCheck className="w-3 h-3" />, accent: 'text-sky-600' },
                                                     { label: 'Consumers', value: consumersCount, icon: <UserIcon className="w-3 h-3" />, accent: 'text-[var(--sera-orange)]' },
                                                     { label: 'Organizations', value: orgsCount, icon: <Building2 className="w-3 h-3" />, accent: 'text-purple-600' },
                                                     { label: 'Users', value: usersCount, icon: <Users className="w-3 h-3" />, accent: 'text-emerald-600' },

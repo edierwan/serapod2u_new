@@ -37,27 +37,15 @@ import {
     Wifi,
     WifiOff,
 } from "lucide-react"
-import {
-    CartesianGrid,
-    Legend,
-    Line,
-    LineChart,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
-} from "recharts"
 
 import type { UserProfileWithRelations } from "@/lib/server/get-user-profile"
 import type { RecoveryPurpose } from "@/lib/wa-recovery/templates"
 import NotificationChannelSwitch from "@/components/settings/NotificationChannelSwitch"
 import {
-    hasTrendActivity,
     isFailedStatus,
     isRecoverySentStatus,
     isResolvedStatus,
     RECOVERY_PURPOSES,
-    type RecoveryTrendPoint,
 } from "@/lib/wa-recovery/activity-status"
 
 interface Props {
@@ -99,6 +87,8 @@ interface ActivityRecord {
     suggestedTemplateName: string
     suggestedMessagePreview: string
     latestRecovery: RecoveryStatusInfo | null
+    orderId: string | null
+    orderNo: string | null
 }
 
 interface Summary {
@@ -109,8 +99,6 @@ interface Summary {
         read: number
         resolved: number
     }
-    trend: RecoveryTrendPoint[]
-    hasActivityLast24h: boolean
     failedByPurpose: Record<string, number>
 }
 
@@ -129,6 +117,10 @@ interface BulkActionState {
     label: string
     records: ActivityRecord[]
     templateKey?: RecoveryPurpose
+}
+
+function formatOrderLabel(record: { orderNo?: string | null; orderId?: string | null }) {
+    return record.orderNo || record.orderId || ""
 }
 
 const PURPOSE_LABELS: Record<string, string> = {
@@ -380,7 +372,8 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                 record.contactName.toLowerCase().includes(plainSearch) ||
                 record.contactSource.toLowerCase().includes(plainSearch) ||
                 record.purpose.toLowerCase().includes(plainSearch) ||
-                record.eventType.toLowerCase().includes(plainSearch)
+                record.eventType.toLowerCase().includes(plainSearch) ||
+                formatOrderLabel(record).toLowerCase().includes(plainSearch)
             )
         })
     }, [allEvents, filterProvider, filterPurpose, filterSearch, filterStatus, statusTab])
@@ -480,12 +473,14 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
     }
 
     function exportCsv() {
-        const rows = [["created_at", "phone", "resolved_name", "resolved_source", "event_type", "purpose", "status", "provider", "error"]]
+        const rows = [["created_at", "phone", "resolved_name", "resolved_source", "order", "order_id", "event_type", "purpose", "status", "provider", "error"]]
         filtered.forEach((record) => rows.push([
             record.createdAt,
             record.recipientPhone,
             record.contactName,
             record.contactSource,
+            formatOrderLabel(record),
+            record.orderId || "",
             record.eventType,
             record.purpose,
             record.status,
@@ -709,41 +704,12 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                         <KpiCard tone="purple" icon={<ShieldCheck className="h-4 w-4" />} label="Resolved" value={summary?.kpis.resolved ?? 0} hint="Resolved, verified, or completed" />
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 bg-white p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-sm font-semibold text-slate-900">Delivery Trend (Last 24 Hours)</h3>
-                                <p className="text-[11px] text-slate-500">Failed · Recovery Sent · Delivered · Read · Resolved</p>
-                            </div>
-                        </div>
-                        <div className="h-[240px]">
-                            {summary && summary.hasActivityLast24h ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={summary.trend} margin={{ top: 5, right: 12, left: -8, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                        <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} interval={3} />
-                                        <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
-                                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} />
-                                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                                        <Line type="monotone" dataKey="failed" stroke="#ef4444" strokeWidth={1.5} dot={{ r: 2 }} name="Failed" />
-                                        <Line type="monotone" dataKey="recoverySent" stroke="#f97316" strokeWidth={1.5} dot={{ r: 2 }} name="Recovery Sent" />
-                                        <Line type="monotone" dataKey="delivered" stroke="#3b82f6" strokeWidth={1.5} dot={{ r: 2 }} name="Delivered" />
-                                        <Line type="monotone" dataKey="read" stroke="#10b981" strokeWidth={1.5} dot={{ r: 2 }} name="Read" />
-                                        <Line type="monotone" dataKey="resolved" stroke="#a855f7" strokeWidth={1.5} dot={{ r: 2 }} name="Resolved" />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            ) : (
-                                <div className="flex h-full items-center justify-center text-xs text-slate-400">No WhatsApp activity in the last 24 hours</div>
-                            )}
-                        </div>
-                    </div>
-
                     <div className="rounded-xl border border-slate-200 bg-white p-3">
                         <div className="flex flex-wrap items-center gap-2">
                             <div className="relative min-w-[220px] flex-1">
                                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                                 <Input
-                                    placeholder="Search by phone number, contact name, source or purpose..."
+                                    placeholder="Search by phone, contact, order, or purpose..."
                                     value={filterSearch}
                                     onChange={(event) => setFilterSearch(event.target.value)}
                                     className="h-9 pl-8"
@@ -877,6 +843,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                             </th>
                                             <th className="w-6 px-2 py-2"></th>
                                             <th className="px-2 py-2 text-xs font-medium text-slate-500">Phone</th>
+                                            <th className="px-2 py-2 text-xs font-medium text-slate-500">Order</th>
                                             <th className="px-2 py-2 text-xs font-medium text-slate-500">Date · Event</th>
                                             <th className="px-2 py-2 text-xs font-medium text-slate-500">Purpose</th>
                                             <th className="px-2 py-2 text-xs font-medium text-slate-500">Status</th>
@@ -911,6 +878,15 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                                         <div className="text-xs font-mono text-slate-800">{formatPhoneLine(record.recipientPhone)}</div>
                                                         <div className="mt-0.5 text-xs font-medium text-slate-800">{record.contactName}</div>
                                                         <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-400">{record.contactSource}</div>
+                                                    </td>
+                                                    <td className="px-2 py-2.5 align-top">
+                                                        {formatOrderLabel(record) ? (
+                                                            <div className="font-mono text-xs text-slate-800" title={record.orderId || undefined}>
+                                                                {formatOrderLabel(record)}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-400">-</span>
+                                                        )}
                                                     </td>
                                                     <td className="px-2 py-2.5 align-top text-xs text-slate-600">
                                                         <div>{formatTime(record.createdAt)}</div>
@@ -1114,6 +1090,13 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                     <p className="text-xs text-slate-500">{formatPhoneLine(confirmRecord.recipientPhone)} · {confirmRecord.contactSource}</p>
                                 </div>
                                 <div>
+                                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Order</p>
+                                    <p className="mt-1 font-mono text-sm text-slate-900">{formatOrderLabel(confirmRecord) || "-"}</p>
+                                    {confirmRecord.orderId && confirmRecord.orderNo ? (
+                                        <p className="text-xs text-slate-500">{confirmRecord.orderId}</p>
+                                    ) : null}
+                                </div>
+                                <div>
                                     <p className="text-[11px] uppercase tracking-wide text-slate-500">Purpose</p>
                                     <p className="mt-1 text-slate-900">{formatPurpose(confirmRecord.purpose)}</p>
                                     <p className="text-xs text-slate-500">{confirmRecord.suggestedTemplateName}</p>
@@ -1201,6 +1184,13 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                     <p className="text-[11px] uppercase tracking-wide text-slate-500">Recipient</p>
                                     <p className="mt-1 font-medium text-slate-900">{previewRecord.contactName}</p>
                                     <p className="text-xs text-slate-500">{formatPhoneLine(previewRecord.recipientPhone)} · {previewRecord.contactSource}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Order</p>
+                                    <p className="mt-1 font-mono text-sm text-slate-900">{formatOrderLabel(previewRecord) || "-"}</p>
+                                    {previewRecord.orderId && previewRecord.orderNo ? (
+                                        <p className="text-xs text-slate-500">{previewRecord.orderId}</p>
+                                    ) : null}
                                 </div>
                                 <div>
                                     <p className="text-[11px] uppercase tracking-wide text-slate-500">Purpose</p>

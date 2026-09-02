@@ -40,7 +40,7 @@ const HARDCODED_FALLBACK: Record<TransactionalOtpChannel, { subject?: string; bo
         body: `⚠️ DELETION VERIFICATION\n\nCode: *{{verification_code}}*\n\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes. Only enter this code if you authorize this deletion.`,
     },
     sms: {
-        body: `DELETION VERIFICATION\nCode: {{verification_code}}\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\nExpires in {{otp_expiry_minutes}} minutes.`,
+        body: `Your code: {{verification_code}}\nUser: {{target_user_name}}\nby: {{requester_email}}\nExpires in {{otp_expiry_minutes}} minutes.`,
     },
     email: {
         subject: 'Serapod2U deletion verification code',

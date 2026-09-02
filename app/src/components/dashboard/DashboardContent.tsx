@@ -95,6 +95,7 @@ import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
 import { WhatsAppRecoveryCenter } from '@/components/settings/WhatsAppRecoveryCenter'
 import SmsDeliveryMonitor from '@/components/settings/SmsDeliveryMonitor'
+import EmailDeliveryMonitor from '@/components/settings/EmailDeliveryMonitor'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
 import AuthorizationTab from '@/components/settings/AuthorizationTab'
@@ -316,6 +317,10 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       setCurrentView('notifications/sms-activity')
       return
     }
+    if (pathname === '/settings/notifications/email-activity') {
+      setCurrentView('notifications/email-activity')
+      return
+    }
     if (initialView) {
       setCurrentView(initialView)
     }
@@ -411,6 +416,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     if (notificationView === 'settings/notifications/sms-activity') {
       setCurrentView('notifications/sms-activity')
       router.push('/notifications/sms-activity')
+      return
+    }
+    if (notificationView === 'settings/notifications/email-activity') {
+      setCurrentView('notifications/email-activity')
+      router.push('/notifications/email-activity')
       return
     }
 
@@ -738,6 +748,10 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'settings/notifications/sms-activity':
       case 'sms-activity':
         return <SmsDeliveryMonitor />
+      case 'notifications/email-activity':
+      case 'settings/notifications/email-activity':
+      case 'email-activity':
+        return <EmailDeliveryMonitor />
       case 'settings/notifications':
         return <NotificationsLandingView />
       case 'settings/authorization':

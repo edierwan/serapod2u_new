@@ -44,6 +44,32 @@ export async function POST(request: NextRequest) {
         onConflict: 'event_code',
       })
 
+    const now = new Date().toISOString()
+    const recentSince = new Date(Date.now() - 20_000).toISOString()
+    const { data: recent } = await admin
+      .from('notifications_outbox')
+      .select('id, status, provider_message_id')
+      .eq('org_id', profile.organization_id)
+      .eq('event_code', SYSTEM_SMS_CHECK_EVENT)
+      .eq('channel', 'sms')
+      .eq('to_phone', phone.normalized)
+      .gte('created_at', recentSince)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (recent?.[0]?.id) {
+      return NextResponse.json({
+        success: true,
+        message: 'SMS check already sent',
+        event_code: SYSTEM_SMS_CHECK_EVENT,
+        outbox_id: recent[0].id,
+        to: phone.normalized,
+        provider_id: recent[0].provider_message_id || null,
+      })
+    }
+
+    // Record first as sent (never queued) so the outbox worker cannot send a
+    // second SMS, then call the gateway once.
     const { data: queued, error: queueError } = await admin
       .from('notifications_outbox')
       .insert({
@@ -55,12 +81,13 @@ export async function POST(request: NextRequest) {
         template_code: null,
         payload_json: {
           checked_by: user.id,
-          checked_at: new Date().toISOString(),
+          checked_at: now,
           _sms_body: SYSTEM_SMS_CHECK_MESSAGE,
         },
         priority: 'high',
         provider_name: 'local_my',
-        status: 'queued',
+        status: 'sent',
+        sent_at: now,
         retry_count: 0,
         max_retries: 3,
       })
@@ -69,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     if (queueError || !queued) {
       return NextResponse.json({
-        error: queueError?.message || 'Failed to queue SMS check event',
+        error: queueError?.message || 'Failed to record SMS check event',
       }, { status: 500 })
     }
 

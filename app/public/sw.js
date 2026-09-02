@@ -1,9 +1,11 @@
 /**
  * Serapod2U — site-wide Service Worker
- * Network-first for pages; cache static assets only. Never cache API/auth data.
+ * Network-first for pages; cache public icons/images only.
+ * Never cache /_next, API, auth, or RSC payloads — stale JS + new HTML
+ * causes an infinite reload loop.
  */
 
-const CACHE_NAME = 'serapod-site-v1'
+const CACHE_NAME = 'serapod-site-v2'
 const PRECACHE = [
   '/manifest.json',
   '/icons/serapp-homescreen-192.png',
@@ -46,7 +48,11 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return
   if (url.pathname.startsWith('/api/')) return
+  if (url.pathname.startsWith('/_next/')) return
   if (url.hostname.includes('supabase')) return
+  if (request.headers.get('RSC') === '1') return
+  if (request.headers.get('Next-Router-Prefetch')) return
+  if (request.headers.get('Next-Url')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -65,7 +71,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (
-    url.pathname.startsWith('/_next/static') ||
     url.pathname.startsWith('/icons') ||
     url.pathname.startsWith('/images') ||
     url.pathname.startsWith('/brand')

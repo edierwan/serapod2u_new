@@ -2,12 +2,13 @@
 // ═══════════════════════════════════════════════════════════
 // free-port.js — predev guard
 // Safely kills dev processes on dev port. Refuses to kill infra.
-// macOS + Linux compatible.
+// Works on macOS, Linux, and Windows.
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
 const { execSync } = require('child_process');
 const PORT = process.env.PORT || 3000;
+const IS_WINDOWS = process.platform === 'win32';
 
 // Patterns considered safe dev processes
 const SAFE = ['node', 'nodemon', 'tsx', 'next', 'server.js', 'vite', 'esbuild'];
@@ -19,14 +20,49 @@ function exec(cmd) {
   catch { return ''; }
 }
 
-function getPids() {
+function getPidsWindows() {
+  // netstat lines look like:
+  //   TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       1234
+  const raw = exec('netstat -ano -p TCP');
+  if (!raw) return [];
+  const pids = new Set();
+  for (const line of raw.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 4) continue;
+    const [proto, local, , state, pid] = parts;
+    if (!/^TCP$/i.test(proto)) continue;
+    if (!/LISTENING/i.test(state)) continue;
+    const localPort = local.split(':').pop();
+    if (String(localPort) !== String(PORT)) continue;
+    const pidNum = Number(pid);
+    if (pidNum) pids.add(pidNum);
+  }
+  return Array.from(pids);
+}
+
+function getPidsPosix() {
   const raw = exec(`lsof -nP -iTCP:${PORT} -sTCP:LISTEN -t`);
   if (!raw) return [];
   return raw.split('\n').map(Number).filter(Boolean);
 }
 
-function getCommand(pid) {
+function getPids() {
+  return IS_WINDOWS ? getPidsWindows() : getPidsPosix();
+}
+
+function getCommandWindows(pid) {
+  // CSV output, no header: "node.exe","1234","Console","1","50,000 K"
+  const raw = exec(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`);
+  const match = raw.match(/^"([^"]+)"/);
+  return match ? match[1] : raw;
+}
+
+function getCommandPosix(pid) {
   return exec(`ps -p ${pid} -o command=`);
+}
+
+function getCommand(pid) {
+  return IS_WINDOWS ? getCommandWindows(pid) : getCommandPosix(pid);
 }
 
 function isSafe(cmd) {
@@ -37,7 +73,11 @@ function isSafe(cmd) {
   return false;
 }
 
-function killPid(pid) {
+function killPidWindows(pid) {
+  exec(`taskkill /PID ${pid} /F`);
+}
+
+function killPidPosix(pid) {
   try { process.kill(pid, 'SIGTERM'); } catch { return; }
 
   // Wait 800ms then check
@@ -54,10 +94,15 @@ function killPid(pid) {
   }
 }
 
+function killPid(pid) {
+  return IS_WINDOWS ? killPidWindows(pid) : killPidPosix(pid);
+}
+
 // ── Main ────────────────────────────────────────────────
 (function main() {
-  // Verify lsof exists
-  if (!exec('which lsof')) {
+  // Verify lsof exists (POSIX only -- Windows uses netstat/tasklist instead,
+  // which ship with the OS and need no availability check).
+  if (!IS_WINDOWS && !exec('which lsof')) {
     console.error('[dev] lsof not found. Install it or free port 3000 manually.');
     process.exit(1);
   }

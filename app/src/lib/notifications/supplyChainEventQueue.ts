@@ -1,3 +1,12 @@
+import {
+    deliveryChainForPreset,
+    firstAvailableDeliveryChannel,
+    isFallbackRoutingPreset,
+    isNotificationRoutingPreset,
+    resolveNotificationRoutingPreset,
+} from '@/lib/notifications/routing'
+import { isSingleCreatorSource, ownerEmailFromPayload, ownerPhoneFromPayload, resolveRecipientTargets } from '@/lib/notifications/orderOwnerNotify'
+
 const DEFAULT_CHANNELS = ['whatsapp', 'sms', 'email'] as const
 const DEFAULT_PUBLIC_BASE_URL = 'https://app.serapod2u.com'
 
@@ -90,37 +99,47 @@ export async function queueNotificationEvent(supabase: SupabaseLikeClient, input
         .eq('event_code', eventCode)
         .maybeSingle()
 
-    const routingPreset = rawSetting?.recipient_config?.routing?.preset as string | undefined
+    const routingPreset = resolveNotificationRoutingPreset(rawSetting)
     let channels: readonly string[] = DEFAULT_CHANNELS
 
     if (rawSetting && rawSetting.enabled === false) {
         return { queuedCount: 0, skippedReason: 'disabled_or_no_provider' as const, errors: [] }
     }
 
-    if (routingPreset === 'whatsapp_email_fallback') {
+    if (isNotificationRoutingPreset(routingPreset) && isFallbackRoutingPreset(routingPreset)) {
+        const chain = deliveryChainForPreset(routingPreset)
         const { data: activeProviders } = await supabase
             .from('notification_provider_configs')
             .select('channel, provider_name')
             .eq('org_id', orgId)
             .eq('is_active', true)
-            .in('channel', ['whatsapp', 'email'])
+            .in('channel', chain)
 
-        const whatsappProvider = activeProviders?.find((provider: any) => provider.channel === 'whatsapp')
-        const emailProvider = activeProviders?.find((provider: any) => provider.channel === 'email')
+        const providerByChannel = new Map(
+            (activeProviders || []).map((provider: any) => [provider.channel, provider.provider_name]),
+        )
+        const firstAvailable = firstAvailableDeliveryChannel(routingPreset, providerByChannel.keys())
 
-        // A fallback route starts with exactly one channel. If WhatsApp is unavailable,
-        // queue Email directly instead of silently dropping the notification.
-        if (!whatsappProvider && emailProvider) {
+        // A fallback route starts with exactly one channel. If the first hop
+        // has no provider, queue the next available hop instead of dropping it.
+        if (!firstAvailable) {
+            return { queuedCount: 0, skippedReason: 'disabled_or_no_provider' as const, errors: [] }
+        }
+
+        if (firstAvailable !== chain[0]) {
+            const targets = resolveRecipientTargets(eventCode, rawSetting?.recipient_config)
+            const ownerPhone = targets.order_creator ? ownerPhoneFromPayload(payload) : null
+            const ownerEmail = targets.order_creator ? ownerEmailFromPayload(payload) : null
             const { data, error } = await supabase.from('notifications_outbox').insert({
                 org_id: orgId,
                 event_code: eventCode,
-                channel: 'email',
-                to_phone: null,
-                to_email: null,
+                channel: firstAvailable,
+                to_phone: firstAvailable === 'email' ? null : ownerPhone,
+                to_email: firstAvailable === 'email' ? ownerEmail : null,
                 template_code: null,
-                payload_json: { ...payload, _routing_fallback: 'whatsapp_unavailable' },
+                payload_json: { ...payload, _routing_fallback: `${chain[0]}_unavailable` },
                 priority,
-                provider_name: emailProvider.provider_name,
+                provider_name: providerByChannel.get(firstAvailable),
                 status: 'queued',
                 retry_count: 0,
                 max_retries: 3,
@@ -129,11 +148,11 @@ export async function queueNotificationEvent(supabase: SupabaseLikeClient, input
             return {
                 queuedCount: data ? 1 : 0,
                 skippedReason: data ? null : 'disabled_or_no_provider' as const,
-                errors: error ? [`email: ${error.message}`] : [],
+                errors: error ? [`${firstAvailable}: ${error.message}`] : [],
             }
         }
 
-        channels = ['whatsapp']
+        channels = [chain[0]]
     } else if (routingPreset === 'whatsapp_only') {
         channels = ['whatsapp']
     } else if (routingPreset === 'email_only') {
@@ -144,19 +163,25 @@ export async function queueNotificationEvent(supabase: SupabaseLikeClient, input
 
     let queuedCount = 0
     const errors: string[] = []
+    const targets = resolveRecipientTargets(eventCode, rawSetting?.recipient_config)
+    const ownerPhone = targets.order_creator ? ownerPhoneFromPayload(payload) : null
+    const ownerEmail = targets.order_creator ? ownerEmailFromPayload(payload) : null
 
     for (const channel of channels) {
         const wantsPhone = channel === 'sms' || channel === 'whatsapp'
-        const recipientPhone = wantsPhone && channel === 'sms'
-            ? String(payload.customer_phone || payload.contact_phone || payload.phone || '').trim() || null
+        const recipientPhone = wantsPhone
+            ? (ownerPhone || (channel === 'sms' && !targets.order_creator
+                ? String(payload.customer_phone || payload.contact_phone || payload.phone || '').trim() || null
+                : null))
             : null
+        const recipientEmail = channel === 'email' ? ownerEmail : null
 
         const { data, error } = await supabase.rpc('queue_notification', {
             p_org_id: orgId,
             p_event_code: eventCode,
             p_channel: channel,
             p_recipient_phone: recipientPhone,
-            p_recipient_email: null,
+            p_recipient_email: recipientEmail,
             p_template_code: null,
             p_payload: payload,
             p_priority: priority,
@@ -185,7 +210,7 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
 
     const { data: order, error: orderError } = await supabase
         .from('orders')
-        .select('id, order_no, display_doc_no, order_type, buyer_org_id, seller_org_id, created_at, approved_at, approved_by, updated_at, notes, status, units_per_case')
+        .select('id, order_no, display_doc_no, order_type, company_id, buyer_org_id, seller_org_id, created_at, created_by, approved_at, approved_by, updated_at, notes, status, units_per_case')
         .eq('id', orderId)
         .single()
 
@@ -193,7 +218,7 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
         throw new Error(orderError?.message || 'Order not found')
     }
 
-    const [{ data: items, error: itemsError }, { data: orgs, error: orgsError }] = await Promise.all([
+    const [{ data: items, error: itemsError }, { data: orgs, error: orgsError }, { data: creator }] = await Promise.all([
         supabase
             .from('order_items')
             .select('qty, unit_price, units_per_case, line_total, products(product_name), product_variants(variant_name)')
@@ -202,6 +227,9 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
             .from('organizations')
             .select('id, org_name, contact_phone, address, contact_name')
             .in('id', [order.buyer_org_id, order.seller_org_id].filter(Boolean)),
+        order.created_by
+            ? supabase.from('users').select('full_name, email, phone').eq('id', order.created_by).maybeSingle()
+            : Promise.resolve({ data: null }),
     ])
 
     if (itemsError) throw new Error(itemsError.message)
@@ -240,6 +268,11 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
         buyer_org: orgNameById.get(order.buyer_org_id) || '',
         seller_org: orgNameById.get(order.seller_org_id) || '',
         customer_name: customerName,
+        created_by: creator?.full_name || creator?.email || 'Unknown',
+        User: creator?.full_name || creator?.email || 'Unknown',
+        created_by_id: order.created_by || null,
+        created_by_phone: String(creator?.phone || '').trim() || '',
+        created_by_email: String(creator?.email || '').trim() || '',
         customer_phone: customerPhone,
         delivery_address: deliveryAddress,
         amount: formatAmount(totalAmount),
@@ -276,7 +309,7 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
 
     return {
         order,
-        orgId: order.buyer_org_id || null,
+        orgId: order.company_id || order.seller_org_id || order.buyer_org_id || null,
         payload,
     }
 }

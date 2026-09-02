@@ -5,10 +5,12 @@ import { isAdminUser, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_u
 import { toSmsE164 } from '@/lib/notifications/manualPhoneNumbers'
 import {
   LOCAL_MY_SMS_PROVIDER,
+  VONAGE_SMS_PROVIDER,
   localSmsConfigFromParts,
   parseSmsProviderSecrets,
   recordSmsDelivery,
   sendLocalMalaysianSms,
+  sendVonageSms,
 } from '@/lib/notifications/sms-send'
 
 // Normalize phone number for Baileys (Malaysia preferred)
@@ -57,58 +59,93 @@ export async function POST(request: NextRequest) {
     }
 
     const requestedProvider = typeof provider === 'string' ? provider.trim() : ''
-    if (requestedProvider && requestedProvider !== LOCAL_MY_SMS_PROVIDER) {
-      return NextResponse.json({
-        error: 'Only Local Malaysian Provider is implemented for SMS testing',
-      }, { status: 400 })
-    }
-
     const formConfig = (config && typeof config === 'object') ? config as Record<string, any> : {}
     const formSecrets = (credentials && typeof credentials === 'object') ? credentials as Record<string, any> : {}
-
-    let publicConfig = { ...formConfig }
-    let secrets = { ...formSecrets }
-
-    const needsSavedFallback = !String(publicConfig.api_endpoint || '').trim()
-      || !String(publicConfig.api_username || '').trim()
-      || !String(secrets.api_password || publicConfig.api_password || '').trim()
-
-    if (needsSavedFallback) {
-      const { data: saved } = await supabase
-        .from('notification_provider_configs')
-        .select('provider_name, config_public, config_encrypted, is_active')
-        .eq('org_id', profile.organization_id)
-        .eq('channel', 'sms')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (!saved) {
-        return NextResponse.json({ error: 'No active SMS provider is configured. Save Local Malaysian Provider first.' }, { status: 400 })
-      }
-      if (saved.provider_name !== LOCAL_MY_SMS_PROVIDER) {
-        return NextResponse.json({
-          error: 'Only Local Malaysian Provider is implemented for SMS testing',
-        }, { status: 400 })
-      }
-
-      const savedPublic = (saved.config_public && typeof saved.config_public === 'object')
-        ? saved.config_public as Record<string, any>
-        : {}
-      const savedSecrets = parseSmsProviderSecrets(saved.config_encrypted)
-      publicConfig = { ...savedPublic, ...formConfig }
-      secrets = { ...savedSecrets, ...formSecrets }
-    }
-
-    const smsConfig = localSmsConfigFromParts(publicConfig, secrets)
     const message = typeof body.message === 'string' && body.message.trim()
       ? body.message.trim()
-      : 'This is a test message from Serapod2u Notification Settings.'
+      : 'SMS Gateway configuration test'
     const formatted = toSmsE164(String(to))
     if (!('e164' in formatted)) {
       return NextResponse.json({ error: `Invalid phone number: ${formatted.reason}` }, { status: 400 })
     }
+
+    const { data: saved } = await supabase
+      .from('notification_provider_configs')
+      .select('provider_name, config_public, config_encrypted, is_active')
+      .eq('org_id', profile.organization_id)
+      .eq('channel', 'sms')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const providerName = requestedProvider || saved?.provider_name || ''
+    const savedPublic = (saved?.config_public && typeof saved.config_public === 'object')
+      ? saved.config_public as Record<string, any>
+      : {}
+    const savedSecrets = parseSmsProviderSecrets(saved?.config_encrypted)
+    const publicConfig = { ...savedPublic, ...formConfig }
+    const secrets = { ...savedSecrets, ...formSecrets }
+
+    if (providerName === VONAGE_SMS_PROVIDER) {
+      const sent = await sendVonageSms({
+        apiKey: String(secrets.api_key || publicConfig.api_key || ''),
+        apiSecret: String(secrets.api_secret || publicConfig.api_secret || ''),
+        from: String(publicConfig.from_number || ''),
+        to: formatted.e164,
+        text: message,
+      })
+
+      try {
+        const admin = createAdminClient()
+        await recordSmsDelivery(admin, {
+          orgId: profile.organization_id,
+          to: formatted.e164,
+          eventCode: 'sms_test',
+          result: sent,
+          providerName: VONAGE_SMS_PROVIDER,
+        })
+      } catch (logErr) {
+        console.error('Failed to log SMS test send:', logErr)
+      }
+
+      if (!sent.success || !sent.messageId) {
+        return NextResponse.json({
+          error: sent.error || 'Vonage SMS test failed: missing messageUUID',
+          data: sent.providerResponse,
+        }, { status: 400 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Test SMS accepted by Vonage Messages API.',
+        to: formatted.e164,
+        message_id: sent.messageId,
+        status: sent.gatewayStatus || 'accepted',
+        data: sent.providerResponse,
+        provider_id: sent.messageId,
+        provider: VONAGE_SMS_PROVIDER,
+      })
+    }
+
+    if (requestedProvider && requestedProvider !== LOCAL_MY_SMS_PROVIDER) {
+      return NextResponse.json({
+        error: 'Only Local Malaysian Provider and Vonage are implemented for SMS testing',
+      }, { status: 400 })
+    }
+
+    if (!saved && (!String(publicConfig.api_endpoint || '').trim()
+      || !String(publicConfig.api_username || '').trim()
+      || !String(secrets.api_password || publicConfig.api_password || '').trim())) {
+      return NextResponse.json({ error: 'No active SMS provider is configured. Save a provider first.' }, { status: 400 })
+    }
+    if (saved && saved.provider_name !== LOCAL_MY_SMS_PROVIDER && providerName !== LOCAL_MY_SMS_PROVIDER) {
+      return NextResponse.json({
+        error: 'Only Local Malaysian Provider and Vonage are implemented for SMS testing',
+      }, { status: 400 })
+    }
+
+    const smsConfig = localSmsConfigFromParts(publicConfig, secrets)
     const sent = await sendLocalMalaysianSms(smsConfig, formatted.e164, message)
 
     try {
@@ -118,21 +155,29 @@ export async function POST(request: NextRequest) {
         to: formatted.e164,
         eventCode: 'sms_test',
         result: sent,
+        providerName: LOCAL_MY_SMS_PROVIDER,
       })
     } catch (logErr) {
       console.error('Failed to log SMS test send:', logErr)
     }
 
-    if (!sent.success) {
-      return NextResponse.json({ error: sent.error || 'SMS gateway test failed', data: sent.providerResponse }, { status: 400 })
+    if (!sent.success || !sent.messageId) {
+      return NextResponse.json({
+        error: sent.error || 'SMS gateway test failed: missing message_id',
+        data: sent.providerResponse,
+      }, { status: 400 })
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Test SMS sent via Local Malaysian Provider',
+      message: 'Test SMS accepted by sms-gateway. Waiting for sms:sent / sms:delivered / sms:failed webhooks.',
       to: formatted.e164,
+      message_id: sent.messageId,
+      external_id: sent.externalId || null,
+      status: sent.gatewayStatus || 'accepted',
+      awaiting_webhooks: ['sms:sent', 'sms:delivered', 'sms:failed'],
       data: sent.providerResponse,
-      provider_id: sent.messageId || null,
+      provider_id: sent.messageId,
     })
   } catch (error: any) {
     console.error('Test API error:', error)

@@ -32,6 +32,9 @@ export default function NotificationsTopNav({ currentView, onNavigate }: Notific
                 currentView === 'notifications/sms-activity'
                 || currentView === 'settings/notifications/sms-activity'
                 || currentView === 'sms-activity'
+                || currentView === 'notifications/email-activity'
+                || currentView === 'settings/notifications/email-activity'
+                || currentView === 'email-activity'
               ))
           return (
             <button
