@@ -16,48 +16,48 @@ describe('Create Order variant presentation', () => {
   describe('Select Variant option', () => {
     it('drops the packaging words and appends the variant Product Code', () => {
       expect(variantSelectorLabel('Deluxe Cellera Cartridge [ Hazelnut ]', 'HA'))
-        .toBe('Deluxe [ Hazelnut ] - HA')
+        .toBe('Deluxe Hazelnut – HA')
       expect(variantSelectorLabel('Fruity Cellera Cartridge [ Grape ]', 'GR'))
-        .toBe('Fruity [ Grape ] - GR')
+        .toBe('Fruity Grape – GR')
       expect(variantSelectorLabel('Deluxe Cellera Cartridge [ Banana Vanilla ]', 'BV'))
-        .toBe('Deluxe [ Banana Vanilla ] - BV')
+        .toBe('Deluxe Banana Vanilla – BV')
     })
 
     it('derives the short range name instead of hard-coding it', () => {
       expect(variantShortName('Fruity Cellera Cartridges [ Lychee Blackcurrant ]'))
-        .toBe('Fruity [ Lychee Blackcurrant ]')
+        .toBe('Fruity Lychee Blackcurrant')
       expect(variantShortName('Signature Cellera Cartridge [ Mint ]'))
-        .toBe('Signature [ Mint ]')
+        .toBe('Signature Mint')
     })
 
     it('keeps a readable name for variants outside the Cellera pattern', () => {
-      expect(variantSelectorLabel('Durian', 'DU')).toBe('Durian - DU')
+      expect(variantSelectorLabel('Durian', 'DU')).toBe('Durian – DU')
       expect(variantShortName('SERAPOD SONAR NEO')).toBe('SERAPOD SONAR NEO')
       // The packaging phrase alone would leave nothing to read.
       expect(variantShortName('Cellera Cartridge')).toBe('Cellera Cartridge')
-      expect(variantShortName(null)).toBe('[ No variant ]')
+      expect(variantShortName(null)).toBe('No variant')
     })
 
     it('keeps the attribute text master data carries', () => {
       expect(variantSelectorLabel('Deluxe Cellera Cartridge [ Hazelnut ]', 'HA', '5%'))
-        .toBe('Deluxe [ Hazelnut ] (5%) - HA')
+        .toBe('Deluxe Hazelnut (5%) – HA')
       expect(variantSelectorLabel('Deluxe Cellera Cartridge [ Hazelnut ]', 'HA', ''))
-        .toBe('Deluxe [ Hazelnut ] - HA')
+        .toBe('Deluxe Hazelnut – HA')
     })
 
     it('ends at the name when the variant has no Product Code', () => {
       const label = variantSelectorLabel('Deluxe Cellera Cartridge [ Hazelnut ]', null)
-      expect(label).toBe('Deluxe [ Hazelnut ]')
+      expect(label).toBe('Deluxe Hazelnut')
       expect(label.endsWith('-')).toBe(false)
       expect(variantSelectorLabel('Deluxe Cellera Cartridge [ Hazelnut ]', '   '))
-        .toBe('Deluxe [ Hazelnut ]')
+        .toBe('Deluxe Hazelnut')
     })
   })
 
   describe('selected product card', () => {
     it('keeps the full variant name and bullets the variant Product Code', () => {
       expect(variantNameWithProductCodeBullet('Deluxe Cellera Cartridge [ Hazelnut ]', 'HA'))
-        .toBe('Deluxe Cellera Cartridge [ Hazelnut ] • HA')
+        .toBe('Deluxe Cellera Cartridge [ Hazelnut ] – HA')
     })
 
     it('renders no dangling bullet when the Product Code is missing', () => {
@@ -71,14 +71,14 @@ describe('Create Order variant presentation', () => {
   describe('Order Summary line', () => {
     it('reduces the variant to its flavour plus the variant Product Code', () => {
       expect(variantIdentityLabel('Deluxe Cellera Cartridge [ Hazelnut ]', 'HA'))
-        .toBe('[ Hazelnut ] - HA')
+        .toBe('Hazelnut – HA')
       expect(variantIdentityLabel('Fruity Cellera Cartridge [ Grape ]', 'GR'))
-        .toBe('[ Grape ] - GR')
+        .toBe('Grape – GR')
     })
 
     it('shows the flavour alone when the Product Code is missing', () => {
       expect(variantIdentityLabel('Deluxe Cellera Cartridge [ Hazelnut ]', null))
-        .toBe('[ Hazelnut ]')
+        .toBe('Hazelnut')
     })
   })
 

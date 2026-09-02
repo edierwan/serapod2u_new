@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { resolveOrganizationLogoUrl } from '@/lib/organizations/logo'
+import { resolveOrganizationTerms } from '@/lib/organizations/terms'
 import { resolveUserSignatureUrl } from '@/lib/users/signature'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -488,6 +489,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   // the canonical resolver rebuilds it against the configured storage host.
   const headerOrgLogoUrl = resolveOrganizationLogoUrl(headerOrg?.logo_url)
   const companySignatureUrl = resolveOrganizationLogoUrl(headerOrg?.signature_url)
+  const orderTerms = resolveOrganizationTerms(headerOrg)
   const headerOrgInitials = String(headerOrg?.org_name || '')
     .split(/\s+/)
     .filter(Boolean)
@@ -653,12 +655,6 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                 <span className="text-[var(--sera-muted)]">{docNoLabel}</span>
                 <span className="font-medium text-gray-900">{orderData.display_doc_no || orderData.order_no}</span>
               </div>
-              {orderData.display_doc_no && (
-                <div className="flex justify-between gap-4">
-                  <span className="text-[var(--sera-muted)]">Legacy#:</span>
-                  <span className="font-medium text-gray-400 text-[10px]">{orderData.order_no}</span>
-                </div>
-              )}
               <div className="flex justify-between gap-4">
                 <span className="text-[var(--sera-muted)]">Date:</span>
                 <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
@@ -767,6 +763,16 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             </tfoot>
           </table>
         </div>
+
+        {/* Terms & Conditions - the organization's own value, rendered verbatim */}
+        {orderTerms && (
+          <div className="mt-10 print:mt-6">
+            <h3 className="font-bold text-gray-900 mb-3 text-sm">Terms &amp; Conditions</h3>
+            <p className="text-xs text-[var(--sera-muted)] leading-relaxed whitespace-break-spaces">
+              {orderTerms}
+            </p>
+          </div>
+        )}
 
         {/* Footer Notes & Signature */}
         <div className="mt-12 pt-8 print:mt-4 print:pt-4 border-t border-gray-100 break-inside-avoid page-break-inside-avoid">

@@ -20,15 +20,15 @@ const dashboardContent = repoFile('app/src/components/dashboard/DashboardContent
 /* ------------------------------------------------------------------ Issue 1 */
 
 describe('Inventory Settings — Product / Variant identity line', () => {
-  it('renders the bracketed flavour plus the variant Product Code', () => {
+  it('renders the flavour plus the variant Product Code', () => {
     expect(variantIdentityLabel('Fruity Cellera Cartridge [ Lychee Blackcurrant ]', 'LB'))
-      .toBe('[ Lychee Blackcurrant ] - LB')
+      .toBe('Lychee Blackcurrant – LB')
   })
 
   it('shows the flavour alone when the variant Product Code is blank, never the variant_code', () => {
     for (const missing of [null, undefined, '', '   ']) {
       const label = variantIdentityLabel('Fruity Cellera Cartridge [ Lychee Blackcurrant ]', missing)
-      expect(label).toBe('[ Lychee Blackcurrant ]')
+      expect(label).toBe('Lychee Blackcurrant')
       expect(label).not.toContain('FRU-620900')
     }
   })

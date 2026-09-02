@@ -133,7 +133,7 @@ describe('Inventory Settings — concentration stock eligibility', () => {
 describe('Inventory Settings — variant display formatting', () => {
   it('appends the variant Product Code with a dash separator', () => {
     expect(variantNameWithProductCode('Deluxe Cellera Cartridge [ Strawberry Corn ]', 'SC'))
-      .toBe('Deluxe Cellera Cartridge [ Strawberry Corn ] - SC')
+      .toBe('Deluxe Cellera Cartridge [ Strawberry Corn ] – SC')
   })
 
   it('shows the variant name alone when the Product Code is null or blank', () => {
