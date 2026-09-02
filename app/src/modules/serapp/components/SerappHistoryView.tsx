@@ -68,7 +68,13 @@ function orderStatusLabel(status: string) {
 
 function dashboardOrderHref(orderId: string, preferOrdersList = false) {
   const view = preferOrdersList ? 'orders' : 'view-order'
-  return `/dashboard?view=${view}&order_id=${encodeURIComponent(orderId)}`
+  const params = new URLSearchParams({
+    view,
+    order_id: orderId,
+    from: 'serapp',
+    return: '/serapp/history',
+  })
+  return `/dashboard?${params.toString()}`
 }
 
 export default function SerappHistoryView() {

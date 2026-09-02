@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { resolveOrganizationLogoUrl } from '@/lib/organizations/logo'
 import { resolveUserSignatureUrl } from '@/lib/users/signature'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt, Clock, CheckCircle2, Download } from 'lucide-react'
+import { ArrowLeft, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt, Clock, CheckCircle2, Download, MessageCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
@@ -59,6 +60,11 @@ function mergeOrderActor(
 }
 
 export default function ViewOrderDetailsView({ userProfile, onViewChange, orderId }: ViewOrderDetailsViewProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const serappReturnPath = searchParams.get('from') === 'serapp'
+    ? (searchParams.get('return') || '/serapp/history')
+    : null
   const [orderData, setOrderData] = useState<any>(null)
   const [journeyData, setJourneyData] = useState<any>(null)
   const [qrStats, setQrStats] = useState<any>(null)
@@ -484,6 +490,18 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
   const handleBack = () => {
     sessionStorage.removeItem('viewOrderId')
+    if (serappReturnPath) {
+      router.push(serappReturnPath)
+      return
+    }
+    window.history.replaceState({}, '', '/supply-chain')
+    if (onViewChange) {
+      onViewChange('orders')
+    }
+  }
+
+  const handleBackToOrders = () => {
+    sessionStorage.removeItem('viewOrderId')
     window.history.replaceState({}, '', '/supply-chain')
     if (onViewChange) {
       onViewChange('orders')
@@ -531,8 +549,17 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       <div className="text-center py-12">
         <p className="text-[var(--sera-muted)]">Order not found</p>
         <Button onClick={handleBack} className="mt-4">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Orders
+          {serappReturnPath ? (
+            <>
+              <MessageCircle className="w-4 h-4 mr-2" />
+              Back to Serapp
+            </>
+          ) : (
+            <>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Orders
+            </>
+          )}
         </Button>
       </div>
     )
@@ -615,14 +642,36 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       {/* Action Bar */}
       <div className="bg-white border-b border-gray-200 mb-0 print:hidden">
         <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
-          <Button
-            variant="ghost"
-            onClick={handleBack}
-            className="self-start hover:bg-gray-100 -ml-2 shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Orders
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {serappReturnPath ? (
+              <>
+                <Button
+                  onClick={handleBack}
+                  className="self-start shrink-0 gap-2 bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)]"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Back to Serapp
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleBackToOrders}
+                  className="self-start hover:bg-gray-100 -ml-2 shrink-0"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Orders
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={handleBack}
+                className="self-start hover:bg-gray-100 -ml-2 shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Orders
+              </Button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             {/* Receipt Button - Only show for D2H orders that are approved */}
             {(orderData?.order_type === 'D2H' || orderData?.order_type === 'DH') && orderData?.status === 'approved' && (
