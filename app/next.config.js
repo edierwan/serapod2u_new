@@ -134,12 +134,29 @@ const nextConfig = {
     'pdfkit',
     'googleapis',
     'qrcode',
+    '@vonage/server-sdk',
+    '@vonage/messages',
   ],
 
   experimental: {
     optimizeCss: true,
     // Keep production builds responsive on the shared staging VPS.
     cpus: 2,
+  },
+
+  async redirects() {
+    return [
+      {
+        source: '/serapp-sw.js',
+        destination: '/sw.js',
+        permanent: false,
+      },
+      {
+        source: '/serapp/sw.js',
+        destination: '/sw.js',
+        permanent: false,
+      },
+    ]
   },
 
   async headers() {
@@ -153,7 +170,20 @@ const nextConfig = {
           },
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: 'public, max-age=86400',
+          },
+        ],
+      },
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, must-revalidate',
           },
         ],
       },

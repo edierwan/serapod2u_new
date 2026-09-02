@@ -94,7 +94,13 @@ describe('NotificationTypesTab', () => {
 
     await screen.findByRole('heading', { name: 'Notification Types' })
     await userEvent.click(screen.getAllByRole('button', { name: /Email Only/ })[0])
-    expect(screen.getAllByText('Send all notifications via Email.').length).toBeGreaterThan(1)
+    // Choosing a different default asks for confirmation first, and the prompt
+    // spells out the route being moved to. The guidance now reads as one
+    // sentence rather than a repeated standalone line, so this matches the
+    // dialog's text instead of counting duplicate nodes.
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog.textContent).toContain('Email Only')
+    expect(dialog.textContent).toContain('Send all notifications via Email.')
   })
 
   it('shows Stock Count verification under Inventory & Stock as email-only', async () => {

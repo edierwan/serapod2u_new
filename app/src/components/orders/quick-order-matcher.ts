@@ -15,11 +15,35 @@ export interface MatchableVariant {
   pricing_status?: 'priced' | 'price_missing'
 }
 
-export type PasteMatchStatus = 'matched' | 'alternative_match' | 'smart_match' | 'suggestion' | 'ambiguous' | 'not_found' | 'invalid_quantity' | 'duplicate'
+export type PasteMatchStatus =
+  | 'matched'
+  | 'alternative_match'
+  | 'smart_match'
+  | 'suggestion'
+  | 'ambiguous'
+  | 'not_found'
+  | 'invalid_quantity'
+  /** Product identified but pasted line has no quantity (e.g. "Orange-"). */
+  | 'missing_quantity'
+  | 'duplicate'
+  /** Standalone HERO / ZERO (etc.) section title — not an order line. */
+  | 'section_header'
+  /** HERO/ZERO appeared with a quantity — ambiguous intent; needs human review. */
+  | 'requires_review'
 
 export type PasteMatchMethod = 'code_or_sku' | 'exact_name' | 'bracket_flavour' | 'alternative_name' | 'keyword' | 'fuzzy'
 
 export type PasteInventoryOutcome = 'matched' | 'price_not_set' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
+
+/** Canonical Master Data product families used as paste section scopes. */
+export const SECTION_PRODUCT_LINES = {
+  hero: 'Cellera Hero',
+  zero: 'Cellera Zero',
+} as const
+
+export type SectionProductLine =
+  | typeof SECTION_PRODUCT_LINES.hero
+  | typeof SECTION_PRODUCT_LINES.zero
 
 export interface PasteMatchResult {
   /** Running 1-based index across every parsed entry (a physical line may hold several). */
@@ -36,13 +60,74 @@ export interface PasteMatchResult {
   duplicateOfLine?: number
   matchMethod?: PasteMatchMethod
   inventoryOutcome?: PasteInventoryOutcome
+  /**
+   * When status is section_header: the product family this header activates.
+   * When status is a product line under an active header: the section still in force
+   * (for audit / Serapp conversation trail).
+   */
+  sectionProductLine?: SectionProductLine
 }
 
 export const normalizeOrderText = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase()
 
+/** Distributor notes in parentheses, e.g. "Vanilla Potato (Cultured Milk)" → "Vanilla Potato". */
+export const stripParentheticalQualifiers = (value: string): string =>
+  value.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
+
 const trailingWhatsAppMarkers = /(\d)\s*(?:(?:✅|❌|✔\uFE0F?|✖\uFE0F?|☑\uFE0F?)\s*)+$/u
 
 export const stripTrailingWhatsAppMarkers = (value: string) => value.replace(trailingWhatsAppMarkers, '$1').trimEnd()
+
+/** Leading list markers distributors paste from notes, WhatsApp, or sample templates. */
+const LIST_MARKER_CHARS = /^[\s*•·‣◦▪▫\u2022\u2023\u25E6\u25AA\u2219\u2043\-–—]+/u
+const NUMBERED_LIST_PREFIX = /^\s*\d+[.)]\s+/u
+
+export const stripListMarkers = (value: string): string => {
+  let line = value
+  let prev = ''
+  while (line !== prev) {
+    prev = line
+    line = line.replace(LIST_MARKER_CHARS, '')
+    line = line.replace(NUMBERED_LIST_PREFIX, '')
+  }
+  return line
+}
+
+/** Drop trailing separators distributors leave when qty is missing (e.g. "Orange-"). */
+export const cleanPasteSegmentName = (value: string): string =>
+  value.replace(/[-–—:=]+\s*$/u, '').trim()
+
+const INVALID_QTY_TAIL = /\s[-–—:=]+\s*(zero|none|nil|n\/a|na)\s*$/i
+
+/** Detect lines like "MANGO - zero" where qty text is present but not numeric. */
+export const splitInvalidQuantityTail = (value: string): { name: string; invalidQuantity: boolean } => {
+  if (!INVALID_QTY_TAIL.test(value)) return { name: value, invalidQuantity: false }
+  return { name: value.replace(INVALID_QTY_TAIL, '').trim(), invalidQuantity: true }
+}
+
+/** Distributor template rows (not products): "Available line up:", "per box", etc. */
+const PASTE_TEMPLATE_HEADER = /^(?:available\s+line\s*up|line\s*up|per\s+(?:box|case|carton|ctn|pcs?)|price\s*list|product\s*list|flavour\s*list|flavor\s*list)\s*:?\s*$/i
+
+/** Distributor paste noise: totals, brand headers, company title rows — not products. */
+export const shouldSkipPastePhysicalLine = (line: string): boolean => {
+  const trimmed = stripListMarkers(line).trim()
+  if (!trimmed) return true
+  if (/^total\s*[=:]/i.test(trimmed)) return true
+  if (/^serapod\s*$/i.test(trimmed)) return true
+  const withoutTrailingColon = trimmed.replace(/:\s*$/, '')
+  if (PASTE_TEMPLATE_HEADER.test(withoutTrailingColon)) return true
+  const normalizedHeader = normalizeOrderText(withoutTrailingColon)
+  if (PASTE_TITLE_ROW.test(normalizedHeader)) return true
+  if (SECTION_HEADER_ALIASES.has(normalizedHeader)) return false
+  if (!/\d/.test(trimmed) && !/[-–—:=\t]/.test(trimmed)) {
+    const headerCandidate = trimmed.replace(/^\(([^)]+)\)$/, '$1').trim()
+    const normalized = normalizeOrderText(headerCandidate)
+    if (SECTION_HEADER_ALIASES.has(normalized)) return false
+    // e.g. "nfy Tech" — title row, not a product line.
+    if (/[a-z]/.test(trimmed)) return true
+  }
+  return false
+}
 
 // Unicode dash variants (en/em/figure/quotation/minus) that users paste from
 // phones and spreadsheets. All are single code points, so replacing them keeps
@@ -81,10 +166,12 @@ interface OrderToken {
 // off as a quantity. When the full matched slice is itself an authorized Product
 // Code/SKU (for example "SKU-77"), the trailing digits stay part of the code and
 // the real quantity is read from the text that follows it.
+const QTY_UNITS_REGEX = String.raw`(?:PCS?|PIECES?|UNITS?|CASES?|BOX(?:ES)?|CTN|CARTONS?|KOTAK)`
+
 const tokenizeChunk = (chunk: string, codeSet: Set<string>): OrderToken[] => {
   const tokens: OrderToken[] = []
-  const entry = /\s*(.+?)\s*(?:[-:=]+\s*|\t+\s*|\s+)(\d+)(?:\s*(?:PCS?|PIECES?|UNITS?))?(?=\s|$)/iy
-  const trailingQuantity = /^\s*(?:[-:=]+\s*)?(\d+)(?:\s*(?:PCS?|PIECES?|UNITS?))?(?=\s|$)/i
+  const entry = new RegExp(String.raw`\s*(.+?)\s*(?:[-:=]+\s*|\t+\s*|\s+)(\d+)(?:\s*${QTY_UNITS_REGEX})?(?=\s|$)`, 'iy')
+  const trailingQuantity = new RegExp(String.raw`^\s*(?:[-:=]+\s*)?(\d+)(?:\s*${QTY_UNITS_REGEX})?(?=\s|$)`, 'i')
   let pos = 0
 
   while (pos < chunk.length) {
@@ -129,7 +216,8 @@ interface ParsedSegment {
 // segments. `raw` is sliced from the untouched original (including its trailing
 // status emoji) so the pasted text is preserved for audit/display.
 const parsePhysicalLine = (original: string, sourceLine: number, codeSet: Set<string>): ParsedSegment[] => {
-  const work = normalizeDashes(original)
+  const line = stripListMarkers(original)
+  const work = normalizeDashes(line)
   const emoji = buildStatusEmojiRegex()
   const boundaries: { contentStart: number; contentEnd: number; rawEnd: number }[] = []
   let last = 0
@@ -149,7 +237,7 @@ const parsePhysicalLine = (original: string, sourceLine: number, codeSet: Set<st
       const originalStart = boundary.contentStart + token.localStart
       // The last token in a chunk owns the trailing status emoji for audit display.
       const originalEnd = index === tokens.length - 1 ? boundary.rawEnd : boundary.contentStart + token.localEnd
-      const raw = original.slice(originalStart, originalEnd).trim()
+      const raw = line.slice(originalStart, originalEnd).trim()
       const quantity = token.quantityText && /^\d+$/.test(token.quantityText) ? Number(token.quantityText) : null
       segments.push({ raw, name: token.name, quantity, sourceLine })
     })
@@ -183,8 +271,61 @@ const words = (value: string) => normalizeMatchName(value).split(/[^\p{L}\p{N}]+
 
 const GENERIC_ORDER_WORDS = new Set([
   'SERAPOD', 'CELLERA', 'FRUITY', 'CARTRIDGE', 'VAPE', 'FLAVOUR', 'FLAVOR',
-  'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'UNITS',
+  'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'UNITS', 'CASE', 'CASES', 'BOX', 'BOXES', 'CTN', 'CARTON', 'CARTONS', 'KOTAK',
+  'AVAILABLE', 'AVAIL', 'STOCK', 'STOK',
 ])
+
+/**
+ * Exact normalized titles that act as section headers (no quantity).
+ * Intentionally narrow so flavour lines like "SERAPOD HERO MANGO 4 PCS"
+ * remain product entries, not headers.
+ */
+const SECTION_HEADER_ALIASES = new Map<string, SectionProductLine>([
+  ['HERO', SECTION_PRODUCT_LINES.hero],
+  ['ZERO', SECTION_PRODUCT_LINES.zero],
+  ['CELLERA HERO', SECTION_PRODUCT_LINES.hero],
+  ['CELLERA ZERO', SECTION_PRODUCT_LINES.zero],
+  ['SERAPOD HERO', SECTION_PRODUCT_LINES.hero],
+  ['SERAPOD ZERO', SECTION_PRODUCT_LINES.zero],
+  ['SERAPOD CELLERA HERO', SECTION_PRODUCT_LINES.hero],
+  ['SERAPOD CELLERA ZERO', SECTION_PRODUCT_LINES.zero],
+  ['CELLERA CARTRIDGE', SECTION_PRODUCT_LINES.hero],
+  ['CELLERA HERO CARTRIDGE', SECTION_PRODUCT_LINES.hero],
+  ['FRUITY CELLERA CARTRIDGE', SECTION_PRODUCT_LINES.hero],
+  ['ZERO CARTRIDGE', SECTION_PRODUCT_LINES.zero],
+  ['CELLERA ZERO CARTRIDGE', SECTION_PRODUCT_LINES.zero],
+])
+
+/** Category / title rows distributors paste — never product lines. */
+const PASTE_TITLE_ROW = /^(?:ORDER\s+[\d/.\-]+|SERAPOD\s+S\s+LINE(?:\s+V?\d+)?)\s*$/i
+
+export type SectionHeaderKind = 'section_header' | 'requires_review'
+
+export interface SectionHeaderResolution {
+  kind: SectionHeaderKind
+  productLine: SectionProductLine
+}
+
+/**
+ * Detect HERO / ZERO family section headers.
+ * - No quantity → section_header (scopes following lines).
+ * - With quantity → requires_review (do not auto-ignore; user may mean a product).
+ */
+export function resolveSectionHeader(
+  name: string,
+  quantity: number | null,
+): SectionHeaderResolution | null {
+  const unwrapped = stripListMarkers(name).trim().replace(/^\(([^)]+)\)$/, '$1').trim()
+  const normalized = normalizeOrderText(unwrapped)
+  const productLine = SECTION_HEADER_ALIASES.get(normalized)
+  if (!productLine) return null
+
+  if (quantity !== null && quantity > 0) {
+    return { kind: 'requires_review', productLine }
+  }
+
+  return { kind: 'section_header', productLine }
+}
 
 const flavourNames = (variant: MatchableVariant) => {
   const extracted = bracketFlavours(variant)
@@ -206,6 +347,110 @@ const extractFlavourQuery = (query: string, productLine?: string) => {
   return words(query)
     .filter(word => !GENERIC_ORDER_WORDS.has(word) && !productWords.has(word))
     .join(' ')
+}
+
+const compactMatchName = (value: string) => normalizeMatchName(value).replace(/\s+/g, '')
+
+const flavourWordBag = (flavour: string) => words(flavour)
+  .filter(word => !GENERIC_ORDER_WORDS.has(word))
+  .sort()
+  .join(' ')
+
+const queryWordBag = (query: string, productLine?: string) => {
+  const baseQuery = stripParentheticalQualifiers(query)
+  const flavourQuery = extractFlavourQuery(baseQuery, productLine) || normalizeMatchName(baseQuery)
+  return words(flavourQuery)
+    .filter(word => !GENERIC_ORDER_WORDS.has(word))
+    .sort()
+    .join(' ')
+}
+
+/** All catalog flavour words appear in the pasted query (after stripping parenthetical notes). */
+const fullContainmentScore = (
+  query: string,
+  variant: MatchableVariant,
+  productLine?: string,
+): number => {
+  const baseQuery = stripParentheticalQualifiers(query)
+  const queryWordSet = new Set(
+    words(extractFlavourQuery(baseQuery, productLine) || normalizeMatchName(baseQuery))
+      .filter(word => !GENERIC_ORDER_WORDS.has(word)),
+  )
+  if (queryWordSet.size === 0) return 0
+
+  return Math.max(...flavourNames(variant).map((flavour) => {
+    const flavourWordList = words(flavour).filter(word => !GENERIC_ORDER_WORDS.has(word))
+    if (flavourWordList.length === 0) return 0
+    const fullyContained = flavourWordList.every(word => queryWordSet.has(word))
+    return fullyContained ? flavourWordList.length : 0
+  }))
+}
+
+/** When several keyword hits exist, auto-select the one whose full flavour is in the paste. */
+const pickUniqueFullContainmentWinner = (
+  candidates: MatchableVariant[],
+  query: string,
+  productLine?: string,
+): MatchableVariant | undefined => {
+  const scored = candidates
+    .map(variant => ({ variant, score: fullContainmentScore(query, variant, productLine) }))
+    .filter(entry => entry.score > 0)
+  if (scored.length === 0) return undefined
+
+  const maxScore = Math.max(...scored.map(entry => entry.score))
+  const winners = scored.filter(entry => entry.score === maxScore)
+  return winners.length === 1 ? winners[0].variant : undefined
+}
+
+/**
+ * True when the pasted flavour words exactly match a catalog flavour (any order).
+ * Used for Peach Mango ↔ Mango Peach, exact Strawberry Vanilla, etc.
+ */
+const isExactFlavourWordBagMatch = (
+  query: string,
+  variant: MatchableVariant,
+  productLine?: string,
+): boolean => {
+  const bag = queryWordBag(query, productLine)
+  if (!bag) return false
+  return flavourNames(variant).some(flavour => flavourWordBag(flavour) === bag)
+}
+
+const wordsMatchRegardlessOfOrder = isExactFlavourWordBagMatch
+
+const matchesAlternativeCompact = (query: string, variant: MatchableVariant, productLine?: string): boolean => {
+  const queryCompact = compactMatchName(extractFlavourQuery(query, productLine) || query)
+  const alt = exactAlternativeName(variant)
+  if (!queryCompact || queryCompact.length < 4 || !alt) return false
+  return alt.replace(/\s+/g, '') === queryCompact
+}
+
+const isStrongFuzzySingleMatch = (query: string, variant: MatchableVariant, productLine?: string): boolean => {
+  const flavourQuery = extractFlavourQuery(query, productLine) || normalizeMatchName(query)
+  return fuzzyScore(flavourQuery, variant) >= 0.82
+}
+
+const isStrongSingleCandidateMatch = (
+  query: string,
+  variant: MatchableVariant,
+  method?: PasteMatchMethod,
+  productLine?: string,
+): boolean => {
+  if (isExactFlavourWordBagMatch(query, variant, productLine)) return true
+  if (matchesAlternativeCompact(query, variant, productLine)) return true
+  if ((method === 'fuzzy' || method === 'keyword') && isStrongFuzzySingleMatch(query, variant, productLine)) return true
+  return false
+}
+
+/** One catalog hit and the pasted flavour words match exactly — safe to auto-select. */
+const isObviousSingleCatalogMatch = (
+  query: string,
+  candidates: MatchableVariant[],
+  totalMatches: number,
+  productLine?: string,
+): MatchableVariant | undefined => {
+  if (candidates.length !== 1 || totalMatches !== 1 || !candidates[0]) return undefined
+  return isExactFlavourWordBagMatch(query, candidates[0], productLine) ? candidates[0] : undefined
 }
 
 const relevanceScore = (query: string, variant: MatchableVariant) => {
@@ -278,20 +523,38 @@ const resolveBracketedIdentifier = (name: string, variants: MatchableVariant[]) 
   return []
 }
 
-export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) {
+export function resolveCatalogMatch(
+  name: string,
+  variants: MatchableVariant[],
+  /**
+   * When set (active paste section), matching is restricted to that Master Data
+   * product family until another section header appears.
+   */
+  forcedProductLine?: SectionProductLine,
+) {
+  const pool = forcedProductLine
+    ? variants.filter(variant => variant.product_name === forcedProductLine)
+    : variants
+
   const normalizedName = normalizeOrderText(name)
-  const identifierMatches = variants.filter(variant => exactIdentifiers(variant).includes(normalizedName))
+  const identifierMatches = pool.filter(variant => exactIdentifiers(variant).includes(normalizedName))
   if (identifierMatches.length > 0) return { candidates: identifierMatches.slice(0, 8), method: 'code_or_sku' as const, totalMatches: identifierMatches.length }
 
-  const bracketedIdentifier = resolveBracketedIdentifier(name, variants)
+  // The stated code is read from the RAW name, before parenthetical notes are
+  // stripped below: "(CV)" is the identifier itself, not a distributor aside.
+  // Resolution runs against `pool`, so an active section still owns the scope.
+  const bracketedIdentifier = resolveBracketedIdentifier(name, pool)
   if (bracketedIdentifier.length === 1) {
     return { candidates: bracketedIdentifier, method: 'code_or_sku' as const, totalMatches: 1 }
   }
 
-  const normalizedMatchName = normalizeMatchName(name)
-  const productLine = detectProductLine(name, variants)
-  const scopedVariants = productLine ? variants.filter(variant => variant.product_name === productLine) : variants
-  const flavourQuery = extractFlavourQuery(name, productLine) || normalizedMatchName
+  const matchingName = stripParentheticalQualifiers(name)
+  const normalizedMatchName = normalizeMatchName(matchingName)
+  // Under an active section, do not re-detect a different product line from the
+  // flavour text — the section header already owns the scope.
+  const productLine = forcedProductLine || detectProductLine(matchingName, pool)
+  const scopedVariants = productLine ? pool.filter(variant => variant.product_name === productLine) : pool
+  const flavourQuery = extractFlavourQuery(matchingName, productLine) || normalizedMatchName
 
   const nameMatches = scopedVariants.filter(variant => exactOfficialName(variant) === normalizedMatchName)
   if (nameMatches.length > 0) return { candidates: nameMatches.slice(0, 8), method: 'exact_name' as const, totalMatches: nameMatches.length }
@@ -307,6 +570,21 @@ export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) 
     : []
   if (alternativeMatches.length > 0) {
     return { candidates: alternativeMatches.slice(0, 8), method: 'alternative_name' as const, totalMatches: alternativeMatches.length }
+  }
+
+  const compactQuery = compactMatchName(flavourQuery)
+  const compactAlternativeMatches = compactQuery
+    ? scopedVariants.filter((variant) => {
+        const alt = exactAlternativeName(variant)
+        return Boolean(alt) && alt.replace(/\s+/g, '') === compactQuery
+      })
+    : []
+  if (compactAlternativeMatches.length > 0) {
+    return {
+      candidates: compactAlternativeMatches.slice(0, 8),
+      method: 'alternative_name' as const,
+      totalMatches: compactAlternativeMatches.length,
+    }
   }
 
   const fallbackNameMatches = scopedVariants.filter(variant => exactFallbackNames(variant).includes(normalizedMatchName))
@@ -383,35 +661,130 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
   const firstLineByVariant = new Map<string, number>()
   const results: PasteMatchResult[] = []
   let entryNumber = 0
+  /** Active section scope; null means use the existing global matching rules. */
+  let activeSection: SectionProductLine | null = null
 
   text.split(/\r?\n/).forEach((physicalLine, index) => {
-    if (!physicalLine.trim()) return
+    if (shouldSkipPastePhysicalLine(physicalLine)) return
 
     for (const segment of parsePhysicalLine(physicalLine, index + 1, codeSet)) {
-      // Skipped before numbering so the review table stays contiguous.
-      if (segment.quantity === null && isCatalogProductHeading(segment.name, variants)) continue
+      // Skipped before numbering so the review table stays contiguous. A line
+      // that opens a section is NOT dropped here: it has to reach the section
+      // handling below to scope the flavours that follow it.
+      if (
+        segment.quantity === null
+        && !resolveSectionHeader(cleanPasteSegmentName(segment.name.trim() || segment.raw.trim()), segment.quantity)
+        && isCatalogProductHeading(segment.name, variants)
+      ) continue
 
       entryNumber += 1
       const line = entryNumber
-      const name = segment.name.trim() || segment.raw.trim()
+      let name = cleanPasteSegmentName(segment.name.trim() || segment.raw.trim())
+      const invalidQuantityTail = splitInvalidQuantityTail(name)
+      name = invalidQuantityTail.name
       const normalizedName = normalizeOrderText(name)
       const quantity = segment.quantity
-      const resolved = resolveCatalogMatch(name, variants)
+
+      const section = resolveSectionHeader(name, quantity)
+      if (section?.kind === 'section_header') {
+        activeSection = section.productLine
+        results.push({
+          line,
+          sourceLine: segment.sourceLine,
+          raw: segment.raw,
+          name,
+          normalizedName,
+          quantity: null,
+          status: 'section_header',
+          candidates: [],
+          sectionProductLine: section.productLine,
+        })
+        continue
+      }
+
+      if (section?.kind === 'requires_review') {
+        // Do not change activeSection — a quantified HERO/ZERO is not a header.
+        results.push({
+          line,
+          sourceLine: segment.sourceLine,
+          raw: segment.raw,
+          name,
+          normalizedName,
+          quantity,
+          status: 'requires_review',
+          candidates: [],
+          sectionProductLine: section.productLine,
+        })
+        continue
+      }
+
+      let resolved = resolveCatalogMatch(
+        name,
+        variants,
+        activeSection || undefined,
+      )
+      // Section scope (ZERO CARTRIDGE / HERO) may not list every flavour — fall back globally.
+      if (
+        activeSection
+        && resolved.candidates.length === 0
+        && (resolved.totalMatches ?? 0) === 0
+      ) {
+        resolved = resolveCatalogMatch(name, variants, undefined)
+      }
       const candidates = resolved.candidates
       const confidentMethod = resolved.method === 'code_or_sku'
         || resolved.method === 'exact_name'
         || resolved.method === 'bracket_flavour'
         || resolved.method === 'alternative_name'
-      const autoSelectable = confidentMethod
-        && candidates.length === 1
-        && (resolved.totalMatches ?? candidates.length) === 1
-      const exactVariantId = autoSelectable ? candidates[0].id : undefined
-      const duplicateOfLine = firstLineByName.get(normalizedName)
-        ?? (exactVariantId ? firstLineByVariant.get(exactVariantId) : undefined)
+      const singleCandidate = candidates.length === 1 && (resolved.totalMatches ?? candidates.length) === 1
+      const scopedProductLine = activeSection || undefined
+      const wordBagWinners = candidates.filter((candidate) =>
+        isExactFlavourWordBagMatch(name, candidate, scopedProductLine),
+      )
+      const hasWordBagWinner = wordBagWinners.length === 1
+      const fuzzyWinners = candidates.filter((candidate) =>
+        isStrongFuzzySingleMatch(name, candidate, scopedProductLine),
+      )
+      const hasFuzzyWinner = fuzzyWinners.length === 1
+      const fullContainmentWinner = pickUniqueFullContainmentWinner(candidates, name, scopedProductLine)
+      const obviousSingleMatch = isObviousSingleCatalogMatch(
+        name,
+        candidates,
+        resolved.totalMatches ?? candidates.length,
+        scopedProductLine,
+      )
+      const strongSingleMatch = Boolean(
+        singleCandidate
+        && candidates[0]
+        && isStrongSingleCandidateMatch(name, candidates[0], resolved.method, scopedProductLine),
+      )
+      const autoSelectCandidate = hasWordBagWinner
+        ? wordBagWinners[0]
+        : fullContainmentWinner
+          ?? (hasFuzzyWinner
+            ? fuzzyWinners[0]
+            : obviousSingleMatch
+              ?? ((confidentMethod && singleCandidate) || strongSingleMatch
+                ? candidates[0]
+                : undefined))
+      const autoSelectable = Boolean(autoSelectCandidate)
+      const exactVariantId = autoSelectCandidate?.id
+      // Duplicate keys are section-aware so the same flavour can appear once under
+      // HERO and once under ZERO without being treated as a paste duplicate.
+      const sectionKey = activeSection || 'global'
+      const nameDuplicateKey = `${sectionKey}::${normalizedName}`
+      const variantDuplicateKey = exactVariantId ? `${sectionKey}::${exactVariantId}` : undefined
+      const duplicateOfLine = firstLineByName.get(nameDuplicateKey)
+        ?? (variantDuplicateKey ? firstLineByVariant.get(variantDuplicateKey) : undefined)
 
       let status: PasteMatchStatus
-      if (quantity === null || quantity <= 0) status = 'invalid_quantity'
-      else if (duplicateOfLine !== undefined) status = 'duplicate'
+      if (invalidQuantityTail.invalidQuantity || (quantity !== null && quantity <= 0)) status = 'invalid_quantity'
+      else if (quantity === null) {
+        if (autoSelectable) status = 'missing_quantity'
+        else if (candidates.length > 1 || (resolved.totalMatches || 0) > 1) status = 'ambiguous'
+        else if (candidates.length === 1) status = 'missing_quantity'
+        else status = 'not_found'
+      } else if (duplicateOfLine !== undefined) status = 'duplicate'
       else if (resolved.method === 'alternative_name' && autoSelectable) status = 'alternative_match'
       else if (autoSelectable) status = 'matched'
       else if (candidates.length > 1 || (resolved.totalMatches || 0) > 1) status = 'ambiguous'
@@ -419,8 +792,8 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
       else status = 'not_found'
 
       if (quantity !== null && quantity > 0 && duplicateOfLine === undefined) {
-        firstLineByName.set(normalizedName, line)
-        if (exactVariantId) firstLineByVariant.set(exactVariantId, line)
+        firstLineByName.set(nameDuplicateKey, line)
+        if (variantDuplicateKey) firstLineByVariant.set(variantDuplicateKey, line)
       }
 
       results.push({
@@ -432,12 +805,21 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         quantity,
         status,
         candidates,
-        selectedVariantId: (status === 'matched' || status === 'alternative_match' || status === 'duplicate') && exactVariantId ? exactVariantId : undefined,
+        selectedVariantId: (
+          status === 'matched'
+          || status === 'alternative_match'
+          || status === 'duplicate'
+          || status === 'missing_quantity'
+        ) && exactVariantId ? exactVariantId : undefined,
         duplicateOfLine,
         matchMethod: resolved.method,
         inventoryOutcome: duplicateOfLine === undefined
-          ? resolvePasteInventoryOutcome(quantity, exactVariantId ? candidates[0] : undefined)
+          ? resolvePasteInventoryOutcome(
+            quantity,
+            exactVariantId ? candidates.find((candidate) => candidate.id === exactVariantId) : undefined,
+          )
           : undefined,
+        sectionProductLine: activeSection || undefined,
       })
     }
   })

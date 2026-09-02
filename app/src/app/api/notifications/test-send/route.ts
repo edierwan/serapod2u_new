@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getWhatsAppConfig, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
+import { sendSmsWithActiveProvider } from '@/lib/notifications/sms-send'
 
 // Helper to replace variables
 function applyTemplate(template: string, variables: any) {
@@ -74,8 +75,23 @@ export async function POST(request: NextRequest) {
                 result = { status: 'failed', error: err.message || 'Failed to reach WhatsApp gateway' }
             }
         } else if (channel === 'sms') {
-            // SMS placeholder
-            result = { status: 'sent', provider_id: `sms-mock-id`, note: 'SMS provider not yet implemented' }
+            const phoneNumber = recipient?.phone || recipient?.phone_number
+            if (!phoneNumber) {
+                return NextResponse.json({ error: 'Recipient has no phone number' }, { status: 400 })
+            }
+
+            const sent = await sendSmsWithActiveProvider(
+                supabase,
+                userProfile.organization_id,
+                phoneNumber,
+                messageBody
+            )
+            resolvedProviderName = 'local_my'
+            if (sent.success) {
+                result = { status: 'sent', provider_id: sent.messageId || 'sent', message: 'SMS sent via Local Malaysian Provider' }
+            } else {
+                result = { status: 'failed', error: sent.error || 'SMS gateway returned error' }
+            }
         } else if (channel === 'email') {
             // Email placeholder
             result = { status: 'sent', provider_id: `email-mock-id`, note: 'Email provider not yet implemented' }
@@ -90,7 +106,10 @@ export async function POST(request: NextRequest) {
                 recipient_value: channel === 'email' ? recipient?.email : (recipient?.phone || recipient?.phone_number),
                 recipient_type: channel === 'email' ? 'email' : 'phone',
                 status: result.status,
-                provider_name: channel === 'whatsapp' ? resolvedProviderName : channel,
+                provider_name: resolvedProviderName || channel,
+                provider_message_id: result.provider_id || null,
+                sent_at: result.status === 'sent' ? new Date().toISOString() : null,
+                failed_at: result.status === 'failed' ? new Date().toISOString() : null,
                 provider_response: result,
                 queued_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),

@@ -122,9 +122,17 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
     const doPostLoginRedirect = async () => {
         isNavigatingRef.current = true
         try {
+            const params = new URLSearchParams(window.location.search)
+            const nextParam = params.get('next')
+            const safeNext = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
+                ? nextParam
+                : null
             const controller = new AbortController()
             const timeout = setTimeout(() => controller.abort(), 4000)
-            const res = await fetch('/api/auth/post-login-redirect', { signal: controller.signal })
+            const endpoint = safeNext
+                ? `/api/auth/post-login-redirect?next=${encodeURIComponent(safeNext)}`
+                : '/api/auth/post-login-redirect'
+            const res = await fetch(endpoint, { signal: controller.signal })
             clearTimeout(timeout)
             const data = await res.json()
             window.location.href = data.redirectTo || '/store'

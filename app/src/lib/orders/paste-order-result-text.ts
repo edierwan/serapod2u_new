@@ -141,17 +141,22 @@ export function buildPasteResultLines(
   isAvailable: (result: PasteMatchResult) => boolean,
 ): PasteResultTextLine[] {
   const variantsById = new Map(variants.map(variant => [variant.id, variant]))
-  return results.map(result => {
-    const variant = result.selectedVariantId ? variantsById.get(result.selectedVariantId) : undefined
-    const code = (variant?.variant_product_code || '').trim()
-    return {
-      name: result.name,
-      quantity: result.quantity,
-      available: isAvailable(result),
-      productName: variant?.product_name ?? null,
-      productCode: code || null,
-    }
-  })
+  return results
+    // A section header names the group the lines beneath it belong to; it is
+    // not itself something the distributor ordered, so it never becomes a
+    // reply line - least of all an "Unmatched" one.
+    .filter(result => result.status !== 'section_header')
+    .map(result => {
+      const variant = result.selectedVariantId ? variantsById.get(result.selectedVariantId) : undefined
+      const code = (variant?.variant_product_code || '').trim()
+      return {
+        name: result.name,
+        quantity: result.quantity,
+        available: isAvailable(result),
+        productName: variant?.product_name ?? null,
+        productCode: code || null,
+      }
+    })
 }
 
 /**

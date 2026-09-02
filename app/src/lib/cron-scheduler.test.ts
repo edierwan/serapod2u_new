@@ -47,13 +47,18 @@ const WORKERS = [
   '/api/cron/qr-generation-worker',
   '/api/cron/manufacturer-packing-worker',
   '/api/cron/notification-outbox-worker',
+  // SerApp order holds expire on their own schedule.
+  '/api/cron/serapp-hold-expiry',
 ]
+// Counted from the list rather than hard-coded, so adding a worker does not
+// look like the single-start guarantee breaking.
+const WORKER_COUNT = WORKERS.length
 
 describe('single-start guarantee', () => {
   it('1. first initialization registers the scheduler', async () => {
     const mod = await import('./cron-scheduler')
     mod.startCronScheduler()
-    expect(scheduleMock).toHaveBeenCalledTimes(4)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
     expect(mod.__getCronRegistryForTests().started).toBe(true)
   })
 
@@ -62,14 +67,14 @@ describe('single-start guarantee', () => {
     mod.startCronScheduler()
     mod.startCronScheduler()
     mod.startCronScheduler()
-    expect(scheduleMock).toHaveBeenCalledTimes(4)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
   })
 
   it('3. a second MODULE EVALUATION registers nothing (the actual root cause)', async () => {
     // --- module evaluation A ---
     const modA = await import('./cron-scheduler')
     modA.startCronScheduler()
-    expect(scheduleMock).toHaveBeenCalledTimes(4)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
     const ownerA = modA.__getCronRegistryForTests().schedulerInstanceId
 
     // --- module evaluation B: fresh module body, same process, same globalThis ---
@@ -78,15 +83,15 @@ describe('single-start guarantee', () => {
     expect(modB).not.toBe(modA) // genuinely a different module instance
     modB.startCronScheduler()
 
-    // still four - B must not add its own tasks
-    expect(scheduleMock).toHaveBeenCalledTimes(4)
+    // still one set - B must not add its own tasks
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
     // and B sees the SAME shared registry, not a fresh one
     expect(modB.__getCronRegistryForTests().schedulerInstanceId).toBe(ownerA)
   })
 
-  it('3b. BEHAVIOUR ONLY: two module evaluations yield 4 registrations, not 8', async () => {
+  it('3b. BEHAVIOUR ONLY: two module evaluations yield one set of registrations, not two', async () => {
     // Deliberately uses no new exports, so it fails against the OLD
-    // module-scoped implementation for the right reason: 8 tasks instead of 4.
+    // module-scoped implementation for the right reason: twice the tasks.
     const modA = await import('./cron-scheduler')
     modA.startCronScheduler()
 
@@ -94,14 +99,14 @@ describe('single-start guarantee', () => {
     const modB = await import('./cron-scheduler')
     modB.startCronScheduler()
 
-    expect(scheduleMock).toHaveBeenCalledTimes(4)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
   })
 
-  it('4. exactly four routes are registered, one per worker', async () => {
+  it('4. exactly one route is registered per worker', async () => {
     const mod = await import('./cron-scheduler')
     mod.startCronScheduler()
     const registered = [...mod.__getCronRegistryForTests().registeredPaths]
-    expect(registered).toHaveLength(4)
+    expect(registered).toHaveLength(WORKER_COUNT)
     expect(new Set(registered)).toEqual(new Set(WORKERS))
   })
 
@@ -111,10 +116,10 @@ describe('single-start guarantee', () => {
       const mod = await import('./cron-scheduler')
       mod.startCronScheduler()
     }
-    expect(scheduleMock).toHaveBeenCalledTimes(4)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
 
     const mod = await import('./cron-scheduler')
-    expect(mod.__getCronRegistryForTests().registeredPaths.size).toBe(4)
+    expect(mod.__getCronRegistryForTests().registeredPaths.size).toBe(WORKER_COUNT)
   })
 
   it('logs the duplicate suppression once per extra evaluation, not per tick', async () => {
@@ -144,9 +149,9 @@ describe('dispatch behaviour', () => {
     }
     await flush()
 
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenCalledTimes(WORKER_COUNT)
     const urls = fetchMock.mock.calls.map((c) => String(c[0]))
-    expect(new Set(urls).size).toBe(4)
+    expect(new Set(urls).size).toBe(WORKER_COUNT)
   })
 
   it('7. the global dispatch guard holds ACROSS module evaluations', async () => {

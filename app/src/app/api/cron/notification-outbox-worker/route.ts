@@ -6,6 +6,53 @@ import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCo
 import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
 import { requireCronAuth } from '@/lib/cron/auth'
 import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
+import { recordSmsDelivery, refreshOpenSmsStatuses, sendSmsWithActiveProvider } from '@/lib/notifications/sms-send'
+import { getSmsTemplateBody, getSmsTemplatesForEvent } from '@/config/smsTemplates'
+import { queueRoutingFallback } from '@/lib/notifications/outbox-fallback'
+import { deliveryChainForPreset, isRoutingFallbackPayload, resolveNotificationRoutingPreset, shouldAdvanceFallback, type NotificationDeliveryChannel } from '@/lib/notifications/routing'
+import { isSingleCreatorSource, ownerEmailFromPayload, ownerPhoneFromPayload, resolveRecipientTargets } from '@/lib/notifications/orderOwnerNotify'
+import { notificationPhoneKey, toSmsE164 } from '@/lib/notifications/manualPhoneNumbers'
+import { EMAIL_UI_TEST_REWRITE_LOOKBACK_MS, emailProviderBlockedByUiTest } from '@/lib/notifications/emailProviderReady'
+import { fanoutChildPayload, isFanoutChild, selectFanoutRecipients } from '@/lib/notifications/outboxFanout'
+
+async function failEmailsSentWhileProviderTestBlocked(supabase: any) {
+    const { data: providers } = await supabase
+        .from('notification_provider_configs')
+        .select('org_id, last_test_status, last_test_error, last_test_at')
+        .eq('channel', 'email')
+        .eq('is_active', true)
+
+    for (const provider of providers || []) {
+        const blocked = emailProviderBlockedByUiTest(provider)
+        if (!blocked || !provider.last_test_at) continue
+        const testAt = Date.parse(provider.last_test_at)
+        if (!Number.isFinite(testAt)) continue
+        const since = new Date(testAt - EMAIL_UI_TEST_REWRITE_LOOKBACK_MS).toISOString()
+        const { data: rows } = await supabase
+            .from('notifications_outbox')
+            .select('id')
+            .eq('org_id', provider.org_id)
+            .eq('channel', 'email')
+            .in('status', ['sent', 'delivered'])
+            .gte('created_at', since)
+        const ids = (rows || []).map((row: { id: string }) => row.id)
+        if (ids.length === 0) continue
+        await supabase
+            .from('notifications_outbox')
+            .update({ status: 'failed', error: blocked, sent_at: null })
+            .in('id', ids)
+        await supabase
+            .from('notification_logs')
+            .update({
+                status: 'failed',
+                error_message: blocked,
+                failed_at: new Date().toISOString(),
+                sent_at: null,
+            })
+            .in('outbox_id', ids)
+            .in('status', ['sent', 'delivered'])
+    }
+}
 
 /**
  * CRON: /api/cron/notification-outbox-worker
@@ -34,74 +81,90 @@ function splitConfiguredRecipients(value?: string | null): string[] {
         .filter(Boolean)
 }
 
-async function queueEmailFallback(
-    supabase: any,
-    item: any,
-    recipientPhone: string | null,
-    reason: string
-) {
-    const { data: setting } = await supabase
-        .from('notification_settings')
-        .select('recipient_config')
-        .eq('org_id', item.org_id)
-        .eq('event_code', item.event_code)
-        .maybeSingle()
+async function ensureOrderOwnerContact(supabase: any, payload: Record<string, any>) {
+    const nameAlready = String(payload.created_by || payload.User || '').trim()
+    const hasPhone = String(payload.created_by_phone || '').trim()
+    const hasEmail = String(payload.created_by_email || '').trim()
+    let creatorId = String(payload.created_by_id || '').trim() || null
 
-    if (setting?.recipient_config?.routing?.preset !== 'whatsapp_email_fallback') return false
-
-    const { data: emailProvider } = await supabase
-        .from('notification_provider_configs')
-        .select('provider_name')
-        .eq('org_id', item.org_id)
-        .eq('channel', 'email')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-    if (!emailProvider) return false
-
-    const fallbackMarker = { _routing_fallback_for: item.id }
-    const { data: existing } = await supabase
-        .from('notifications_outbox')
-        .select('id')
-        .eq('org_id', item.org_id)
-        .eq('channel', 'email')
-        .contains('payload_json', fallbackMarker)
-        .limit(1)
-
-    if (existing?.length) return true
-
-    let recipientEmail: string | null = null
-    if (recipientPhone) {
-        const { data: matchingUser } = await supabase
-            .from('users')
-            .select('email')
-            .eq('organization_id', item.org_id)
-            .eq('phone', recipientPhone)
-            .maybeSingle()
-        recipientEmail = matchingUser?.email || null
+    if (!creatorId) {
+        if (payload.order_id) {
+            const { data: order } = await supabase
+                .from('orders')
+                .select('created_by')
+                .eq('id', payload.order_id)
+                .maybeSingle()
+            creatorId = order?.created_by || null
+        } else if (payload.order_no) {
+            const { data: order } = await supabase
+                .from('orders')
+                .select('created_by')
+                .eq('display_doc_no', String(payload.order_no))
+                .maybeSingle()
+            creatorId = order?.created_by || null
+        }
     }
 
-    const payload = typeof item.payload_json === 'object' && item.payload_json !== null
-        ? item.payload_json
-        : {}
-    const { error } = await supabase.from('notifications_outbox').insert({
-        org_id: item.org_id,
-        event_code: item.event_code,
-        channel: 'email',
-        to_phone: null,
-        to_email: recipientEmail,
-        template_code: item.template_code,
-        payload_json: { ...payload, ...fallbackMarker, _routing_fallback_reason: reason },
-        priority: item.priority || 'normal',
-        provider_name: emailProvider.provider_name,
-        status: 'queued',
-        retry_count: 0,
-        max_retries: 3,
-    })
+    if (!creatorId) {
+        if (!nameAlready || nameAlready === '{{created_by}}' || nameAlready === '{{User}}') {
+            payload.created_by = payload.created_by || 'Unknown'
+            payload.User = payload.created_by
+        }
+        return
+    }
 
-    return !error
+    payload.created_by_id = creatorId
+    if (hasPhone && hasEmail && nameAlready && nameAlready !== '{{created_by}}' && nameAlready !== '{{User}}') {
+        payload.created_by = nameAlready
+        payload.User = nameAlready
+        return
+    }
+
+    const { data: creator } = await supabase
+        .from('users')
+        .select('full_name, email, phone')
+        .eq('id', creatorId)
+        .maybeSingle()
+    const name = String(creator?.full_name || creator?.email || nameAlready || 'Unknown').trim() || 'Unknown'
+    payload.created_by = name
+    payload.User = name
+    if (!hasPhone && creator?.phone) payload.created_by_phone = String(creator.phone).trim()
+    if (!hasEmail && creator?.email) payload.created_by_email = String(creator.email).trim()
+}
+
+function payloadPhone(payload: Record<string, any>): string | null {
+    const value = String(
+        payload.customer_phone || payload.contact_phone || payload.phone || payload.phone_number || ''
+    ).trim()
+    return value || null
+}
+
+async function outboxStatusAfterAttempt(supabase: any, id: string): Promise<string | null> {
+    const { data } = await supabase
+        .from('notifications_outbox')
+        .select('status')
+        .eq('id', id)
+        .maybeSingle()
+    return data?.status || null
+}
+
+async function maybeQueueFallback(
+    supabase: any,
+    item: any,
+    failedChannel: NotificationDeliveryChannel,
+    recipientPhone: string | null,
+    reason: string,
+    options?: { providerMissing?: boolean; outboxStatus?: string | null },
+) {
+    if (!shouldAdvanceFallback({
+        retryCount: item.retry_count,
+        maxRetries: item.max_retries,
+        outboxStatus: options?.outboxStatus,
+        providerMissing: options?.providerMissing,
+    })) {
+        return false
+    }
+    return queueRoutingFallback(supabase, item, failedChannel, recipientPhone, reason)
 }
 
 function parseProviderSecrets(value: unknown): Record<string, any> {
@@ -162,6 +225,8 @@ async function sendEmailWithActiveProvider(supabase: any, orgId: string, to: str
         .maybeSingle()
 
     if (!config) return { success: false, error: 'Email provider not configured' }
+    const blocked = emailProviderBlockedByUiTest(config)
+    if (blocked) return { success: false, error: blocked }
     const publicConfig = config.config_public || {}
     const secrets = parseProviderSecrets(config.config_encrypted)
     const fromEmail = publicConfig.from_email || publicConfig.gmail_email
@@ -186,6 +251,9 @@ async function sendEmailWithActiveProvider(supabase: any, orgId: string, to: str
                 auth: { user: publicConfig.username || secrets.username, pass: secrets.password },
             })
             const result = await transporter.sendMail({ from: `"${fromName}" <${fromEmail}>`, to, subject, text: body })
+            if (Array.isArray(result.rejected) && result.rejected.length > 0) {
+                return { success: false, error: `SMTP rejected: ${result.rejected.join(', ')}` }
+            }
             return { success: true, messageId: result.messageId }
         }
 
@@ -205,6 +273,9 @@ async function sendEmailWithActiveProvider(supabase: any, orgId: string, to: str
                 auth: { type: 'OAuth2', user: publicConfig.gmail_email, clientId: publicConfig.oauth_client_id, clientSecret: secrets.oauth_client_secret, refreshToken: secrets.oauth_refresh_token, accessToken: token.access_token },
             })
             const result = await transporter.sendMail({ from: `"${fromName}" <${publicConfig.gmail_email}>`, to, subject, text: body })
+            if (Array.isArray(result.rejected) && result.rejected.length > 0) {
+                return { success: false, error: `Gmail rejected: ${result.rejected.join(', ')}` }
+            }
             return { success: true, messageId: result.messageId }
         }
 
@@ -258,6 +329,17 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
     const startTime = Date.now()
 
     try {
+        // Re-queue SMS/Email cancelled by the old "do not send after WhatsApp failed" rule.
+        await supabase
+            .from('notifications_outbox')
+            .update({ status: 'queued', error: null })
+            .eq('status', 'cancelled')
+            .eq('error', 'Not sent because WhatsApp already failed. No extra SMS/Email is generated after a failed send.')
+
+        await failEmailsSentWhileProviderTestBlocked(supabase).catch((err: any) => {
+            console.warn('[NotifWorker] Email UI-test status rewrite failed:', err?.message || err)
+        })
+
         // 1. Fetch pending notifications from outbox.
         // NOTE: get_pending_notifications uses FOR UPDATE SKIP LOCKED, but those
         // row locks are released as soon as this RPC's transaction commits -
@@ -267,14 +349,19 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
         const { data: pendingItems, error: fetchError } = await supabase
             .rpc('get_pending_notifications', { p_limit: 20 })
 
+        const smsStatus = await refreshOpenSmsStatuses(supabase).catch((err) => {
+            console.warn('[NotifWorker] SMS status refresh failed:', err?.message || err)
+            return { checked: 0, updated: 0, timedOut: false }
+        })
+
         if (fetchError) {
             // Graceful handling: RPC may not exist on staging or network may be flaky
             console.warn('[NotifWorker] Error fetching pending:', fetchError.message)
-            return NextResponse.json({ processed: 0, message: 'Skipped: ' + fetchError.message })
+            return NextResponse.json({ processed: 0, message: 'Skipped: ' + fetchError.message, sms_status: smsStatus })
         }
 
         if (!pendingItems || pendingItems.length === 0) {
-            return NextResponse.json({ processed: 0, message: 'No pending notifications' })
+            return NextResponse.json({ processed: 0, message: 'No pending notifications', sms_status: smsStatus })
         }
 
         console.log(`[NotifWorker] Processing ${pendingItems.length} notification(s)`)
@@ -284,18 +371,64 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
 
         for (const item of pendingItems) {
             try {
-                const { id, org_id, event_code, channel, to_phone, to_email, template_code, payload_json, provider_name, retry_count } = item
+                const { id, org_id, event_code, channel, to_phone, to_email, template_code, payload_json, provider_name } = item
+
+                // Atomic claim: flip queued -> processing in a single conditional UPDATE
+                // so only one concurrent worker run can "win" this item. The immediate
+                // fire-and-forget trigger (fetch right after queuing) and the standing
+                // */1 * * * * cron both hit this same endpoint, and can overlap within
+                // seconds of each other. The previous approach (SELECT status, decide,
+                // send, THEN update status) left a window between the read and the
+                // post-send write during which a second run would also see "queued" and
+                // send again -- that's what caused duplicate SMS/WhatsApp sends for a
+                // single queued notification even though only one row existed.
+                const { data: claimedRows, error: claimError } = await supabase
+                    .from('notifications_outbox')
+                    .update({ status: 'processing' })
+                    .eq('id', id)
+                    .eq('status', 'queued')
+                    .is('provider_message_id', null)
+                    .select('id')
+
+                if (claimError) {
+                    console.warn('[NotifWorker] Claim failed for item', id, claimError.message)
+                    continue
+                }
+                if (!claimedRows || claimedRows.length === 0) {
+                    // Another concurrent run already claimed (or finished) this item.
+                    continue
+                }
 
                 // 2. Get the notification template
                 let templateBody = ''
 
                 // Fetch notification settings (use 'any' cast since DB has extra jsonb cols not in TypeScript types)
-                const { data: rawSetting } = await supabase
+                let { data: rawSetting } = await supabase
                     .from('notification_settings')
                     .select('*')
                     .eq('org_id', org_id)
                     .eq('event_code', event_code)
-                    .single()
+                    .maybeSingle()
+
+                if (!rawSetting) {
+                    const { data: hq } = await supabase
+                        .from('organizations')
+                        .select('id')
+                        .eq('org_type_code', 'HQ')
+                        .eq('is_active', true)
+                        .order('created_at', { ascending: true })
+                        .limit(1)
+                        .maybeSingle()
+                    if (hq?.id) {
+                        const { data: hqSetting } = await supabase
+                            .from('notification_settings')
+                            .select('*')
+                            .eq('org_id', hq.id)
+                            .eq('event_code', event_code)
+                            .maybeSingle()
+                        rawSetting = hqSetting
+                    }
+                }
 
                 const notifSetting = rawSetting as any
 
@@ -318,7 +451,17 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
 
                 // Check notification_settings.templates jsonb column (set via the UI drawer)
                 if (!templateBody && notifSetting?.templates && notifSetting.templates[channel]) {
-                    templateBody = notifSetting.templates[channel]
+                    const saved = String(notifSetting.templates[channel] || '').trim()
+                    if (channel === 'sms') {
+                        const byId = getSmsTemplatesForEvent(event_code).find((template) => template.id === saved)
+                        templateBody = byId?.body || saved
+                    } else {
+                        templateBody = saved
+                    }
+                }
+
+                if (!templateBody && channel === 'sms') {
+                    templateBody = getSmsTemplateBody(event_code)
                 }
 
                 // Last fallback — use a built-in default
@@ -341,6 +484,8 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                         templateBody = `⚙️ Your product return {{return_no}} is now being processed.`
                     } else if (event_code === 'return_completed') {
                         templateBody = `🎉 Your product return {{return_no}} has been completed.`
+                    } else if (event_code === 'system_sms_check') {
+                        templateBody = `Serapod2U SMS check. If you received this, Local Malaysian SMS is working.`
                     } else {
                         templateBody = `Update: ${event_code} occurred.\nOrder: {{order_no}}\nStatus: {{status}}`
                     }
@@ -350,125 +495,188 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                 const payload = (typeof payload_json === 'object' && payload_json !== null && !Array.isArray(payload_json))
                     ? payload_json as Record<string, any>
                     : {}
-                const messageBody = renderTemplate(templateBody, payload)
+                await ensureOrderOwnerContact(supabase, payload)
 
-                // 4. Resolve recipients if to_phone/to_email not set
+                const routingPreset = resolveNotificationRoutingPreset(notifSetting)
+                const isFallbackHop = isRoutingFallbackPayload(payload)
+                const settingsFirstHopEvent = event_code === 'order_rejected' || event_code === 'order_approved'
+                if (settingsFirstHopEvent && !isFallbackHop && notifSetting) {
+                    const firstChannel = deliveryChainForPreset(routingPreset)[0]
+                    if (channel !== firstChannel) {
+                        await supabase.from('notifications_outbox').update({
+                            status: 'cancelled',
+                            error: `Order ${event_code === 'order_approved' ? 'approve' : 'reject'} follows notification settings: only ${firstChannel} is sent first. Other channels run only if that hop fails.`,
+                        }).eq('id', id)
+                        continue
+                    }
+                }
+
+                const editedSmsBody = channel === 'sms' ? String(payload._sms_body || '').trim() : ''
+                const messageBody = editedSmsBody || renderTemplate(templateBody, payload)
+
+                // 4. Recipients follow Notification Types (recipient_targets), not a hardcoded event list.
                 let recipientPhone = to_phone
                 let recipientEmail = to_email
+                const recipientConfig = notifSetting?.recipient_config || {}
+                const targets = resolveRecipientTargets(event_code, recipientConfig)
+                const creatorOnly = isSingleCreatorSource(event_code, recipientConfig)
 
-                if (!recipientPhone && !recipientEmail) {
-                    // Look up recipients from notification_settings (already fetched above)
-                    if (notifSetting) {
-                        const recipients = new Set<string>()
-                        const recipientConfig = notifSetting.recipient_config || {}
-                        const recipientTargets = recipientConfig.recipient_targets || {}
+                if (creatorOnly) {
+                    if (channel === 'email') {
+                        recipientEmail = ownerEmailFromPayload(payload) || recipientEmail
+                    } else {
+                        recipientPhone = ownerPhoneFromPayload(payload)
+                    }
+                } else if (notifSetting && !isFallbackHop) {
+                    const recipients = new Set<string>()
+                    const recipientTargets = recipientConfig.recipient_targets || {}
 
-                        const addRecipients = (values: Array<string | null | undefined>) => {
-                            for (const value of values) {
-                                const normalized = String(value || '').trim()
-                                if (normalized) {
-                                    recipients.add(normalized)
-                                }
+                    const addRecipients = (values: Array<string | null | undefined>) => {
+                        for (const value of values) {
+                            let normalized = String(value || '').trim()
+                            if (!normalized) continue
+                            if (channel !== 'email') {
+                                const parsed = toSmsE164(normalized)
+                                if ('e164' in parsed) normalized = parsed.e164
                             }
-                        }
-
-                        // Check recipient_config.recipient_users (new format from UI drawer)
-                        const configUsers = notifSetting.recipient_config?.recipient_users
-                        // Also check legacy recipient_users column
-                        const legacyUsers = notifSetting.recipient_users
-                        const userIds = configUsers?.length ? configUsers : legacyUsers?.length ? legacyUsers : []
-
-                        if (userIds.length) {
-                            const { data: users } = await supabase
-                                .from('users')
-                                .select('phone, email')
-                                .in('id', userIds)
-
-                            if (users) {
-                                addRecipients(users.map((u) => channel === 'email' ? u.email : u.phone))
-                            }
-                        }
-
-                        const configuredRoles = Array.isArray(recipientConfig.roles) && recipientConfig.roles.length > 0
-                            ? recipientConfig.roles
-                            : Array.isArray(notifSetting.recipient_roles) && notifSetting.recipient_roles.length > 0
-                                ? notifSetting.recipient_roles
-                                : []
-                        const resolvedRoleCodes = expandNotificationRoleCodes(configuredRoles)
-                        const hasExplicitRecipientTargets = Object.keys(recipientTargets).length > 0
-                        const rolesEnabled = configuredRoles.length > 0 && (
-                            hasExplicitRecipientTargets
-                                ? recipientTargets.roles === true
-                                : recipientConfig.type === 'roles' || Boolean(notifSetting.recipient_roles?.length)
-                        )
-
-                        if (rolesEnabled && resolvedRoleCodes.length > 0) {
-                            const { data: roleUsers } = await supabase
-                                .from('users')
-                                .select('phone, email')
-                                .eq('organization_id', org_id)
-                                .in('role_code', resolvedRoleCodes)
-
-                            if (roleUsers) {
-                                addRecipients(roleUsers.map((user) => channel === 'email' ? user.email : user.phone))
-                            }
-                        }
-
-                        // Custom phone numbers
-                        if (notifSetting.recipient_custom?.length) {
-                            addRecipients(notifSetting.recipient_custom)
-                        }
-
-                        if (channel === 'email') {
-                            addRecipients(splitConfiguredRecipients(recipientConfig.custom_emails))
-                            if (Array.isArray(recipientConfig.manual_email_addresses)) {
-                                const { normalizeAndDedupeManualEmails } = await import('@/lib/notifications/manualEmailAddresses')
-                                addRecipients(normalizeAndDedupeManualEmails(recipientConfig.manual_email_addresses))
-                            }
-                        } else {
-                            addRecipients(splitConfiguredRecipients(recipientConfig.custom_phones))
-                        }
-
-                        // Manual WhatsApp numbers (digits-only normalized form, no plus sign)
-                        if (channel === 'whatsapp' && Array.isArray(recipientConfig.manual_whatsapp_numbers)) {
-                            // Re-validate & dedupe server-side as a safety net
-                            const { normalizeAndDedupeManualPhones } = await import('@/lib/notifications/manualPhoneNumbers')
-                            const cleaned = normalizeAndDedupeManualPhones(recipientConfig.manual_whatsapp_numbers)
-                            addRecipients(cleaned)
-                        }
-
-                        const recipientList = Array.from(recipients)
-
-                        if (recipientList.length > 0) {
-                            if (channel === 'email') {
-                                recipientEmail = recipientList[0]
-                            } else {
-                                recipientPhone = recipientList[0]
-                            }
-
-                            // For additional recipients, queue separate messages
-                            for (let i = 1; i < recipientList.length; i++) {
-                                const additionalPhone = channel !== 'email' ? recipientList[i] : null
-                                const additionalEmail = channel === 'email' ? recipientList[i] : null
-
-                                await supabase.from('notifications_outbox').insert({
-                                    org_id,
-                                    event_code,
-                                    channel,
-                                    to_phone: additionalPhone,
-                                    to_email: additionalEmail,
-                                    template_code,
-                                    payload_json,
-                                    priority: 'normal',
-                                    provider_name,
-                                    status: 'queued',
-                                    retry_count: 0,
-                                    max_retries: 3,
-                                    created_at: new Date().toISOString()
-                                })
-                            }
+                            recipients.add(normalized)
                         }
                     }
+
+                    if (targets.order_creator) {
+                        if (channel === 'email') addRecipients([ownerEmailFromPayload(payload)])
+                        else addRecipients([ownerPhoneFromPayload(payload)])
+                    }
+
+                    const configUsers = notifSetting.recipient_config?.recipient_users
+                    const legacyUsers = notifSetting.recipient_users
+                    const userIds = configUsers?.length ? configUsers : legacyUsers?.length ? legacyUsers : []
+
+                    if (targets.users && userIds.length) {
+                        const { data: users } = await supabase
+                            .from('users')
+                            .select('phone, email')
+                            .in('id', userIds)
+
+                        if (users) {
+                            addRecipients(users.map((u) => channel === 'email' ? u.email : u.phone))
+                        }
+                    }
+
+                    const configuredRoles = Array.isArray(recipientConfig.roles) && recipientConfig.roles.length > 0
+                        ? recipientConfig.roles
+                        : Array.isArray(notifSetting.recipient_roles) && notifSetting.recipient_roles.length > 0
+                            ? notifSetting.recipient_roles
+                            : []
+                    const resolvedRoleCodes = expandNotificationRoleCodes(configuredRoles)
+                    const hasExplicitRecipientTargets = Object.keys(recipientTargets).length > 0
+                    const rolesEnabled = targets.roles && configuredRoles.length > 0 && (
+                        hasExplicitRecipientTargets
+                            ? recipientTargets.roles === true
+                            : recipientConfig.type === 'roles' || Boolean(notifSetting.recipient_roles?.length)
+                    )
+
+                    if (rolesEnabled && resolvedRoleCodes.length > 0) {
+                        const { data: roleUsers } = await supabase
+                            .from('users')
+                            .select('phone, email')
+                            .eq('organization_id', org_id)
+                            .in('role_code', resolvedRoleCodes)
+
+                        if (roleUsers) {
+                            addRecipients(roleUsers.map((user) => channel === 'email' ? user.email : user.phone))
+                        }
+                    }
+
+                    if (notifSetting.recipient_custom?.length) {
+                        addRecipients(notifSetting.recipient_custom)
+                    }
+
+                    if (channel === 'email') {
+                        addRecipients(splitConfiguredRecipients(recipientConfig.custom_emails))
+                        if (Array.isArray(recipientConfig.manual_email_addresses)) {
+                            const { normalizeAndDedupeManualEmails } = await import('@/lib/notifications/manualEmailAddresses')
+                            addRecipients(normalizeAndDedupeManualEmails(recipientConfig.manual_email_addresses))
+                        }
+                    } else {
+                        addRecipients(splitConfiguredRecipients(recipientConfig.custom_phones))
+                    }
+
+                    if (channel === 'sms' && targets.consumer) {
+                        addRecipients([
+                            payload.customer_phone,
+                            payload.contact_phone,
+                            payload.phone,
+                            payload.phone_number,
+                        ])
+                    }
+
+                    if (channel === 'whatsapp' && Array.isArray(recipientConfig.manual_whatsapp_numbers)) {
+                        const { normalizeAndDedupeManualPhones } = await import('@/lib/notifications/manualPhoneNumbers')
+                        const cleaned = normalizeAndDedupeManualPhones(recipientConfig.manual_whatsapp_numbers)
+                        addRecipients(cleaned)
+                    }
+
+                    if (recipientPhone) addRecipients([recipientPhone])
+                    if (recipientEmail) addRecipients([recipientEmail])
+
+                    const recipientList = Array.from(recipients)
+
+                    if (recipientList.length > 0) {
+                        if (channel === 'email') {
+                            recipientEmail = recipientList[0]
+                            recipientPhone = null
+                        } else {
+                            recipientPhone = recipientList[0]
+                        }
+
+                        // Only an origin row may fan out, and only to recipients that do not
+                        // already have a row for this order. Both guards are required: the marker
+                        // stops new children from re-expanding, and the sibling lookup stops rows
+                        // queued before this fix from expanding again.
+                        const fanoutOrderNo = String(payload.order_no || '').trim()
+                        let existingSiblings: { to_phone?: string | null; to_email?: string | null }[] = []
+
+                        if (!isFanoutChild(payload) && fanoutOrderNo) {
+                            const { data: siblingRows } = await supabase
+                                .from('notifications_outbox')
+                                .select('to_phone, to_email')
+                                .eq('org_id', org_id)
+                                .eq('event_code', event_code)
+                                .eq('channel', channel)
+                                .contains('payload_json', { order_no: fanoutOrderNo })
+                            existingSiblings = siblingRows || []
+                        }
+
+                        const fanoutTargets = selectFanoutRecipients({
+                            recipientList,
+                            channel,
+                            payload,
+                            existingSiblings,
+                        })
+
+                        for (const target of fanoutTargets) {
+                            await supabase.from('notifications_outbox').insert({
+                                org_id,
+                                event_code,
+                                channel,
+                                to_phone: channel !== 'email' ? target : null,
+                                to_email: channel === 'email' ? target : null,
+                                template_code,
+                                payload_json: fanoutChildPayload(payload),
+                                priority: 'normal',
+                                provider_name,
+                                status: 'queued',
+                                retry_count: 0,
+                                max_retries: 3,
+                                created_at: new Date().toISOString()
+                            })
+                        }
+                    }
+                }
+
+                if (channel === 'sms' && !recipientPhone && targets.consumer) {
+                    recipientPhone = payloadPhone(payload)
                 }
 
                 if ((recipientPhone || recipientEmail) && (recipientPhone !== to_phone || recipientEmail !== to_email)) {
@@ -493,6 +701,33 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                     }
                 }
 
+                const orderNo = String(payload.order_no || '').trim()
+                if (orderNo && (recipientPhone || recipientEmail)) {
+                    const { data: siblings } = await supabase
+                        .from('notifications_outbox')
+                        .select('id, to_phone, to_email, status')
+                        .eq('org_id', org_id)
+                        .eq('event_code', event_code)
+                        .eq('channel', channel)
+                        .contains('payload_json', { order_no: orderNo })
+                        .in('status', ['queued', 'processing', 'sent', 'delivered', 'failed'])
+                    const phoneKey = notificationPhoneKey(recipientPhone)
+                    const emailKey = String(recipientEmail || '').trim().toLowerCase()
+                    const duplicate = (siblings || []).some((row: { id: string; to_phone?: string | null; to_email?: string | null }) => {
+                        if (String(row.id) === String(id)) return false
+                        if (phoneKey && notificationPhoneKey(row.to_phone) === phoneKey) return true
+                        if (emailKey && String(row.to_email || '').trim().toLowerCase() === emailKey) return true
+                        return false
+                    })
+                    if (duplicate) {
+                        await supabase.from('notifications_outbox').update({
+                            status: 'cancelled',
+                            error: 'Duplicate notification for this recipient',
+                        }).eq('id', id)
+                        continue
+                    }
+                }
+
                 // If still no recipient, mark as failed
                 if (!recipientPhone && !recipientEmail) {
                     const fallbackPayload = payload_json && typeof payload_json === 'object' && !Array.isArray(payload_json)
@@ -504,8 +739,20 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                         p_status: 'failed',
                         p_error_message: isFallbackEmail
                             ? 'Fallback Email required, but the recipient has no email address. Ask the admin or user to update the email first.'
-                            : 'No recipient found — check notification settings recipients'
+                            : channel === 'sms'
+                                ? 'No SMS recipient found. Add a phone on the order customer, or in Notification Types → Details → custom phones.'
+                                : 'No recipient found — check notification settings recipients'
                     })
+                    if (channel === 'whatsapp' || channel === 'sms') {
+                        await maybeQueueFallback(
+                            supabase,
+                            item,
+                            channel,
+                            null,
+                            `${channel}_no_recipient`,
+                            { outboxStatus: 'failed' },
+                        )
+                    }
                     failed++
                     continue
                 }
@@ -520,7 +767,14 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                             p_status: 'failed',
                             p_error_message: 'No default WhatsApp provider configured for this organization'
                         })
-                        await queueEmailFallback(supabase, item, recipientPhone, 'whatsapp_unavailable')
+                        await maybeQueueFallback(
+                            supabase,
+                            item,
+                            'whatsapp',
+                            recipientPhone,
+                            'whatsapp_unavailable',
+                            { providerMissing: true },
+                        )
                         await supabase.from('notifications_outbox').update({ status: 'cancelled' }).eq('id', id)
                         failed++
                         continue
@@ -545,9 +799,14 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                                 p_error_message: gwResult.error || 'Gateway returned error',
                                 p_provider_response: gwResult
                             })
-                            if (Number(retry_count || 0) >= 2) {
-                                await queueEmailFallback(supabase, item, recipientPhone, 'whatsapp_delivery_failed')
-                            }
+                            await maybeQueueFallback(
+                                supabase,
+                                item,
+                                'whatsapp',
+                                recipientPhone,
+                                'whatsapp_delivery_failed',
+                                { outboxStatus: await outboxStatusAfterAttempt(supabase, id) },
+                            )
                             failed++
                         }
                     } catch (gwError: any) {
@@ -556,19 +815,69 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                             p_status: 'failed',
                             p_error_message: gwError.message || 'Gateway request failed'
                         })
-                        if (Number(retry_count || 0) >= 2) {
-                            await queueEmailFallback(supabase, item, recipientPhone, 'whatsapp_delivery_failed')
-                        }
+                        await maybeQueueFallback(
+                            supabase,
+                            item,
+                            'whatsapp',
+                            recipientPhone,
+                            'whatsapp_delivery_failed',
+                            { outboxStatus: await outboxStatusAfterAttempt(supabase, id) },
+                        )
                         failed++
                     }
                 } else if (channel === 'sms') {
-                    // SMS sending placeholder
-                    await supabase.rpc('log_notification_attempt', {
-                        p_outbox_id: id,
-                        p_status: 'failed',
-                        p_error_message: 'SMS provider not yet configured'
+                    if (!recipientPhone) {
+                        await recordSmsDelivery(supabase, {
+                            orgId: org_id,
+                            outboxId: id,
+                            to: '',
+                            eventCode: event_code,
+                            result: { success: false, error: 'No phone number found for SMS delivery' },
+                        })
+                        await maybeQueueFallback(
+                            supabase,
+                            item,
+                            'sms',
+                            null,
+                            'sms_no_recipient',
+                            { outboxStatus: 'failed' },
+                        )
+                        failed++
+                        continue
+                    }
+
+                    if (!editedSmsBody && messageBody) {
+                        await supabase.from('notifications_outbox').update({
+                            payload_json: { ...payload, _sms_body: messageBody },
+                        }).eq('id', id)
+                    }
+
+                    const smsResult = await sendSmsWithActiveProvider(
+                        supabase,
+                        org_id,
+                        recipientPhone,
+                        messageBody
+                    )
+                    await recordSmsDelivery(supabase, {
+                        orgId: org_id,
+                        outboxId: id,
+                        to: recipientPhone,
+                        eventCode: event_code,
+                        result: smsResult,
                     })
-                    failed++
+                    if (smsResult.success) {
+                        sent++
+                    } else {
+                        await maybeQueueFallback(
+                            supabase,
+                            item,
+                            'sms',
+                            recipientPhone,
+                            smsResult.error === 'SMS provider not configured' ? 'sms_unavailable' : 'sms_delivery_failed',
+                            { providerMissing: smsResult.error === 'SMS provider not configured', outboxStatus: 'failed' },
+                        )
+                        failed++
+                    }
                 } else if (channel === 'email') {
                     const emailSubject = event_code === 'roadtour_qr_delivery'
                         ? `RoadTour QR — ${String(payload.campaign_name || 'Campaign')}`

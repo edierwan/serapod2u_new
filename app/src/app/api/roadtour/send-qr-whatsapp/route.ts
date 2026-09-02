@@ -118,7 +118,55 @@ export async function POST(request: NextRequest) {
         }
 
         if (routingPreset === 'sms_only') {
-            return NextResponse.json({ error: 'SMS delivery is selected but no RoadTour QR SMS sender is configured' }, { status: 400 })
+            const effectivePhone = phone || qrRecord.account_manager_phone
+            if (!effectivePhone) {
+                return NextResponse.json({ error: 'Reference has no phone number for SMS delivery' }, { status: 400 })
+            }
+
+            const { data: smsProvider } = await (supabase as any)
+                .from('notification_provider_configs')
+                .select('provider_name')
+                .eq('org_id', userProfile.organization_id)
+                .eq('channel', 'sms')
+                .eq('is_active', true)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+            if (!smsProvider) {
+                return NextResponse.json({ error: 'SMS provider not configured' }, { status: 400 })
+            }
+            if (smsProvider.provider_name !== 'local_my') {
+                return NextResponse.json({ error: 'Only Local Malaysian Provider is implemented for SMS delivery' }, { status: 400 })
+            }
+
+            const { data: queued, error: queueError } = await (supabase as any)
+                .from('notifications_outbox')
+                .insert({
+                    org_id: userProfile.organization_id,
+                    event_code: 'roadtour_qr_delivery',
+                    channel: 'sms',
+                    to_phone: effectivePhone,
+                    to_email: null,
+                    template_code: null,
+                    payload_json: {
+                        campaign_name: campaignName || qrRecord.campaign_name,
+                        reference_name: userName || qrRecord.account_manager_name,
+                        qr_url: scanUrl,
+                        qr_image_url: imageUrl,
+                    },
+                    priority: 'normal',
+                    provider_name: smsProvider.provider_name,
+                    status: 'queued',
+                    retry_count: 0,
+                    max_retries: 3,
+                })
+                .select('id')
+                .single()
+            if (queueError || !queued) {
+                return NextResponse.json({ error: queueError?.message || 'Failed to queue QR SMS' }, { status: 500 })
+            }
+
+            return NextResponse.json({ ok: true, channel: 'sms', queued: true, recipient: effectivePhone })
         }
 
         const effectivePhone = phone || qrRecord.account_manager_phone

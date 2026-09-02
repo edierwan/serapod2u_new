@@ -570,13 +570,10 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         throw new Error(`Failed to submit order: ${updateError.message}`)
       }
 
-      await fetch('/api/notifications/order-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id, eventCode: 'order_submitted' })
-      }).catch((error) => {
-        console.warn('Failed to queue order_submitted notification:', error)
-      })
+      // Notification queueing is handled by the trigger_order_notification()
+      // DB trigger, which fires automatically on the status UPDATE above. The
+      // explicit /api/notifications/order-event call that used to be here
+      // was queueing a second, duplicate notification.
 
       // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
       fetch('/api/cron/notification-outbox-worker').catch(() => { })

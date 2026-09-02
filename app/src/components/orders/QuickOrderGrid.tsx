@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, CheckCircle2, CheckSquare, ClipboardCopy, ClipboardPaste, Copy, HelpCircle, Package, Search, Trash2, X, XCircle } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, CheckSquare, ClipboardCopy, ClipboardPaste, Copy, HelpCircle, ListTree, Package, Search, Trash2, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -60,9 +60,15 @@ const STATUS = {
   notFound: { label: 'Product Not Found', className: 'text-red-600', Icon: XCircle },
   duplicate: { label: 'Duplicate', className: 'text-blue-700', Icon: Copy },
   invalidQuantity: { label: 'Invalid Quantity', className: 'text-red-600', Icon: XCircle },
+  // Paste sections (staging): a header line naming a product family, and a
+  // header that also carries a quantity, which needs a human decision.
+  sectionHeader: { label: 'Section', className: 'text-slate-600', Icon: ListTree },
+  requiresReview: { label: 'Requires Review — Section Title With Quantity', className: 'text-amber-700', Icon: HelpCircle },
 } as const
 
-type StatusDescriptor = (typeof STATUS)[keyof typeof STATUS]
+// The label is widened to a plain string so a section header can name the
+// product line it opened while still rendering through StatusMark.
+type StatusDescriptor = { label: string; className: string; Icon: (typeof STATUS)[keyof typeof STATUS]['Icon'] }
 
 const StatusMark = ({ status }: { status: StatusDescriptor }) => (
   <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium ${status.className}`}>
@@ -71,6 +77,10 @@ const StatusMark = ({ status }: { status: StatusDescriptor }) => (
 )
 
 const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]): StatusDescriptor => {
+  if (result.status === 'section_header') {
+    return { ...STATUS.sectionHeader, label: `Section: ${result.sectionProductLine || result.name}` }
+  }
+  if (result.status === 'requires_review') return STATUS.requiresReview
   if (result.status === 'invalid_quantity') return STATUS.invalidQuantity
   if (result.status === 'duplicate') return STATUS.duplicate
   if (!result.selectedVariantId && result.candidates.length > 1) return STATUS.selectMatch
@@ -95,6 +105,9 @@ const isPasteResultBlocked = (
   variants: QuickVariant[],
   combineDuplicates: boolean,
 ) => {
+  // Section headers are informational only — they never block Apply.
+  if (result.status === 'section_header') return false
+  if (result.status === 'requires_review') return true
   if (result.status === 'invalid_quantity') return true
   if (result.status === 'duplicate' && !combineDuplicates) return true
   const selected = variants.find(variant => variant.id === result.selectedVariantId)

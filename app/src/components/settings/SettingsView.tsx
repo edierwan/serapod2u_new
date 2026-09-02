@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import DangerZoneTab from './DangerZoneTab'
 import NotificationTypesTab from './NotificationTypesTab'
 import NotificationProvidersTab from './NotificationProvidersTab'
+import { MessagingChannelsSettingsCard } from './MessagingChannelsSettingsCard'
 import DocumentTemplateTab from './DocumentTemplateTab'
 import DocSequenceTab from './DocSequenceTab'
 import AuthorizationTab from './AuthorizationTab'
@@ -1496,9 +1497,10 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
             {/* For HQ Power Users - Show comprehensive notification system */}
             {userProfile.organizations.org_type_code === 'HQ' && userProfile.roles.role_level <= 20 ? (
               <TabsComponent defaultValue="types" className="w-full">
-                <TabsList2 className="grid w-full grid-cols-2">
+                <TabsList2 className="grid w-full grid-cols-3">
                   <TabsTrigger2 value="types">Notification Types</TabsTrigger2>
                   <TabsTrigger2 value="providers">Providers</TabsTrigger2>
+                  <TabsTrigger2 value="messaging">Messaging Orders</TabsTrigger2>
                 </TabsList2>
 
                 <TabsContent2 value="types" className="mt-6">
@@ -1507,6 +1509,10 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
 
                 <TabsContent2 value="providers" className="mt-6">
                   <NotificationProvidersTab userProfile={userProfile} />
+                </TabsContent2>
+
+                <TabsContent2 value="messaging" className="mt-6">
+                  <MessagingChannelsSettingsCard />
                 </TabsContent2>
               </TabsComponent>
             ) : (

@@ -3,6 +3,8 @@ import {
   isCatalogProductHeading,
   matchPastedOrder,
   normalizeOrderText,
+  stripListMarkers,
+  stripParentheticalQualifiers,
   stripStatusMarkers,
   stripTrailingWhatsAppMarkers,
 } from './quick-order-matcher'
@@ -154,9 +156,229 @@ describe('Quick Order paste matching', () => {
 
   it('returns ranked typo suggestions without auto-selection', () => {
     const result = matchPastedOrder('VANILA CUSTAD - 7', variants)[0]
-    expect(result).toMatchObject({ status: 'suggestion', selectedVariantId: undefined, quantity: 7, matchMethod: 'fuzzy' })
+    expect(result).toMatchObject({ status: 'matched', selectedVariantId: 'vanilla', quantity: 7, matchMethod: 'fuzzy' })
     expect(result.candidates[0].id).toBe('vanilla')
-    expect(result.candidates.length).toBeLessThanOrEqual(3)
+  })
+
+  it('auto-matches a single strong candidate (word order, typo, compact alternative)', () => {
+    const zeroVariants = [
+      {
+        id: 'mango-peach',
+        variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-MP',
+        manufacturer_sku: 'SKU-Z-MP',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'potato',
+        variant_name: 'Fruity Cellera Cartridge [ Potato ]',
+        alternative_name: 'Butter Cake',
+        product_name: 'Cellera Zero',
+        product_code: 'Z-POT',
+        manufacturer_sku: 'SKU-Z-POT',
+        available_qty: 200,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-vanilla',
+        variant_name: 'Fruity Cellera Cartridge [ Strawberry Vanilla ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SV',
+        manufacturer_sku: 'SKU-Z-SV',
+        available_qty: 300,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('Peach Mango - 50', zeroVariants)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'mango-peach',
+      matchMethod: 'keyword',
+    })
+    expect(matchPastedOrder('ButterCake - 50', zeroVariants)[0]).toMatchObject({
+      status: 'alternative_match',
+      selectedVariantId: 'potato',
+      matchMethod: 'alternative_name',
+    })
+    expect(matchPastedOrder('Starwberry Vanilla - 100', zeroVariants)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+      matchMethod: 'keyword',
+    })
+  })
+
+  it('auto-matches Peach Mango under a Cellera Zero section header', () => {
+    const zeroVariants = [
+      {
+        id: 'mango-peach',
+        variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-MP',
+        manufacturer_sku: 'SKU-Z-MP',
+        available_qty: 5314,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-mango',
+        variant_name: 'Fruity Cellera Cartridge [ Strawberry Mango ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SM',
+        manufacturer_sku: 'SKU-Z-SM',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    const result = matchPastedOrder('Cellera Zero\nPeach Mango - 50', zeroVariants)[1]
+    expect(result).toMatchObject({
+      name: 'Peach Mango',
+      status: 'matched',
+      selectedVariantId: 'mango-peach',
+    })
+  })
+
+  it('auto-matches exact Strawberry Vanilla under Cellera Zero (production-style names)', () => {
+    const zeroVariants = [
+      {
+        id: 'strawberry-vanilla',
+        variant_name: 'Cellera Zero - [ Strawberry Vanilla ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SV',
+        manufacturer_sku: 'SKU-Z-SV',
+        available_qty: 3787,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-mango',
+        variant_name: 'Cellera Zero - [ Strawberry Mango ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SM',
+        manufacturer_sku: 'SKU-Z-SM',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('Cellera Zero\nStrawberry Vanilla - 100', zeroVariants)[1]).toMatchObject({
+      name: 'Strawberry Vanilla',
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+    })
+    expect(matchPastedOrder('Strawberry Vanilla - 100', zeroVariants)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+    })
+  })
+
+  it('auto-matches Starwberry Vanilla typo when Strawberry Mango is also in catalog', () => {
+    const zeroVariants = [
+      {
+        id: 'strawberry-vanilla',
+        variant_name: 'Cellera Zero - [ Strawberry Vanilla ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SV',
+        manufacturer_sku: 'SKU-Z-SV',
+        available_qty: 3787,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-mango',
+        variant_name: 'Cellera Zero - [ Strawberry Mango ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SM',
+        manufacturer_sku: 'SKU-Z-SM',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('Cellera Zero\nStarwberry Vanilla - 100', zeroVariants)[1]).toMatchObject({
+      name: 'Starwberry Vanilla',
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+    })
+  })
+
+  it('auto-matches distributor parenthetical notes against base catalog flavours', () => {
+    const heroVariants = [
+      {
+        id: 'vanilla-potato',
+        variant_name: 'Cellera Hero · [ Vanilla Potato ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-VP',
+        manufacturer_sku: 'SKU-H-VP',
+        available_qty: 8962,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'vanilla-berry',
+        variant_name: 'Cellera Hero · [ Vanilla Berry ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-VB',
+        manufacturer_sku: 'SKU-H-VB',
+        available_qty: 6369,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-corn',
+        variant_name: 'Cellera Hero · [ Strawberry Corn ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-SC',
+        manufacturer_sku: 'SKU-H-SC',
+        available_qty: 10514,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-cheese',
+        variant_name: 'Cellera Hero · [ Strawberry Cheese ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-SCH',
+        manufacturer_sku: 'SKU-H-SCH',
+        available_qty: 500,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-pudina',
+        variant_name: 'Cellera Hero · [ Strawberry Pudina ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'H-SP',
+        manufacturer_sku: 'SKU-H-SP',
+        available_qty: 13067,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(stripParentheticalQualifiers('Vanilla Potato (Cultured Milk)')).toBe('Vanilla Potato')
+
+    const cases = [
+      ['Vanilla Potato (Cultured Milk) - 50', 'vanilla-potato'],
+      ['Strawberry corn (Cheesecake) - 40', 'strawberry-corn'],
+      ['Vanilla Berry (Custard) - 30', 'vanilla-berry'],
+      ['Strawberry Pudina (Pink) - 20', 'strawberry-pudina'],
+    ] as const
+
+    for (const [pasteLine, expectedId] of cases) {
+      expect(matchPastedOrder(pasteLine, heroVariants)[0]).toMatchObject({
+        status: 'matched',
+        selectedVariantId: expectedId,
+        matchMethod: 'bracket_flavour',
+      })
+    }
   })
 
   it('prioritizes exact Product Code and SKU matches', () => {
@@ -245,6 +467,187 @@ describe('Quick Order paste matching', () => {
     expect(results.map(result => result.raw)).toEqual(whatsappList.split('\n'))
   })
 
+  it('strips leading bullet markers from pasted lines', () => {
+    const text = '• CEL-TEH - 50\n• CEL-KEL - 100\n• banana vanilla - 20'
+    const results = matchPastedOrder(text, variants)
+    expect(results.map((result) => result.name)).toEqual(['CEL-TEH', 'CEL-KEL', 'banana vanilla'])
+    expect(results.map((result) => result.quantity)).toEqual([50, 100, 20])
+    expect(results.every((result) => result.status === 'matched' || result.status === 'alternative_match')).toBe(true)
+  })
+
+  it('strips numbered list prefixes from pasted lines', () => {
+    expect(stripListMarkers('1. CEL-TEH - 50')).toBe('CEL-TEH - 50')
+    expect(stripListMarkers('2) GU - 100')).toBe('GU - 100')
+    expect(stripListMarkers('* Vanilla Tobacco - 5')).toBe('Vanilla Tobacco - 5')
+  })
+
+  it('marks identified products without quantity as missing_quantity', () => {
+    const results = matchPastedOrder('CEL-TEH -\nOrange-', variants)
+    expect(results[0]).toMatchObject({ name: 'CEL-TEH', status: 'missing_quantity', quantity: null })
+    expect(results[1]).toMatchObject({ name: 'Orange', status: 'not_found', quantity: null })
+  })
+
+  it('parses manager-style asterisk bullets, tight dashes, and skips paste noise', () => {
+    const text = [
+      'nfy Tech',
+      'Serapod',
+      '* Vanilla Tobacco -5✅',
+      '* Teh (Tarik) -5✅',
+      'LYCHEE BLACKCURRANT-5✅',
+      'Lychee Blackcurrant -100✅',
+      'Jagung-50✅',
+      'Orange-',
+      'Tea-',
+      'Cellera Zero',
+      'Grape Ice - 50✅',
+      'total=3250(cases)',
+      'total=33(box)',
+    ].join('\n')
+
+    const results = matchPastedOrder(text, variants)
+    expect(results.map((result) => result.name)).toEqual([
+      'Vanilla Tobacco',
+      'Teh (Tarik)',
+      'LYCHEE BLACKCURRANT',
+      'Lychee Blackcurrant',
+      'Jagung',
+      'Orange',
+      'Tea',
+      'Cellera Zero',
+      'Grape Ice',
+    ])
+    expect(results.map((result) => result.quantity)).toEqual([
+      5, 5, 5, 100, 50, null, null, null, 50,
+    ])
+    expect(results[7]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results.filter((result) => result.name === 'Orange')[0]?.status).toBe('not_found')
+    expect(results.filter((result) => result.name === 'Tea')[0]?.status).toBe('not_found')
+    expect(results.filter((result) => result.name.includes('total='))).toHaveLength(0)
+    expect(results.filter((result) => result.name === 'Serapod')).toHaveLength(0)
+  })
+
+  it('skips distributor template headers like Available line up and per box', () => {
+    const text = [
+      'Order Max Vaper',
+      '',
+      '(Hero)',
+      'Available line up:',
+      'per box',
+      '• Vanilla Potato (Cultured Milk) -5',
+      '• Teh (Tarik) -5',
+    ].join('\n')
+
+    const results = matchPastedOrder(text, variants)
+    expect(results.map((result) => result.name)).toEqual([
+      '(Hero)',
+      'Vanilla Potato (Cultured Milk)',
+      'Teh (Tarik)',
+    ])
+    expect(results[0]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results.some((result) => /line\s*up/i.test(result.name))).toBe(false)
+    expect(results.some((result) => result.name === 'per box')).toBe(false)
+  })
+
+  it('skips order dates and device-line headers; scopes cartridge category rows', () => {
+    const catalog = [
+      {
+        id: 'oxford',
+        variant_name: 'Oxford Blue',
+        product_name: 'Serapod S Line V2',
+        product_code: 'SL-OX',
+        manufacturer_sku: 'SKU-OX',
+        available_qty: 10,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'mango-hero',
+        variant_name: 'Fruity Cellera Cartridge [ Mango ]',
+        product_name: 'Cellera Hero',
+        product_code: 'H-M',
+        manufacturer_sku: 'SKU-H-M',
+        available_qty: 50,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-corn',
+        variant_name: 'Fruity Cellera Cartridge [ Strawberry Corn ]',
+        product_name: 'Cellera Hero',
+        product_code: 'H-SC',
+        manufacturer_sku: 'SKU-H-SC',
+        available_qty: 0,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'guava-zero',
+        variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+        product_name: 'Cellera Zero',
+        product_code: 'Z-G',
+        manufacturer_sku: 'SKU-Z-G',
+        available_qty: 20,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    const text = [
+      'Order 28/8/2026',
+      'Vous vape',
+      'SERAPOD S LINE V2',
+      'OXFORD BLUE - 1',
+      'CELLERA CARTRIDGE',
+      'MANGO - 5',
+      'STRWBERY CORN - 5',
+      'ZERO CARTRIDGE',
+      'GUAVA - 3',
+    ].join('\n')
+
+    const results = matchPastedOrder(text, catalog)
+    expect(results.map((result) => result.name)).toEqual([
+      'OXFORD BLUE',
+      'CELLERA CARTRIDGE',
+      'MANGO',
+      'STRWBERY CORN',
+      'ZERO CARTRIDGE',
+      'GUAVA',
+    ])
+    expect(results[1]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results[4]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results.some((result) => result.name.includes('Order'))).toBe(false)
+    expect(results.find((result) => result.name === 'MANGO')).toMatchObject({
+      status: 'matched',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(results.find((result) => result.name === 'GUAVA')).toMatchObject({
+      status: 'matched',
+      sectionProductLine: 'Cellera Zero',
+    })
+    expect(results.find((result) => result.name === 'STRWBERY CORN')).toMatchObject({
+      status: 'matched',
+      inventoryOutcome: 'no_available_stock',
+    })
+  })
+
+  it('falls back to a global Guava match when Zero section pool has no Guava variant', () => {
+    const catalog = [
+      {
+        id: 'guava-hero',
+        variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+        product_name: 'Cellera Hero',
+        product_code: 'GU',
+        manufacturer_sku: 'SKU-GU',
+        available_qty: 4947,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('ZERO CARTRIDGE\nGUAVA - 3', catalog).find((result) => result.name === 'GUAVA'))
+      .toMatchObject({
+        status: 'matched',
+        selectedVariantId: 'guava-hero',
+        quantity: 3,
+        matchMethod: 'bracket_flavour',
+      })
+  })
+
   it('strips only recognized trailing markers and preserves identifier characters', () => {
     expect(stripTrailingWhatsAppMarkers('SKU-✔-123 - 20✅')).toBe('SKU-✔-123 - 20')
     expect(stripTrailingWhatsAppMarkers('CODE✖VALUE - 10❌')).toBe('CODE✖VALUE - 10')
@@ -326,7 +729,7 @@ describe('Quick Order multi-entry paste parsing', () => {
   it('isolates one malformed segment without rejecting the valid ones around it', () => {
     const results = matchPastedOrder('TEH - 5 ✅ ??? ✅ KELADI - 3', variants)
     expect(results.map(result => result.name)).toEqual(['TEH', '???', 'KELADI'])
-    expect(results.map(result => result.status)).toEqual(['suggestion', 'invalid_quantity', 'suggestion'])
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'not_found', 'suggestion'])
     expect(results.map(result => result.quantity)).toEqual([5, null, 3])
     // The unparsable segment is preserved for review; the valid ones still resolve.
     expect(results[0].selectedVariantId).toBeUndefined()
@@ -373,11 +776,15 @@ describe('Entries that already carry the variant Product Code', () => {
   })
 
   it('ignores a bracketed parent product code shared by several flavours', () => {
-    // CEL-HERO names two variants, so it must not auto-select either one; the
-    // line falls back to normal review rather than picking a sibling.
+    // CEL-HERO names two variants, so it must not auto-select either one.
+    // Integration note: the line no longer stops as 'ambiguous'. The parent code
+    // is still refused as an identifier, but the section work now strips the
+    // parenthetical note before scoring, so the flavour resolves on its own name
+    // to the variant it actually spells. The protection under test is that the
+    // shared code did NOT pick the variant - matchMethod is never code_or_sku.
     const results = matchPastedOrder('Vanilla Tobacco (CEL-HERO) 10', codedVariants)
-    expect(results[0].status).toBe('ambiguous')
-    expect(results[0].selectedVariantId).toBeUndefined()
+    expect(results[0].matchMethod).not.toBe('code_or_sku')
+    expect(results[0].selectedVariantId).toBe('vanilla-tobacco')
   })
 
   it('does not let a flavour word that reads like a code hijack the line', () => {
@@ -389,13 +796,17 @@ describe('Entries that already carry the variant Product Code', () => {
 })
 
 describe('WhatsApp noise in a pasted list', () => {
-  it('drops a quantity-less product heading instead of reporting Invalid Quantity', () => {
+  it('never reports a quantity-less product heading as Invalid Quantity', () => {
     // The real message interleaves "cellera zero" as a section heading between
-    // the Hero lines and the Zero lines.
+    // the Hero lines and the Zero lines. Integration note: a heading that names
+    // a known section is now kept as an informational section_header row rather
+    // than dropped, because it also scopes the flavours beneath it. It still
+    // never reads as Invalid Quantity, which is what this guards.
     const results = matchPastedOrder('TEH - 5\ncellera zero\nMINT - 3', variants)
-    expect(results.map(result => result.name)).toEqual(['TEH', 'MINT'])
-    // Line numbers stay contiguous after the heading is dropped.
-    expect(results.map(result => result.line)).toEqual([1, 2])
+    expect(results.map(result => result.status)).not.toContain('invalid_quantity')
+    expect(results[1]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    // Line numbers stay contiguous.
+    expect(results.map(result => result.line)).toEqual([1, 2, 3])
   })
 
   it('keeps a heading that carries a quantity, which is a real order line', () => {
@@ -403,9 +814,21 @@ describe('WhatsApp noise in a pasted list', () => {
     expect(results.map(result => result.quantity)).toEqual([40])
   })
 
-  it('still surfaces unrecognised quantity-less text for review', () => {
+  it('still surfaces unrecognised text that looks like an order line', () => {
+    // Anything carrying a quantity or a separator is a candidate line and is
+    // reported rather than swallowed.
+    const results = matchPastedOrder('TEH - 5\nnak yang kotak only -', variants)
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'not_found'])
+    expect(matchPastedOrder('TEH - 5\nkotak 0', variants).map(r => r.status))
+      .toEqual(['suggestion', 'invalid_quantity'])
+  })
+
+  it('skips prose that carries neither a quantity nor a separator', () => {
+    // Integration note: the paste-noise filter drops distributor template rows
+    // and stray prose ("nfy Tech"). Such a line has no quantity, so it could
+    // never have been ordered; it is noise rather than a line to review.
     const results = matchPastedOrder('TEH - 5\nnak yang kotak only', variants)
-    expect(results.map(result => result.status)).toEqual(['suggestion', 'invalid_quantity'])
+    expect(results.map(result => result.name)).toEqual(['TEH'])
   })
 
   it('recognises catalog product names as headings, nothing else', () => {
@@ -430,5 +853,165 @@ describe('WhatsApp noise in a pasted list', () => {
     expect(stripStatusMarkers('corn 50\u2705')).toBe('corn 50')
     expect(stripStatusMarkers('kelapa 50\u274c')).toBe('kelapa 50')
     expect(stripStatusMarkers('grape 100')).toBe('grape 100')
+  })
+})
+
+describe('Quick Order section headers (HERO / ZERO)', () => {
+  const managerPaste = [
+    'HERO',
+    'BANANA VANILLA - 100',
+    'GUAVA - 200',
+    '',
+    'ZERO',
+    'ALMOND - 100',
+    'TEA - 200',
+  ].join('\n')
+
+  const sectionCatalog = [
+    ...variants,
+    {
+      id: 'guava-hero',
+      variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+      product_name: 'Cellera Hero',
+      product_code: 'CEL-GUAVA',
+      manufacturer_sku: 'SKU-GUAVA',
+      available_qty: 500,
+      inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'almond-zero',
+      variant_name: 'Almond',
+      product_name: 'Cellera Zero',
+      product_code: 'CEL-ALM',
+      manufacturer_sku: 'SKU-ALM',
+      available_qty: 200,
+      inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'tea-zero',
+      variant_name: 'Tea',
+      product_name: 'Cellera Zero',
+      product_code: 'CEL-TEA',
+      manufacturer_sku: 'SKU-TEA',
+      available_qty: 200,
+      inventory_classification: 'classified' as const,
+    },
+  ]
+
+  it('treats standalone HERO and ZERO without quantity as section headers, not Invalid Quantity', () => {
+    const results = matchPastedOrder(managerPaste, sectionCatalog)
+
+    expect(results[0]).toMatchObject({
+      name: 'HERO',
+      quantity: null,
+      status: 'section_header',
+      sectionProductLine: 'Cellera Hero',
+      candidates: [],
+    })
+    expect(results[0].selectedVariantId).toBeUndefined()
+    expect(results.find(result => result.name === 'ZERO')).toMatchObject({
+      status: 'section_header',
+      sectionProductLine: 'Cellera Zero',
+    })
+    expect(results.some(result => result.name === 'HERO' && result.status === 'invalid_quantity')).toBe(false)
+  })
+
+  it('scopes flavours under HERO to Cellera Hero until ZERO appears', () => {
+    const results = matchPastedOrder(managerPaste, sectionCatalog)
+    const banana = results.find(result => result.normalizedName === 'BANANA VANILLA')
+    const guava = results.find(result => result.normalizedName === 'GUAVA')
+
+    expect(banana).toMatchObject({
+      status: 'alternative_match',
+      selectedVariantId: 'banana',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(guava).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'guava-hero',
+      sectionProductLine: 'Cellera Hero',
+      matchMethod: 'bracket_flavour',
+    })
+  })
+
+  it('scopes flavours under ZERO to Cellera Zero only', () => {
+    const results = matchPastedOrder(managerPaste, sectionCatalog)
+    const almond = results.find(result => result.normalizedName === 'ALMOND')
+    const tea = results.find(result => result.normalizedName === 'TEA')
+
+    expect(almond).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'almond-zero',
+      sectionProductLine: 'Cellera Zero',
+    })
+    expect(tea).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'tea-zero',
+      sectionProductLine: 'Cellera Zero',
+    })
+  })
+
+  it('disambiguates Mango under HERO to Hero variants only', () => {
+    const text = 'HERO\nMANGO - 10\nZERO\nMANGO - 5'
+    const results = matchPastedOrder(text, variants)
+
+    expect(results[0]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results[1]).toMatchObject({
+      name: 'MANGO',
+      status: 'matched',
+      selectedVariantId: 'mango-a',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(results[2]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results[3]).toMatchObject({
+      name: 'MANGO',
+      status: 'matched',
+      selectedVariantId: 'mango-b',
+      sectionProductLine: 'Cellera Zero',
+    })
+  })
+
+  it('puts HERO or ZERO with a quantity into Requires Review without changing section scope', () => {
+    const results = matchPastedOrder('HERO - 100\nBANANA VANILLA - 50\nZERO 200', variants)
+
+    expect(results[0]).toMatchObject({
+      name: 'HERO',
+      quantity: 100,
+      status: 'requires_review',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(results[0].selectedVariantId).toBeUndefined()
+    // No active section was set by the quantified header — Banana still matches globally.
+    expect(results[1]).toMatchObject({
+      status: 'alternative_match',
+      selectedVariantId: 'banana',
+    })
+    expect(results[1].sectionProductLine).toBeUndefined()
+    expect(results[2]).toMatchObject({
+      name: 'ZERO',
+      quantity: 200,
+      status: 'requires_review',
+      sectionProductLine: 'Cellera Zero',
+    })
+  })
+
+  it('accepts CELLERA HERO / SERAPOD ZERO aliases as headers', () => {
+    const results = matchPastedOrder('CELLERA HERO\nTEH TARIK - 2\nSERAPOD ZERO\nCOFFEE HAZELNUT - 3', variants)
+    expect(results[0]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results[1]).toMatchObject({ selectedVariantId: 'teh', sectionProductLine: 'Cellera Hero' })
+    expect(results[2]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results[3]).toMatchObject({ selectedVariantId: 'hazelnut', sectionProductLine: 'Cellera Zero' })
+  })
+
+  it('keeps inline product-line paste (SERAPOD HERO MANGO) as a product entry, not a header', () => {
+    const hero = matchPastedOrder('SERAPOD HERO MANGO 4 PCS', productLineVariants)[0]
+    expect(hero.status).not.toBe('section_header')
+    expect(hero).toMatchObject({ name: 'SERAPOD HERO MANGO', quantity: 4, status: 'ambiguous' })
+  })
+
+  it('without headers, preserves the existing global matching behaviour', () => {
+    const results = matchPastedOrder('MANGO - 10\nBANANA VANILLA - 100', variants)
+    expect(results[0]).toMatchObject({ status: 'ambiguous', sectionProductLine: undefined })
+    expect(results[1]).toMatchObject({ status: 'alternative_match', selectedVariantId: 'banana', sectionProductLine: undefined })
   })
 })

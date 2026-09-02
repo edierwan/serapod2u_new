@@ -16,6 +16,7 @@ const row = (id: string, productName: string, groupName: string, options: Record
   id,
   product_id: `product-${id}`,
   variant_name: `${productName} Flavour`,
+  product_code: options.variant_product_code as string | undefined,
   alternative_name: options.alternative_name as string | undefined,
   attributes: {},
   barcode: null,
@@ -90,6 +91,26 @@ describe('D2H Quick Order Vape catalog', () => {
     })
     expect(() => validateQuickOrderCatalogItems([{ variantId: 'orange', quantity: 50 }], orange))
       .toThrow(MISSING_DISTRIBUTOR_PRICE_ORDER_MESSAGE)
+  })
+
+  it('matches distributor shorthand against the variant Product Code, not the parent product code', () => {
+    const cvRows = [row('cv', 'Cellera Hero', 'Cartridge', {
+      variant_product_code: 'CV',
+      product_code: 'CELVA9464',
+    })]
+    cvRows[0].variant_name = 'Deluxe Cellera Cartridge [ Corn Vanilla ]'
+    const catalog = filterQuickOrderCatalogRows(cvRows, new Map([['cv', unreserved(2000)]]))
+
+    // The two codes stay separate: product_code is the parent's, and the
+    // variant-level code keeps its own field, which is what the labels read.
+    // Paste matching resolves against both, so the shorthand still lands.
+    expect(catalog[0].product_code).toBe('CELVA9464')
+    expect(catalog[0].variant_product_code).toBe('CV')
+    expect(matchPastedOrder('CV - 500', catalog)[0]).toMatchObject({
+      status: 'matched',
+      matchMethod: 'code_or_sku',
+      selectedVariantId: 'cv',
+    })
   })
 
   it('includes Alternative Name in the authorized catalog used by paste matching', () => {

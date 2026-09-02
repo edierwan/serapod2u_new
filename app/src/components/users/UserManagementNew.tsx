@@ -1191,9 +1191,11 @@ export default function UserManagementNew({
   const [deleteTargetUser, setDeleteTargetUser] = useState<{ id: string; name: string } | null>(null);
   const [deleteOtpCode, setDeleteOtpCode] = useState('');
   const [deleteOtpCodeId, setDeleteOtpCodeId] = useState('');
-  const [deleteOtpMaskedPhone, setDeleteOtpMaskedPhone] = useState('');
+  const [deleteOtpMaskedRecipient, setDeleteOtpMaskedRecipient] = useState('');
+  const [deleteOtpChannel, setDeleteOtpChannel] = useState<'whatsapp' | 'sms' | 'email' | null>(null);
   const [deleteOtpError, setDeleteOtpError] = useState('');
   const [deleteOtpSending, setDeleteOtpSending] = useState(false);
+  const [deleteOtpRemovalMode, setDeleteOtpRemovalMode] = useState<'delete' | 'archive' | null>(null);
 
   const handleDeleteUser = async (userId: string, userName: string) => {
     if (!canManageUserDeletion()) {
@@ -1208,7 +1210,10 @@ export default function UserManagementNew({
     setDeleteOtpStep('confirm');
     setDeleteOtpCode('');
     setDeleteOtpCodeId('');
+    setDeleteOtpMaskedRecipient('');
+    setDeleteOtpChannel(null);
     setDeleteOtpError('');
+    setDeleteOtpRemovalMode(null);
     setDeleteOtpOpen(true);
   };
 
@@ -1225,7 +1230,11 @@ export default function UserManagementNew({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
       setDeleteOtpCodeId(data.codeId);
-      setDeleteOtpMaskedPhone(data.maskedPhone);
+      setDeleteOtpMaskedRecipient(data.maskedRecipient || data.maskedEmail || data.maskedPhone || '');
+      setDeleteOtpChannel(
+        data.channel === 'email' ? 'email' : data.channel === 'sms' ? 'sms' : 'whatsapp',
+      );
+      setDeleteOtpRemovalMode(data.removalMode === 'archive' ? 'archive' : 'delete');
       setDeleteOtpStep('otp');
     } catch (err: any) {
       setDeleteOtpError(err.message);
@@ -1250,7 +1259,10 @@ export default function UserManagementNew({
         setDeleteOtpStep('otp');
         throw new Error(data.error || 'Verification failed');
       }
-      toast({ title: "User Deleted", description: data.message || `${deleteTargetUser.name} deleted successfully` });
+      toast({
+        title: data.mode === 'archive' ? "User Archived" : "User Deleted",
+        description: data.message || `${deleteTargetUser.name} removed successfully`,
+      });
       setDeleteOtpOpen(false);
       await loadUsers();
     } catch (err: any) {
@@ -2373,16 +2385,23 @@ export default function UserManagementNew({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-700">
               <AlertTriangle className="w-5 h-5" />
-              {deleteOtpStep === 'confirm' ? 'Delete User' : deleteOtpStep === 'otp' ? 'Enter Verification Code' : 'Deleting User...'}
+              {deleteOtpStep === 'confirm'
+                ? 'Remove User'
+                : deleteOtpStep === 'otp'
+                  ? 'Enter Verification Code'
+                  : 'Removing User...'}
             </DialogTitle>
             <DialogDescription>
               {deleteOtpStep === 'confirm' && (
-                <>This will permanently delete <strong>{deleteTargetUser?.name}</strong> and all related data. A WhatsApp verification code will be sent to the organization&apos;s registered phone.</>
+                <>A verification code will be sent to the organization contact using the <strong>User Deletion OTP</strong> routing in Notifications → Types before removing <strong>{deleteTargetUser?.name}</strong>.</>
               )}
               {deleteOtpStep === 'otp' && (
-                <>A 4-digit code was sent to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to confirm deletion.</>
+                <>
+                  A 4-digit code was sent via {deleteOtpChannel === 'email' ? 'email' : deleteOtpChannel === 'sms' ? 'SMS' : 'WhatsApp'} to <strong>{deleteOtpMaskedRecipient}</strong>. Enter it below to confirm.
+                  {deleteOtpRemovalMode === 'archive' && ' This account has business history, so it will be archived and its original email and phone will be released for reuse.'}
+                </>
               )}
-              {deleteOtpStep === 'deleting' && 'Please wait while the user is being deleted...'}
+              {deleteOtpStep === 'deleting' && 'Please wait while the user is being removed...'}
             </DialogDescription>
           </DialogHeader>
 
@@ -2392,11 +2411,11 @@ export default function UserManagementNew({
                 <div className="flex items-start gap-2">
                   <Shield className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                   <div className="text-sm text-red-800">
-                    <p className="font-medium mb-1">This action cannot be undone.</p>
+                    <p className="font-medium mb-1">A history check will run before removal.</p>
                     <ul className="list-disc ml-4 space-y-0.5 text-xs">
-                      <li>User will be removed from database & auth</li>
-                      <li>All audit logs, points, and activations will be deleted</li>
-                      <li>QR scan records will be anonymized</li>
+                      <li>Users without business history are deleted permanently.</li>
+                      <li>Users with orders or documents are archived to protect history.</li>
+                      <li>Archived users cannot sign in; their original email and phone are released for reuse.</li>
                     </ul>
                   </div>
                 </div>
@@ -2446,7 +2465,7 @@ export default function UserManagementNew({
                 onClick={handleDeleteOtpRequest}
                 disabled={deleteOtpSending}
               >
-                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : 'Send Verification Code'}
+                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : 'Check & Send Verification Code'}
               </Button>
             )}
             {deleteOtpStep === 'otp' && (
@@ -2455,7 +2474,7 @@ export default function UserManagementNew({
                 onClick={handleDeleteOtpVerify}
                 disabled={deleteOtpSending || deleteOtpCode.length !== 4}
               >
-                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</> : 'Verify & Delete'}
+                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</> : deleteOtpRemovalMode === 'archive' ? 'Verify & Archive' : 'Verify & Delete'}
               </Button>
             )}
           </DialogFooter>

@@ -627,6 +627,10 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
       console.log('🔍 Checking for D2H orders from distributor:', distributorId)
       
+      // D2H/S2D ready to ship for this warehouse org:
+      // - classic: seller_org_id = current org (HQ acting as warehouse seller)
+      // - HQ→WH fulfillment: fulfillment_warehouse_id = current WH org (Serapp / default WH)
+      const orgId = userProfile.organization_id
       const { data: d2hOrders, error: orderError } = await supabase
         .from('orders')
         .select(`
@@ -634,6 +638,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           order_no,
           order_type,
           status,
+          seller_org_id,
+          fulfillment_warehouse_id,
+          source_channel,
           order_items (
             id,
             qty,
@@ -657,7 +664,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         `)
         .in('order_type', ['D2H', 'S2D'])
         .eq('buyer_org_id', distributorId)
-        .eq('seller_org_id', userProfile.organization_id)
+        .or(`seller_org_id.eq.${orgId},fulfillment_warehouse_id.eq.${orgId}`)
         .in('status', ['warehouse_packed', 'approved', 'closed'])
         .order('created_at', { ascending: false })
         .limit(5)
@@ -666,14 +673,22 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         console.warn('⚠️  Could not check for D2H/S2D orders:', orderError)
       }
 
-      console.log(`📊 Found ${d2hOrders?.length || 0} D2H/S2D orders`)
+      // Messaging orders (telegram/whatsapp) use a separate fulfilment path —
+      // allocate at ready-to-ship / deduct at dispatch. Exclude them from classic QR ship
+      // until that path is wired, so we never treat an unfulfilled messaging SO as shippable.
+      const classicD2hOrders = (d2hOrders || []).filter((order: { source_channel?: string | null }) => {
+        const channel = (order.source_channel || '').toLowerCase()
+        return channel !== 'telegram' && channel !== 'whatsapp'
+      })
 
-      if (d2hOrders && d2hOrders.length > 0) {
+      console.log(`📊 Found ${classicD2hOrders.length} classic D2H/S2D orders (${d2hOrders?.length || 0} before messaging filter)`)
+
+      if (classicD2hOrders.length > 0) {
         // SCENARIO 2: D2H/S2D Order exists - calculate expected quantities from order
         console.log('✅ SCENARIO 2: Order flow - System knows expected quantities')
         
         // Use the most recent approved order
-        const sourceOrder = d2hOrders[0]
+        const sourceOrder = classicD2hOrders[0]
         const orderItems = sourceOrder.order_items || []
         setPickingLines(orderItems)
         
