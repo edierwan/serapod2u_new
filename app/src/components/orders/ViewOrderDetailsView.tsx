@@ -611,24 +611,25 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 print:bg-white">
+    <div className="min-h-screen overflow-x-hidden bg-gray-50 print:bg-white">
       {/* Action Bar */}
       <div className="bg-white border-b border-gray-200 mb-0 print:hidden">
-        <div className="px-6 py-4 flex justify-between items-center">
+        <div className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <Button
             variant="ghost"
             onClick={handleBack}
-            className="hover:bg-gray-100 -ml-2"
+            className="self-start hover:bg-gray-100 -ml-2 shrink-0"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Orders
           </Button>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             {/* Receipt Button - Only show for D2H orders that are approved */}
             {(orderData?.order_type === 'D2H' || orderData?.order_type === 'DH') && orderData?.status === 'approved' && (
               <Button
                 onClick={() => setReceiptDialogOpen(true)}
                 variant="outline"
+                size="sm"
                 className="gap-2 border-green-300 text-green-700 hover:bg-green-50"
               >
                 <Receipt className="w-4 h-4" />
@@ -638,6 +639,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             <Button
               onClick={() => setDocumentsDialogOpen(true)}
               variant="outline"
+              size="sm"
               className="gap-2 border-gray-300 hover:bg-gray-50"
             >
               <FileText className="w-4 h-4" />
@@ -666,10 +668,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   }, 2000)
                 }, 500)
               }}
+              size="sm"
               className="gap-2 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
             >
               <FileText className="w-4 h-4" />
-              Print / Save PDF
+              <span className="hidden min-[400px]:inline">Print / </span>PDF
             </Button>
           </div>
         </div>
@@ -679,12 +682,12 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
       {/* Static Order View */}
       {/* Document Container - Only show for SO or PO main tabs */}
-      <div ref={printAreaRef} className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
+      <div ref={printAreaRef} className="bg-white shadow-lg p-4 sm:p-6 md:p-8 lg:p-12 print:shadow-none print:p-8 print:w-full">
 
-        {/* Header Section - 3 Columns in 1 Row */}
-        <div className="flex justify-between items-start mb-12 print:mb-6 gap-8">
+        {/* Header Section */}
+        <div className="mb-8 flex flex-col gap-6 sm:mb-12 lg:mb-12 lg:flex-row lg:items-start lg:justify-between print:mb-6">
           {/* Left: Company Logo */}
-          <div className="flex-shrink-0 w-40">
+          <div className="w-full shrink-0 sm:w-32 lg:w-40">
             {headerOrgLogoUrl && !logoFailed ? (
               <img
                 src={headerOrgLogoUrl}
@@ -702,7 +705,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           </div>
 
           {/* Center: Headquarters Detail */}
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h2 className="font-bold text-gray-900 uppercase mb-2 text-sm tracking-wide">
               {headerOrg?.org_name}
             </h2>
@@ -715,8 +718,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           </div>
 
           {/* Right: PO Detail */}
-          <div className="flex-shrink-0 text-right">
-            <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">{docTitle}</h1>
+          <div className="w-full shrink-0 lg:w-auto lg:text-right">
+            <h1 className="mb-3 text-lg font-light uppercase tracking-wider text-gray-900 sm:mb-4 sm:text-xl">{docTitle}</h1>
             <div className="text-xs space-y-2">
               <div className="flex justify-between gap-4">
                 <span className="text-[var(--sera-muted)]">{docNoLabel}</span>
@@ -753,21 +756,21 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         </div>
 
         {/* Supplier & Status Section */}
-        <div className="flex justify-between items-start mb-12 print:mb-6 border-t border-gray-100 pt-8 print:pt-4">
+        <div className="mb-8 flex flex-col gap-6 border-t border-gray-100 pt-6 sm:mb-12 sm:flex-row sm:items-start sm:justify-between print:mb-6 print:pt-4">
           {/* Supplier Info */}
-          <div className="w-1/2">
+          <div className="w-full min-w-0 sm:w-1/2">
             <h3 className="font-bold text-gray-900 mb-3 text-sm">{otherOrgLabel}</h3>
             <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
               <p className="font-bold text-gray-800 uppercase mb-1">{otherOrg?.org_name}</p>
               {/* Contact Person if available, otherwise generic */}
               <p className="uppercase">{otherOrg?.contact_person || ''}</p>
-              <p className="whitespace-pre-line max-w-xs">{otherOrg?.address || 'No address provided'}</p>
+              <p className="whitespace-pre-line max-w-full sm:max-w-xs">{otherOrg?.address || 'No address provided'}</p>
               <p>{otherOrg?.email}</p>
             </div>
           </div>
 
           {/* Status Box */}
-          <div className="w-48">
+          <div className="w-full shrink-0 sm:w-48">
             <div className="border border-gray-200 p-4 text-center rounded-sm">
               <p className="text-xs text-[var(--sera-muted)] mb-1 uppercase tracking-wide">Status</p>
               <p className={`text-xl font-bold uppercase ${getStatusColor(orderData.payment_status || orderData.status)}`}>
@@ -778,8 +781,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         </div>
 
         {/* Items Table */}
-        <div className="mb-12 print:mb-6">
-          <table className="w-full">
+        <div className="mb-8 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:mb-12 sm:px-0 print:mb-6">
+          <table className="w-full min-w-[36rem]">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
@@ -795,7 +798,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                 <tr key={item.id} className="break-inside-avoid page-break-inside-avoid">
                   <td className="py-3 text-xs text-[var(--sera-muted)] align-top pt-4">{index + 1}</td>
                   <td className="py-3 text-xs text-gray-900 align-top pt-4">
-                    <p className="font-medium text-sm whitespace-nowrap">
+                    <p className="break-words text-sm font-medium sm:whitespace-nowrap">
                       {(() => {
                         // Extract product base name (e.g., "Cellera Hero")
                         const productName = item.product?.product_name?.replace(/\[.*?\]\s*$/, '').trim() || '';
@@ -821,7 +824,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                           const effectiveAvailable = config.available + (config.id === item.stock_config_id ? Number(item.qty || 0) : 0)
                           return effectiveAvailable >= Number(item.qty || 0)
                         })
-                        return <div className="min-w-[310px] space-y-2">
+                        return <div className="min-w-0 space-y-2 sm:min-w-[310px]">
                           <div className="font-semibold text-slate-900">Requested: {item.variant?.variant_name || 'Flavour'} · {formatNumber(item.qty)}</div>
                           {options.map(config => {
                             const enough = selectable.some(candidate => candidate.id === config.id)
@@ -872,8 +875,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         </div>
 
         {/* Footer Notes & Signature */}
-        <div className="mt-12 pt-8 print:mt-4 print:pt-4 border-t border-gray-100 break-inside-avoid page-break-inside-avoid">
-          <div className="flex justify-between items-start">
+        <div className="mt-8 border-t border-gray-100 pt-6 break-inside-avoid page-break-inside-avoid print:mt-4 print:pt-4 sm:mt-12 sm:pt-8">
+          <div className="flex flex-col items-stretch gap-8 md:flex-row md:items-start md:justify-between">
             {/* Left: Issued By with Company Signature */}
             <div>
               {headerOrg?.signature_type === 'electronic' && companySignatureUrl && !companySignatureFailed && (
