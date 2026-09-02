@@ -6,10 +6,7 @@ import { DELETE_USER_OTP_EVENT, REQUIRED_NOTIFICATION_TYPES } from '@/lib/notifi
 const root = path.resolve(__dirname, '../../..')
 const typesTab = fs.readFileSync(path.join(root, 'src/components/settings/NotificationTypesTab.tsx'), 'utf8')
 const templates = fs.readFileSync(path.join(root, 'src/config/notificationTemplates.ts'), 'utf8')
-const migration = fs.readFileSync(
-  path.join(root, '../supabase/migrations/20260818100000_delete_user_otp_notification_type.sql'),
-  'utf8',
-)
+const ensureTypes = fs.readFileSync(path.join(root, 'src/lib/notifications/ensureNotificationTypes.ts'), 'utf8')
 
 describe('delete_user_otp notification type catalog (phase 1)', () => {
   it('registers delete_user_otp in the required notification catalog', () => {
@@ -35,8 +32,8 @@ describe('delete_user_otp notification type catalog (phase 1)', () => {
     expect(templates).toContain('{{verification_code}}')
   })
 
-  it('includes a migration for notification_types', () => {
-    expect(migration).toContain("'delete_user_otp'")
-    expect(migration).toContain("ARRAY['whatsapp', 'sms', 'email']")
+  it('seeds delete_user_otp via ensureNotificationTypes upsert', () => {
+    expect(ensureTypes).toContain('REQUIRED_NOTIFICATION_TYPES')
+    expect(ensureTypes).toContain("onConflict: 'event_code'")
   })
 })
