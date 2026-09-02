@@ -18,31 +18,17 @@ import { runSerappCancelHold, runSerappConfirmOrder, runSerappStockCheck } from 
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
-  SerappDoStoryItem,
   SerappChatQuickReply,
   SerappChatSessionState,
   ChatTurnBotReply,
 } from '@/lib/serapp/chat-types'
 import { DEFAULT_SESSION } from '@/lib/serapp/conversation-types'
 import type { SerappConversationKind } from '@/lib/serapp/conversation-types'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { listSerappDoStories } from '@/lib/serapp/do-service'
 import { trySerappAiTurn } from '@/lib/serapp/serapp-ai-turn'
 
 export type { ChatTurnBotReply } from '@/lib/serapp/chat-types'
-
-async function getJson<T>(
-  request: Request,
-  path: string,
-): Promise<{ ok: boolean; status: number; data: T & { error?: string } }> {
-  const url = new URL(path, request.url)
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: {
-      cookie: request.headers.get('cookie') || '',
-    },
-  })
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
-  return { ok: res.ok, status: res.status, data }
-}
 
 export async function processSerappChatTurn(input: {
   request: Request
@@ -53,12 +39,18 @@ export async function processSerappChatTurn(input: {
   distributorId?: string | null
   userId?: string | null
   orgId?: string | null
+  isHqSupport?: boolean
   conversationId?: string | null
 }): Promise<ChatTurnBotReply> {
   const { kind, text, session, distributorName, distributorId, request } = input
 
   if (kind === 'warehouse') {
-    return warehouseTurn(request, text, session)
+    return warehouseTurn({
+      text,
+      session,
+      orgId: input.orgId,
+      isHqSupport: input.isHqSupport,
+    })
   }
   if (kind === 'news') {
     return newsTurn(text, session)
@@ -92,11 +84,13 @@ export async function processSerappChatTurn(input: {
   })
 }
 
-async function warehouseTurn(
-  request: Request,
-  text: string,
-  session: SerappChatSessionState,
-): Promise<ChatTurnBotReply> {
+async function warehouseTurn(input: {
+  text: string
+  session: SerappChatSessionState
+  orgId?: string | null
+  isHqSupport?: boolean
+}): Promise<ChatTurnBotReply> {
+  const { text, session, orgId, isHqSupport } = input
   const n = text.trim().toLowerCase()
   const replies: SerappChatQuickReply[] = [
     { id: 'holds', label: 'My holds', sendText: 'my holds' },
@@ -137,20 +131,29 @@ async function warehouseTurn(
   }
 
   if (n.includes('do') || n.includes('delivery')) {
-    const { ok, data } = await getJson<{
-      stories?: SerappDoStoryItem[]
-      error?: string
-    }>(request, '/api/serapp/do-status?limit=5')
-
-    if (!ok) {
+    if (!orgId) {
       return {
-        text: data.error || '❗ **Cannot load DO status now**',
+        text: '❗ **Cannot load DO status** — organization context missing.',
         quickReplies: replies,
         session,
       }
     }
 
-    const stories = data.stories || []
+    let stories: Awaited<ReturnType<typeof listSerappDoStories>> = []
+    try {
+      const admin = createAdminClient()
+      stories = await listSerappDoStories(admin, {
+        organizationId: orgId,
+        isHqSupport: Boolean(isHqSupport),
+        limit: 5,
+      })
+    } catch (error) {
+      return {
+        text: error instanceof Error ? error.message : '❗ **Cannot load DO status now**',
+        quickReplies: replies,
+        session,
+      }
+    }
     if (stories.length === 0) {
       return {
         text: [

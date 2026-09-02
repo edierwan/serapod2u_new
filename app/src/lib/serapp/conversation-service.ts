@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   DEFAULT_SESSION,
   SEED_CHATS,
+  isSerappChatKindListed,
   parseSession,
   previewFromBody,
   type SerappConversationKind,
@@ -87,7 +88,7 @@ export async function listConversationsForActor(
     }
   }
 
-  return mergeConversations(rows)
+  return mergeConversations(rows).filter((row) => isSerappChatKindListed(row.kind))
 }
 
 export async function findOrCreateOrgAssistant(
@@ -182,6 +183,7 @@ export async function ensureSeedConversations(
   const now = new Date().toISOString()
 
   for (const seed of SEED_CHATS) {
+    if (!isSerappChatKindListed(seed.kind)) continue
     if (present.has(seed.kind)) continue
 
     const { data: conv, error } = await admin

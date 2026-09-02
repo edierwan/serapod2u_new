@@ -107,6 +107,7 @@ export async function POST(
           distributorId: distributorId || session.distributorId || conversation.distributor_org_id,
           userId: actor.userId,
           orgId: actor.orgId,
+          isHqSupport: actor.access.isHqSupport,
           conversationId: id,
         })
         updatedSession = {

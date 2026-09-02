@@ -3,6 +3,13 @@ import { parseSerappLineResolutions, parseSerappQuantityResolutions } from '@/li
 
 export type SerappConversationKind = 'assistant' | 'warehouse' | 'news' | 'support'
 
+/** Phase-1 system desks hidden from Chat list — data kept in DB for later reuse. */
+export const SERAPP_HIDDEN_CHAT_KINDS = new Set<SerappConversationKind>(['warehouse', 'news'])
+
+export function isSerappChatKindListed(kind: SerappConversationKind): boolean {
+  return !SERAPP_HIDDEN_CHAT_KINDS.has(kind)
+}
+
 export interface SerappConversationRow {
   id: string
   owner_user_id: string

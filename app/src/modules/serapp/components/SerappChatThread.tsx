@@ -31,7 +31,7 @@ import type {
   SerappChatSessionState,
 } from '@/lib/serapp/chat-types'
 import type { SerappAttachment, SerappConversationRow, SerappMessageRow } from '@/lib/serapp/conversation-types'
-import { parseSession } from '@/lib/serapp/conversation-types'
+import { isSerappChatKindListed, parseSession } from '@/lib/serapp/conversation-types'
 import { createClient } from '@/lib/supabase/client'
 import { isMineSerappMessage } from '@/lib/serapp/conversation-access'
 import { useSerapp } from './SerappContext'
@@ -227,6 +227,22 @@ export default function SerappChatThread() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Legacy Warehouse Desk / News threads stay in DB but are no longer shown in Chat.
+  useEffect(() => {
+    if (loading || !conversation || isSerappChatKindListed(conversation.kind)) return
+    void (async () => {
+      try {
+        const res = await fetch('/api/serapp/conversations')
+        const payload = await res.json().catch(() => null)
+        const assistant = ((payload?.conversations || []) as SerappConversationRow[])
+          .find((chat) => chat.kind === 'assistant')
+        router.replace(assistant ? `/serapp/conversation/${assistant.id}` : '/serapp/conversation')
+      } catch {
+        router.replace('/serapp/conversation')
+      }
+    })()
+  }, [conversation, loading, router])
 
   useEffect(() => {
     draftAppliedRef.current = false
