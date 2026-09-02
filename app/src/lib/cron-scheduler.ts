@@ -1,90 +1,5 @@
 import cron from 'node-cron'
 import { randomUUID } from 'node:crypto'
-import { openSync, closeSync, appendFileSync } from 'node:fs'
-
-/**
- * TEMPORARY FORENSIC PROBE - cron cross-runtime sharing investigation.
- *
- * The globalThis + Symbol.for guard shipped in ac3c46d4 did NOT suppress the
- * second scheduler runtime, and that runtime emits no stdout. This determines
- * WHICH state, if any, the two runtimes actually share:
- *
- *   A  process object   (Symbol.for on `process`)
- *   B  process.env      (a runtime-only variable, never set in Coolify)
- *   C  filesystem       (atomic exclusive create, 'wx')
- *
- * Results are appended to a file rather than logged, because the second runtime
- * is invisible on stdout. One record per scheduler initialization - no per-tick
- * noise. No credentials are captured.
- *
- * REMOVE once the shared primitive is identified. Behaviour is unchanged.
- */
-const PROBE_CONTEXT_ID = randomUUID().slice(0, 8)
-const PROCESS_PROBE_KEY = Symbol.for('serapod2u.cron.process.probe')
-const ENV_PROBE_VAR = 'SERAPOD_CRON_RUNTIME_PROBE'
-const PROBE_LOCK_PATH = '/tmp/serapod-cron-runtime-probe.lock'
-const FORENSICS_PATH = '/tmp/serapod-cron-runtime-forensics.jsonl'
-
-function runRuntimeSharingProbe(registryInstanceId: string): void {
-  try {
-    // --- A: process object ---
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const proc = process as any
-    const processProbeSeen: string | null = proc[PROCESS_PROBE_KEY] ?? null
-    if (!proc[PROCESS_PROBE_KEY]) proc[PROCESS_PROBE_KEY] = PROBE_CONTEXT_ID
-
-    // --- B: process.env (runtime-only, never persisted to Coolify) ---
-    const envProbeSeen: string | null = process.env[ENV_PROBE_VAR] ?? null
-    if (!process.env[ENV_PROBE_VAR]) process.env[ENV_PROBE_VAR] = PROBE_CONTEXT_ID
-
-    // --- C: filesystem, atomic exclusive create ---
-    let fileProbeResult = 'UNKNOWN'
-    try {
-      const fd = openSync(PROBE_LOCK_PATH, 'wx')
-      closeSync(fd)
-      fileProbeResult = 'ACQUIRED'
-    } catch (err) {
-      fileProbeResult = (err as NodeJS.ErrnoException)?.code === 'EEXIST' ? 'EEXIST' : 'ERROR'
-    }
-
-    let threadId: number | null = null
-    let isMainThread: boolean | null = null
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const wt = require('node:worker_threads')
-      threadId = wt.threadId
-      isMainThread = wt.isMainThread
-    } catch {
-      /* not available in this runtime */
-    }
-
-    // Only frame shapes - strip absolute paths and any query strings.
-    const shortStack = (new Error().stack ?? '')
-      .split('\n')
-      .slice(2, 7)
-      .map((line) => line.trim().replace(/\(.*?([^/\\]+:\d+:\d+)\)/, '($1)').slice(0, 120))
-      .join(' | ')
-
-    const record = {
-      timestamp: new Date().toISOString(),
-      context_id: PROBE_CONTEXT_ID,
-      registry_instance_id: registryInstanceId,
-      pid: process.pid,
-      ppid: process.ppid,
-      process_uptime: Number(process.uptime().toFixed(3)),
-      thread_id: threadId,
-      is_main_thread: isMainThread,
-      process_probe_seen: processProbeSeen,
-      env_probe_seen: envProbeSeen,
-      file_probe_result: fileProbeResult,
-      short_stack: shortStack,
-    }
-
-    appendFileSync(FORENSICS_PATH, JSON.stringify(record) + '\n')
-  } catch {
-    /* probing must never affect the scheduler */
-  }
-}
 
 /**
  * Internal Cron Scheduler for Coolify / self-hosted deployments.
@@ -264,10 +179,6 @@ export function claimDispatchSlot(path: string, expression: string, now: number)
 
 export function startCronScheduler(): void {
   const registry = getRegistry()
-
-  // TEMPORARY: runs before the ownership check so a suppressed runtime is
-  // still recorded. Initialization only - never per tick.
-  runRuntimeSharingProbe(registry.schedulerInstanceId)
 
   if (registry.started) {
     // Reached when the runtime evaluates this module a second time. One concise
