@@ -17,28 +17,6 @@ export function getCronSecret(): string | undefined {
   return secret && secret.length > 0 ? secret : undefined
 }
 
-/**
- * TEMPORARY DIAGNOSTICS - cron double-fire investigation.
- *
- * Logged at the shared cron entry point BEFORE the auth decision, so a caller
- * that lacks the credential is still recorded. Correlates with
- * [CRON-DIAG-DISPATCH] via dispatch_id.
- *
- * Deliberately never logs: Authorization, CRON_SECRET, cookies, tokens, query
- * strings or request bodies.
- *
- * REMOVE once the source is identified.
- */
-function logCronReceive(request: NextRequest, workerName: string): void {
-  const dispatchId = request.headers.get('x-serapod-cron-dispatch-id') ?? 'MISSING'
-  const source = request.headers.get('x-serapod-cron-source') ?? 'MISSING'
-  const instance = request.headers.get('x-serapod-cron-instance') ?? 'MISSING'
-  const ua = (request.headers.get('user-agent') ?? 'none').replace(/[^\w./ -]/g, '').slice(0, 60)
-  console.log(
-    `[CRON-DIAG-RECEIVE] worker=${workerName} dispatch_id=${dispatchId} source=${source} instance=${instance} timestamp=${new Date().toISOString()} user_agent=${ua}`
-  )
-}
-
 /** Length-safe constant-time comparison. Never short-circuits on content. */
 function safeEqual(supplied: string, expected: string): boolean {
   const a = Buffer.from(supplied, 'utf8')
@@ -69,8 +47,6 @@ function unauthorized(worker: string, reason: string): NextResponse {
  * environment. Production without a configured secret fails CLOSED.
  */
 export function requireCronAuth(request: NextRequest, workerName: string): NextResponse | null {
-  logCronReceive(request, workerName)
-
   const secret = getCronSecret()
   const isProduction = process.env.NODE_ENV === 'production'
 
@@ -126,8 +102,6 @@ export async function requireCronOrSessionAuth(
   request: NextRequest,
   workerName: string
 ): Promise<NextResponse | null> {
-  logCronReceive(request, workerName)
-
   const secret = getCronSecret()
   const header = request.headers.get('authorization')
 
