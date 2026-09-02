@@ -1,4 +1,16 @@
 import cron from 'node-cron'
+import { randomUUID } from 'node:crypto'
+
+/**
+ * TEMPORARY DIAGNOSTICS - cron double-fire investigation.
+ *
+ * Production invokes each worker ~2x/min. Local reproduction of this exact
+ * build shows 1 dispatch -> 1 request -> 1 execution, so these correlate each
+ * scheduler dispatch with the request the route actually receives.
+ *
+ * REMOVE once the source is identified. No credentials are logged.
+ */
+const SCHEDULER_INSTANCE = randomUUID().slice(0, 8)
 
 /**
  * Internal Cron Scheduler for Coolify / self-hosted deployments.
@@ -53,8 +65,15 @@ function getBaseUrl(): string {
   return `http://localhost:${process.env.PORT || 3000}`
 }
 
-async function fetchCronEndpoint(url: string, secret?: string): Promise<Response> {
-  const headers = secret ? { Authorization: `Bearer ${secret}` } : {}
+async function fetchCronEndpoint(
+  url: string,
+  secret?: string,
+  diagnosticHeaders: Record<string, string> = {}
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+    ...diagnosticHeaders,
+  }
   const response = await fetch(url, {
     method: 'GET',
     headers,
@@ -81,8 +100,22 @@ async function triggerJob(path: string): Promise<void> {
   const url = `${getBaseUrl()}${path}`
   const secret = process.env.CRON_SECRET || process.env.WORKER_SECRET
 
+  // --- TEMPORARY DIAGNOSTICS ---
+  const dispatchId = randomUUID()
+  const scheduledMinute = new Date().toISOString().slice(0, 16)
+  const worker = path.replace('/api/cron/', '')
+  console.log(
+    `[CRON-DIAG-DISPATCH] worker=${worker} dispatch_id=${dispatchId} minute=${scheduledMinute} scheduler_instance=${SCHEDULER_INSTANCE}`
+  )
+  const diagnosticHeaders = {
+    'X-Serapod-Cron-Dispatch-Id': dispatchId,
+    'X-Serapod-Cron-Instance': SCHEDULER_INSTANCE,
+    'X-Serapod-Cron-Source': 'internal-scheduler',
+  }
+  // --- END TEMPORARY DIAGNOSTICS ---
+
   try {
-    const res = await fetchCronEndpoint(url, secret)
+    const res = await fetchCronEndpoint(url, secret, diagnosticHeaders)
 
     if (!res.ok) {
       console.warn(`[Cron] ${path} responded ${res.status}`)
