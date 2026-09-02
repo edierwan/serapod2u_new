@@ -1,36 +1,38 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
-// This endpoint processes queued reverse batch jobs
-// Can be called by a cron job or triggered manually
+// Legacy reverse batch job processor.
+// It consumes the SAME qr_reverse_jobs queue as /api/cron/qr-reverse-worker, so
+// it deliberately shares that worker's lease name.
+//
+// The previous guard fell back to a hardcoded 'dev-worker-secret' when neither
+// CRON_SECRET nor WORKER_SECRET was set, which would have accepted a publicly
+// known credential. That fallback is removed; requireCronAuth fails closed in
+// production instead.
 export async function POST(request: NextRequest) {
+  const unauthorized = requireCronAuth(request, 'manufacturer/reverse-job/worker')
+  if (unauthorized) return unauthorized
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('Missing Supabase credentials')
+    return NextResponse.json(
+      { success: false, error: 'Server configuration error' },
+      { status: 500 }
+    )
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  const outcome = await withWorkerLease(supabase, WORKER_NAMES.qrReverse, () => runReverseJob(supabase))
+  return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runReverseJob(supabase: SupabaseClient<any>): Promise<NextResponse> {
   try {
-    // Verify this is an authorized request
-    const authHeader = request.headers.get('authorization')
-    const expectedToken = process.env.CRON_SECRET || process.env.WORKER_SECRET || 'dev-worker-secret'
-    
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      console.error('Unauthorized worker attempt')
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Create admin/service client with elevated permissions
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase credentials')
-      return NextResponse.json(
-        { success: false, error: 'Server configuration error' },
-        { status: 500 }
-      )
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
     console.log('🔄 Worker: Starting job processing...')
 
     // Find oldest queued job
@@ -60,11 +62,24 @@ export async function POST(request: NextRequest) {
     const job = jobs[0]
     console.log(`📋 Processing job ${job.id} for batch ${job.batch_id}`)
 
-    // Mark job as running
-    await supabase
+    // Mark job as running.
+    // CAS: only claim the job if it is STILL queued.
+    const { data: claimedJob, error: claimError } = await supabase
       .from('qr_reverse_jobs')
       .update({ status: 'running', progress: 5, updated_at: new Date().toISOString() })
       .eq('id', job.id)
+      .eq('status', 'queued')
+      .select('id')
+
+    if (claimError) {
+      console.error(`Failed to claim job ${job.id}:`, claimError)
+      return NextResponse.json({ success: false, error: 'Failed to claim job' }, { status: 500 })
+    }
+
+    if (!claimedJob || claimedJob.length === 0) {
+      console.log(`Job ${job.id} already claimed by another execution - skipping`)
+      return NextResponse.json({ success: true, message: 'Job already claimed by another execution' })
+    }
 
     try {
       // Build query with optional filters for performance

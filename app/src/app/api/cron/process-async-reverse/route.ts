@@ -1,27 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
-// This endpoint should be called by a cron job or background worker
-// Protected by CRON_SECRET environment variable
+// Legacy asynchronous reverse-job processor.
+// It consumes the SAME qr_reverse_jobs queue as /api/cron/qr-reverse-worker, so
+// it deliberately shares that worker's lease name - a lease per route would let
+// the two routes process the same jobs concurrently.
 
 export async function POST(request: NextRequest) {
+  const unauthorized = requireCronAuth(request, 'process-async-reverse')
+  if (unauthorized) return unauthorized
+
+  const supabase = createAdminClient()
+  const outcome = await withWorkerLease(supabase, WORKER_NAMES.qrReverse, () => runAsyncReverse(supabase))
+  return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runAsyncReverse(supabase: ReturnType<typeof createAdminClient>): Promise<NextResponse> {
   const startTime = Date.now()
-  
+
   try {
-    // Verify cron secret
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn('⚠️ Unauthorized worker access attempt')
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-    
-    const supabase = createAdminClient()
-    
     // Fetch all queued jobs
     const { data: queuedJobs, error: fetchError } = await supabase
       .from('qr_reverse_jobs')
@@ -55,14 +54,28 @@ export async function POST(request: NextRequest) {
       console.log(`\n🔄 Processing job ${job.id} for Case #${job.case_number}`)
       
       try {
-        // Mark job as running
-        await supabase
+        // Mark job as running.
+        // CAS: only claim the job if it is STILL queued, so this legacy route
+        // can never process a job another execution already took.
+        const { data: claimedJob, error: claimError } = await supabase
           .from('qr_reverse_jobs')
           .update({
             status: 'running',
             started_at: new Date().toISOString()
           })
           .eq('id', job.id)
+          .eq('status', 'queued')
+          .select('id')
+
+        if (claimError) {
+          console.error(`❌ Failed to claim job ${job.id}:`, claimError)
+          continue
+        }
+
+        if (!claimedJob || claimedJob.length === 0) {
+          console.log(`⏭️  Job ${job.id} already claimed by another execution - skipping`)
+          continue
+        }
         
         // Get job items (spoiled codes)
         const { data: jobItems, error: itemsError } = await supabase

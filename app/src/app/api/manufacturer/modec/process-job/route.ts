@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
 /**
  * Mode C Background Worker - Process One Job at a Time
@@ -97,20 +100,30 @@ async function recalculateMasterCaseStats(supabase: any, masterId: string, manuf
   }
 }
 
+const WORKER = 'manufacturer/modec/process-job'
+
 export async function POST(request: NextRequest) {
+  // Strict cron auth. The previous guard only enforced the credential when
+  // CRON_SECRET happened to be set, so a misconfigured production instance
+  // would have failed OPEN.
+  const unauthorized = requireCronAuth(request, WORKER)
+  if (unauthorized) return unauthorized
+
+  // The lease RPCs are granted to service_role only, so acquire the lease with
+  // the admin client. The job body keeps using its existing session-scoped
+  // client so the reverse business logic is unchanged.
+  const leaseClient = createAdminClient()
+
+  // Shares qr-reverse-worker's lease name: every route that consumes
+  // qr_reverse_jobs must mutually exclude the others.
+  const outcome = await withWorkerLease(leaseClient, WORKER_NAMES.qrReverse, () => runModecJob())
+  return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runModecJob(): Promise<NextResponse> {
   const startTime = Date.now()
 
   try {
-    // Auth check (skip in development)
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-    const isDevelopment = process.env.NODE_ENV === 'development'
-
-    if (!isDevelopment && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn('⚠️ Unauthorized worker access attempt')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const supabase = await createClient()
 
     // CRITICAL: Use SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
@@ -136,14 +149,18 @@ export async function POST(request: NextRequest) {
     // Use the job
     const job = fallbackJobs[0]
     
-    // Lock it immediately (atomic operation)
-    const { error: lockError } = await supabase
+    // Lock it immediately (atomic operation).
+    // The status guard alone was not sufficient: Supabase returns no error when
+    // ZERO rows match, so a job already claimed by another execution still fell
+    // through to processing. Verify a row was actually updated.
+    const { data: claimedJob, error: lockError } = await supabase
       .from('qr_reverse_jobs')
       .update({ status: 'processing', started_at: new Date().toISOString() })
       .eq('id', job.id)
       .eq('status', 'pending') // Only update if still pending
+      .select('id')
 
-    if (lockError) {
+    if (lockError || !claimedJob || claimedJob.length === 0) {
       console.log('⚠️ Failed to lock job (another worker may have claimed it)')
       return NextResponse.json({
         success: true,
