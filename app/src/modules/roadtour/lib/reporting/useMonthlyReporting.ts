@@ -10,7 +10,6 @@ import {
 import {
     canSelectNextMonth,
     currentMonthKey,
-    normalizeCarryForwardMonths,
     normalizeMonthKey,
     resolveReportingMonth,
     shiftMonthKey,
@@ -60,11 +59,12 @@ function readFiltersFromUrl(): ReportingFilters {
 
 export interface MonthlyReportingOptions {
     /**
-     * Months of earlier visits to carry into the report alongside the selected
-     * month. Only Shop Follow-Up sets this — the month-scoped reports measure a
-     * single period and must stay that way.
+     * Carry shops with an open follow-up into the report alongside the selected
+     * month, back to the start of the campaigns in scope. Only Shop Follow-Up
+     * sets this — the month-scoped reports measure a single period and must stay
+     * that way.
      */
-    carryForwardMonths?: number
+    carryForwardOpenItems?: boolean
 }
 
 export interface UseMonthlyReportingResult {
@@ -90,7 +90,7 @@ export function useMonthlyReporting(
     organizationId: string | null | undefined,
     options: MonthlyReportingOptions = {},
 ): UseMonthlyReportingResult {
-    const carryForwardMonths = normalizeCarryForwardMonths(options.carryForwardMonths)
+    const carryForwardOpenItems = options.carryForwardOpenItems === true
     const [monthKey, setMonthKeyState] = useState<string>(() => normalizeMonthKey(readStoredMonth()))
     const [filters, setFiltersState] = useState<ReportingFilters>(readFiltersFromUrl)
     const [windowDays, setWindowDaysState] = useState<ImpactWindowDays>(OFFICIAL_IMPACT_WINDOW_DAYS)
@@ -158,7 +158,7 @@ export function useMonthlyReporting(
         if (filters.campaignId) params.set('campaignId', filters.campaignId)
         if (filters.accountManagerUserId) params.set('accountManagerUserId', filters.accountManagerUserId)
         if (filters.regionStateId) params.set('regionStateId', filters.regionStateId)
-        if (carryForwardMonths > 0) params.set('carryForwardMonths', String(carryForwardMonths))
+        if (carryForwardOpenItems) params.set('carryForward', 'open')
 
         setLoading(true)
         setError(null)
@@ -182,7 +182,7 @@ export function useMonthlyReporting(
             })
 
         return () => { cancelled = true }
-    }, [organizationId, monthKey, windowDays, filters.campaignId, filters.accountManagerUserId, filters.regionStateId, carryForwardMonths, reloadToken])
+    }, [organizationId, monthKey, windowDays, filters.campaignId, filters.accountManagerUserId, filters.regionStateId, carryForwardOpenItems, reloadToken])
 
     return {
         month,

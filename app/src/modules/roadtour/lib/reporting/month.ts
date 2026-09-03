@@ -62,19 +62,6 @@ export function shiftMonthKey(key: string, delta: number): string {
     return `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}`
 }
 
-/**
- * How many months of already-visited shops a report may pull in ahead of the
- * selected month. Shop Follow-Up uses this so an unresolved shop stays in the
- * queue after the month of its visit ends; month-scoped reports pass 0.
- */
-export const MAX_CARRY_FORWARD_MONTHS = 12
-
-export function normalizeCarryForwardMonths(value: unknown): number {
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed) || parsed <= 0) return 0
-    return Math.min(Math.floor(parsed), MAX_CARRY_FORWARD_MONTHS)
-}
-
 /** Management reporting never looks into the future. */
 export function isFutureMonthKey(key: string, now: Date = new Date()): boolean {
     return key > currentMonthKey(now)

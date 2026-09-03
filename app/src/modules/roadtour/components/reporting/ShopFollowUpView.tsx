@@ -5,7 +5,7 @@
 //
 // Unlike the month-scoped reports, the queue carries shops forward: an item
 // raised in August is still an open item in September, so it stays listed until
-// the shop is revisited or recovers rather than disappearing when the month ends.
+// it is genuinely dealt with — never because a number of months has elapsed.
 
 import { useMemo, useState } from 'react'
 import { AlertTriangle, CalendarClock, Flag, Search, UserX } from 'lucide-react'
@@ -45,7 +45,7 @@ import {
 import { nextSortState, type SortState } from '@/modules/roadtour/lib/reporting/tableSort'
 import { IMPACT_METHOD_NOTE } from '@/modules/roadtour/lib/reporting/impactModel'
 import { UNASSIGNED_AM_LABEL } from '@/modules/roadtour/lib/reporting/types'
-import { FOLLOW_UP_CARRY_FORWARD_MONTHS, type FollowUpPriority } from '@/modules/roadtour/lib/reporting/followUp'
+import type { FollowUpPriority } from '@/modules/roadtour/lib/reporting/followUp'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
@@ -61,7 +61,7 @@ const KPI_DRILLDOWN_TITLE: Record<FollowUpKpiKey, string> = {
 
 export function ShopFollowUpView({ userProfile }: Props) {
     const organizationId = userProfile?.organizations?.id ?? userProfile?.organization_id ?? null
-    const reporting = useMonthlyReporting(organizationId, { carryForwardMonths: FOLLOW_UP_CARRY_FORWARD_MONTHS })
+    const reporting = useMonthlyReporting(organizationId, { carryForwardOpenItems: true })
     const { dataset, loading, error, month } = reporting
     const [queueFilter, setQueueFilter] = useState<QueueFilter>('actionable')
     const [search, setSearch] = useState('')

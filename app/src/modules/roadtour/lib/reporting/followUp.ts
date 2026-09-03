@@ -7,13 +7,6 @@
 import { addCalendarDays, reportingDateFromInstant, todayInReportingZone } from './month'
 import type { ShopOutcome } from './impactModel'
 
-/**
- * How far back Shop Follow-Up looks for shops whose follow-up is still open.
- * A queue item belongs to the shop, not to the calendar month it was raised in,
- * so it stays listed until it is dealt with rather than disappearing on the 1st.
- */
-export const FOLLOW_UP_CARRY_FORWARD_MONTHS = 6
-
 /** A drop larger than this against a real baseline is treated as high priority. */
 export const SCAN_DROP_HIGH_PRIORITY_THRESHOLD = 0.5
 

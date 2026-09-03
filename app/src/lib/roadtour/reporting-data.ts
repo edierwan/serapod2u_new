@@ -30,12 +30,7 @@ import {
     type IdentityUser,
 } from '@/modules/roadtour/lib/reporting/identity'
 import { bucketScansAroundAnchor, resolveVisitAnchorIso } from '@/modules/roadtour/lib/reporting/scanWindow'
-import {
-    normalizeCarryForwardMonths,
-    reportingCutoffDate,
-    resolveReportingMonth,
-    shiftMonthKey,
-} from '@/modules/roadtour/lib/reporting/month'
+import { reportingCutoffDate, resolveReportingMonth } from '@/modules/roadtour/lib/reporting/month'
 import { resolveShopDisplay } from '@/modules/roadtour/lib/reporting/shopDisplay'
 import type {
     ReportingFilterOption,
@@ -57,12 +52,14 @@ export interface LoadReportingParams {
     accountManagerUserId?: string | null
     regionStateId?: string | null
     /**
-     * Months of earlier visits to pull in ahead of the selected month. Shop
-     * Follow-Up passes a non-zero value so a shop whose follow-up is still open
-     * stays visible after its visit month ends; the month-scoped reports
-     * (Monthly Overview, AM Performance) leave it at 0.
+     * Shop Follow-Up sets this so the report reaches back to the start of the
+     * campaigns in scope instead of stopping at the selected month. The floor is
+     * the campaign start date rather than a month count on purpose: a follow-up
+     * stays visible until it is resolved, and must never drop out of sight
+     * merely because N calendar months have passed. Monthly Overview and AM
+     * Performance leave it false and stay strictly month-scoped.
      */
-    carryForwardMonths?: number
+    carryForwardOpenItems?: boolean
     now?: Date
 }
 
@@ -132,19 +129,11 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
     const windowDays = normalizeImpactWindowDays(params.windowDays)
     const warnings: string[] = []
 
-    // The selected month always bounds the END of the report — looking at August
-    // never shows a September visit. The START moves back by `carryForwardMonths`
-    // so a shop whose follow-up is still open does not drop out of view the
-    // moment a new calendar month begins.
-    const carryForwardMonths = normalizeCarryForwardMonths(params.carryForwardMonths)
-    const visitWindowStart = carryForwardMonths > 0
-        ? resolveReportingMonth(shiftMonthKey(month.key, -carryForwardMonths), now)
-        : month
-    const carryForwardFromDate = carryForwardMonths > 0 ? visitWindowStart.startDate : null
+
 
     const { data: campaignRows, error: campaignError } = await params.admin
         .from('roadtour_campaigns')
-        .select('id, name')
+        .select('id, name, start_date')
         .eq('org_id', params.orgId)
     if (campaignError) throw campaignError
 
@@ -152,12 +141,28 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
         id: row.id,
         name: normalizeText(row.name) || 'Untitled campaign',
     }))
+    const campaignStartDates = (campaignRows || [])
+        .map((row: any) => normalizeText(row.start_date))
+        .filter(Boolean) as string[]
     if (campaigns.length === 0) {
-        return emptyDataset(month.key, windowDays, now, 'No RoadTour campaigns exist for this organization yet.', carryForwardFromDate)
+        return emptyDataset(month.key, windowDays, now, 'No RoadTour campaigns exist for this organization yet.')
     }
 
     const campaignIds = campaigns.map((campaign) => campaign.id)
     const campaignNameById = new Map(campaigns.map((campaign) => [campaign.id, campaign.name]))
+
+    // The selected month always bounds the END of the report — looking at August
+    // never shows a September visit. For Shop Follow-Up the START drops to the
+    // earliest campaign start instead, so an unresolved shop stays in the queue
+    // for as long as its campaign's work is on the books. Deliberately NOT a
+    // rolling window of N months: that would silently retire outstanding work.
+    const carryForwardFrom = params.carryForwardOpenItems && campaignStartDates.length > 0
+        ? campaignStartDates.reduce((earliest, value) => (value < earliest ? value : earliest))
+        : null
+    const visitFromDate = carryForwardFrom && carryForwardFrom < month.startDate
+        ? carryForwardFrom
+        : month.startDate
+    const carryForwardFromDate = visitFromDate < month.startDate ? visitFromDate : null
 
     // ── Official visits inside the reporting window ─────────────────────────
     let visitQuery = params.admin
@@ -165,7 +170,7 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
         .select('id, campaign_id, account_manager_user_id, shop_id, visit_date, visit_status, notes, official_scan_event_id, created_at')
         .in('campaign_id', campaignIds)
         .in('visit_status', REPORTABLE_VISIT_STATUSES)
-        .gte('visit_date', visitWindowStart.startDate)
+        .gte('visit_date', visitFromDate)
         .lte('visit_date', month.endDate)
     if (params.campaignId) visitQuery = visitQuery.eq('campaign_id', params.campaignId)
     if (params.accountManagerUserId) visitQuery = visitQuery.eq('account_manager_user_id', params.accountManagerUserId)
@@ -186,7 +191,7 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
     // ── Official scan events: the impact anchor and the visit participant ───
     const scanEventsByShop = new Map<string, ScanEventRecord[]>()
     const officialScanById = new Map<string, ScanEventRecord>()
-    const scanWindowFrom = new Date(new Date(visitWindowStart.startUtc).getTime() - windowDays * DAY_MS).toISOString()
+    const scanWindowFrom = new Date(new Date(`${visitFromDate}T00:00:00+08:00`).getTime() - windowDays * DAY_MS).toISOString()
     const scanWindowTo = new Date(new Date(month.endUtc).getTime() + windowDays * DAY_MS).toISOString()
 
     const { data: scanEventRows, error: scanEventError } = await params.admin

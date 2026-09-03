@@ -26,6 +26,27 @@ import type {
 } from './types'
 import { UNASSIGNED_AM_LABEL } from './types'
 
+/**
+ * Persisted resolution state for one follow-up.
+ *
+ * Nothing writes this yet — production has no resolution columns, so the loader
+ * supplies an empty map and every shop reads as `open`. The seam exists so the
+ * queue asks "has someone closed this?" rather than inferring it from scan
+ * counts, and so the behaviour is already covered by tests before the migration
+ * that persists it lands.
+ */
+export type FollowUpResolutionState = 'open' | 'resolved' | 'dismissed'
+
+export interface FollowUpResolution {
+    state: FollowUpResolutionState
+    resolvedAt: string | null
+    resolvedByName: string | null
+    note: string | null
+}
+
+/** Keyed by the visit id the queue row represents. */
+export type FollowUpResolutions = Map<string, FollowUpResolution>
+
 /** An AM needs this many matured shops before a rate is allowed to rank them. */
 export const MIN_MATURED_SAMPLE_FOR_RANKING = 3
 
@@ -54,11 +75,14 @@ export interface ShopReportEntry {
     /** Account manager the shop's outcome is credited to. */
     creditedAmId: string | null
     creditedAmName: string | null
+    /** Null until someone closes the follow-up; `open` behaves the same way. */
+    resolution: FollowUpResolution | null
 }
 
 export function buildShopEntries(
     rows: RoadtourVisitReportRow[],
     now: Date = new Date(),
+    resolutions: FollowUpResolutions = new Map(),
 ): ShopReportEntry[] {
     const attribution = attributeShopVisits(rows)
     const entries: ShopReportEntry[] = []
@@ -100,6 +124,7 @@ export function buildShopEntries(
             ownerAmName: current.account_manager_name,
             creditedAmId: (attributed ?? current).account_manager_user_id,
             creditedAmName: (attributed ?? current).account_manager_name,
+            resolution: resolutions.get(current.visit_id) ?? null,
         })
     }
 
@@ -121,6 +146,10 @@ export function isOverdueFollowUp(entry: ShopReportEntry): boolean {
 const OPEN_FOLLOW_UP_PRIORITIES: readonly FollowUpPriority[] = ['high', 'medium', 'observing']
 
 export function isOpenFollowUp(entry: ShopReportEntry): boolean {
+    // An explicit decision always wins over the derived priority: once a manager
+    // has resolved or dismissed a shop it leaves the queue even if its scan
+    // counts still look bad.
+    if (entry.resolution && entry.resolution.state !== 'open') return false
     return OPEN_FOLLOW_UP_PRIORITIES.includes(entry.priority)
 }
 
@@ -130,14 +159,16 @@ export function isOpenFollowUp(entry: ShopReportEntry): boolean {
  * A shop visited during the month is always listed, whatever its priority — that
  * is the month's own work. A shop last visited BEFORE the month is carried
  * forward only while its follow-up is still open, so an unresolved shop stays in
- * the queue month after month instead of vanishing when the calendar rolls over,
- * while resolved and healthy shops do not pile up in it forever.
+ * the queue month after month instead of vanishing when the calendar rolls over.
+ * It leaves only when someone resolves it or the shop stops needing action — never
+ * because a fixed number of months has elapsed.
  */
 export function selectFollowUpQueueEntries(
     entries: ShopReportEntry[],
     month: { startDate: string; endDate: string },
 ): ShopReportEntry[] {
     return entries.filter((entry) => {
+        if (entry.resolution && entry.resolution.state !== 'open') return false
         const visitDate = entry.currentRow.visit_date
         if (visitDate >= month.startDate && visitDate <= month.endDate) return true
         return isOpenFollowUp(entry)
