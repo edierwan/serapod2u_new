@@ -28,15 +28,26 @@ describe('RoadTour Reporting navigation', () => {
         expect(roadtourNavGroups.some((group) => group.label === 'Analytics')).toBe(false)
     })
 
-    it('exposes exactly the six approved reports, in order', () => {
+    it('exposes exactly the seven approved reports, in order', () => {
+        // Shop Performance sits next to AM Performance on purpose: the two answer
+        // adjacent questions — one intervention's impact, and the shop's own
+        // month-to-month trend — and a manager reads them together.
         expect(reporting!.children.map((child) => child.label)).toEqual([
             'Monthly Overview',
             'AM Performance',
+            'Shop Performance',
             'Shop Follow-Up',
             'Visit Log',
             'Monthly KPI Performance Report',
             'WhatsApp Monitoring',
         ])
+    })
+
+    it('routes Shop Performance to its own page and view id', () => {
+        expect(roadtourHrefForView('roadtour-shop-performance')).toBe('/roadtour/reporting/shop-performance')
+        expect(isRoadtourViewId('roadtour-shop-performance')).toBe(true)
+        expect(resolveRoadtourAdminPath('reporting/shop-performance')).toBe('roadtour-shop-performance')
+        expect(routeSource('reporting', 'shop-performance')).toContain('roadtour-shop-performance')
     })
 
     it('does not keep the old report cards as separate menu items', () => {

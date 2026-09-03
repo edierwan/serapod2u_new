@@ -338,6 +338,11 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
                 .from('consumer_qr_scans')
                 .select('id, shop_id, scanned_at')
                 .in('shop_id', chunk)
+                // Manual point adjustments are an admin action, not shop activity,
+                // so they never count as a response to a visit. Shop Performance
+                // applies the same exclusion, keeping one definition of a scan
+                // across both reports.
+                .eq('is_manual_adjustment', false)
                 .gte('scanned_at', scanFrom)
                 .lte('scanned_at', scanTo)
                 .limit(100000)

@@ -1,4 +1,4 @@
-import { Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, Store, UserCheck, Flag, Target, CalendarCheck } from 'lucide-react'
+import { Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, Store, UserCheck, Flag, Target, CalendarCheck, TrendingUp } from 'lucide-react'
 
 export interface RoadtourNavChild {
     id: string
@@ -31,10 +31,11 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
         id: 'rt-reporting',
         label: 'RoadTour Reporting',
         icon: BarChart3,
-        description: 'One monthly view of shops visited, shop response, account manager performance and follow-up.',
+        description: 'One monthly view of shops visited, shop response, account manager performance, ongoing shop trend and follow-up.',
         children: [
             { id: 'roadtour-monthly-overview', label: 'Monthly Overview', icon: BarChart3, route: '/roadtour/reporting' },
             { id: 'roadtour-am-performance', label: 'AM Performance', icon: UserCheck, route: '/roadtour/reporting/am-performance' },
+            { id: 'roadtour-shop-performance', label: 'Shop Performance', icon: TrendingUp, route: '/roadtour/reporting/shop-performance' },
             { id: 'roadtour-shop-follow-up', label: 'Shop Follow-Up', icon: Flag, route: '/roadtour/reporting/follow-up' },
             { id: 'roadtour-visits', label: 'Visit Log', icon: Users, route: '/roadtour/visits' },
             { id: 'roadtour-monthly-kpi-report', label: 'Monthly KPI Performance Report', icon: CalendarCheck, route: '/roadtour/analytics/monthly-kpi' },
@@ -103,6 +104,7 @@ export const roadtourViewToPath: Record<string, string> = {
     'roadtour-visits': 'visits',
     'roadtour-monthly-overview': 'reporting',
     'roadtour-am-performance': 'reporting/am-performance',
+    'roadtour-shop-performance': 'reporting/shop-performance',
     'roadtour-shop-follow-up': 'reporting/follow-up',
     'roadtour-shop-drilldown': 'reporting/shops',
     'roadtour-monthly-kpi-report': 'analytics/monthly-kpi',

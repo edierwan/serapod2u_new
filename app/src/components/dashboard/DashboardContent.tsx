@@ -158,6 +158,7 @@ import { RoadtourWhatsAppMonitoringView } from '@/modules/roadtour/components/Ro
 import { MonthlyOverviewView } from '@/modules/roadtour/components/reporting/MonthlyOverviewView'
 import { AmPerformanceView } from '@/modules/roadtour/components/reporting/AmPerformanceView'
 import { ShopFollowUpView } from '@/modules/roadtour/components/reporting/ShopFollowUpView'
+import { ShopPerformanceView } from '@/modules/roadtour/components/reporting/ShopPerformanceView'
 import { ShopDrilldownView } from '@/modules/roadtour/components/reporting/ShopDrilldownView'
 import { MonthlyKpiPerformanceReportView } from '@/modules/roadtour/components/analytics/MonthlyKpiPerformanceReportView'
 import { RoadtourKpiSettingsView } from '@/modules/roadtour/components/RoadtourKpiSettingsView'
@@ -601,6 +602,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <MonthlyOverviewView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-am-performance':
         return <AmPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-shop-performance':
+        return <ShopPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-shop-follow-up':
         return <ShopFollowUpView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-shop-drilldown':
