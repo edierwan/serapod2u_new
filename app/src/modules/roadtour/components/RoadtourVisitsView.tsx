@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,21 +10,46 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { getRoadtourLocationStatusLabel, type RoadtourLocationStatus } from '@/lib/roadtour/location-shared'
-import { buildVisitRegionDataset, getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
+import { getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
 import {
-    AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight,
+    AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight,
     Clock, Download, Eye, Footprints, Loader2, MapPin, RefreshCw, Route, Search, SlidersHorizontal,
-    Store, Users, XCircle
+    Store, X, XCircle
 } from 'lucide-react'
 import { SeraLoadingState } from '@/components/ui/SeraLoader'
-import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell
-} from 'recharts'
 import { toast } from '@/components/ui/use-toast'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import { formatVisitDateTime, formatVisitParticipantCsvValue, resolveVisitParticipantDisplay } from '@/modules/roadtour/lib/visit-tracking'
+import { mergeVisitParticipants, type VisitParticipantMap } from '@/modules/roadtour/lib/visit-participants'
+import {
+    MONTH_TO_DATE_LABEL,
+    canSelectNextMonth,
+    monthCoverageLabel,
+    normalizeMonthKey,
+    reportingCutoffDate,
+    resolveReportingMonth,
+    shiftMonthKey,
+} from '@/modules/roadtour/lib/reporting/month'
+import { UNASSIGNED_AM_LABEL } from '@/modules/roadtour/lib/reporting/types'
+import { applySort, nextSortState, type SortState } from '@/modules/roadtour/lib/reporting/tableSort'
+import {
+    buildUniqueShopRows,
+    buildVisitSortColumns,
+    hasLocationIssue,
+    hasResolvedAccountManager,
+    isCompletedVisit,
+    visitOutcomeForRow,
+    visitTieBreak,
+    type VisitSortKey,
+} from '@/modules/roadtour/lib/visit-log-table'
+import {
+    KpiDrilldownDialog,
+    KpiDrilldownEmpty,
+    KpiDrilldownValue,
+    SortableHead,
+} from './reporting/ui'
 import { RoadtourStateFlag } from './RoadtourStateFlag'
 
 interface RoadtourVisitsViewProps {
@@ -93,14 +118,20 @@ interface ScanEvent {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
-const REGION_COLORS = ['#e85d04', '#f59e0b', '#10b981', '#2a2622', '#e85d04', '#ef4444', '#84cc16', '#f97316']
+/** Shared with RoadTour Reporting so the selected month follows the manager here too. */
+const SHARED_REPORTING_MONTH_KEY = 'roadtour-reporting-month'
 
-function formatLocalIsoDate(date: Date): string {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+function readSharedReportingMonth(): string | null {
+    if (typeof window === 'undefined') return null
+    const fromUrl = new URLSearchParams(window.location.search).get('month')
+    if (fromUrl) return fromUrl
+    try {
+        return window.sessionStorage.getItem(SHARED_REPORTING_MONTH_KEY)
+    } catch {
+        return null
+    }
 }
+
 
 // Haversine distance in km between two lat/lng points.
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -114,31 +145,9 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
-function todayIsoDate(): string {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return formatLocalIsoDate(d)
-}
 
-function isoDateAddDays(iso: string, days: number): string {
-    const d = new Date(iso + 'T12:00:00')
-    d.setDate(d.getDate() + days)
-    return formatLocalIsoDate(d)
-}
 
-function formatTrendPct(curr: number, prev: number): { sign: '+' | '-'; value: string } | null {
-    if (prev <= 0) return curr > 0 ? { sign: '+', value: '100%' } : null
-    const pct = ((curr - prev) / prev) * 100
-    if (!isFinite(pct) || Math.abs(pct) < 0.05) return null
-    return { sign: pct >= 0 ? '+' : '-', value: `${Math.abs(pct).toFixed(0)}%` }
-}
 
-function formatShortDate(iso: string): string {
-    try {
-        const d = new Date(iso + 'T00:00:00')
-        return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
-    } catch { return iso }
-}
 
 const initialsFor = (name: string | undefined | null) =>
     (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
@@ -258,6 +267,28 @@ function formatVisitLocationDisplay(visit: OfficialVisit) {
     }
 }
 
+function accountManagerLabel(v: OfficialVisit): string {
+    return hasResolvedAccountManager(v) ? (v.user_name as string) : UNASSIGNED_AM_LABEL
+}
+
+/** The columns sort on exactly the values the Visit Activity rows display. */
+const VISIT_SORT_COLUMNS = buildVisitSortColumns<OfficialVisit>({
+    participantName: (v) => {
+        const display = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
+        return display.isPlaceholder ? null : display.primary
+    },
+    locationTitle: (v) => formatVisitLocationDisplay(v).title,
+})
+
+type VisitKpiKey = 'total' | 'uniqueShops' | 'completed' | 'locationIssues'
+
+const VISIT_KPI_TITLE: Record<VisitKpiKey, string> = {
+    total: 'Total Visits',
+    uniqueShops: 'Unique Shops',
+    completed: 'Completed Visits',
+    locationIssues: 'Location Issues',
+}
+
 export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const supabase = createClient()
     const companyId = userProfile.organizations.id
@@ -277,15 +308,34 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const [referenceFilter, setReferenceFilter] = useState('all')
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchTerm, setSearchTerm] = useState('')
-    const [dateFrom, setDateFrom] = useState(isoDateAddDays(todayIsoDate(), -29))
-    const [dateTo, setDateTo] = useState(todayIsoDate())
+    const [filtersOpen, setFiltersOpen] = useState(false)
 
-    // Visits Over Time toggle
-    const [trendView, setTrendView] = useState<'day' | 'week'>('day')
+    // The Visit Log follows the same month selection as the rest of RoadTour Reporting.
+    const [monthKey, setMonthKey] = useState<string>(() => normalizeMonthKey(readSharedReportingMonth()))
+    const month = useMemo(() => resolveReportingMonth(monthKey), [monthKey])
+    const dateFrom = month.startDate
+    const dateTo = reportingCutoffDate(month)
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        try {
+            window.sessionStorage.setItem(SHARED_REPORTING_MONTH_KEY, monthKey)
+        } catch {
+            // Session storage is unavailable in some privacy modes; the month still applies here.
+        }
+    }, [monthKey])
+
+    const activeFilterCount = [runFilter, campaignFilter, referenceFilter, statusFilter]
+        .filter((value) => value !== 'all').length
 
     // Pagination
     const [pageSize, setPageSize] = useState(25)
     const [page, setPage] = useState(1)
+
+    // Sorting stays null until the user picks a column, so the default order is
+    // whatever the query returned: visit_date DESC, created_at DESC.
+    const [sort, setSort] = useState<SortState<VisitSortKey> | null>(null)
+    const [kpiDrilldown, setKpiDrilldown] = useState<VisitKpiKey | null>(null)
 
     // Detail dialog
     const [detailOpen, setDetailOpen] = useState(false)
@@ -293,7 +343,45 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const [scans, setScans] = useState<ScanEvent[]>([])
     const [scansLoading, setScansLoading] = useState(false)
 
+    // Participant names arrive in a second round trip, so a slower earlier load
+    // must not overwrite the rows a newer one has already put on screen.
+    const loadSequenceRef = useRef(0)
+
+    /**
+     * Resolve participants on the server.
+     *
+     * `users` is RLS-scoped to the viewer's own organization and a participant is
+     * a shop or consumer account outside HQ, so the browser cannot read the user
+     * a scan is linked to — it saw an empty embed and rendered a correctly linked
+     * participant as "Unregistered Participant". The API route re-applies the same
+     * organization scope and resolves the names with the service role, exactly as
+     * RoadTour Reporting does.
+     */
+    const hydrateParticipants = useCallback(async (rows: OfficialVisit[], requestId: number) => {
+        const visitIds = rows.filter((v) => v.official_scan_event_id).map((v) => v.id)
+        if (visitIds.length === 0) return
+
+        try {
+            const response = await fetch('/api/roadtour/visits/participants', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ org_id: companyId, visit_ids: visitIds }),
+            })
+            const payload = await response.json().catch(() => null)
+            if (!response.ok || !payload?.success) {
+                throw new Error(payload?.error || `Participant lookup failed (${response.status})`)
+            }
+            if (requestId !== loadSequenceRef.current) return
+            setVisits((current) => mergeVisitParticipants(current, payload.data as VisitParticipantMap))
+        } catch (err) {
+            // The rows already carry whatever the browser itself could read, so the
+            // log stays usable and only the registered names are missing.
+            console.warn('[RoadtourVisits] participant resolution skipped', err)
+        }
+    }, [companyId])
+
     const loadVisits = useCallback(async () => {
+        const requestId = ++loadSequenceRef.current
         try {
             const isInitial = !refreshing
             if (isInitial) setLoading(true)
@@ -342,6 +430,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             }))
             setVisits(normalized)
             setLastUpdated(new Date())
+            void hydrateParticipants(normalized, requestId)
 
             const { data: cData } = await (supabase as any)
                 .from('roadtour_campaigns')
@@ -370,7 +459,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             setLoading(false)
             setRefreshing(false)
         }
-    }, [companyId, supabase, runFilter, campaignFilter, referenceFilter, dateFrom, dateTo, refreshing])
+    }, [companyId, supabase, runFilter, campaignFilter, referenceFilter, dateFrom, dateTo, refreshing, hydrateParticipants])
 
     useEffect(() => { loadVisits() }, [loadVisits])
 
@@ -393,12 +482,9 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const metrics = useMemo(() => {
         const total = filtered.length
         const uniqueShops = new Set(filtered.map((v) => v.shop_id)).size
-        const completed = filtered.filter((v) => (v.visit_status || '').toLowerCase().includes('complet')
-            || (v.visit_status || '').toLowerCase() === 'official').length
+        const completed = filtered.filter(isCompletedVisit).length
         const completedPct = total > 0 ? (completed / total) * 100 : 0
-        const locationIssues = filtered.filter((v) =>
-            v.visit_location_status && !['resolved', 'success'].includes(String(v.visit_location_status))
-        ).length
+        const locationIssues = filtered.filter(hasLocationIssue).length
         const locationIssuePct = total > 0 ? (locationIssues / total) * 100 : 0
 
         // Distance: per-reference, sum haversine between consecutive geolocated visits chronological
@@ -421,85 +507,11 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             }
         }
 
-        // Previous window comparison (same length, immediately preceding)
-        const fromIso = dateFrom || todayIsoDate()
-        const toIso = dateTo || todayIsoDate()
-        const fromDate = new Date(fromIso + 'T00:00:00')
-        const toDate = new Date(toIso + 'T00:00:00')
-        const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1)
-        const prevTo = new Date(fromDate); prevTo.setDate(prevTo.getDate() - 1)
-        const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - (days - 1))
-        const prevFromIso = formatLocalIsoDate(prevFrom)
-        const prevToIso = formatLocalIsoDate(prevTo)
-        const inPrev = (v: OfficialVisit) => v.visit_date >= prevFromIso && v.visit_date <= prevToIso
-        // Note: prev window may not be in current `visits` list because the load filter limits to selected window.
-        // Trend remains best-effort and may show nothing when prev data is unavailable.
-        const prevList = visits.filter(inPrev)
-        const trendVisits = formatTrendPct(total, prevList.length)
-        const trendShops = formatTrendPct(uniqueShops, new Set(prevList.map((v) => v.shop_id)).size)
-
-        const prevLabel = `${formatShortDate(prevFromIso)} – ${formatShortDate(prevToIso)}`
-
         return {
             total, uniqueShops, completed, completedPct,
             locationIssues, locationIssuePct,
             totalKm,
-            trendVisits, trendShops, prevLabel,
         }
-    }, [filtered, visits, dateFrom, dateTo])
-
-    // Visits Over Time
-    const visitsOverTime = useMemo(() => {
-        if (trendView === 'day') {
-            const counts = new Map<string, number>()
-            for (const v of filtered) counts.set(v.visit_date, (counts.get(v.visit_date) || 0) + 1)
-            const fromIso = dateFrom || todayIsoDate()
-            const toIso = dateTo || todayIsoDate()
-            const points: { label: string; value: number }[] = []
-            const fromDate = new Date(fromIso + 'T00:00:00')
-            const toDate = new Date(toIso + 'T00:00:00')
-            for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
-                const iso = formatLocalIsoDate(d)
-                points.push({ label: formatShortDate(iso), value: counts.get(iso) || 0 })
-            }
-            return points
-        }
-        // Week bucketing
-        const counts = new Map<string, number>()
-        for (const v of filtered) {
-            const d = new Date(v.visit_date + 'T00:00:00')
-            const dayOfWeek = d.getDay()
-            // Monday-start week
-            const diffToMon = (dayOfWeek + 6) % 7
-            d.setDate(d.getDate() - diffToMon)
-            const key = formatLocalIsoDate(d)
-            counts.set(key, (counts.get(key) || 0) + 1)
-        }
-        return Array.from(counts.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([k, v]) => ({ label: `Wk ${formatShortDate(k)}`, value: v }))
-    }, [filtered, dateFrom, dateTo, trendView])
-
-    // Visits by Region (donut) — uses captured visit geolocation state/address
-    const visitsByRegion = useMemo(() => {
-        return buildVisitRegionDataset(filtered.map((visit) => ({
-            capturedState: visit.visit_geo_state,
-            capturedAddress: visit.visit_geo_full_address,
-            capturedLabel: visit.visit_geo_label,
-        })))
-    }, [filtered])
-
-    // Top References list
-    const topReferences = useMemo(() => {
-        const counts = new Map<string, { id: string; name: string; count: number }>()
-        for (const v of filtered) {
-            const id = v.account_manager_user_id
-            const name = v.user_name || '—'
-            const cur = counts.get(id) || { id, name, count: 0 }
-            cur.count += 1
-            counts.set(id, cur)
-        }
-        return Array.from(counts.values()).sort((a, b) => b.count - a.count).slice(0, 5)
     }, [filtered])
 
     // Distance between consecutive visits per same reference (chronological)
@@ -529,14 +541,36 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         return map
     }, [filtered])
 
+    // The default order is the one the query already produced; a user-selected
+    // column replaces it only for as long as that column is selected.
+    const ordered = useMemo(() => (
+        sort ? applySort(filtered, VISIT_SORT_COLUMNS[sort.key], sort.direction, visitTieBreak) : filtered
+    ), [filtered, sort])
+
     // Pagination
-    const totalEntries = filtered.length
+    const totalEntries = ordered.length
     const totalPages = Math.max(1, Math.ceil(totalEntries / pageSize))
     const safePage = Math.min(page, totalPages)
     const pageStart = (safePage - 1) * pageSize
-    const pageItems = filtered.slice(pageStart, pageStart + pageSize)
+    const pageItems = ordered.slice(pageStart, pageStart + pageSize)
 
-    useEffect(() => { setPage(1) }, [pageSize, statusFilter, runFilter, campaignFilter, referenceFilter, searchTerm, dateFrom, dateTo])
+    useEffect(() => { setPage(1) }, [pageSize, statusFilter, runFilter, campaignFilter, referenceFilter, searchTerm, dateFrom, dateTo, sort])
+
+    const handleSort = (key: VisitSortKey) => {
+        setSort((current) => nextSortState(current, key))
+        setPage(1)
+    }
+
+    // Every drill-down list is derived from `filtered` with the same predicate
+    // its KPI counts with, so a card can never disagree with its own dialog.
+    const uniqueShopRows = useMemo(() => buildUniqueShopRows(filtered), [filtered])
+    const drilldownVisits = useMemo(() => {
+        if (kpiDrilldown === 'total') return filtered
+        if (kpiDrilldown === 'completed') return filtered.filter(isCompletedVisit)
+        if (kpiDrilldown === 'locationIssues') return filtered.filter(hasLocationIssue)
+        return []
+    }, [filtered, kpiDrilldown])
+    const drilldownCount = kpiDrilldown === 'uniqueShops' ? uniqueShopRows.length : drilldownVisits.length
 
     const openDetail = async (visit: OfficialVisit) => {
         setDetailVisit(visit)
@@ -573,7 +607,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     }
 
     const handleExport = () => {
-        const headers = ['Date', 'Time', 'Reference', 'Shop', 'User', 'Campaign', 'Location', 'Distance (km)', 'Status']
+        const headers = ['Date', 'Time', 'Account Manager', 'Participant', 'Shop', 'Campaign', 'Location', 'Distance (km)', 'Visit Status']
         const rows = filtered.map((v) => {
             const dist = distanceByVisitId.get(v.id)
             const status = visitOutcomeForRow(v)
@@ -582,9 +616,9 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             return [
                 dateTime.dateLabel,
                 dateTime.timeLabel,
-                v.user_name || '',
-                `${v.shop_name}${v.shop_branch ? ' - ' + v.shop_branch : ''}`,
+                v.account_manager_user_id && v.user_name && v.user_name !== '—' ? v.user_name : UNASSIGNED_AM_LABEL,
                 formatVisitParticipantCsvValue(v.participant_name, v.participant_phone),
+                `${v.shop_name}${v.shop_branch ? ' - ' + v.shop_branch : ''}`,
                 v.campaign_name || '',
                 [locationDisplay.title, locationDisplay.accuracyBadge.label, ...locationDisplay.metaParts].filter(Boolean).join(' · '),
                 dist ? dist.km.toFixed(1) : '',
@@ -596,7 +630,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `roadtour-visits-${dateFrom}_${dateTo}.csv`
+        a.download = `roadtour-visit-log-${monthKey}.csv`
         a.click()
         URL.revokeObjectURL(url)
     }
@@ -631,15 +665,6 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         return getRoadtourLocationStatusLabel(visit.visit_location_status, Boolean(visit.visit_geolocation?.lat != null && visit.visit_geolocation?.lng != null))
     }
 
-    const visitOutcomeForRow = (v: OfficialVisit): { label: string; tone: 'emerald' | 'amber' | 'red' | 'slate' } => {
-        const status = (v.visit_status || '').toLowerCase()
-        const locStatus = String(v.visit_location_status || '').toLowerCase()
-        if (locStatus && !['resolved', 'success', ''].includes(locStatus)) return { label: 'Location Issue', tone: 'amber' }
-        if (status === 'official' || status.includes('complet')) return { label: 'Completed', tone: 'emerald' }
-        if (status.includes('reject') || status.includes('fail')) return { label: 'Failed', tone: 'red' }
-        return { label: v.visit_status || '—', tone: 'slate' }
-    }
-
     if (loading) return <SeraLoadingState variant="page" />
 
     const lastUpdatedLabel = lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
@@ -647,15 +672,18 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     return (
         <div className="sera-sc-page space-y-5">
             {/* Header */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
-                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl">
+                    <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--sera-muted)]">
+                        RoadTour Reporting
+                    </p>
+                    <h1 className="font-display flex items-center gap-2 text-2xl font-semibold tracking-tight text-[var(--sera-ink)] sm:text-3xl">
                         <MapPin className="h-5 w-5 text-[var(--sera-orange)]" />
-                        Visit Tracking
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Track official visits by references across campaigns. View visit activity, location data, and estimated route distance.
+                        Visit Log
+                    </h1>
+                    <p className="mt-1.5 text-sm text-muted-foreground">
+                        Operational record of every official visit in the selected month, with location evidence and full visit detail.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -673,187 +701,157 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-3 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search by reference, shop, campaign, or user..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
-                </div>
-                <div className="md:col-span-2">
-                    <Select value={runFilter} onValueChange={(v) => { setRunFilter(v); setCampaignFilter('all') }}>
-                        <SelectTrigger><SelectValue placeholder="All Events" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Events</SelectItem>
-                            {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-2">
-                    <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-                        <SelectTrigger><SelectValue placeholder="All Campaigns" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Campaigns</SelectItem>
-                            {campaigns
-                                .filter((c) => runFilter === 'all' || c.roadtour_run_id === runFilter)
-                                .map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-2">
-                    <Select value={referenceFilter} onValueChange={setReferenceFilter}>
-                        <SelectTrigger><SelectValue placeholder="All References" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All References</SelectItem>
-                            {references.map((r) => <SelectItem key={r.id} value={r.id}>{r.full_name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-1">
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="official">Completed</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-3 flex items-center gap-2">
-                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="flex-1" />
-                    <span className="text-muted-foreground">–</span>
-                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="flex-1" />
-                </div>
-                <div className="md:col-span-1">
-                    <Button variant="outline" size="sm" className="w-full gap-1" onClick={handleRefresh}>
-                        <SlidersHorizontal className="h-4 w-4" />
-                        More
+            {/* Month selector, one search field, everything else under More Filters */}
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--sera-line)] bg-white px-1 py-1">
+                    <Button
+                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
+                        aria-label="Previous month"
+                        onClick={() => setMonthKey((current) => shiftMonthKey(current, -1))}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="min-w-[9.5rem] text-center font-display text-sm font-semibold text-[var(--sera-ink)]">
+                        {month.label}
+                    </span>
+                    <Button
+                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
+                        aria-label="Next month"
+                        disabled={!canSelectNextMonth(monthKey)}
+                        title={canSelectNextMonth(monthKey) ? undefined : 'Future months are not available'}
+                        onClick={() => setMonthKey((current) => (canSelectNextMonth(current) ? shiftMonthKey(current, 1) : current))}
+                    >
+                        <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
+
+                {month.isCurrentMonth && (
+                    <span className="inline-flex items-center rounded-full border border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/10 px-2.5 py-1 text-xs font-medium text-[var(--sera-orange-deep)]">
+                        {MONTH_TO_DATE_LABEL}
+                    </span>
+                )}
+
+                <span className="text-xs text-[var(--sera-muted)]">{monthCoverageLabel(month)}</span>
+
+                <div className="relative min-w-[16rem] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        placeholder="Search account manager, participant, shop or campaign"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-9"
+                    />
+                </div>
+
+                <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+                    <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" size="sm">
+                            <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                            More Filters
+                            {activeFilterCount > 0 && (
+                                <span className="ml-1.5 rounded-full bg-[var(--sera-orange)]/15 px-1.5 text-[11px] font-semibold text-[var(--sera-orange-deep)]">
+                                    {activeFilterCount}
+                                </span>
+                            )}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80 space-y-3">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">RoadTour Event</label>
+                            <Select value={runFilter} onValueChange={(v) => { setRunFilter(v); setCampaignFilter('all') }}>
+                                <SelectTrigger><SelectValue placeholder="All Events" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Events</SelectItem>
+                                    {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Campaign</label>
+                            <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                                <SelectTrigger><SelectValue placeholder="All Campaigns" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Campaigns</SelectItem>
+                                    {campaigns
+                                        .filter((c) => runFilter === 'all' || c.roadtour_run_id === runFilter)
+                                        .map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Account Manager</label>
+                            <Select value={referenceFilter} onValueChange={setReferenceFilter}>
+                                <SelectTrigger><SelectValue placeholder="All Account Managers" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Account Managers</SelectItem>
+                                    {references.map((r) => <SelectItem key={r.id} value={r.id}>{r.full_name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Visit Status</label>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="official">Completed</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                    <SelectItem value="rejected">Rejected</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {activeFilterCount > 0 && (
+                            <Button
+                                type="button" variant="ghost" size="sm" className="w-full"
+                                onClick={() => {
+                                    setRunFilter('all'); setCampaignFilter('all')
+                                    setReferenceFilter('all'); setStatusFilter('all')
+                                    setFiltersOpen(false)
+                                }}
+                            >
+                                <X className="mr-1.5 h-3.5 w-3.5" />Clear filters
+                            </Button>
+                        )}
+                    </PopoverContent>
+                </Popover>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            {/* KPI Cards — four primary metrics; route distance lives in the detail and export. */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <KpiCard
                     icon={<Footprints className="h-5 w-5 text-[var(--sera-orange)]" />}
                     iconBg="bg-[var(--sera-orange)]/10"
                     label="Total Visits"
-                    value={metrics.total.toString()}
-                    trend={metrics.trendVisits}
-                    trendLabel={`vs ${metrics.prevLabel}`}
+                    value={<KpiDrilldownValue value={metrics.total} label="Total Visits" onOpen={() => setKpiDrilldown('total')} />}
+                    sub={monthCoverageLabel(month)}
                 />
                 <KpiCard
                     icon={<Store className="h-5 w-5 text-emerald-600" />}
                     iconBg="bg-emerald-100"
-                    label="Unique Shops Visited"
-                    value={metrics.uniqueShops.toString()}
-                    trend={metrics.trendShops}
-                    trendLabel={`vs ${metrics.prevLabel}`}
+                    label="Unique Shops"
+                    value={<KpiDrilldownValue value={metrics.uniqueShops} label="Unique Shops" onOpen={() => setKpiDrilldown('uniqueShops')} />}
+                    sub="distinct shops visited"
                 />
                 <KpiCard
                     icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
                     iconBg="bg-emerald-100"
                     label="Completed Visits"
-                    value={metrics.completed.toString()}
+                    value={<KpiDrilldownValue value={metrics.completed} label="Completed Visits" onOpen={() => setKpiDrilldown('completed')} />}
                     sub={`${metrics.completedPct.toFixed(1)}% of total visits`}
                 />
                 <KpiCard
                     icon={<AlertTriangle className="h-5 w-5 text-amber-600" />}
                     iconBg="bg-amber-100"
                     label="Location Issues"
-                    value={metrics.locationIssues.toString()}
+                    value={<KpiDrilldownValue value={metrics.locationIssues} label="Location Issues" onOpen={() => setKpiDrilldown('locationIssues')} />}
                     sub={`${metrics.locationIssuePct.toFixed(1)}% of total visits`}
                 />
-                <KpiCard
-                    icon={<Route className="h-5 w-5 text-[var(--sera-ink-soft)]" />}
-                    iconBg="bg-[var(--sera-mist)]"
-                    label="Estimated Distance"
-                    value={`${metrics.totalKm.toFixed(1)} km`}
-                    sub="Total route distance"
-                />
             </div>
 
-            {/* Charts row */}
-            <div className="grid gap-4 lg:grid-cols-3">
-                <Card className="lg:col-span-1">
-                    <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-base">Visits Over Time</CardTitle>
-                            <div className="flex rounded-md border bg-muted p-0.5 text-xs">
-                                <button onClick={() => setTrendView('day')} className={`px-2 py-1 rounded ${trendView === 'day' ? 'bg-white shadow-sm' : 'text-muted-foreground'}`}>Day</button>
-                                <button onClick={() => setTrendView('week')} className={`px-2 py-1 rounded ${trendView === 'week' ? 'bg-white shadow-sm' : 'text-muted-foreground'}`}>Week</button>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="h-[220px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={visitsOverTime} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-                                <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="value" stroke="#e85d04" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-base">Visits by Region</CardTitle></CardHeader>
-                    <CardContent className="h-[220px]">
-                        {visitsByRegion.length === 0 ? (
-                            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No region data</div>
-                        ) : (
-                            <div className="flex h-full items-center gap-4">
-                                <div className="h-full min-w-0 flex-1">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie data={visitsByRegion} dataKey="visitCount" nameKey="regionName" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                                                {visitsByRegion.map((_, i) => <Cell key={i} fill={REGION_COLORS[i % REGION_COLORS.length]} />)}
-                                            </Pie>
-                                            <Tooltip formatter={(value: number) => [`${value} visits`, 'Visits']} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <div className="w-36 space-y-2 text-xs">
-                                    {visitsByRegion.map((entry) => (
-                                        <div key={entry.regionName} className="flex items-center justify-between gap-2">
-                                            <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                                                <RoadtourStateFlag stateName={entry.regionName} fallback="placeholder" />
-                                                <span className="truncate">{entry.regionName}</span>
-                                            </span>
-                                            <span className="shrink-0 font-medium text-foreground">= {entry.visitCount}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                        <CardTitle className="text-base">Top References</CardTitle>
-                        <button className="text-xs text-[var(--sera-orange)] hover:underline hover:text-[var(--sera-orange-deep)]">View all</button>
-                    </CardHeader>
-                    <CardContent>
-                        {topReferences.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No references in this period.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {topReferences.map((ref, idx) => (
-                                    <div key={ref.id} className="flex items-center gap-3">
-                                        <span className="w-4 text-xs font-semibold text-muted-foreground">{idx + 1}</span>
-                                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${colorFor(ref.id)}`}>{initialsFor(ref.name)}</div>
-                                        <span className="flex-1 text-sm font-medium truncate">{ref.name}</span>
-                                        <span className="text-xs text-muted-foreground">{ref.count} visits</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Route className="h-3.5 w-3.5" />
+                Estimated route distance this month: {metrics.totalKm.toFixed(1)} km — per-visit distance is in the visit detail and the export.
+            </p>
 
             {/* Visit Activity Table */}
             <Card>
@@ -871,78 +869,76 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     </div>
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
-                    <Table>
+                    <Table className="text-xs">
                         <TableHeader>
-                            <TableRow>
-                                <TableHead>Date / Time</TableHead>
-                                <TableHead>Reference</TableHead>
-                                <TableHead>Shop</TableHead>
-                                <TableHead>User</TableHead>
-                                <TableHead>Campaign</TableHead>
-                                <TableHead>Location</TableHead>
-                                <TableHead>Distance from Previous</TableHead>
-                                <TableHead>Status</TableHead>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <SortableHead label="Visit Date / Time" sortKey="date" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Account Manager" sortKey="accountManager" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Participant" sortKey="participant" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Shop" sortKey="shop" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Campaign" sortKey="campaign" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Location Status" sortKey="locationStatus" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Visit Status" sortKey="visitStatus" sort={sort} onSort={handleSort} />
                                 <TableHead className="text-right">Details</TableHead>
                             </TableRow>
                         </TableHeader>
-                        <TableBody>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
                             {pageItems.length === 0 && (
-                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No visits found in {month.label}.</TableCell></TableRow>
                             )}
-                            {pageItems.map((v) => {
-                                const dist = distanceByVisitId.get(v.id)
+                            {pageItems.map((v, index) => {
                                 const status = visitOutcomeForRow(v)
                                 const locationDisplay = formatVisitLocationDisplay(v)
                                 const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
                                 const participantDisplay = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
+                                const hasAccountManager = hasResolvedAccountManager(v)
+                                const amLabel = accountManagerLabel(v)
                                 const locColor = v.visit_location_status === 'resolved' ? 'text-emerald-600'
                                     : v.visit_location_status ? 'text-amber-600' : 'text-muted-foreground'
-                                const distColor = !dist ? 'text-muted-foreground'
-                                    : dist.level === 'high' ? 'text-amber-700'
-                                        : dist.level === 'medium' ? 'text-amber-600'
-                                            : 'text-muted-foreground'
                                 const statusBadge = status.tone === 'emerald' ? 'bg-emerald-100 text-emerald-700'
                                     : status.tone === 'amber' ? 'bg-amber-100 text-amber-700'
                                         : status.tone === 'red' ? 'bg-red-100 text-red-700'
                                             : 'bg-slate-100 text-slate-700'
                                 return (
                                     <TableRow key={v.id}>
-                                        <TableCell className="text-sm whitespace-nowrap">
+                                        <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{pageStart + index + 1}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
                                             <div className="font-medium">{dateTime.dateLabel}</div>
-                                            <div className="text-xs text-muted-foreground">{dateTime.timeLabel}</div>
+                                            <div className="text-[11px] text-muted-foreground">{dateTime.timeLabel}</div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
-                                                <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ${colorFor(v.account_manager_user_id)}`}>{initialsFor(v.user_name)}</div>
-                                                <span className="text-sm font-medium">{v.user_name}</span>
+                                                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${colorFor(v.account_manager_user_id || 'unassigned')}`}>{initialsFor(amLabel)}</div>
+                                                <span className={`max-w-[9rem] font-medium ${hasAccountManager ? '' : 'text-amber-700'}`} title={amLabel}>{amLabel}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div>
-                                                <p className="text-sm font-medium">{v.shop_name}</p>
-                                                {(v.shop_branch || v.shop_state) && (
-                                                    <p className="text-xs text-muted-foreground">{[v.shop_branch, v.shop_state].filter(Boolean).join(', ')}</p>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div>
-                                                <p className={`text-sm font-medium ${participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}`}>{participantDisplay.primary}</p>
+                                            <div className="max-w-[10rem]">
+                                                <p className={`font-medium ${participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}`}>{participantDisplay.primary}</p>
                                                 {participantDisplay.secondary && (
-                                                    <p className="text-xs text-muted-foreground">{participantDisplay.secondary}</p>
+                                                    <p className="text-[11px] text-muted-foreground">{participantDisplay.secondary}</p>
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-sm">{v.campaign_name}</TableCell>
-                                        <TableCell className="text-xs">
-                                            <div className="flex items-start gap-3">
+                                        <TableCell>
+                                            <div className="min-w-[8rem] max-w-[12rem]">
+                                                <p className="font-medium">{v.shop_name}</p>
+                                                {(v.shop_branch || v.shop_state) && (
+                                                    <p className="text-[11px] text-muted-foreground">{[v.shop_branch, v.shop_state].filter(Boolean).join(', ')}</p>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>{v.campaign_name}</TableCell>
+                                        <TableCell>
+                                            <div className="flex items-start gap-2">
                                                 <RoadtourStateFlag stateName={locationDisplay.capturedState} size="md" fallback="placeholder" />
-                                                <div className="space-y-1 min-w-0">
+                                                <div className="min-w-0 max-w-[16rem] space-y-1">
                                                     <div className={`flex items-center gap-1 ${locColor}`}>
-                                                        <span className="text-sm font-medium text-foreground">{locationDisplay.title}</span>
+                                                        <span className="font-medium text-foreground" title={locationDisplay.title}>{locationDisplay.title}</span>
                                                     </div>
                                                     <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-                                                        <Badge variant="outline" className={`border ${locationDisplay.accuracyBadge.className}`}>
+                                                        <Badge variant="outline" className={`border px-1.5 py-0 text-[10px] ${locationDisplay.accuracyBadge.className}`}>
                                                             {locationDisplay.accuracyBadge.label}
                                                         </Badge>
                                                         {locationDisplay.metaParts.map((part) => (
@@ -952,11 +948,8 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                                 </div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className={`text-sm ${distColor}`}>
-                                            {dist ? `${dist.km.toFixed(1)} km` : '—'}
-                                        </TableCell>
                                         <TableCell>
-                                            <Badge className={statusBadge}>{status.label}</Badge>
+                                            <Badge className={`whitespace-nowrap ${statusBadge}`}>{status.label}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button size="sm" variant="ghost" onClick={() => openDetail(v)}>
@@ -1003,6 +996,120 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     </div>
                 )}
             </Card>
+
+            {/* KPI drill-downs — every row comes from the same `filtered` set the KPI counts. */}
+            <KpiDrilldownDialog
+                open={kpiDrilldown !== null}
+                onOpenChange={(open) => { if (!open) setKpiDrilldown(null) }}
+                title={kpiDrilldown
+                    ? `${VISIT_KPI_TITLE[kpiDrilldown]} — ${drilldownCount} ${kpiDrilldown === 'uniqueShops'
+                        ? (drilldownCount === 1 ? 'Shop' : 'Shops')
+                        : (drilldownCount === 1 ? 'Visit' : 'Visits')}`
+                    : ''}
+                subtitle={monthCoverageLabel(month)}
+            >
+                {drilldownCount === 0 ? (
+                    <KpiDrilldownEmpty message="No records for this metric." />
+                ) : kpiDrilldown === 'uniqueShops' ? (
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <TableHead>Shop</TableHead>
+                                <TableHead>Region/State</TableHead>
+                                <TableHead>Latest Visit</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead className="text-right">Visit Count</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                            {uniqueShopRows.map((shop, index) => (
+                                <TableRow key={shop.shopId}>
+                                    <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{index + 1}</TableCell>
+                                    <TableCell className="font-medium">{shop.shopName}</TableCell>
+                                    <TableCell>{shop.region || '—'}</TableCell>
+                                    <TableCell className="whitespace-nowrap">
+                                        {formatVisitDateTime(shop.latestVisit.visit_date, shop.latestVisit.created_at).dateLabel}
+                                    </TableCell>
+                                    <TableCell>{accountManagerLabel(shop.latestVisit)}</TableCell>
+                                    <TableCell className="text-right tabular-nums">{shop.visitCount}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                ) : kpiDrilldown === 'locationIssues' ? (
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <TableHead>Visit Date / Time</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Shop</TableHead>
+                                <TableHead>Location Status</TableHead>
+                                <TableHead>Location Message</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                            {drilldownVisits.map((v, index) => {
+                                const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
+                                return (
+                                    <TableRow key={v.id}>
+                                        <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{index + 1}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            <div className="font-medium">{dateTime.dateLabel}</div>
+                                            <div className="text-[11px] text-muted-foreground">{dateTime.timeLabel}</div>
+                                        </TableCell>
+                                        <TableCell>{accountManagerLabel(v)}</TableCell>
+                                        <TableCell className="font-medium">{v.shop_name}</TableCell>
+                                        <TableCell className="text-amber-700">
+                                            {getRoadtourLocationStatusLabel(v.visit_location_status, getVisitCoordinates(v).lat !== null && getVisitCoordinates(v).lng !== null)}
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {v.visit_location_error?.trim() || formatVisitLocationDisplay(v).title}
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+                ) : (
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <TableHead>Visit Date / Time</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Participant</TableHead>
+                                <TableHead>Shop</TableHead>
+                                <TableHead>Campaign</TableHead>
+                                <TableHead>Visit Status</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                            {drilldownVisits.map((v, index) => {
+                                const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
+                                const participantDisplay = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
+                                return (
+                                    <TableRow key={v.id}>
+                                        <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{index + 1}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            <div className="font-medium">{dateTime.dateLabel}</div>
+                                            <div className="text-[11px] text-muted-foreground">{dateTime.timeLabel}</div>
+                                        </TableCell>
+                                        <TableCell>{accountManagerLabel(v)}</TableCell>
+                                        <TableCell className={participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}>
+                                            {participantDisplay.primary}
+                                        </TableCell>
+                                        <TableCell className="font-medium">{v.shop_name}</TableCell>
+                                        <TableCell>{v.campaign_name}</TableCell>
+                                        <TableCell>{visitOutcomeForRow(v).label}</TableCell>
+                                    </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+                )}
+            </KpiDrilldownDialog>
 
             {/* Detail Dialog */}
             <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
@@ -1112,13 +1219,11 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     )
 }
 
-function KpiCard({ icon, iconBg, label, value, trend, trendLabel, sub }: {
+function KpiCard({ icon, iconBg, label, value, sub }: {
     icon: React.ReactNode
     iconBg: string
     label: string
-    value: string
-    trend?: { sign: '+' | '-'; value: string } | null
-    trendLabel?: string
+    value: React.ReactNode
     sub?: string
 }) {
     return (
@@ -1128,14 +1233,7 @@ function KpiCard({ icon, iconBg, label, value, trend, trendLabel, sub }: {
                     <div>
                         <p className="text-xs text-muted-foreground">{label}</p>
                         <p className="mt-1 text-2xl font-bold">{value}</p>
-                        {trend && (
-                            <p className={`mt-1 inline-flex items-center gap-1 text-xs ${trend.sign === '+' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {trend.sign === '+' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                                {trend.sign}{trend.value}
-                                {trendLabel && <span className="text-muted-foreground font-normal">{trendLabel}</span>}
-                            </p>
-                        )}
-                        {!trend && sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+                        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
                     </div>
                     <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>{icon}</div>
                 </div>

@@ -102,6 +102,9 @@ function catalogRow(overrides: Partial<ManualStockCatalogRow> = {}): ManualStock
     productCode: 'CEL-001',
     productName: 'Cellera Hazelnut',
     variantName: 'Cellera Hazelnut [Hazelnut]',
+    variantProductCode: 'HA',
+    alternativeName: 'Coffee Hazelnut',
+    baseCost: 14,
     flavour: '[Hazelnut]',
     productLine: 'Cellera',
     manufacturerId: 'mfg-1',
@@ -351,6 +354,15 @@ describe('Manual Stock Addition UI contracts', () => {
     expect(addStockComponent).toContain("rpc('post_manual_stock_addition'")
     expect(addStockComponent).toContain('postingLockRef')
     expect(addStockComponent).toContain('inventory will increase immediately')
+  })
+
+  it('drops the Stock SKU column and shows variant Product Code, alternative name and Base Cost', () => {
+    expect(addStockComponent).not.toContain('<TableHead>Stock SKU</TableHead>')
+    expect(addStockComponent).not.toContain('{row.stockSku}')
+    expect(addStockComponent).toContain('variantIdentityLabel(row.variantName, row.variantProductCode)')
+    expect(addStockComponent).toContain('variantAlternativeLabel(row.alternativeName)')
+    expect(addStockComponent).toContain('product_code,\n            alternative_name,\n            base_cost,')
+    expect(addStockComponent).toContain('next[row.rowKey] = String(row.baseCost)')
   })
 
   it('does not introduce a draft or OTP approval lifecycle for Add Stock', () => {

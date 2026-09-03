@@ -6,10 +6,13 @@ export interface MatchableVariant {
   alternative_name?: string | null
   product_name: string
   product_code: string
+  /** Variant-level master-data code (product_variants.product_code), e.g. "SC". */
+  variant_product_code?: string | null
   group_name?: string
   manufacturer_sku?: string | null
   available_qty?: number
   inventory_classification?: 'classified' | 'unclassified'
+  pricing_status?: 'priced' | 'price_missing'
 }
 
 export type PasteMatchStatus =
@@ -30,7 +33,7 @@ export type PasteMatchStatus =
 
 export type PasteMatchMethod = 'code_or_sku' | 'exact_name' | 'bracket_flavour' | 'alternative_name' | 'keyword' | 'fuzzy'
 
-export type PasteInventoryOutcome = 'matched' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
+export type PasteInventoryOutcome = 'matched' | 'price_not_set' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
 
 /** Canonical Master Data product families used as paste section scopes. */
 export const SECTION_PRODUCT_LINES = {
@@ -141,6 +144,15 @@ export const normalizeDashes = (value: string) => value.replace(UNICODE_DASHES, 
 const buildStatusEmojiRegex = () =>
   /(?:[✅❌✔✖☑☒✓✗✘]️?|[\u{1F534}\u{1F7E2}\u{1F7E1}\u{1F7E0}\u{1F535}])+/gu
 
+/**
+ * The distributor's own ✅/❌ marks, removed for display. The review table
+ * reports the system's verdict in the Result column, so echoing the sender's
+ * marks back in the Entry column is noise that reads like a second, conflicting
+ * status. `raw` itself keeps them — it is the untouched pasted text.
+ */
+export const stripStatusMarkers = (value: string) =>
+  value.replace(buildStatusEmojiRegex(), ' ').replace(/\s+/g, ' ').trim()
+
 interface OrderToken {
   localStart: number
   localEnd: number
@@ -246,6 +258,7 @@ const exactFallbackNames = (variant: MatchableVariant) => [
 
 const exactIdentifiers = (variant: MatchableVariant) => [
   variant.product_code,
+  variant.variant_product_code || '',
   variant.manufacturer_sku || '',
 ].map(normalizeOrderText).filter(Boolean)
 
@@ -485,6 +498,31 @@ const fuzzyScore = (query: string, variant: MatchableVariant) => {
   }))
 }
 
+/**
+ * Entries that carry the identifier alongside the flavour — "Butterscotch Cream
+ * (CV) 42", the shape our own WhatsApp reply produces — are already unambiguous:
+ * the code is master data and names one variant. Reading it turns what the name
+ * alone would score as a fuzzy suggestion into a settled match, so the operator
+ * is not asked to re-pick something the distributor already stated.
+ *
+ * Only a bracketed token is trusted, never a bare word, so a flavour that
+ * happens to read like a code ("PO", "MB") cannot hijack a line. The token must
+ * resolve to exactly ONE variant: a parent products.product_code is shared by
+ * every flavour under it, so those fall through to normal name matching rather
+ * than auto-selecting an arbitrary sibling.
+ */
+const BRACKETED_TOKEN = /[([]([^()[\]]+)[)\]]/g
+
+const resolveBracketedIdentifier = (name: string, variants: MatchableVariant[]) => {
+  for (const match of name.matchAll(BRACKETED_TOKEN)) {
+    const token = normalizeOrderText(match[1])
+    if (!token) continue
+    const hits = variants.filter(variant => exactIdentifiers(variant).includes(token))
+    if (hits.length === 1) return hits
+  }
+  return []
+}
+
 export function resolveCatalogMatch(
   name: string,
   variants: MatchableVariant[],
@@ -501,6 +539,14 @@ export function resolveCatalogMatch(
   const normalizedName = normalizeOrderText(name)
   const identifierMatches = pool.filter(variant => exactIdentifiers(variant).includes(normalizedName))
   if (identifierMatches.length > 0) return { candidates: identifierMatches.slice(0, 8), method: 'code_or_sku' as const, totalMatches: identifierMatches.length }
+
+  // The stated code is read from the RAW name, before parenthetical notes are
+  // stripped below: "(CV)" is the identifier itself, not a distributor aside.
+  // Resolution runs against `pool`, so an active section still owns the scope.
+  const bracketedIdentifier = resolveBracketedIdentifier(name, pool)
+  if (bracketedIdentifier.length === 1) {
+    return { candidates: bracketedIdentifier, method: 'code_or_sku' as const, totalMatches: 1 }
+  }
 
   const matchingName = stripParentheticalQualifiers(name)
   const normalizedMatchName = normalizeMatchName(matchingName)
@@ -565,11 +611,43 @@ export function resolveCatalogMatch(
   }
 }
 
+/**
+ * A pasted WhatsApp list interleaves section headings with order lines:
+ *
+ *   vanilla tobacco 50✅
+ *
+ *   cellera zero
+ *   almond 50✅
+ *
+ * "cellera zero" names the product the following lines belong to; it is not an
+ * order for a flavour. Treated as an entry it surfaced as a bogus "Invalid
+ * Quantity" row that blocked Apply. A quantity-less segment naming a catalog
+ * product is therefore dropped before it becomes a result.
+ *
+ * The test is deliberately narrow — the segment must carry NO quantity and must
+ * match a product name in the authorized catalog. Anything else (a misspelt
+ * flavour, a stray note) still surfaces for review rather than being silently
+ * swallowed.
+ */
+const TRAILING_UNIT_QUALIFIER = /\s*[([](?:CASES?|PCS?|PIECES?|UNITS?|BOX(?:ES)?)[)\]]\s*$/i
+
+export function isCatalogProductHeading(name: string, variants: MatchableVariant[]) {
+  // "Cellera Zero (Cases)" — the unit qualifier our own reply appends to each
+  // product heading. Without stripping it, a reply pasted back for a re-check
+  // surfaces its own headings as bogus "Invalid Quantity" rows.
+  const normalized = normalizeMatchName(name.replace(TRAILING_UNIT_QUALIFIER, ''))
+  if (!normalized) return false
+  return variants.some(variant => normalizeMatchName(variant.product_name) === normalized)
+}
+
 export function resolvePasteInventoryOutcome(
   quantity: number | null,
   variant?: MatchableVariant,
 ): PasteInventoryOutcome | undefined {
   if (!variant || quantity === null || quantity <= 0) return undefined
+  // Checked before stock: an unpriced variant cannot be ordered however much of
+  // it the warehouse holds, and the empty price field is the thing to fix.
+  if (variant.pricing_status === 'price_missing') return 'price_not_set'
   if (variant.inventory_classification === 'unclassified') return 'inventory_unclassified'
   if (variant.available_qty === undefined) return 'matched'
   if (variant.available_qty <= 0) return 'no_available_stock'
@@ -590,6 +668,15 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
     if (shouldSkipPastePhysicalLine(physicalLine)) return
 
     for (const segment of parsePhysicalLine(physicalLine, index + 1, codeSet)) {
+      // Skipped before numbering so the review table stays contiguous. A line
+      // that opens a section is NOT dropped here: it has to reach the section
+      // handling below to scope the flavours that follow it.
+      if (
+        segment.quantity === null
+        && !resolveSectionHeader(cleanPasteSegmentName(segment.name.trim() || segment.raw.trim()), segment.quantity)
+        && isCatalogProductHeading(segment.name, variants)
+      ) continue
+
       entryNumber += 1
       const line = entryNumber
       let name = cleanPasteSegmentName(segment.name.trim() || segment.raw.trim())

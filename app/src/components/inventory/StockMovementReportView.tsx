@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import MovementTypeBadge from './MovementTypeBadge'
 import ProductThumbnail from './ProductThumbnail'
 import { subscribeToInventoryDataRefresh } from '@/lib/inventory/inventory-data-refresh'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 import {
   formatSignedMovementImpact,
   resolveStockMovementConfiguration,
@@ -1125,11 +1126,11 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Stock SKU / Configuration</label>
-                <Select value={stockConfigFilter} onValueChange={setStockConfigFilter}><SelectTrigger><SelectValue placeholder="All configurations" /></SelectTrigger><SelectContent><SelectItem value="all">All configurations</SelectItem>{stockConfigurations.map(config => <SelectItem key={config.id} value={config.id}>{config.stock_sku} · {config.config_label}</SelectItem>)}</SelectContent></Select>
+                <Select value={stockConfigFilter} onValueChange={setStockConfigFilter}><SelectTrigger><SelectValue placeholder="All configurations" /></SelectTrigger><SelectContent><SelectItem value="all">All configurations</SelectItem>{stockConfigurations.map(config => <SelectItem key={config.id} value={config.id}>{config.stock_sku} · {withStockStrengthUnit(config.config_label)}</SelectItem>)}</SelectContent></Select>
               </div>
               <div>
                 <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Volume</label>
-                <Select value={volumeFilter} onValueChange={setVolumeFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All volumes</SelectItem><SelectItem value="20">20ml</SelectItem><SelectItem value="50">50ml</SelectItem><SelectItem value="legacy">Standard / Legacy</SelectItem></SelectContent></Select>
+                <Select value={volumeFilter} onValueChange={setVolumeFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All volumes</SelectItem><SelectItem value="20">20 mg</SelectItem><SelectItem value="50">50 mg</SelectItem><SelectItem value="legacy">Standard / Legacy</SelectItem></SelectContent></Select>
               </div>
               <div>
                 <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Packaging</label>
@@ -1373,7 +1374,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                             </p>
                             {movement.configuration_display_label && (
                               <p className={`text-xs font-medium ${movement.is_legacy_configuration ? 'text-amber-700' : 'text-blue-700'}`}>
-                                {movement.configuration_display_label}
+                                {withStockStrengthUnit(movement.configuration_display_label)}
                               </p>
                             )}
                           </div>

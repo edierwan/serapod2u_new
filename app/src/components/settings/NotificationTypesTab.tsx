@@ -125,6 +125,7 @@ const PRESETS: Array<{
 const CATEGORY_LABELS: Record<string, string> = {
   system: 'System Check',
   security: 'Security & OTP',
+  'Delete Organization Masterdata': 'Delete Organization Masterdata',
   order: 'Order Status',
   document: 'Order Document',
   inventory: 'Inventory & Stock',
@@ -132,7 +133,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   return: 'Return Product',
   user: 'User Account',
 }
-const CATEGORY_ORDER = ['system', 'security', 'order', 'document', 'inventory', 'qr', 'return', 'user']
+const CATEGORY_ORDER = ['system', 'security', 'Delete Organization Masterdata', 'order', 'document', 'inventory', 'qr', 'return', 'user']
 const FORCED_PRESET: Record<string, RoutingPreset> = {
   stock_count_posting_verification: 'email_only',
   [SYSTEM_SMS_CHECK_EVENT]: 'sms_only',

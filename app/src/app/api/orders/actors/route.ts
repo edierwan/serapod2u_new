@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -49,23 +50,31 @@ export async function POST(request: Request) {
 
     const adminSupabase = createAdminClient()
 
-    let ordersQuery = adminSupabase
-      .from('orders')
-      .select('id, created_by, approved_by, buyer_org_id, seller_org_id, warehouse_org_id, company_id')
-      .in('id', orderIds)
+    // Batched: the Orders list now hydrates a full order history rather than a
+    // 50-row window, and every id would otherwise ride in the PostgREST URL.
+    const { data: orders, error: ordersError } = await queryByIdChunks<{
+      id: string
+      created_by: string | null
+      approved_by: string | null
+    }>(orderIds as string[], chunk => {
+      let ordersQuery = adminSupabase
+        .from('orders')
+        .select('id, created_by, approved_by, buyer_org_id, seller_org_id, warehouse_org_id, company_id')
+        .in('id', chunk)
 
-    if (requesterOrgType === 'MFG' || requesterOrgType === 'MANU') {
-      ordersQuery = ordersQuery
-        .eq('seller_org_id', requester.organization_id)
-        .neq('status', 'submitted')
-        .neq('status', 'draft')
-    } else if (requesterOrgType === 'HQ' && requesterRoleLevel <= 20) {
-      ordersQuery = ordersQuery.eq('company_id', scopedCompanyId)
-    } else {
-      ordersQuery = ordersQuery.or(`buyer_org_id.eq.${requester.organization_id},seller_org_id.eq.${requester.organization_id},warehouse_org_id.eq.${requester.organization_id}`)
-    }
+      if (requesterOrgType === 'MFG' || requesterOrgType === 'MANU') {
+        ordersQuery = ordersQuery
+          .eq('seller_org_id', requester.organization_id)
+          .neq('status', 'submitted')
+          .neq('status', 'draft')
+      } else if (requesterOrgType === 'HQ' && requesterRoleLevel <= 20) {
+        ordersQuery = ordersQuery.eq('company_id', scopedCompanyId)
+      } else {
+        ordersQuery = ordersQuery.or(`buyer_org_id.eq.${requester.organization_id},seller_org_id.eq.${requester.organization_id},warehouse_org_id.eq.${requester.organization_id}`)
+      }
 
-    const { data: orders, error: ordersError } = await ordersQuery
+      return ordersQuery as unknown as PromiseLike<{ data: any[] | null; error: unknown }>
+    })
 
     if (ordersError) {
       console.error('Order actor scope query failed:', ordersError)
@@ -84,10 +93,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ users: [] })
     }
 
-    const { data: users, error: usersError } = await adminSupabase
+    const { data: users, error: usersError } = await queryByIdChunks<{
+      id: string
+      email: string
+      full_name: string | null
+      signature_url: string | null
+      roles: unknown
+    }>(actorIds, chunk => adminSupabase
       .from('users')
       .select('id, email, full_name, signature_url, roles:role_code(role_level)')
-      .in('id', actorIds)
+      .in('id', chunk) as unknown as PromiseLike<{ data: any[] | null; error: unknown }>)
 
     if (usersError) {
       console.error('Order actor user query failed:', usersError)

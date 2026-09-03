@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import {
+  outsideProgramCategoryMessage,
+  resolveDistributorCategoryRule,
+  variantIdsOutsideProgramCategory,
+} from '@/lib/orders/d2h-program-category-policy'
+import {
   resolveQuickOrderCatalog,
-  resolveSellableAvailability,
+  resolveSellableStock,
   resolveUnclassifiedVariantIds,
   UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
   validateQuickOrderCatalogItems,
@@ -130,13 +136,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A distributor is required.' }, { status: 400 })
     }
 
+    const { data: distributor, error: distributorError } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('id', body.distributorId)
+      .eq('parent_org_id', hqOrganizationId)
+      .eq('org_type_code', 'DIST')
+      .eq('is_active', true)
+      .maybeSingle()
+    if (distributorError || !distributor) {
+      return NextResponse.json({ error: 'The selected distributor is not available in this HQ scope.' }, { status: 403 })
+    }
+
+    // Same program -> category rule the Standard Order catalog uses. The
+    // category is validated in memory rather than joined away so an
+    // out-of-category variant reports why it was rejected instead of looking
+    // like it no longer exists.
+    const categoryRule = await resolveDistributorCategoryRule(
+      createAdminClient(),
+      body.distributorId,
+      hqOrganizationId,
+    )
+
+    const variantsQuery = (supabase as any)
+      .from('product_variants')
+      .select(`id, distributor_price, is_active, products!inner(is_active, category_id, product_categories(id, is_active, is_vape))`)
+      .in('id', variantIds)
+      .eq('is_active', true)
+      .eq('products.is_active', true)
+
     const [{ data: variants, error: variantsError }, { data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
-      supabase
-        .from('product_variants')
-        .select('id, distributor_price, is_active, products!inner(is_active)')
-        .in('id', variantIds)
-        .eq('is_active', true)
-        .eq('products.is_active', true),
+      variantsQuery,
       supabase
         .from('product_inventory')
         .select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
@@ -157,18 +187,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'One or more variants are inactive, unauthorized, or no longer available.' }, { status: 409 })
     }
 
-    const variantsById = new Map((variants || []).map(variant => [variant.id, variant]))
-    const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
+    if (variantIdsOutsideProgramCategory(variants || [], categoryRule).length > 0) {
+      return NextResponse.json({ error: outsideProgramCategoryMessage(categoryRule!) }, { status: 409 })
+    }
+
+    const variantsById = new Map<string, { id: string; distributor_price: number | null }>(
+      (variants || []).map((variant: { id: string; distributor_price: number | null }) => [variant.id, variant]),
+    )
+    const stockByVariant = resolveSellableStock(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
+    const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], stockByVariant)
     if (items.some(item => unclassifiedVariantIds.has(item.variantId))) {
       return NextResponse.json({ error: UNCLASSIFIED_INVENTORY_ORDER_MESSAGE }, { status: 409 })
     }
-    const stockByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
     const validated = items.map(item => {
       const variant = variantsById.get(item.variantId)!
       return {
         variantId: item.variantId,
         quantity: item.quantity,
-        availableQuantity: stockByVariant.get(item.variantId) || 0,
+        availableQuantity: stockByVariant.get(item.variantId)?.available || 0,
         distributorPrice: Number(variant.distributor_price || 0),
       }
     })
@@ -176,7 +212,10 @@ export async function POST(request: Request) {
     if (priceMissing) return NextResponse.json({ error: 'Distributor price is not maintained for one or more selected variants.' }, { status: 409 })
     const insufficient = validated.find(item => item.quantity > item.availableQuantity)
     if (insufficient) {
-      return NextResponse.json({ error: insufficientStockAtWarehouseMessage(warehouseName) }, { status: 409 })
+      return NextResponse.json(
+        { error: insufficientStockAtWarehouseMessage(warehouseName, stockByVariant.get(insufficient.variantId)) },
+        { status: 409 },
+      )
     }
 
     return NextResponse.json({

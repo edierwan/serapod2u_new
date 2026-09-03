@@ -11,6 +11,11 @@ export const REQUIRED_NOTIFICATION_TYPES = [
         default_enabled: true, available_channels: ['sms'], is_system: true, sort_order: 1,
     },
     {
+        category: 'Delete Organization Masterdata', event_code: 'delete_organization_verification_code', event_name: 'Delete Organization Verification Code',
+        event_description: 'Controls delivery of the security code required before organization master data can be deleted.',
+        default_enabled: true, available_channels: ['whatsapp', 'sms', 'email'], is_system: true, sort_order: 10,
+    },
+    {
         category: 'user', event_code: 'user_created_shop', event_name: 'User Create New Shop',
         event_description: 'Sent when a user successfully creates a new shop from the QR profile flow.',
         default_enabled: false, available_channels: ['whatsapp', 'sms', 'email'], is_system: false, sort_order: 15,

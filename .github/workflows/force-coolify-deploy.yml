@@ -1,0 +1,30 @@
+name: Force Coolify deploy (temp)
+
+on:
+  workflow_dispatch:
+    inputs:
+      uuid:
+        description: Coolify application UUID
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify deploy
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          APP_UUID: ${{ inputs.uuid }}
+        run: |
+          set -euo pipefail
+          base="${COOLIFY_URL%/}"
+          echo "Deploying uuid=$APP_UUID"
+          code=$(curl -sS -o /tmp/coolify-deploy.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+            -H "Accept: application/json" \
+            "${base}/api/v1/deploy?uuid=${APP_UUID}&force=true" || true)
+          echo "HTTP $code"
+          cat /tmp/coolify-deploy.json
+          test "$code" = "200" -o "$code" = "201"

@@ -122,7 +122,8 @@ describe('Phase 8 Initial Configuration Classification SQL contract', () => {
   })
 
   it('the bulk-enable route re-validates every variant id server-side and never trusts the client list', () => {
-    expect(bulkEnableRoute).toContain('isCelleraVapeVariant')
+    expect(bulkEnableRoute).toContain('evaluateConcentrationStockConfigEligibility')
+    expect(bulkEnableRoute).toContain('stock_config_profile')
     expect(bulkEnableRoute).toContain("rpc('bulk_enable_variant_stock_configurations'")
     expect(bulkEnableRoute).not.toMatch(/from\('inventory_stock_configurations'\)\s*\.insert/)
   })

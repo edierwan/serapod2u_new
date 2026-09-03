@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
   // 4. Order line items (product + variant names)
   const { data: orderItems } = await supabase
     .from('order_items')
-    .select('product_id, variant_id, unit_price, products(product_name), product_variants(variant_name)')
+    .select('product_id, variant_id, unit_price, products(product_name), product_variants(variant_name, product_code)')
     .eq('order_id', orderId)
 
   const variantIds = Array.from(new Set((orderItems || []).map((item: any) => item.variant_id).filter(Boolean)))
@@ -162,6 +162,7 @@ export async function GET(request: NextRequest) {
       variant_id: variantId,
       product_name: (oi.products as any)?.product_name || 'Product',
       variant_name: (oi.product_variants as any)?.variant_name || '',
+      product_code: (oi.product_variants as any)?.product_code || null,
       ordered_qty: ordered,
       previously_received: previously,
       cumulative_received: previously,

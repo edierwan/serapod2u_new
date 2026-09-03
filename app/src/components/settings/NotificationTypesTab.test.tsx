@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import NotificationTypesTab from './NotificationTypesTab'
 
 const types = [
+  ['Delete Organization Masterdata', 'delete_organization_verification_code', 'Delete Organization Verification Code'],
   ['order', 'order_submitted', 'Order Submitted'],
   ['document', 'document_created', 'Document Created'],
   ['inventory', 'low_stock', 'Low Stock'],
@@ -66,10 +67,21 @@ describe('NotificationTypesTab', () => {
     expect(screen.getAllByText('SMS Only').length).toBeGreaterThan(0)
     expect(screen.getAllByText('WhatsApp → Email').length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: 'Delivery Summary' })).toBeTruthy()
-    for (const category of ['Order Status', 'Order Document', 'Inventory & Stock', 'QR & Consumer', 'User Account']) {
+    for (const category of ['Delete Organization Masterdata', 'Order Status', 'Order Document', 'Inventory & Stock', 'QR & Consumer', 'User Account']) {
       expect(screen.getByText(category)).toBeTruthy()
     }
     expect(screen.getByText('SMS unavailable')).toBeTruthy()
+  })
+
+  it('shows the organization master-data deletion event in its dedicated category', async () => {
+    render(<NotificationTypesTab userProfile={{
+      id: 'user-1', organization_id: 'org-1',
+      organizations: { id: 'org-1', org_type_code: 'HQ' }, roles: { role_level: 1 },
+    }} />)
+    await screen.findByRole('heading', { name: 'Notification Types' })
+    await userEvent.click(screen.getByText('Delete Organization Masterdata'))
+    expect(screen.getByText('Delete Organization Verification Code')).toBeTruthy()
+    expect(screen.getByLabelText('Delete Organization Verification Code routing')).toBeTruthy()
   })
 
   it('updates the routing guidance when Email Only is selected', async () => {
@@ -82,7 +94,13 @@ describe('NotificationTypesTab', () => {
 
     await screen.findByRole('heading', { name: 'Notification Types' })
     await userEvent.click(screen.getAllByRole('button', { name: /Email Only/ })[0])
-    expect(screen.getAllByText('Send all notifications via Email.').length).toBeGreaterThan(1)
+    // Choosing a different default asks for confirmation first, and the prompt
+    // spells out the route being moved to. The guidance now reads as one
+    // sentence rather than a repeated standalone line, so this matches the
+    // dialog's text instead of counting duplicate nodes.
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog.textContent).toContain('Email Only')
+    expect(dialog.textContent).toContain('Send all notifications via Email.')
   })
 
   it('shows Stock Count verification under Inventory & Stock as email-only', async () => {

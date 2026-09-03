@@ -151,6 +151,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [shopUsers, setShopUsers] = useState<ShopUser[]>([])
   const [shopStaffUsers, setShopStaffUsers] = useState<any[]>([])
   const [consumerUsers, setConsumerUsers] = useState<any[]>([])
+  const [shopStaffLoadError, setShopStaffLoadError] = useState<string | null>(null)
+  const [consumerLoadError, setConsumerLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [usersLoading, setUsersLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -502,6 +504,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
   async function loadConsumerUsers() {
     setUsersLoading(true)
+    setConsumerLoadError(null)
     try {
       const response = await fetch('/api/admin/consumer-performance', { cache: 'no-store' })
       const result = await response.json()
@@ -511,8 +514,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       }
 
       setConsumerUsers(result.data || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading consumer users:", error)
+      setConsumerUsers([])
+      setConsumerLoadError(error?.message || 'Failed to load consumer performance')
     } finally {
       setUsersLoading(false)
     }
@@ -520,6 +525,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
   async function loadShopStaffUsers() {
     setUsersLoading(true)
+    setShopStaffLoadError(null)
     try {
       const response = await fetch('/api/admin/shop-staff-performance', { cache: 'no-store' })
       const result = await response.json()
@@ -529,8 +535,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       }
 
       setShopStaffUsers(result.data || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading shop staff users:', error)
+      setShopStaffUsers([])
+      setShopStaffLoadError(error?.message || 'Failed to load shop staff performance')
     } finally {
       setUsersLoading(false)
     }
@@ -1398,10 +1406,16 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* SHOP POINTS MONITOR TAB */}
         <TabsContent value="users" className="space-y-4">
-          <ShopPointsReport reportStatusRule={reportStatusSettings.shopPerformance} />
+          <ShopPointsReport userProfile={userProfile} reportStatusRule={reportStatusSettings.shopPerformance} />
         </TabsContent>
 
         <TabsContent value="staff" className="space-y-4">
+          {shopStaffLoadError && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <span className="font-semibold">Shop staff performance failed to load.</span>{' '}
+              {shopStaffLoadError} &mdash; the table below is empty because the request failed, not because there are no shop staff.
+            </div>
+          )}
           <UserPointsMonitor
             users={shopStaffUsers}
             loading={usersLoading}
@@ -1418,8 +1432,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             tableTitle="Shop Staff Point Contributions"
             entityLabelSingular="shop staff"
             entityLabelPlural="shop staff"
-            emptyTitle="No shop staff found"
-            emptyDescription="Monitor point contribution and scan activity for shop staff accounts."
+            emptyTitle={shopStaffLoadError ? 'Shop staff could not be loaded' : 'No shop staff found'}
+            emptyDescription={shopStaffLoadError
+              ? 'The request failed, so no rows could be listed. Use Refresh to try again.'
+              : 'Monitor point contribution and scan activity for shop staff accounts.'}
             emptySearchDescription="Try adjusting your search terms. Consumer balances appear under Consumer Performance."
             exportFilenamePrefix="shop-staff-performance"
             columnLabelOverrides={{
@@ -1436,6 +1452,12 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* CONSUMER POINTS MONITOR TAB */}
         <TabsContent value="consumers" className="space-y-4">
+          {consumerLoadError && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <span className="font-semibold">Consumer performance failed to load.</span>{' '}
+              {consumerLoadError} &mdash; the table below is empty because the request failed, not because there are no consumers.
+            </div>
+          )}
           <UserPointsMonitor
             users={consumerUsers}
             loading={usersLoading}
@@ -1452,8 +1474,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             tableTitle="Consumer Point Balances"
             entityLabelSingular="consumer"
             entityLabelPlural="consumers"
-            emptyTitle="No consumers found"
-            emptyDescription="Monitor point collections and balances for consumer accounts."
+            emptyTitle={consumerLoadError ? 'Consumers could not be loaded' : 'No consumers found'}
+            emptyDescription={consumerLoadError
+              ? 'The request failed, so no rows could be listed. Use Refresh to try again.'
+              : 'Monitor point collections and balances for consumer accounts.'}
             emptySearchDescription="Try adjusting your search terms. Shop-attached staff appear under Shop Staff Performance."
             exportFilenamePrefix="consumer-performance"
             columnLabelOverrides={{

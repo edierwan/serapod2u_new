@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { subscribeToInventoryDataRefresh } from '@/lib/inventory/inventory-data-refresh'
@@ -46,13 +46,17 @@ import {
   type VariantInventorySummary
 } from '@/lib/inventory/inventory-view-aggregation'
 import {
-  HQ_ALL_WAREHOUSES_LABEL,
   HQ_CONSOLIDATED_LEGACY_NOTE,
-  hqConsolidatedLocationValue,
+  buildInventoryLocationScope,
   hqIdFromConsolidatedLocation,
   isHqConsolidatedLocation,
   remapRowsForHqConsolidatedView,
 } from '@/lib/inventory/hq-consolidated-location'
+import {
+  variantAlternativeLabel,
+  variantIdentityLabel,
+} from '@/lib/inventory/variant-display-label'
+import { formatStockStrength } from '@/lib/inventory/stock-config-unit-label'
 
 interface InventoryItem {
   id: string
@@ -60,6 +64,8 @@ interface InventoryItem {
   variant_code?: string | null
   variant_name?: string | null
   variant_image_url?: string | null
+  variant_product_code?: string | null
+  alternative_name?: string | null
   stock_config_id?: string | null
   config_code?: string | null
   config_label?: string | null
@@ -120,6 +126,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set())
+  // Guards the one-time default Location selection (see fetchLocations).
+  const defaultLocationApplied = useRef(false)
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -557,6 +565,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       const variantBaseCostMap = new Map<string, number>()
       const variantImageMap = new Map<string, string>()
+      // Variant Product Code and Alternative Name are master data that
+      // vw_inventory_on_hand does not project (its product_code column is the
+      // PARENT product's code), so they are resolved from product_variants
+      // alongside base cost and image for both the view and fallback paths.
+      const variantProductCodeMap = new Map<string, string>()
+      const variantAlternativeNameMap = new Map<string, string>()
       const collectedVariantIds = Array.from(
         new Set(
           (data || [])
@@ -574,7 +588,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       if (collectedVariantIds.length > 0) {
         const { data: variantCostRows, error: variantCostError } = await supabase
           .from('product_variants')
-          .select('id, base_cost, image_url')
+          .select('id, base_cost, image_url, product_code, alternative_name')
           .in('id', collectedVariantIds as string[])
 
         if (!variantCostError) {
@@ -588,6 +602,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               }
               if (row?.image_url) {
                 variantImageMap.set(row.id, row.image_url)
+              }
+              const variantProductCode = typeof row?.product_code === 'string' ? row.product_code.trim() : ''
+              if (variantProductCode) {
+                variantProductCodeMap.set(row.id, variantProductCode)
+              }
+              const alternativeName = typeof row?.alternative_name === 'string' ? row.alternative_name.trim() : ''
+              if (alternativeName) {
+                variantAlternativeNameMap.set(row.id, alternativeName)
               }
             }
           })
@@ -694,6 +716,10 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           variant_code: item.variant_code ?? rawVariant?.variant_code ?? null,
           variant_name: item.variant_name ?? rawVariant?.variant_name ?? null,
           variant_image_url: variantImage,
+          variant_product_code:
+            (variantId ? variantProductCodeMap.get(variantId) : null) ?? rawVariant?.product_code ?? null,
+          alternative_name:
+            (variantId ? variantAlternativeNameMap.get(variantId) : null) ?? rawVariant?.alternative_name ?? null,
           stock_config_id: item.stock_config_id ?? null,
           config_code: item.config_code ?? item.inventory_stock_configurations?.config_code ?? null,
           config_label: item.config_label ?? item.inventory_stock_configurations?.config_label ?? null,
@@ -947,41 +973,29 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, org_name, org_code, org_type_code, parent_org_id')
+        .select('id, org_name, org_code, org_type_code, parent_org_id, default_warehouse_org_id')
         .in('org_type_code', ['WH', 'HQ'])
         .eq('is_active', true)
         .order('org_name')
 
       if (error) throw error
 
-      const rows = data || []
-      const hqRows = rows.filter((row: any) => row.org_type_code === 'HQ')
-      const warehouseRows = rows.filter((row: any) => row.org_type_code === 'WH')
-      const warehouseIdsByHq = new Map<string, string[]>()
-      for (const warehouse of warehouseRows) {
-        if (!warehouse.parent_org_id) continue
-        const current = warehouseIdsByHq.get(warehouse.parent_org_id) || []
-        current.push(warehouse.id)
-        warehouseIdsByHq.set(warehouse.parent_org_id, current)
-      }
-      setHqWarehouseIdsByHq(warehouseIdsByHq)
-
-      const consolidatedOptions = hqRows
-        .filter((hq: any) => (warehouseIdsByHq.get(hq.id) || []).length > 0)
-        .map((hq: any) => ({
-          id: hqConsolidatedLocationValue(hq.id),
-          org_name: HQ_ALL_WAREHOUSES_LABEL,
-          org_code: 'HQ-ALL-WH',
-          is_consolidated: true,
-        }))
-
+      // Shared with Inventory Settings so both pages resolve the same
+      // HQ/warehouse options, membership and default (see buildInventoryLocationScope).
+      const scope = buildInventoryLocationScope(data || [])
+      setHqWarehouseIdsByHq(scope.warehouseIdsByHq)
       // Keep individual warehouse/HQ filters; append display-only consolidated option(s).
-      setLocations([...rows.map((row: any) => ({
-        id: row.id,
-        org_name: row.org_name,
-        org_code: row.org_code,
-        is_consolidated: false,
-      })), ...consolidatedOptions])
+      setLocations(scope.locations)
+
+      // Open on the HQ's default fulfillment warehouse instead of "All Locations".
+      // Applied exactly once per mount so a later refetch (Show inactive toggle)
+      // never overwrites a location the operator has since chosen.
+      if (!defaultLocationApplied.current) {
+        defaultLocationApplied.current = true
+        if (scope.defaultLocationId) {
+          setLocationFilter(scope.defaultLocationId)
+        }
+      }
     } catch (error) {
       console.error('Error fetching locations:', error)
     }
@@ -1440,7 +1454,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   onClick={() => handleSort('allocated')}
                 >
                   <div className="flex items-center">
-                    Allocated
+                    Reserved
                     {renderSortIcon('allocated')}
                   </div>
                 </TableHead>
@@ -1449,7 +1463,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   onClick={() => handleSort('available')}
                 >
                   <div className="flex items-center">
-                    Available
+                    Available to Order
                     {renderSortIcon('available')}
                   </div>
                 </TableHead>
@@ -1467,11 +1481,16 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   onClick={() => handleSort('position')}
                 >
                   <div className="flex items-center">
-                    Position
+                    Projected Position
                     {renderSortIcon('position')}
                   </div>
                 </TableHead>
-                <TableHead>Stock Level</TableHead>
+                {/* Names what the badge actually measures: available-to-order against
+                    the reorder point, i.e. a replenishment signal. Headed "Stock Level"
+                    it was read as a verdict on how much could be sold, so a flavour with
+                    54 orderable cases and a reorder point of 10 read "Healthy" while
+                    Quick Order refused the line. */}
+                <TableHead>Reorder Status</TableHead>
                 {canViewTotalValue() && (
                   <TableHead
                     className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
@@ -1532,11 +1551,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             {summary.productName || 'Unknown Product'}
                           </p>
                           <p className="text-xs text-[var(--sera-muted)]">
-                            [{summary.variantName || 'No variant'}]
+                            {variantIdentityLabel(summary.variantName, summary.variantProductCode)}
                           </p>
-                          <p className="text-xs text-[var(--sera-muted)]/80">
-                            {summary.configs.length + summary.hiddenConfigCount} configuration{(summary.configs.length + summary.hiddenConfigCount) === 1 ? '' : 's'} · Aggregate variant total
-                          </p>
+                          {variantAlternativeLabel(summary.alternativeName) && (
+                            <p className="text-xs text-[var(--sera-muted)]/80">
+                              {variantAlternativeLabel(summary.alternativeName)}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -1631,12 +1652,24 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           <table className="w-full text-xs">
                             <thead className="text-[11px] uppercase tracking-wide text-slate-500">
                               <tr>
-                                <th className="px-4 py-2 text-left">Stock SKU</th>
                                 <th className="px-4 py-2 text-left">Volume / Packaging</th>
                                 <th className="px-4 py-2 text-left">Lifecycle</th>
                                 <th className="px-4 py-2 text-right">On Hand</th>
+                                {/* An order sells from ONE configuration, so the split that decides
+                                    whether a line can be placed is the per-configuration one — the
+                                    flavour-level totals above cannot answer it. Without these two
+                                    columns, a configuration showing 10,514 On Hand and a Quick Order
+                                    quoting 54 available looked like a contradiction.
+
+                                    The wording is deliberate and matches the flavour row: only
+                                    "Available to Order" is orderable. "Projected Position" adds
+                                    Incoming, which is stock still on its way and NOT sellable until
+                                    it is received and posted — reading it as orderable is what made
+                                    a correct refusal look like a fault. */}
+                                <th className="px-4 py-2 text-right">Reserved</th>
+                                <th className="px-4 py-2 text-right">Available to Order</th>
                                 <th className="px-4 py-2 text-right">Incoming</th>
-                                <th className="px-4 py-2 text-right">Position</th>
+                                <th className="px-4 py-2 text-right">Projected Position</th>
                                 {canViewTotalValue() && <th className="px-4 py-2 text-right">Value</th>}
                                 {canEditSettings() && <th className="px-4 py-2 text-center">Actions</th>}
                               </tr>
@@ -1644,13 +1677,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             <tbody>
                               {summary.configs.map((config) => (
                                 <tr key={config.id} className="border-t border-slate-200">
-                                  <td className="px-4 py-2 font-mono text-blue-700">{config.stockSku || 'Legacy'}</td>
                                   <td className="px-4 py-2">
                                     {config.isLegacy ? (
                                       <span className="text-amber-700">Legacy / Unclassified</span>
                                     ) : (
                                       <span>
-                                        {config.volumeMl ? `${config.volumeMl}ml` : '—'}
+                                        {formatStockStrength(config.volumeMl)}
                                         {config.packaging ? ` · ${config.packaging === 'new_box' ? 'New Box' : config.packaging === 'old_box' ? 'Old Box' : config.packaging}` : ''}
                                       </span>
                                     )}
@@ -1659,6 +1691,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                                     <Badge variant="outline">{config.lifecycleStatus || 'active'}</Badge>
                                   </td>
                                   <td className="px-4 py-2 text-right font-medium">{formatNumber(config.onHand)}</td>
+                                  <td className="px-4 py-2 text-right">{config.allocated > 0 ? formatNumber(config.allocated) : <span className="text-gray-400">0</span>}</td>
+                                  <td className="px-4 py-2 text-right font-medium">{formatNumber(config.available)}</td>
                                   <td className="px-4 py-2 text-right">{config.incoming > 0 ? formatNumber(config.incoming) : <span className="text-gray-400">0</span>}</td>
                                   <td className="px-4 py-2 text-right">{formatNumber(config.position)}</td>
                                   {canViewTotalValue() && (

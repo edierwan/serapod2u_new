@@ -8,6 +8,38 @@
 
 export type ProductLine = 'hero' | 'zero' | 'sbox' | 'sline' | 'other'
 
+// ── Money ──
+
+/**
+ * Return value / amount display: grouped thousands with exactly 2 decimals.
+ * The "RM" prefix (if any) belongs to the caller — column headers already say
+ * "Value (RM)".
+ *
+ *   1788   -> "1,788.00"
+ *   3513.5 -> "3,513.50"
+ *   null   -> "0.00"
+ */
+export function formatReturnAmount(value: number | string | null | undefined): string {
+    const n = Number(value ?? 0)
+    return (Number.isFinite(n) ? n : 0).toLocaleString('en-MY', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })
+}
+
+// ── Unit wording ──
+
+/**
+ * User-facing wording for the outer packaging unit is "Case" / "Cases".
+ * Internal fields and stored values stay `case_qty` / `entry_unit: 'box'`.
+ */
+export const CASE_UNIT_LABEL = 'Cases'
+
+/** "1 Case" / "2 Cases" — singular only for exactly one. */
+export function caseUnitLabel(qty: number): string {
+    return qty === 1 ? 'Case' : 'Cases'
+}
+
 /**
  * Concise flavour label for a full variant name.
  *
@@ -54,7 +86,7 @@ export function classifyProductLine(productName?: string | null): ProductLine {
 }
 
 /**
- * Device product lines are entered in PCS only — no Box mode, no pack-size
+ * Device product lines are entered in PCS only — no Cases mode, no pack-size
  * conversion. 1 entered unit = 1 PCS. Everything else (Hero/Zero flavours) keeps
  * the standard pack-size logic.
  */
@@ -86,7 +118,7 @@ export function productLineLabel(line: ProductLine): string {
 }
 
 /**
- * Units per Case (pieces in one full outer box) for a worksheet line.
+ * Units per Case (pieces in one full outer case) for a worksheet line.
  *
  * Resolution priority:
  *   1. A reliable value from master data (product/variant packaging config), i.e.
@@ -109,13 +141,13 @@ export function getUnitsPerCase(productName: string | null | undefined, masterUn
     if (line === 'hero' || line === 'zero') return CELLERA_UNITS_PER_CASE
 
     // For device lines (S.Box / S.Line), if master data has a valid units_per_case,
-    // use it; otherwise return it but flag as unavailable for Box mode downstream.
+    // use it; otherwise return it but flag as unavailable for Cases mode downstream.
     return Number.isFinite(master) && master > 0 ? Math.floor(master) : 1
 }
 
 /**
  * Alias: Units per Box — same resolution as Units per Case.
- * User-facing wording is "Box", internal field remains units_per_case.
+ * User-facing wording is "Cases", internal field remains units_per_case.
  */
 export function getUnitsPerBox(productName: string | null | undefined, masterUnitsPerBox?: number | null): number {
     return getUnitsPerCase(productName, masterUnitsPerBox)

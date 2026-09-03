@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { matchPastedOrder, normalizeOrderText, stripListMarkers, stripParentheticalQualifiers, stripTrailingWhatsAppMarkers } from './quick-order-matcher'
+import {
+  isCatalogProductHeading,
+  matchPastedOrder,
+  normalizeOrderText,
+  stripListMarkers,
+  stripParentheticalQualifiers,
+  stripStatusMarkers,
+  stripTrailingWhatsAppMarkers,
+} from './quick-order-matcher'
 
 const variants = [
   { id: 'lychee', variant_name: 'Lychee Blackcurrant', product_name: 'Cellera Hero', product_code: 'CEL-H', manufacturer_sku: 'SKU-001' },
@@ -726,6 +734,125 @@ describe('Quick Order multi-entry paste parsing', () => {
     // The unparsable segment is preserved for review; the valid ones still resolve.
     expect(results[0].selectedVariantId).toBeUndefined()
     expect(results[2].selectedVariantId).toBeUndefined()
+  })
+})
+
+describe('Entries that already carry the variant Product Code', () => {
+  // The catalog our own reply is generated from: two flavours whose names alone
+  // are ambiguous or fuzzy, each with a distinct variant Product Code.
+  const codedVariants = [
+    {
+      id: 'corn-vanilla', variant_name: 'Fruity Cellera Cartridge [ Corn Vanilla ]', alternative_name: 'Butterscotch Cream',
+      product_name: 'Cellera Hero', product_code: 'CEL-HERO', variant_product_code: 'CV',
+      manufacturer_sku: 'SKU-CV', group_name: 'Cartridge', available_qty: 2564, inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'tobacco', variant_name: 'Fruity Cellera Cartridge [ Tobacco ]', alternative_name: 'Tobacco Classic',
+      product_name: 'Cellera Zero', product_code: 'CEL-ZERO', variant_product_code: 'TO',
+      manufacturer_sku: 'SKU-TO', group_name: 'Cartridge', available_qty: 4406, inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'vanilla-tobacco', variant_name: 'Fruity Cellera Cartridge [ Vanilla Tobacco ]',
+      product_name: 'Cellera Hero', product_code: 'CEL-HERO', variant_product_code: 'VT',
+      manufacturer_sku: 'SKU-VT', group_name: 'Cartridge', available_qty: 5325, inventory_classification: 'classified' as const,
+    },
+  ]
+
+  it('settles a fuzzy alternative name outright when the code is stated', () => {
+    const results = matchPastedOrder('Butterscotch Cream (CV) 42', codedVariants)
+    expect(results[0].status).toBe('matched')
+    expect(results[0].selectedVariantId).toBe('corn-vanilla')
+    expect(results[0].quantity).toBe(42)
+    expect(results[0].matchMethod).toBe('code_or_sku')
+  })
+
+  it('settles an entry the name alone leaves ambiguous', () => {
+    // Without the code, "Tobacco Classic (TO)" scored against both [ Tobacco ]
+    // and [ Vanilla Tobacco ] and stopped for a selection.
+    const results = matchPastedOrder('Tobacco Classic (TO) 60', codedVariants)
+    expect(results[0].status).toBe('matched')
+    expect(results[0].selectedVariantId).toBe('tobacco')
+    expect(results[0].matchMethod).toBe('code_or_sku')
+  })
+
+  it('ignores a bracketed parent product code shared by several flavours', () => {
+    // CEL-HERO names two variants, so it must not auto-select either one.
+    // Integration note: the line no longer stops as 'ambiguous'. The parent code
+    // is still refused as an identifier, but the section work now strips the
+    // parenthetical note before scoring, so the flavour resolves on its own name
+    // to the variant it actually spells. The protection under test is that the
+    // shared code did NOT pick the variant - matchMethod is never code_or_sku.
+    const results = matchPastedOrder('Vanilla Tobacco (CEL-HERO) 10', codedVariants)
+    expect(results[0].matchMethod).not.toBe('code_or_sku')
+    expect(results[0].selectedVariantId).toBe('vanilla-tobacco')
+  })
+
+  it('does not let a flavour word that reads like a code hijack the line', () => {
+    // "TO" is a real Product Code, but only a bracketed token is trusted.
+    const results = matchPastedOrder('Vanilla Tobacco 10', codedVariants)
+    expect(results[0].selectedVariantId).toBe('vanilla-tobacco')
+    expect(results[0].matchMethod).toBe('bracket_flavour')
+  })
+})
+
+describe('WhatsApp noise in a pasted list', () => {
+  it('never reports a quantity-less product heading as Invalid Quantity', () => {
+    // The real message interleaves "cellera zero" as a section heading between
+    // the Hero lines and the Zero lines. Integration note: a heading that names
+    // a known section is now kept as an informational section_header row rather
+    // than dropped, because it also scopes the flavours beneath it. It still
+    // never reads as Invalid Quantity, which is what this guards.
+    const results = matchPastedOrder('TEH - 5\ncellera zero\nMINT - 3', variants)
+    expect(results.map(result => result.status)).not.toContain('invalid_quantity')
+    expect(results[1]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    // Line numbers stay contiguous.
+    expect(results.map(result => result.line)).toEqual([1, 2, 3])
+  })
+
+  it('keeps a heading that carries a quantity, which is a real order line', () => {
+    const results = matchPastedOrder('cellera zero 40', variants)
+    expect(results.map(result => result.quantity)).toEqual([40])
+  })
+
+  it('still surfaces unrecognised text that looks like an order line', () => {
+    // Anything carrying a quantity or a separator is a candidate line and is
+    // reported rather than swallowed.
+    const results = matchPastedOrder('TEH - 5\nnak yang kotak only -', variants)
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'not_found'])
+    expect(matchPastedOrder('TEH - 5\nkotak 0', variants).map(r => r.status))
+      .toEqual(['suggestion', 'invalid_quantity'])
+  })
+
+  it('skips prose that carries neither a quantity nor a separator', () => {
+    // Integration note: the paste-noise filter drops distributor template rows
+    // and stray prose ("nfy Tech"). Such a line has no quantity, so it could
+    // never have been ordered; it is noise rather than a line to review.
+    const results = matchPastedOrder('TEH - 5\nnak yang kotak only', variants)
+    expect(results.map(result => result.name)).toEqual(['TEH'])
+  })
+
+  it('recognises catalog product names as headings, nothing else', () => {
+    expect(isCatalogProductHeading('cellera zero', variants)).toBe(true)
+    expect(isCatalogProductHeading('CELLERA HERO', variants)).toBe(true)
+    expect(isCatalogProductHeading('mint', variants)).toBe(false)
+    expect(isCatalogProductHeading('', variants)).toBe(false)
+  })
+
+  it('treats our own "(Cases)" headings as headings when a reply is pasted back', () => {
+    expect(isCatalogProductHeading('Cellera Zero (Cases)', variants)).toBe(true)
+    expect(isCatalogProductHeading('Cellera Hero (Cases)', variants)).toBe(true)
+    // A unit qualifier does not turn a non-product into a heading.
+    expect(isCatalogProductHeading('Mint (Cases)', variants)).toBe(false)
+
+    const results = matchPastedOrder('Cellera Zero (Cases)\n\nMint (CEL-99) 3', variants)
+    expect(results.map(result => result.name)).toEqual(['Mint (CEL-99)'])
+    expect(results[0].status).toBe('matched')
+  })
+
+  it('strips the sender status marks for display without touching the text', () => {
+    expect(stripStatusMarkers('corn 50\u2705')).toBe('corn 50')
+    expect(stripStatusMarkers('kelapa 50\u274c')).toBe('kelapa 50')
+    expect(stripStatusMarkers('grape 100')).toBe('grape 100')
   })
 })
 

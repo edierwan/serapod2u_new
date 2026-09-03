@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getStockConfigAdminContext } from '@/lib/server/stock-config-admin'
-import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
+import {
+  isConcentrationStockConfigEligible,
+  readVariantRelations,
+} from '@/lib/inventory/concentration-stock-eligibility'
+
+// The variant → product → group chain is what decides concentration
+// eligibility, so the group profile must be selected here rather than inferred
+// from the product name or code.
+const ELIGIBLE_VARIANT_SELECT =
+  'id, variant_name, product_code, is_active, ' +
+  'products!inner(id, product_code, product_name, is_vape, is_active, product_groups(id, group_name, stock_config_profile))'
 
 export async function GET() {
   const context = await getStockConfigAdminContext()
@@ -8,13 +18,17 @@ export async function GET() {
 
   const { data: variants, error } = await context.admin
     .from('product_variants')
-    .select('id, variant_name, variant_code, is_active, products!inner(id, product_code, product_name, is_vape, is_active)')
+    .select(ELIGIBLE_VARIANT_SELECT)
     .eq('is_active', true)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const eligible = (variants || []).filter((variant: any) => {
-    const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
-    return isCelleraVapeVariant(product)
+    const { product, groupStockConfigProfile } = readVariantRelations(variant)
+    return isConcentrationStockConfigEligible({
+      variantIsActive: variant.is_active,
+      product,
+      groupStockConfigProfile,
+    })
   })
   const variantIds = eligible.map((variant: any) => variant.id)
 
@@ -26,13 +40,17 @@ export async function GET() {
 
   return NextResponse.json({
     variants: eligible.map((variant: any) => {
-      const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
+      const { product, groupName, groupStockConfigProfile } = readVariantRelations(variant)
       return {
         id: variant.id,
         variantName: variant.variant_name,
-        variantCode: variant.variant_code,
+        // The variant-level Product Code from Products > Master Data >
+        // Variants. Deliberately NOT variant_code and NOT the parent
+        // products.product_code — null stays null so the UI shows no suffix.
+        variantProductCode: variant.product_code || null,
         productName: product?.product_name || '',
-        productCode: product?.product_code || '',
+        groupName,
+        groupStockConfigProfile,
         alreadyEnabled: enabledVariantIds.has(variant.id),
       }
     }),

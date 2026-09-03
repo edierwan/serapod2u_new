@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { isCelleraVapeVariant, type CelleraVapeProductLike } from '@/lib/inventory/cellera-variant'
+import { formatStockStrength } from '@/lib/inventory/stock-config-unit-label'
 
 interface ConfigurationRow {
   id: string
@@ -77,7 +78,7 @@ export default function VariantStockConfigurationsPanel({
   if (!relevant || !canManage) return null
 
   const enable = async () => {
-    if (!window.confirm('Enable 20ml New Box, 50ml New Box, and 50ml Old Box for this flavour? Existing balances will remain Legacy / Unclassified and will not be moved.')) return
+    if (!window.confirm('Enable 20 mg New Box, 50 mg New Box, and 50 mg Old Box for this flavour? Existing balances will remain Legacy / Unclassified and will not be moved.')) return
     setEnabling(true)
     setError('')
     try {
@@ -108,7 +109,7 @@ export default function VariantStockConfigurationsPanel({
       {!loading && data && !data.enabled ? (
         <div className="rounded-lg border border-dashed border-blue-300 bg-white p-4 text-center space-y-3">
           <p className="font-medium text-slate-900">This flavour is not configuration-enabled.</p>
-          <p className="text-sm text-slate-600">Enabling creates exactly 20ml New Box, 50ml New Box, and 50ml Old Box. Existing quantities stay in Legacy / Unclassified until a controlled physical stock process is performed.</p>
+          <p className="text-sm text-slate-600">Enabling creates exactly 20 mg New Box, 50 mg New Box, and 50 mg Old Box. Existing quantities stay in Legacy / Unclassified until a controlled physical stock process is performed.</p>
           <Button type="button" onClick={enable} disabled={enabling}>
             {enabling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Boxes className="mr-2 h-4 w-4" />}
             Enable Stock Configurations
@@ -121,12 +122,12 @@ export default function VariantStockConfigurationsPanel({
           <div className="overflow-x-auto rounded-lg border bg-white">
             <table className="min-w-[980px] w-full text-xs">
               <thead className="bg-slate-50 text-slate-600"><tr>
-                {['Volume','Packaging Version','Stock SKU','Lifecycle','On Hand','Allocated','Available','Allow ORD','Allow SO','ORD Default','Repack','50ml Eligibility'].map(label => <th key={label} className="px-3 py-2 text-left font-semibold">{label}</th>)}
+                {['Volume','Packaging Version','Stock SKU','Lifecycle','On Hand','Allocated','Available','Allow ORD','Allow SO','ORD Default','Repack','50 mg Eligibility'].map(label => <th key={label} className="px-3 py-2 text-left font-semibold">{label}</th>)}
               </tr></thead>
               <tbody className="divide-y">
                 {data.configurations.map(config => (
                   <tr key={config.id}>
-                    <td className="px-3 py-2 font-semibold">{config.volume_ml}ml</td>
+                    <td className="px-3 py-2 font-semibold">{formatStockStrength(config.volume_ml)}</td>
                     <td className="px-3 py-2">{config.packaging === 'new_box' ? 'New Box' : 'Old Box'}</td>
                     <td className="px-3 py-2 font-mono text-blue-700">{config.stock_sku}</td>
                     <td className="px-3 py-2"><Badge variant="outline">{config.status}</Badge></td>
@@ -186,7 +187,7 @@ function EligibilityManager({ onClose }: { onClose: () => void }) {
   useEffect(() => { const timer = setTimeout(load, 200); return () => clearTimeout(timer) }, [load])
 
   const update = async (row: DistributorRow) => {
-    if (row.eligible && !window.confirm(`Remove 50ml New Box eligibility for ${row.org_name}? Open 50ml allocations will block removal.`)) return
+    if (row.eligible && !window.confirm(`Remove 50 mg New Box eligibility for ${row.org_name}? Open 50 mg allocations will block removal.`)) return
     setBusyId(row.id); setError('')
     try {
       const response = await fetch(
@@ -202,7 +203,7 @@ function EligibilityManager({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-xl bg-white shadow-xl flex flex-col">
-        <div className="p-4 border-b flex items-center justify-between"><div><h3 className="font-semibold">50ml New Box Eligibility</h3><p className="text-xs text-slate-500">Internal HQ administration only</p></div><Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button></div>
+        <div className="p-4 border-b flex items-center justify-between"><div><h3 className="font-semibold">50 mg New Box Eligibility</h3><p className="text-xs text-slate-500">Internal HQ administration only</p></div><Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button></div>
         <div className="p-4 border-b"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="pl-9" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search distributor name or code" /></div>{error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}</div>
         <div className="overflow-y-auto divide-y">
           {loading ? <div className="p-6 text-sm text-slate-500 flex gap-2"><Loader2 className="h-4 w-4 animate-spin" />Loading distributors…</div> : rows.map(row => (

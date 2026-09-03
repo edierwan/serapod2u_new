@@ -10,6 +10,9 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatNumber } from '@/lib/utils/formatters'
 import { usePermissions } from '@/hooks/usePermissions'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
+import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
+import { getOrderDisplayOrgName, orderMatchesSearch } from '@/lib/orders/order-search'
+import { calculateOrderTotal, sortOrders } from '@/lib/orders/order-list-sort'
 import {
   FileText,
   Plus,
@@ -70,6 +73,22 @@ interface OrdersViewProps {
   userProfile: UserProfile
   onViewChange?: (view: string) => void
 }
+
+/**
+ * How many orders one load pulls back.
+ *
+ * The Order Type / Seller / Status choices used to be applied to whatever this
+ * limit happened to return, so a company with 161 orders across H2M, D2H and
+ * S2D loaded only the 50 most recent and then showed the 11 of them that were
+ * H2M — everything older than that window simply vanished from the list. The
+ * Order Type and Status choices are now pushed into the query itself, so the
+ * window is per type instead of across all of them, and the limit is high
+ * enough that a normal company's full history for one type comes back in one
+ * page. Seller stays client-side on purpose: the Seller dropdown is built from
+ * the loaded rows, so filtering it server-side would leave the dropdown with
+ * only the seller already chosen.
+ */
+const ORDER_FETCH_LIMIT = 1000
 
 type OrderActor = {
   id: string
@@ -182,12 +201,16 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return acc
   }, [] as Array<{ id: string; org_name: string }>)
 
+  // The Name column and the free-text search share one implementation so the
+  // search always matches what the table renders.
+  const getDisplayOrgName = (order: Order): string =>
+    getOrderDisplayOrgName(order, userProfile.organization_id)
+
   // Filter orders based on all criteria
   const filteredOrders = orders.filter(order => {
-    // Search filter - search both legacy and display doc numbers
-    const matchesSearch = order.order_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.display_doc_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.notes?.toLowerCase().includes(searchQuery.toLowerCase())
+    // Search filter - matches the identity shown in the table: document
+    // numbers, the Name column, both organizations (name and code) and notes.
+    const matchesSearch = orderMatchesSearch(order, searchQuery, userProfile.organization_id)
 
     // Status filter
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
@@ -201,48 +224,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return matchesSearch && matchesStatus && matchesType && matchesSeller
   })
 
-  // Sort orders
-  const sortedOrders = [...filteredOrders].sort((a, b) => {
-    let aValue: any
-    let bValue: any
-
-    switch (sortColumn) {
-      case 'created_at':
-        aValue = new Date(a.created_at).getTime()
-        bValue = new Date(b.created_at).getTime()
-        break
-      case 'order_no':
-        aValue = a.order_no
-        bValue = b.order_no
-        break
-      case 'seller':
-        aValue = getDisplayOrgName(a)
-        bValue = getDisplayOrgName(b)
-        break
-      case 'total':
-        aValue = calculateOrderTotal(a)
-        bValue = calculateOrderTotal(b)
-        break
-      case 'balance':
-        aValue = a.status === 'approved' ? 0 : calculateOrderTotal(a)
-        bValue = b.status === 'approved' ? 0 : calculateOrderTotal(b)
-        break
-      case 'status':
-        aValue = a.status
-        bValue = b.status
-        break
-      case 'created_by':
-        aValue = a.created_by_user?.full_name || a.created_by_user?.email || ''
-        bValue = b.created_by_user?.full_name || b.created_by_user?.email || ''
-        break
-      default:
-        return 0
-    }
-
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
-    return 0
-  })
+  // Sort orders. The comparator lives in @/lib/orders/order-list-sort so the
+  // helpers it needs are hoisted module functions rather than component consts
+  // declared further down this file — sorting by Total or Balance used to reach
+  // `calculateOrderTotal` before its declaration and throw.
+  const sortedOrders = sortOrders(filteredOrders, sortColumn, sortDirection, userProfile.organization_id)
 
   // Pagination
   const totalPages = Math.ceil(sortedOrders.length / itemsPerPage)
@@ -528,6 +514,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             description = 'The parent order must be approved first.'
           } else if (description.includes('Order not found')) {
             description = 'Order not found.'
+          } else if (description.includes('stock configuration is not confirmed')) {
+            // D2H/S2D lines are allocated on submit but left unconfirmed on
+            // purpose: an HQ or warehouse user picks the exact configuration
+            // first. The raw message only carries an order item UUID, which
+            // says nothing about what to do next.
+            title = 'Stock Configuration Not Confirmed'
+            description = `Open ${displayOrderNo}, confirm the exact stock configuration for every line, then approve.`
+          } else if (description.includes('Insufficient confirmed configuration stock')) {
+            description = 'The confirmed configuration no longer holds enough stock. Re-confirm the configuration on the order lines, then approve.'
           }
         } else if (typeof error === 'object' && Object.keys(error).length === 0) {
           // Empty error object usually means network or unknown error
@@ -785,7 +780,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, searchQuery])
+  }, [statusFilter, typeFilter])
 
   const handleCreateOrder = async () => {
     // Check if user has digital signature
@@ -922,6 +917,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           approved_by_user:users!orders_approved_by_fkey(id, email, full_name, roles:role_code(role_level))
         `)
 
+      // Order Type has to be part of the query, not a post-filter over the
+      // fetched window — see ORDER_FETCH_LIMIT.
+      if (typeFilter !== 'all') {
+        query = query.eq('order_type', typeFilter)
+      }
+
       // Filter based on organization type
       if (orgType === 'MFG' || orgType === 'MANU') {
         // Manufacturers see orders where they are the seller
@@ -937,17 +938,19 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         query = query.eq('company_id', companyId)
       }
 
-      query = query.order('created_at', { ascending: false }).limit(50)
+      query = query.order('created_at', { ascending: false }).limit(ORDER_FETCH_LIMIT)
 
       // Apply status filter
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter)
       }
 
-      // Apply search filter - search both legacy and display doc numbers
-      if (searchQuery) {
-        query = query.or(`order_no.ilike.%${searchQuery}%,display_doc_no.ilike.%${searchQuery}%,notes.ilike.%${searchQuery}%`)
-      }
+      // Search is deliberately NOT pushed into the query. It used to be an
+      // `.or(order_no, display_doc_no, notes)` filter, which threw away every
+      // row that only matched on the organization name shown in the table
+      // (searching "skd" returned 3 rows instead of every SKD Distribution
+      // order). ORDER_FETCH_LIMIT already brings back the full window, so the
+      // search runs client-side over the same fields the user can see.
 
       const { data: ordersData, error: ordersError } = await query
 
@@ -964,37 +967,41 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       if (hydratedOrdersData.length > 0) {
         const orderIds = hydratedOrdersData.map(o => o.id)
 
+        // Each of these is keyed by the loaded order ids, so they run in
+        // batches — a full order history would otherwise put thousands of
+        // UUIDs in one request URL. See queryByIdChunks.
+
         // 1. Fetch Order Items
-        const { data: itemsData, error: itemsError } = await supabase
+        const { data: itemsData, error: itemsError } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('order_items')
           .select(`
             *,
             product:products(id, product_name, product_code),
             variant:product_variants(id, variant_name)
           `)
-          .in('order_id', orderIds)
+          .in('order_id', chunk))
 
         // 2. Fetch PO Documents to check acknowledgement status (for Unpaid status logic)
-        const { data: poData } = await supabase
+        const { data: poData } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('documents')
           .select('order_id, status')
-          .in('order_id', orderIds)
-          .eq('doc_type', 'PO')
+          .in('order_id', chunk)
+          .eq('doc_type', 'PO'))
 
         // 3. Fetch acknowledged PAYMENT documents to calculate paid amounts
-        const { data: paymentData } = await supabase
+        const { data: paymentData } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('documents')
           .select('order_id, status, payment_percentage, payload')
-          .in('order_id', orderIds)
+          .in('order_id', chunk)
           .eq('doc_type', 'PAYMENT')
-          .eq('status', 'acknowledged')
+          .eq('status', 'acknowledged'))
 
         // 4. Fetch RECEIPT documents for D2H orders (customer receipts)
-        const { data: receiptData } = await supabase
+        const { data: receiptData } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('documents')
           .select('order_id, status, payment_percentage, payload')
-          .in('order_id', orderIds)
-          .eq('doc_type', 'RECEIPT')
+          .in('order_id', chunk)
+          .eq('doc_type', 'RECEIPT'))
 
         console.log('Order items query result:', itemsData?.length || 0, 'items')
         console.log('Acknowledged payments found:', paymentData?.length || 0)
@@ -1136,10 +1143,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return labels[type] || type
   }
 
-  const calculateOrderTotal = (order: Order) => {
-    return order.order_items?.reduce((sum, item) => sum + (item.line_total || 0), 0) || 0
-  }
-
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-MY', {
       style: 'currency',
@@ -1161,47 +1164,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       .trim()
   }
 
-  // Helper function to get the organization name to display in the Name column
-  // For D2H orders, we want to show the distributor (buyer) name - the distributor placing the order
-  // For H2M orders, we want to show the manufacturer (seller) name
-  // For S2D orders, we want to show the shop (buyer) name from distributor's view, or distributor (seller) from shop's view
-  const getDisplayOrgName = (order: Order): string => {
-    // For D2H (Distributor → HQ), show the distributor name (buyer)
-    // In D2H orders: buyer = distributor (placing order), seller = HQ/Warehouse (fulfilling order)
-    if (order.order_type === 'D2H') {
-      const sellerIsHQorWH = order.seller_org?.org_type_code === 'HQ' || order.seller_org?.org_type_code === 'WH'
-      const buyerIsDist = order.buyer_org?.org_type_code === 'DIST'
-
-      // If buyer is distributor, return buyer (distributor) name - this is the expected data structure
-      if (buyerIsDist && order.buyer_org?.org_name) {
-        return order.buyer_org.org_name
-      }
-      // Legacy fallback: If seller is distributor (old data structure), return seller name
-      if (!sellerIsHQorWH && order.seller_org?.org_name) {
-        return order.seller_org.org_name
-      }
-      // Final fallback - show buyer name as it should be the distributor
-      return order.buyer_org?.org_name || order.seller_org?.org_name || 'N/A'
-    }
-
-    // For H2M (HQ → Manufacturer), show the manufacturer name (seller)
-    if (order.order_type === 'H2M') {
-      return order.seller_org?.org_name || 'N/A'
-    }
-
-    // For S2D (Shop → Distributor), show the shop name (buyer) or distributor (seller) based on perspective
-    if (order.order_type === 'S2D') {
-      // If current user is the seller (distributor), show buyer (shop) name
-      if (order.seller_org_id === userProfile.organization_id) {
-        return order.buyer_org?.org_name || 'N/A'
-      }
-      // If current user is the buyer (shop), show seller (distributor) name
-      return order.seller_org?.org_name || 'N/A'
-    }
-
-    // Default: show seller name
-    return order.seller_org?.org_name || 'N/A'
-  }
 
   if (loading && orders.length === 0) {
     return (
@@ -1789,7 +1751,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <div className="sera-sc-kpi__value !text-lg">{formatNumber(itemCount)}</div>
                       </div>
                       <div className="sera-sc-kpi text-center !p-2">
-                        <div className="sera-sc-kpi__label !text-[10px]">Units</div>
+                        <div className="sera-sc-kpi__label !text-[10px]">Cases</div>
                         <div className="sera-sc-kpi__value !text-lg">{formatNumber(totalUnits)}</div>
                       </div>
                       <div className="sera-sc-kpi text-center !p-2">

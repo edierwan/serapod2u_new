@@ -8,6 +8,12 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, User, Package, CheckSquare, Loader2, Trash2 } from 'lucide-react'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
+import {
+  PRODUCT_SEPARATOR,
+  variantIdentityLabel,
+  variantNameWithProductCodeBullet,
+  variantSelectorLabel,
+} from '@/lib/inventory/variant-display-label'
 
 interface UserProfile {
   id: string
@@ -54,7 +60,10 @@ interface ProductVariant {
   id: string
   product_id: string
   product_name: string
+  /** Parent products.product_code — identical across every flavour. */
   product_code: string
+  /** product_variants.product_code — the Product Code column of Products > Master Data > Variants. */
+  variant_product_code?: string | null
   variant_name: string
   attributes?: Record<string, any>
   barcode?: string | null
@@ -72,6 +81,8 @@ interface OrderItem {
   variant_id: string
   product_name: string
   variant_name: string
+  /** product_variants.product_code, carried for display only. */
+  variant_product_code?: string | null
   attributes?: Record<string, any>
   manufacturer_sku?: string | null
   qty: number
@@ -431,6 +442,17 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     }
   }
 
+  /**
+   * The one reading of "Product Code" shared by the variant picker, the
+   * selected-item card and the Order Summary: `product_variants.product_code`,
+   * carried on the item and otherwise recovered from the loaded catalog. Never
+   * `variant_code`, `manufacturer_sku` or the parent `products.product_code`.
+   */
+  const resolveVariantProductCode = (item: OrderItem): string | null =>
+    item.variant_product_code ||
+    availableVariants.find(v => v.id === item.variant_id)?.variant_product_code ||
+    null
+
   const loadAvailableProducts = async (sellerOrgId: string, manufacturerLock?: string | null) => {
     try {
       const effectiveLock = manufacturerLock !== undefined ? manufacturerLock : lockedManufacturerId
@@ -442,6 +464,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .select(`
           id,
           product_id,
+          product_code,
           variant_name,
           attributes,
           barcode,
@@ -504,6 +527,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           product_id: v.product_id,
           product_name: product?.product_name || '',
           product_code: product?.product_code || '',
+          variant_product_code: v.product_code || null,
           variant_name: v.variant_name,
           attributes: {
             ...(v.attributes || {}),
@@ -627,7 +651,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         const defaultSize = getDefaultCaseSize(currentFamily)
         setUnitsPerCase(defaultSize)
         setUseIndividualCases(false)
-        autoMessage = `Case size automatically set to ${defaultSize} units for ${currentFamily}`
+        autoMessage = `Cases per box automatically set to ${defaultSize} for ${currentFamily}`
       }
     } else {
       // Check if all existing products are from the same family
@@ -662,14 +686,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         })
         setOrderItems(updatedItems)
 
-        autoMessage = 'Switched to Individual case sizes (mixed product families detected)'
+        autoMessage = 'Switched to Individual cases per box (mixed product families detected)'
       } else if (existingFamilies.size === 1 && !useIndividualCases) {
         // All same family - ensure case size matches
         const family = Array.from(existingFamilies)[0] as string
         const defaultSize = getDefaultCaseSize(family)
         if (unitsPerCase !== defaultSize) {
           setUnitsPerCase(defaultSize)
-          autoMessage = `Case size adjusted to ${defaultSize} units for ${family}`
+          autoMessage = `Cases per box adjusted to ${defaultSize} for ${family}`
         }
       }
     }
@@ -692,6 +716,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       variant_id: variant.id,
       product_name: variant.product_name,
       variant_name: variant.variant_name,
+      variant_product_code: variant.variant_product_code || null,
       attributes: variant.attributes,
       manufacturer_sku: variant.manufacturer_sku,
       qty: itemQty,
@@ -825,7 +850,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           // Load product variant
           const { data: variant } = await supabase
             .from('product_variants')
-            .select('variant_name, attributes, manufacturer_sku')
+            .select('variant_name, product_code, attributes, manufacturer_sku')
             .eq('id', item.variant_id)
             .single()
 
@@ -901,6 +926,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         variant_id: item.variant_id,
         product_name: item.products?.product_name || 'Unknown Product',
         variant_name: item.product_variants?.variant_name || 'Default',
+        variant_product_code: item.product_variants?.product_code || null,
         attributes: item.product_variants?.attributes,
         manufacturer_sku: item.product_variants?.manufacturer_sku,
         qty: item.qty,
@@ -1011,6 +1037,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         variant_id: item.variant_id,
         product_name: item.product?.product_name || 'Unknown Product',
         variant_name: item.product_variants?.variant_name || item.variant_name || 'Default',
+        variant_product_code: item.product_variants?.product_code || item.variant_product_code || null,
         attributes: item.product_variants?.attributes || item.attributes,
         manufacturer_sku: item.product_variants?.manufacturer_sku || item.manufacturer_sku,
         qty: item.qty,
@@ -1128,7 +1155,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         if (packingPlan.canFormMixedCases && packingPlan.totalRemainder > 0) {
           // Show info about mixed cases that will be created
           const remainderProducts = packingPlan.productsWithRemainders
-            .map(p => `${p.productName}: ${p.remainder} units`)
+            .map(p => `${p.productName}: ${p.remainder} Cases`)
             .join(', ')
         }
       }
@@ -1616,12 +1643,12 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     </svg>
                     <div className="flex-1">
                       <p className="text-xs font-medium text-[var(--sera-ink)]">
-                        Smart Case Size Configuration
+                        Smart Box Configuration
                       </p>
                       <p className="text-xs text-[var(--sera-orange-deep)] mt-1">
                         {useIndividualCases
-                          ? 'Individual mode: Each product has its own case size based on product family (Cellera Hero/Zero: 100, Ellbow Cat Treat: 20, S.Box: 50, S.Line: 200)'
-                          : `Global mode: All products use ${unitsPerCase} units per case`}
+                          ? 'Individual mode: Each product has its own cases-per-box configuration based on product family (Cellera Hero/Zero: 100, Ellbow Cat Treat: 20, S.Box: 50, S.Line: 200)'
+                          : `Global mode: All products use ${unitsPerCase} cases per box`}
                       </p>
                     </div>
                   </div>
@@ -1631,7 +1658,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               {/* Case Size Configuration Mode Toggle */}
               <div className="mb-6 p-4 bg-[var(--sera-ink)]/[0.03] border border-[var(--sera-line)] rounded-lg">
                 <label className="block text-sm font-medium text-[var(--sera-ink)] mb-3">
-                  Case Size Configuration
+                  Box Configuration
                 </label>
                 <div className="space-y-3">
                   <label className="flex items-start gap-3 cursor-pointer">
@@ -1647,8 +1674,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       className="mt-0.5"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-[var(--sera-ink)]">Same units per case for all products</span>
-                      <p className="text-xs text-[var(--sera-muted)]/80 mt-1">All products will use the same case size (recommended for standard orders)</p>
+                      <span className="text-sm font-medium text-[var(--sera-ink)]">Same cases per box for all products</span>
+                      <p className="text-xs text-[var(--sera-muted)]/80 mt-1">All products will use the same number of cases per box (recommended for standard orders)</p>
                     </div>
                   </label>
                   <label className="flex items-start gap-3 cursor-pointer">
@@ -1664,8 +1691,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       className="mt-0.5"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-[var(--sera-ink)]">Individual units per case for each product</span>
-                      <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Set different case sizes for each product variant (flexible for mixed orders)</p>
+                      <span className="text-sm font-medium text-[var(--sera-ink)]">Individual cases per box for each product</span>
+                      <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Set different cases-per-box values for each product variant (flexible for mixed orders)</p>
                     </div>
                   </label>
                 </div>
@@ -1674,7 +1701,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                    {useIndividualCases ? 'Default Units per Case' : 'Units per Case'}
+                    {useIndividualCases ? 'Default Cases per Box' : 'Cases per Box'}
                   </label>
                   {useCustomUnitsPerCase ? (
                     <div className="flex gap-2">
@@ -1688,7 +1715,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             handleUnitsPerCaseChange(value)
                           }
                         }}
-                        placeholder="Enter custom units"
+                        placeholder="Enter custom cases per box"
                         className="flex-1"
                         disabled={useIndividualCases}
                         min="1"
@@ -1712,10 +1739,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         className="flex-1 px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-[var(--sera-ink)]/[0.03]"
                         disabled={useIndividualCases}
                       >
-                        <option value="20">20 units per case</option>
-                        <option value="50">50 units per case</option>
-                        <option value="100">100 units per case</option>
-                        <option value="200">200 units per case</option>
+                        <option value="20">20 Cases per Box</option>
+                        <option value="50">50 Cases per Box</option>
+                        <option value="100">100 Cases per Box</option>
+                        <option value="200">200 Cases per Box</option>
                       </select>
                       <button
                         onClick={() => {
@@ -1751,7 +1778,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
               <div className="mb-4">
                 <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                  Master QR copies per case
+                  Master QR copies per Box
                 </label>
                 <Input
                   type="number"
@@ -1768,7 +1795,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   max="10"
                 />
                 <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
-                  How many duplicate Master QR stickers to print per case (0-10). Default is 5. Example: 0 = only 1 sticker per case, 5 = 6 stickers per case, 10 = 11 stickers per case.
+                  How many duplicate Master QR stickers to print per box (0-10). Default is 5. Example: 0 = only 1 sticker per box, 5 = 6 stickers per box, 10 = 11 stickers per box.
                 </p>
               </div>
 
@@ -1905,7 +1932,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
                           return (
                             <option key={variant.id} value={variant.id}>
-                              {!selectedProductFilter ? `${variant.product_name} - ` : ''}{variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.base_cost)}
+                              {!selectedProductFilter ? `${variant.product_name}${PRODUCT_SEPARATOR}` : ''}{variantSelectorLabel(variant.variant_name, variant.variant_product_code, attrText)} - RM {formatCurrency(variant.base_cost)}
                             </option>
                           )
                         })}
@@ -1941,6 +1968,10 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     const itemVariant = availableVariants.find(v => v.id === item.variant_id)
                     const productFamily = itemVariant ? getProductFamily(itemVariant) : null
                     const familyDefaultSize = productFamily ? getDefaultCaseSize(productFamily) : null
+                    const itemVariantProductCode = resolveVariantProductCode(item)
+                    const itemAttrText = item.attributes?.strength || item.attributes?.nicotine || ''
+                    // Presentation only: the outer-container count (unchanged calculation) is labelled "Box"
+                    const boxCount = Math.ceil(item.qty / (item.units_per_case || unitsPerCase))
 
                     return (
                       <div key={item.variant_id} className="border border-[var(--sera-line)] rounded-lg p-4 bg-white">
@@ -1954,11 +1985,13 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-[var(--sera-muted)] mt-1">{item.variant_name} • {item.attributes?.strength || item.attributes?.nicotine || ''}</p>
+                            <p className="text-sm text-[var(--sera-muted)] mt-1">
+                              {variantNameWithProductCodeBullet(item.variant_name, itemVariantProductCode)}
+                              {itemAttrText ? ` • ${itemAttrText}` : ''}
+                            </p>
                             <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
-                              RM {formatCurrency(item.unit_price)} per unit
-                              {item.manufacturer_sku && ` • SKU: ${item.manufacturer_sku}`}
-                              {familyDefaultSize && ` • Default: ${familyDefaultSize} units/case`}
+                              RM {formatCurrency(item.unit_price)} per case
+                              {familyDefaultSize && ` • Default: ${familyDefaultSize} cases/box`}
                             </p>
                           </div>
                           <Button
@@ -1974,7 +2007,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           {useIndividualCases && (
                             <div>
                               <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
-                                Units per Case
+                                Cases per Box
                               </label>
                               <select
                                 value={item.units_per_case || unitsPerCase}
@@ -1990,7 +2023,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           )}
                           <div>
                             <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
-                              Quantity
+                              Quantity (Cases)
                             </label>
                             <Input
                               type="text"
@@ -2009,7 +2042,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               const remainder = item.qty % itemUnitsPerCase
                               return (
                                 <p className="text-xs text-amber-600 mt-1">
-                                  {fullCases} full case(s) + {remainder} units remainder
+                                  {fullCases} full box(es) + {remainder} Cases remainder
                                 </p>
                               )
                             })()}
@@ -2021,7 +2054,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
-                              Unit Price (RM)
+                              Price per Case (RM)
                             </label>
                             <Input
                               type="number"
@@ -2037,12 +2070,12 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         {/* Auto-calculated summary */}
                         <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-4 gap-2 text-xs">
                           <div>
-                            <span className="text-[var(--sera-muted)]/80 block">Cases:</span>
+                            <span className="text-[var(--sera-muted)]/80 block">Boxes:</span>
                             {useIndividualCases && item.qty % (item.units_per_case || unitsPerCase) !== 0 ? (
                               <>
                                 <span className="font-semibold">
                                   {Math.floor(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} full +
-                                  {(item.qty % (item.units_per_case || unitsPerCase)).toLocaleString()} units
+                                  {(item.qty % (item.units_per_case || unitsPerCase)).toLocaleString()} Cases
                                 </span>
                                 {useIndividualCases && (
                                   <span className="text-xs text-amber-600 block mt-0.5">⚠ Will mix with other remainders</span>
@@ -2050,16 +2083,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               </>
                             ) : (
                               <>
-                                <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} cases</span>
+                                <span className="font-semibold">{boxCount.toLocaleString()} {boxCount === 1 ? 'Box' : 'Boxes'}</span>
                                 {useIndividualCases && (
-                                  <span className="text-xs text-[var(--sera-orange)] block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
+                                  <span className="text-xs text-[var(--sera-orange)] block mt-0.5">({item.units_per_case || unitsPerCase} cases/box)</span>
                                 )}
                               </>
                             )}
                           </div>
                           <div>
-                            <span className="text-[var(--sera-muted)]/80 block">Unique Units (with {qrBuffer}% buffer):</span>
-                            <span className="font-semibold">{Math.round(item.qty + (item.qty * qrBuffer / 100)).toLocaleString()} units</span>
+                            <span className="text-[var(--sera-muted)]/80 block">Unique QR (with {qrBuffer}% buffer):</span>
+                            <span className="font-semibold">{Math.round(item.qty + (item.qty * qrBuffer / 100)).toLocaleString()} QR codes</span>
                           </div>
                           <div>
                             <span className="text-[var(--sera-muted)]/80 block">Line Total:</span>
@@ -2095,58 +2128,58 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   {packingPlan.hasIssue ? (
                     <div className="space-y-3">
                       <p className="text-sm font-medium text-red-800">
-                        Cannot pack incomplete cases with only one product having a remainder.
+                        Cannot pack incomplete boxes with only one product having a remainder.
                       </p>
                       <div className="bg-white rounded-lg p-3 border border-red-200">
                         {packingPlan.productsWithRemainders.map(p => (
                           <div key={p.variantId} className="text-sm">
-                            <span className="font-semibold">{p.productName}</span>: {p.qty} units
+                            <span className="font-semibold">{p.productName}</span>: {p.qty} Cases
                             <br />
                             <span className="text-red-700">
-                              → {p.fullCases} full cases ({p.fullCases * p.unitsPerCase} units) + <strong>{p.remainder} units remainder</strong>
+                              → {p.fullCases} full Boxes ({p.fullCases * p.unitsPerCase} Cases) + <strong>{p.remainder} Cases remainder</strong>
                             </span>
                           </div>
                         ))}
                       </div>
                       <p className="text-xs text-red-700">
                         <strong>Solutions:</strong><br />
-                        • Add another product with a remainder to create mixed cases<br />
-                        • Adjust quantity to {packingPlan.productsWithRemainders[0].fullCases * packingPlan.productsWithRemainders[0].unitsPerCase} or {(packingPlan.productsWithRemainders[0].fullCases + 1) * packingPlan.productsWithRemainders[0].unitsPerCase} units<br />
-                        • Change units per case to match your quantity
+                        • Add another product with a remainder to create mixed Boxes<br />
+                        • Adjust quantity to {packingPlan.productsWithRemainders[0].fullCases * packingPlan.productsWithRemainders[0].unitsPerCase} or {(packingPlan.productsWithRemainders[0].fullCases + 1) * packingPlan.productsWithRemainders[0].unitsPerCase} Cases<br />
+                        • Change cases per box to match your quantity
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       <p className="text-sm font-medium text-amber-800">
-                        ✓ Remainders from multiple products will be mixed into {packingPlan.mixedCasesNeeded} case(s)
+                        ✓ Remainders from multiple products will be mixed into {packingPlan.mixedCasesNeeded} Box(es)
                       </p>
                       <div className="bg-white rounded-lg p-3 border border-amber-200 space-y-2">
-                        <div className="text-sm font-semibold text-[var(--sera-ink)]/80">Full Cases:</div>
+                        <div className="text-sm font-semibold text-[var(--sera-ink)]/80">Full Boxes:</div>
                         {packingPlan.plan.filter(p => p.fullCases > 0).map(p => (
                           <div key={p.variantId} className="text-sm pl-3">
-                            • {p.fullCases} case(s) of {p.productName} - {p.variantName} ({p.unitsPerCase}/case)
+                            • {p.fullCases} Box(es) of {p.productName} - {p.variantName} ({p.unitsPerCase} cases/box)
                           </div>
                         ))}
 
                         {packingPlan.productsWithRemainders.length > 0 && (
                           <>
-                            <div className="text-sm font-semibold text-amber-700 mt-3">Mixed Case(s):</div>
+                            <div className="text-sm font-semibold text-amber-700 mt-3">Mixed Box(es):</div>
                             <div className="text-sm pl-3 text-amber-700">
-                              • {packingPlan.mixedCasesNeeded} case(s) containing:
+                              • {packingPlan.mixedCasesNeeded} Box(es) containing:
                               {packingPlan.productsWithRemainders.map(p => (
                                 <div key={p.variantId} className="pl-4">
-                                  - {p.productName} - {p.variantName}: {p.remainder} units
+                                  - {p.productName} - {p.variantName}: {p.remainder} Cases
                                 </div>
                               ))}
                               <div className="mt-1 font-medium">
-                                Total: {packingPlan.totalRemainder} units in {packingPlan.suggestedMixedCaseSize}/case format
+                                Total: {packingPlan.totalRemainder} Cases in {packingPlan.suggestedMixedCaseSize} cases/box format
                               </div>
                             </div>
                           </>
                         )}
                       </div>
                       <p className="text-xs text-amber-700">
-                        Mixed cases will be labeled clearly for warehouse and manufacturing.
+                        Mixed Boxes will be labeled clearly for warehouse and manufacturing.
                       </p>
                     </div>
                   )}
@@ -2220,22 +2253,26 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   <p className="text-sm text-[var(--sera-muted)]/80">No products selected</p>
                 ) : (
                   <div className="space-y-2">
-                    {orderItems.map((item) => (
+                    {orderItems.map((item) => {
+                      // Presentation only: the outer-container count (unchanged calculation) is labelled "Box"
+                      const boxCount = Math.ceil(item.qty / (item.units_per_case || unitsPerCase))
+                      return (
                       <div key={item.variant_id} className="text-sm">
                         <div className="flex justify-between">
                           <span className="text-[var(--sera-ink)]/80 font-medium">{item.product_name}</span>
                         </div>
                         <div className="flex justify-between text-xs text-[var(--sera-muted)]">
-                          <span>{item.variant_name}</span>
+                          <span>{variantIdentityLabel(item.variant_name, resolveVariantProductCode(item))}</span>
                         </div>
                         <div className="flex justify-between text-xs text-[var(--sera-muted)]/80 mt-1">
-                          <span>{item.qty.toLocaleString()} units • {Math.ceil(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} cases</span>
+                          <span>{item.qty.toLocaleString()} Cases • {boxCount.toLocaleString()} {boxCount === 1 ? 'Box' : 'Boxes'}</span>
                           <span className="font-medium text-[var(--sera-ink)]/80">
                             RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}
                           </span>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -2243,7 +2280,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               {/* Calculations */}
               <div className="space-y-2 mb-6 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-[var(--sera-muted)]">Total Cases:</span>
+                  <span className="text-[var(--sera-muted)]">Total Boxes:</span>
                   <span className="font-medium">{totals.totalCases}</span>
                 </div>
                 <div className="flex justify-between">

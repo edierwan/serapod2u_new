@@ -8,6 +8,7 @@
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { wrapTermsLines } from '@/lib/organizations/terms'
 
 export type DocumentTemplateType = 'detailed' | 'classic'
 
@@ -58,6 +59,12 @@ export interface TemplateOrderData {
     unit_price: number
     line_total: number
   }>
+  /**
+   * The issuing organization's Terms & Conditions
+   * (organizations.settings.terms_conditions), resolved upstream. Separate
+   * from `payment_terms`, which remains the deposit/balance schedule.
+   */
+  organization_terms?: string | null
   // Dynamic image data (fetched and converted to base64)
   buyer_logo_image?: string | null
   seller_logo_image?: string | null
@@ -443,9 +450,12 @@ export class ClassicTemplate {
     this.doc.text('Total', totalX - 20, y, { align: 'right' })
     this.doc.text(this.formatCurrency(totalAmount), this.pageWidth - this.margin, y, { align: 'right' })
 
-    y += 30
+    // 5. Organization Terms & Conditions - verbatim, omitted when unset
+    y = this.addTermsSection(orderData.organization_terms, y + 6)
 
-    // 5. Signatures / Footer
+    y += 24
+
+    // 6. Signatures / Footer
     const footerY = y
 
     // Issued by (Left) - Organization stamp/signature
@@ -551,6 +561,55 @@ export class ClassicTemplate {
     this.doc.text('This is a computer generated document.', this.margin, bottomY)
 
     return this.doc.output('blob')
+  }
+
+  /**
+   * The issuing organization's Terms & Conditions, rendered exactly as saved.
+   *
+   * Sits between the totals and the signature footer, matching the browser
+   * order report's ordering. Draws nothing when no terms are stored - there is
+   * no default or placeholder text - and pages long terms rather than letting
+   * them run over the footer.
+   */
+  private addTermsSection(terms: string | null | undefined, yPosition: number): number {
+    const value = (terms || '')
+    if (!value.trim()) return yPosition
+
+    const maxWidth = this.pageWidth - this.margin * 2
+    const lineHeight = 4
+    const bottomLimit = 250
+
+    let y = yPosition
+
+    if (y > bottomLimit - lineHeight * 3) {
+      this.doc.addPage()
+      y = this.margin + 10
+    }
+
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text('TERMS & CONDITIONS', this.margin, y)
+    y += 5
+
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setFontSize(8)
+
+    const lines = wrapTermsLines(value, (text, indent) => {
+      const indentWidth = this.doc.getTextWidth(indent)
+      return this.doc.splitTextToSize(text, Math.max(maxWidth - indentWidth, 10)) as string[]
+    })
+
+    for (const line of lines) {
+      if (y > bottomLimit) {
+        this.doc.addPage()
+        y = this.margin + 10
+      }
+      if (line) this.doc.text(line, this.margin, y)
+      y += lineHeight
+    }
+
+    return y + 3
   }
 
   private drawDefaultStamp(centerX: number, centerY: number, orgName: string, radius: number = 14): void {

@@ -54,6 +54,7 @@ interface ProductVariant {
   product_id: string
   product_name: string
   product_code: string
+  variant_product_code?: string | null
   group_name?: string
   variant_name: string
   alternative_name?: string | null
@@ -62,7 +63,23 @@ interface ProductVariant {
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
+  /** Split of available_qty — see QuickOrderCatalogVariant.on_hand_qty. */
+  on_hand_qty?: number
+  reserved_qty?: number
   inventory_classification?: 'classified' | 'unclassified'
+  pricing_status?: 'priced' | 'price_missing'
+}
+
+/**
+ * The "… reserved by submitted orders" tail on a shortfall message. Submitted
+ * D2H/S2D orders hold stock until they are approved or cancelled, so quoting
+ * only the available figure makes a well-stocked flavour look broken.
+ */
+const reservedStockNote = (variant: { available_qty: number; on_hand_qty?: number; reserved_qty?: number }): string => {
+  const reserved = variant.reserved_qty || 0
+  if (reserved <= 0) return ''
+  const onHand = variant.on_hand_qty ?? variant.available_qty + reserved
+  return ` (${onHand.toLocaleString()} on hand, ${reserved.toLocaleString()} reserved by submitted orders awaiting approval)`
 }
 
 interface OrderItem {
@@ -354,73 +371,19 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (!distributorId) return
 
     try {
-      // Get company_id for order creation (still needed later)
-      const { data: companyData } = await supabase
-        .rpc('get_company_id', { p_org_id: userProfile.organization_id })
+      const response = await fetch('/api/orders/d2h/standard-order-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ distributorId, fulfillmentWarehouseId: inventoryOrgId }),
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(result?.error || 'Unable to load the distributor Standard Order catalog.')
 
-      const companyId = companyData || userProfile.organization_id
-
-      // Load product variants with inventory quantities
-      const { data, error } = await supabase
-        .from('product_variants')
-        .select(`
-          id,
-          product_id,
-          variant_name,
-          alternative_name,
-          attributes,
-          barcode,
-          manufacturer_sku,
-          distributor_price,
-          is_active,
-          products!inner (
-            id,
-            product_code,
-            product_name,
-            is_active,
-            product_groups (group_name)
-          )
-        `)
-        .eq('is_active', true)
-        .eq('products.is_active', true)
-        .order('variant_name')
-
-      if (error) throw error
-
-      // Get inventory for each variant
-      const variantsWithInventory = await Promise.all(
-        (data || []).map(async (v: any) => {
-          const product = Array.isArray(v.products) ? v.products[0] : v.products
-          const productGroup = Array.isArray(product?.product_groups) ? product.product_groups[0] : product?.product_groups
-
-          // Get available quantity from product_inventory using inventoryOrgId (Warehouse)
-          const { data: inventoryData } = await supabase
-            .from('product_inventory')
-            .select('quantity_available')
-            .eq('variant_id', v.id)
-            .eq('organization_id', inventoryOrgId)
-            .maybeSingle()
-
-          const availableQty = inventoryData?.quantity_available || 0
-
-          return {
-            id: v.id,
-            product_id: v.product_id,
-            product_name: product?.product_name || '',
-            product_code: product?.product_code || '',
-            group_name: productGroup?.group_name || 'Other',
-            variant_name: v.variant_name,
-            alternative_name: v.alternative_name || null,
-            attributes: v.attributes || {},
-            barcode: v.barcode,
-            manufacturer_sku: v.manufacturer_sku,
-            distributor_price: v.distributor_price || 0,
-            available_qty: availableQty
-          }
-        })
-      )
+      const variantsWithInventory = (result?.variants || []) as ProductVariant[]
 
       setAvailableVariants(variantsWithInventory)
+      setSelectedVariantId('')
+      setSelectedProductFilter('')
 
       if (variantsWithInventory.length === 0) {
         toast({
@@ -431,9 +394,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       }
     } catch (error: any) {
       console.error('Error loading products:', error)
+      setAvailableVariants([])
       toast({
         title: 'Error',
-        description: 'Failed to load available products',
+        description: error.message || 'Failed to load available products',
         variant: 'destructive'
       })
     }
@@ -519,7 +483,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
-        description: `Only ${variant.available_qty} units available in inventory`,
+        description: `Only ${variant.available_qty} cases available in inventory${reservedStockNote(variant)}`,
         variant: 'destructive'
       })
       return
@@ -541,10 +505,18 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (!variant) return
 
     const newQty = Math.max(0, Math.trunc(requestedQty))
+    if (variant.pricing_status === 'price_missing') {
+      toast({
+        title: 'Distributor Price Not Set',
+        description: `${variant.variant_name} has no Distributor Price. Set it in Product Management > Variants before ordering.`,
+        variant: 'destructive'
+      })
+      return
+    }
     if (variant.inventory_classification !== 'unclassified' && newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
-        description: `Only ${variant.available_qty} units of ${variant.variant_name} are available`,
+        description: `Only ${variant.available_qty} cases of ${variant.variant_name} are available${reservedStockNote(variant)}`,
         variant: 'destructive'
       })
       return
@@ -583,7 +555,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     const quickVariantsById = new Map(quickOrderVariants.map(variant => [variant.id, variant]))
     const itemsOutsideQuickCatalog = orderItems.filter(item => {
       const variant = quickVariantsById.get(item.variant_id)
-      return !variant || item.qty > variant.available_qty
+      return !variant || variant.pricing_status === 'price_missing' || item.qty > variant.available_qty
     })
     if (itemsOutsideQuickCatalog.length > 0) {
       const shouldClear = window.confirm(
@@ -593,7 +565,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     }
     setOrderItems(items => items.flatMap(item => {
       const variant = quickVariantsById.get(item.variant_id)
-      if (!variant || item.qty > variant.available_qty) return []
+      if (!variant || variant.pricing_status === 'price_missing' || item.qty > variant.available_qty) return []
       return [{ ...item, unit_price: variant.distributor_price, line_total: item.qty * variant.distributor_price }]
     }))
     setOrderMode('quick')
@@ -981,17 +953,16 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                 </div>
               ) : (
                 <>
-                  <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h4 className="font-semibold text-gray-900">{orderMode === 'quick' ? 'Quick Order' : 'Standard Order'}</h4>
-                      <p className="text-xs text-[var(--sera-muted)]">{orderMode === 'quick' ? 'Enter quantities for multiple flavours at once.' : 'Add and edit products using the original order form.'}</p>
+                      <h4 className="text-lg font-semibold text-gray-900">{orderMode === 'quick' ? 'Quick Order' : 'Standard Order'}</h4>
+                      <p className="text-xs text-[var(--sera-muted)]">{orderMode === 'quick' ? 'Add multiple products at once' : 'Add and edit products one at a time'}</p>
                     </div>
-                    <div className="text-xs text-[var(--sera-muted)]">
-                      Using {orderMode === 'quick' ? 'Quick Order' : 'Standard Order'} <span aria-hidden="true">·</span>{' '}
-                      <button type="button" className="font-medium text-[var(--sera-orange)] underline underline-offset-2" onClick={handleOrderModeSwitch}>
-                        {orderMode === 'quick' ? 'Switch to Standard' : 'Try Quick Order'}
-                      </button>
-                    </div>
+                    {/* The other mode is a plain, labelled button rather than a sentence with a link. */}
+                    <Button type="button" variant="outline" onClick={handleOrderModeSwitch}
+                      className="border-[var(--sera-orange)] text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.08] hover:text-[var(--sera-orange)]">
+                      {orderMode === 'quick' ? 'Standard order' : 'Quick Order'}
+                    </Button>
                   </div>
                   {orderMode === 'quick' ? (
                     <QuickOrderGrid
@@ -1081,7 +1052,15 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                                   <p className="text-xs text-[var(--sera-muted)] mt-1">SKU: {item.manufacturer_sku}</p>
                                 )}
                                 {variant && (
-                                  <p className="text-xs text-[var(--sera-orange)] mt-1">Available: {variant.available_qty} units</p>
+                                  <p className="text-xs text-[var(--sera-orange)] mt-1">
+                                    Available: {variant.available_qty} cases
+                                    {(variant.reserved_qty || 0) > 0 && (
+                                      <span className="text-[var(--sera-muted)]">
+                                        {' '}({(variant.on_hand_qty ?? variant.available_qty + (variant.reserved_qty || 0)).toLocaleString()} on hand,{' '}
+                                        {(variant.reserved_qty || 0).toLocaleString()} reserved by submitted orders)
+                                      </span>
+                                    )}
+                                  </p>
                                 )}
                               </div>
                               <Button

@@ -1,24 +1,32 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { ClipboardPaste, Search, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Check, CheckCircle2, CheckSquare, ClipboardCopy, ClipboardPaste, Copy, HelpCircle, ListTree, Package, Search, Trash2, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { matchPastedOrder, PasteMatchResult, resolvePasteInventoryOutcome } from './quick-order-matcher'
+import { variantAlternativeLabel, variantFlavourName, variantIdentityLabel, productVariantIdentityLabel } from '@/lib/inventory/variant-display-label'
+import { groupDisplayName } from '@/lib/orders/group-display-name'
+import { buildPasteResultText } from '@/lib/orders/paste-order-result-text'
+import { resolveProductShortNames } from '@/lib/orders/product-short-name'
+import { matchPastedOrder, PasteMatchResult, resolvePasteInventoryOutcome, stripStatusMarkers } from './quick-order-matcher'
 
 interface QuickVariant {
   id: string
   product_id: string
   product_name: string
   product_code: string
+  variant_product_code?: string | null
   group_name?: string
   variant_name: string
   alternative_name?: string | null
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
+  on_hand_qty?: number
+  reserved_qty?: number
   inventory_classification?: 'classified' | 'unclassified'
+  pricing_status?: 'priced' | 'price_missing'
 }
 
 interface QuickItem {
@@ -34,45 +42,64 @@ interface QuickOrderGridProps {
   onClear: () => void
 }
 
-const statusStyle = (status: PasteMatchResult['status']) => ({
-  matched: 'bg-green-100 text-green-700',
-  alternative_match: 'bg-cyan-100 text-cyan-800',
-  smart_match: 'bg-emerald-100 text-emerald-800',
-  suggestion: 'bg-purple-100 text-purple-800',
-  ambiguous: 'bg-amber-100 text-amber-800',
-  not_found: 'bg-red-100 text-red-700',
-  invalid_quantity: 'bg-red-100 text-red-700',
-  duplicate: 'bg-blue-100 text-blue-700',
-  section_header: 'bg-slate-100 text-slate-700',
-  requires_review: 'bg-amber-100 text-amber-900',
-}[status])
+/**
+ * The one status vocabulary Quick Order speaks — used by the catalog rows and
+ * by the paste review's Result column, so an outcome looks and reads the same
+ * wherever it appears. Each entry is a small icon plus a short word; no badges.
+ */
+const STATUS = {
+  available: { label: 'Available', className: 'text-green-600', Icon: CheckCircle2 },
+  unclassified: { label: 'Unclassified', className: 'text-amber-700', Icon: AlertTriangle },
+  priceNotSet: { label: 'Price Not Set', className: 'text-amber-700', Icon: AlertTriangle },
+  noStock: { label: 'No stock', className: 'text-red-600', Icon: XCircle },
+  insufficient: { label: 'Insufficient', className: 'text-red-600', Icon: AlertTriangle },
+  // Paste-review-only outcomes: no variant was resolved yet, so they have no
+  // catalog-row equivalent.
+  selectMatch: { label: 'Multiple Matches — Selection Required', className: 'text-amber-700', Icon: HelpCircle },
+  reviewMatch: { label: 'Possible Match — Review Required', className: 'text-amber-700', Icon: HelpCircle },
+  notFound: { label: 'Product Not Found', className: 'text-red-600', Icon: XCircle },
+  duplicate: { label: 'Duplicate', className: 'text-blue-700', Icon: Copy },
+  invalidQuantity: { label: 'Invalid Quantity', className: 'text-red-600', Icon: XCircle },
+  // Paste sections (staging): a header line naming a product family, and a
+  // header that also carries a quantity, which needs a human decision.
+  sectionHeader: { label: 'Section', className: 'text-slate-600', Icon: ListTree },
+  requiresReview: { label: 'Requires Review — Section Title With Quantity', className: 'text-amber-700', Icon: HelpCircle },
+} as const
 
-const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]) => {
+// The label is widened to a plain string so a section header can name the
+// product line it opened while still rendering through StatusMark.
+type StatusDescriptor = { label: string; className: string; Icon: (typeof STATUS)[keyof typeof STATUS]['Icon'] }
+
+const StatusMark = ({ status }: { status: StatusDescriptor }) => (
+  <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium ${status.className}`}>
+    <status.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{status.label}
+  </span>
+)
+
+const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]): StatusDescriptor => {
   if (result.status === 'section_header') {
-    return {
-      label: `Section: ${result.sectionProductLine || result.name}`,
-      style: statusStyle(result.status),
-    }
+    return { ...STATUS.sectionHeader, label: `Section: ${result.sectionProductLine || result.name}` }
   }
-  if (result.status === 'requires_review') {
-    return {
-      label: 'Requires Review — Section Title With Quantity',
-      style: statusStyle(result.status),
-    }
-  }
-  if (result.status === 'invalid_quantity') return { label: 'Invalid Quantity', style: statusStyle(result.status) }
-  if (result.status === 'duplicate') return { label: 'Duplicate', style: statusStyle(result.status) }
-  if (!result.selectedVariantId && result.candidates.length > 1) return { label: 'Multiple Matches — Selection Required', style: statusStyle('ambiguous') }
-  if (!result.selectedVariantId && result.candidates.length === 1) return { label: 'Possible Match — Review Required', style: statusStyle('suggestion') }
+  if (result.status === 'requires_review') return STATUS.requiresReview
+  if (result.status === 'invalid_quantity') return STATUS.invalidQuantity
+  if (result.status === 'duplicate') return STATUS.duplicate
+  if (!result.selectedVariantId && result.candidates.length > 1) return STATUS.selectMatch
+  if (!result.selectedVariantId && result.candidates.length === 1) return STATUS.reviewMatch
   const selected = variants.find(variant => variant.id === result.selectedVariantId)
   const outcome = resolvePasteInventoryOutcome(result.quantity, selected)
-  if (outcome === 'inventory_unclassified') return { label: 'Matched — Inventory Unclassified', style: 'bg-amber-100 text-amber-800' }
-  if (outcome === 'no_available_stock') return { label: 'Matched — No Available Stock', style: 'bg-red-100 text-red-700' }
-  if (outcome === 'insufficient_stock') return { label: 'Matched — Insufficient Stock', style: 'bg-red-100 text-red-700' }
-  if (outcome === 'matched') return { label: 'Matched', style: 'bg-green-100 text-green-700' }
-  return { label: 'Product Not Found', style: statusStyle('not_found') }
+  if (outcome === 'price_not_set') return STATUS.priceNotSet
+  if (outcome === 'inventory_unclassified') return STATUS.unclassified
+  if (outcome === 'no_available_stock') return STATUS.noStock
+  if (outcome === 'insufficient_stock') return STATUS.insufficient
+  if (outcome === 'matched') return STATUS.available
+  return STATUS.notFound
 }
 
+/**
+ * Whether the line can actually be ordered as reviewed. Drives both the Result
+ * status and the ✅/❌ in the copied WhatsApp reply, so the two can never
+ * disagree: a line reads "Available" exactly when the reply marks it ✅.
+ */
 const isPasteResultBlocked = (
   result: PasteMatchResult,
   variants: QuickVariant[],
@@ -88,16 +115,103 @@ const isPasteResultBlocked = (
   return resolvePasteInventoryOutcome(result.quantity, selected) !== 'matched'
 }
 
-const displayVariantName = (variantName: string) => {
-  const bracketedFlavour = variantName.match(/\[\s*([^\[\]]+?)\s*\]/)
-  return bracketedFlavour ? `[ ${bracketedFlavour[1].trim()} ]` : variantName
+/**
+ * Master-data identity for a catalog row: the bracketed flavour plus the
+ * variant Product Code, with the distributor-facing Alternative Name beneath
+ * it — the same two lines View Inventory and Product Management > Variants
+ * show, so operators read one identity everywhere.
+ */
+const VariantIdentity = ({ variant, withProduct = false }: { variant: QuickVariant; withProduct?: boolean }) => {
+  // With the Product folded in this is the full agreed identity
+  // ("Cellera Hero / Strawberry Corn – SC"); without it, only the variant half,
+  // because the Product already leads the row.
+  const identity = withProduct
+    ? productVariantIdentityLabel(variant.product_name, variant.variant_name, variant.variant_product_code)
+    : variantIdentityLabel(variant.variant_name, variant.variant_product_code)
+  const alternative = variantAlternativeLabel(variant.alternative_name)
+  return (
+    <>
+      <span className="block font-medium text-gray-900">
+        {identity}
+      </span>
+      {alternative && <span className="block text-xs font-normal text-[var(--sera-muted)]">{alternative}</span>}
+    </>
+  )
 }
+
+/**
+ * Catalog-row identity, condensed into the single Product column: the flavour
+ * with its variant Product Code beside it, and beneath it the group-relative
+ * product label in caps ("HERO", "ZERO") followed by the Alternative Name when
+ * master data carries one. Same master-data fields as {@link VariantIdentity} —
+ * the paste review keeps the bracketed form, where rows are read one at a time.
+ */
+const ProductCell = ({ variant, productLabel }: { variant: QuickVariant; productLabel: string }) => {
+  const alternative = (variant.alternative_name || '').trim()
+  return (
+    <>
+      <span className="block font-semibold text-gray-900">
+        {variantFlavourName(variant.variant_name)}
+        {variant.variant_product_code && (
+          <span className="ml-2 text-xs font-normal text-[var(--sera-muted)]">{variant.variant_product_code.trim()}</span>
+        )}
+      </span>
+      <span className="block text-xs text-[var(--sera-muted)]">
+        {productLabel.toUpperCase()}{alternative && ` · ${alternative}`}
+      </span>
+    </>
+  )
+}
+
+/** Catalog-row outcome, drawn from the same {@link STATUS} vocabulary. */
+const rowStatus = (variant: QuickVariant, quantity: number): StatusDescriptor => {
+  if (variant.pricing_status === 'price_missing') return STATUS.priceNotSet
+  if (variant.inventory_classification === 'unclassified') return STATUS.unclassified
+  if (variant.available_qty === 0) return STATUS.noStock
+  if (quantity > variant.available_qty) return STATUS.insufficient
+  return STATUS.available
+}
+
+/**
+ * Why availability is lower than the stock View Inventory shows.
+ *
+ * Submitted D2H/S2D orders hold their quantity against the warehouse until
+ * they are approved or cancelled, so a flavour can sit on 10,514 cases and
+ * still offer only 54. Stating the shortfall as a bare "54 available" read as
+ * a system fault; naming the reserved part points at the queue of submitted
+ * orders that actually holds it. Nothing is rendered when nothing is reserved.
+ */
+const ReservedNote = ({ variant, className = '' }: { variant: QuickVariant; className?: string }) => {
+  const reserved = variant.reserved_qty || 0
+  if (reserved <= 0) return null
+  const onHand = variant.on_hand_qty ?? variant.available_qty + reserved
+  return (
+    <span className={`block text-[var(--sera-muted)] ${className}`}>
+      {onHand.toLocaleString()} on hand · {reserved.toLocaleString()} reserved by submitted orders
+    </span>
+  )
+}
+
+/** Filter toggle rendered as a pressable chip so the filters read as one row. */
+const FilterToggle = ({ label, icon: Icon, pressed, onToggle }: { label: string; icon: typeof CheckSquare; pressed: boolean; onToggle: () => void }) => (
+  <button type="button" aria-pressed={pressed} onClick={onToggle}
+    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium ${pressed ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.08] text-[var(--sera-orange)]' : 'border-gray-300 text-[var(--sera-ink)] hover:bg-gray-50'}`}>
+    <Icon className="h-4 w-4" />{label}
+  </button>
+)
+
+/** How long the copied reply stays on screen before dismissing itself. */
+const COPY_PREVIEW_MS = 5000
 
 const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?: () => void }) => {
   const content = (
     <>
-      <span className="block font-semibold text-gray-900">{variant.product_name} - {displayVariantName(variant.variant_name)}</span>
+      <VariantIdentity variant={variant} withProduct />
       <span className="block text-[var(--sera-muted)]">{variant.available_qty.toLocaleString()} available</span>
+      <ReservedNote variant={variant} />
+      {variant.pricing_status === 'price_missing' && (
+        <span className="block text-amber-700">Distributor Price not set in Product Management</span>
+      )}
     </>
   )
   return onSelect ? (
@@ -116,8 +230,18 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState<PasteMatchResult[]>([])
   const [combineDuplicates, setCombineDuplicates] = useState(false)
+  const [resultCopied, setResultCopied] = useState(false)
+  // Exact text placed on the clipboard, shown back briefly so the operator
+  // sees what will land in WhatsApp before switching apps.
+  const [copiedPreview, setCopiedPreview] = useState<string | null>(null)
+  const previewTimer = useRef<number | null>(null)
+
+  useEffect(() => () => { if (previewTimer.current) window.clearTimeout(previewTimer.current) }, [])
 
   const quantities = useMemo(() => new Map(items.map(item => [item.variant_id, item.qty])), [items])
+  // Group-relative product labels ("Cellera Hero" -> "Hero"). Derived from the
+  // whole catalog, not the visible rows, so switching tabs never relabels.
+  const productShortNames = useMemo(() => resolveProductShortNames(variants), [variants])
   const groups = useMemo(() => {
     const counts = new Map<string, number>()
     variants.forEach(variant => counts.set(variant.group_name || 'Other', (counts.get(variant.group_name || 'Other') || 0) + 1))
@@ -128,7 +252,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
     const needle = search.trim().toLowerCase()
     return variants.filter(variant => {
       const group = variant.group_name || 'Other'
-      const haystack = [variant.variant_name, variant.alternative_name, variant.product_name, variant.product_code, variant.manufacturer_sku].filter(Boolean).join(' ').toLowerCase()
+      const haystack = [variant.variant_name, variant.alternative_name, variant.product_name, variant.product_code, variant.variant_product_code, variant.manufacturer_sku].filter(Boolean).join(' ').toLowerCase()
       return (activeGroup === 'All' || group === activeGroup)
         && (!needle || haystack.includes(needle))
         && (!selectedOnly || (quantities.get(variant.id) || 0) > 0)
@@ -146,6 +270,29 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const reviewPaste = () => {
     setPasteResults(matchPastedOrder(pasteText, variants))
     setCombineDuplicates(false)
+    setResultCopied(false)
+  }
+
+  const copyResult = async () => {
+    const text = buildPasteResultText(
+      pasteResults,
+      variants,
+      result => !isPasteResultBlocked(result, variants, combineDuplicates),
+    )
+    try {
+      await navigator.clipboard.writeText(text)
+      setResultCopied(true)
+      setCopiedPreview(text)
+      if (previewTimer.current) window.clearTimeout(previewTimer.current)
+      previewTimer.current = window.setTimeout(() => {
+        setResultCopied(false)
+        setCopiedPreview(null)
+      }, COPY_PREVIEW_MS)
+    } catch {
+      // Clipboard access can be denied (insecure origin, permission prompt).
+      // Falling back keeps the reply reachable instead of failing silently.
+      window.prompt('Copy the reply below and paste it into WhatsApp', text)
+    }
   }
 
   const updateResolution = (line: number, variantId: string) => {
@@ -169,68 +316,100 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
     setPasteOpen(false)
     setPasteText('')
     setPasteResults([])
+    // Land on exactly what was just applied. The group tab and search box are
+    // cleared with it, otherwise "Selected" would still hide applied rows that
+    // sit in another group or outside the search term.
+    setSelectedOnly(true)
+    setActiveGroup('All')
+    setSearch('')
   }
 
   const handleQuantity = (variant: QuickVariant, rawValue: string) => {
+    // An unpriced variant would price the line at RM 0; the D2H preflight
+    // rejects it anyway, so the quantity never becomes enterable here.
+    if (variant.pricing_status === 'price_missing') return
     const quantity = rawValue === '' ? 0 : Math.max(0, Math.trunc(Number(rawValue) || 0))
     onQuantityChange(variant.id, quantity)
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Product groups">
+      <div className="flex gap-6 overflow-x-auto border-b" role="tablist" aria-label="Product groups">
         {groups.map(group => {
           const count = group === 'All' ? variants.length : variants.filter(variant => (variant.group_name || 'Other') === group).length
           return (
             <button key={group} type="button" role="tab" aria-selected={activeGroup === group} onClick={() => setActiveGroup(group)}
-              className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${activeGroup === group ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300' : 'text-[var(--sera-muted)] hover:bg-gray-50'}`}>
-              {group} ({count})
+              className={`-mb-px whitespace-nowrap border-b-2 px-1 py-2 text-sm font-medium ${activeGroup === group ? 'border-[var(--sera-orange)] text-[var(--sera-orange)]' : 'border-transparent text-[var(--sera-muted)] hover:text-[var(--sera-ink)]'}`}>
+              {groupDisplayName(group)} <span className="tabular-nums">{count}</span>
             </button>
           )
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[240px] flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <Input value={search} onChange={event => setSearch(event.target.value)} className="pl-9" placeholder="Search flavour, product or Product Code" />
         </div>
-        <label className="flex items-center gap-2 whitespace-nowrap text-sm"><input type="checkbox" checked={selectedOnly} onChange={event => setSelectedOnly(event.target.checked)} /> Show selected only</label>
-        <label className="flex items-center gap-2 whitespace-nowrap text-sm"><input type="checkbox" checked={availableOnly} onChange={event => setAvailableOnly(event.target.checked)} /> Available only</label>
-        <Button type="button" variant="outline" onClick={() => setPasteOpen(true)}><ClipboardPaste className="mr-2 h-4 w-4" />Paste Order List</Button>
-        <Button type="button" variant="ghost" onClick={onClear} disabled={selected.length === 0}><Trash2 className="mr-2 h-4 w-4" />Clear</Button>
+        <FilterToggle label="Selected" icon={CheckSquare} pressed={selectedOnly} onToggle={() => setSelectedOnly(value => !value)} />
+        <FilterToggle label="In stock" icon={Package} pressed={availableOnly} onToggle={() => setAvailableOnly(value => !value)} />
+        <Button type="button" onClick={() => setPasteOpen(true)}><ClipboardPaste className="mr-2 h-4 w-4" />Paste list</Button>
+        <Button type="button" variant="outline" size="icon" onClick={onClear} disabled={selected.length === 0} aria-label="Clear all quantities" title="Clear all quantities">
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="overflow-x-auto rounded-md border">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-gray-50 text-left text-[var(--sera-muted)]">
-            <tr>{['Flavour', 'Product', 'Available', 'Order Qty', 'Unit Price (RM)', 'Line Total (RM)', 'Status'].map(label => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr>
+            <tr>
+              <th className="px-3 py-3 font-medium">Product</th>
+              <th className="px-3 py-3 text-right font-medium">Stock</th>
+              <th className="px-3 py-3 font-medium">Qty</th>
+              <th className="px-3 py-3 text-right font-medium">Price</th>
+              <th className="px-3 py-3 text-right font-medium">Total</th>
+              <th className="px-3 py-3 font-medium"><span className="sr-only">Status</span></th>
+            </tr>
           </thead>
           <tbody>
             {visibleVariants.map((variant, index) => {
               const quantity = quantities.get(variant.id) || 0
-              const insufficient = quantity > variant.available_qty
-              const unclassified = variant.inventory_classification === 'unclassified'
+              const status = rowStatus(variant, quantity)
+              const unpriced = variant.pricing_status === 'price_missing'
               return (
                 <tr key={variant.id} className={quantity > 0 ? 'border-t bg-orange-50/50' : 'border-t'}>
-                  <td className="px-3 py-2 font-medium">{variant.variant_name}</td>
-                  <td className="px-3 py-2">{variant.product_name}</td>
-                  <td className="px-3 py-2 tabular-nums">{variant.available_qty.toLocaleString()}</td>
-                  <td className="px-3 py-2"><Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-28" aria-label={`Order quantity for ${variant.variant_name}`} /></td>
-                  <td className="px-3 py-2 tabular-nums">{formatCurrency(variant.distributor_price)}</td>
-                  <td className="px-3 py-2 font-medium tabular-nums">{formatCurrency(quantity * variant.distributor_price)}</td>
-                  <td className="px-3 py-2"><span className={`rounded-full px-2 py-1 text-xs font-medium ${unclassified ? 'bg-amber-100 text-amber-800' : insufficient || variant.available_qty === 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{unclassified ? 'Inventory Unclassified' : insufficient ? 'Insufficient stock' : variant.available_qty === 0 ? 'No Available Stock' : 'Available'}</span></td>
+                  <td className="px-3 py-2"><ProductCell variant={variant} productLabel={productShortNames.get(variant.product_name) || variant.product_name} /></td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {variant.available_qty.toLocaleString()}
+                    <ReservedNote variant={variant} className="text-[11px] font-normal" />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} disabled={unpriced} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-20" aria-label={`Order quantity in cases for ${variant.variant_name}`} />
+                      <span className="text-xs text-[var(--sera-muted)]">cases</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{unpriced ? 'Not set' : `RM ${formatCurrency(variant.distributor_price)}`}</td>
+                  <td className="px-3 py-2 text-right font-medium tabular-nums">{unpriced ? '—' : `RM ${formatCurrency(quantity * variant.distributor_price)}`}</td>
+                  <td className="px-3 py-2"><StatusMark status={status} /></td>
                 </tr>
               )
             })}
-            {visibleVariants.length === 0 && <tr><td colSpan={7} className="px-3 py-10 text-center text-[var(--sera-muted)]">No variants match these filters.</td></tr>}
+            {visibleVariants.length === 0 && <tr><td colSpan={6} className="px-3 py-10 text-center text-[var(--sera-muted)]">No variants match these filters.</td></tr>}
           </tbody>
         </table>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-gray-50 px-4 py-3 text-sm">
-        <strong>{selected.length} flavours · {totalUnits.toLocaleString()} units</strong>
-        <strong>Total: RM {formatCurrency(totalAmount)}</strong>
+      {/* Kept in view while the operator scrolls a long catalog. */}
+      <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-white px-4 py-3 text-sm shadow-sm">
+        <span className="inline-flex items-center gap-2 font-medium">
+          <Package className="h-4 w-4 text-[var(--sera-muted)]" aria-hidden="true" />
+          {selected.length} items selected
+        </span>
+        <span className="flex flex-wrap items-center gap-4">
+          <span className="tabular-nums text-[var(--sera-muted)]">{totalUnits.toLocaleString()} cases</span>
+          <strong className="tabular-nums">RM {formatCurrency(totalAmount)}</strong>
+        </span>
       </div>
 
       <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
@@ -240,17 +419,17 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
             <textarea autoFocus value={pasteText} onChange={event => setPasteText(event.target.value)} rows={10} className="w-full rounded-md border p-3 font-mono text-sm" placeholder={'LYCHEE BLACKCURRANT - 200\nGUAVA - 300'} />
           ) : (
             <div className="space-y-3">
-              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left"><th className="p-2">Line</th><th className="p-2">Entry</th><th className="p-2">Qty</th><th className="p-2">Result</th><th className="p-2">Resolve to authorized variant</th></tr></thead><tbody>
+              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left"><th className="p-2">Line</th><th className="p-2">Entry</th><th className="p-2"><div>Qty</div><div className="text-[11px] font-normal text-[var(--sera-muted)]">(Cases)</div></th><th className="p-2">Result</th><th className="p-2">Resolve to authorized variant</th></tr></thead><tbody>
                 {pasteResults.map(result => {
                   const display = pasteResultDisplay(result, variants)
                   const selectedVariant = variants.find(variant => variant.id === result.selectedVariantId)
                   return (
                     <tr key={result.line} className="border-b align-top">
                       <td className="p-2">{result.line}</td>
-                      <td className="p-2"><div>{result.name}</div><div className="text-xs text-[var(--sera-muted)]">Original: {result.raw}</div></td>
+                      <td className="p-2"><div>{result.name}</div><div className="text-xs text-[var(--sera-muted)]">Original: {stripStatusMarkers(result.raw)}</div></td>
                       <td className="p-2">{result.quantity ?? 'Invalid'}</td>
                       <td className="p-2">
-                        <span className={`rounded-full px-2 py-1 text-xs ${display.style}`}>{display.label}</span>
+                        <StatusMark status={display} />
                         {result.duplicateOfLine && <div className="mt-1 text-xs text-[var(--sera-muted)]">Duplicates line {result.duplicateOfLine}</div>}
                       </td>
                       <td className="min-w-[320px] p-2">
@@ -273,8 +452,33 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
           )}
           <DialogFooter>
             {pasteResults.length > 0 && <Button type="button" variant="outline" onClick={() => setPasteResults([])}>Edit text</Button>}
+            {pasteResults.length > 0 && (
+              <Button type="button" variant="outline" onClick={copyResult}>
+                {resultCopied ? <Check className="mr-2 h-4 w-4" /> : <ClipboardCopy className="mr-2 h-4 w-4" />}
+                {resultCopied ? 'Copied' : 'Copy Result'}
+              </Button>
+            )}
             {pasteResults.length === 0 ? <Button type="button" onClick={reviewPaste} disabled={!pasteText.trim()}>Review matches</Button> : <Button type="button" onClick={applyPaste} disabled={!canApplyPaste}>Apply reviewed quantities</Button>}
           </DialogFooter>
+
+          {/* Sticky, not fixed: the dialog's own transform would anchor a fixed
+              child to the dialog box anyway. Dismisses itself; the reply is
+              already on the clipboard either way. */}
+          {copiedPreview && (
+            <div role="status" aria-live="polite"
+              className="sticky bottom-0 z-10 mx-auto w-full max-w-md rounded-lg border bg-white p-3 shadow-xl">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-2 text-sm font-medium text-green-700">
+                  <Check className="h-4 w-4" />Copied — this is what will be pasted
+                </span>
+                <button type="button" onClick={() => setCopiedPreview(null)} aria-label="Dismiss preview"
+                  className="rounded p-1 text-[var(--sera-muted)] hover:bg-gray-100">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-2 text-xs">{copiedPreview}</pre>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

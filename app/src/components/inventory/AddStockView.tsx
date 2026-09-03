@@ -46,6 +46,11 @@ import {
   buildManualStockAdditionWorksheet,
   parseManualStockAdditionImport,
 } from '@/lib/inventory/add-stock-excel'
+import {
+  variantAlternativeLabel,
+  variantIdentityLabel,
+} from '@/lib/inventory/variant-display-label'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 interface WarehouseLocation {
   id: string
@@ -181,6 +186,9 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
             id,
             variant_name,
             variant_code,
+            product_code,
+            alternative_name,
+            base_cost,
             product_id,
             products!inner (
               id,
@@ -242,6 +250,16 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       )
 
       setCatalogRows(rows)
+      // Unit Cost defaults to the variant Base Cost from Master Data; users can still override.
+      setUnitCosts((prev) => {
+        const next = { ...prev }
+        for (const row of rows) {
+          if (row.baseCost === null) continue
+          if (next[row.rowKey] !== undefined && next[row.rowKey] !== '') continue
+          next[row.rowKey] = String(row.baseCost)
+        }
+        return next
+      })
       setConfigurationKey(defaultConfigurationFilterKey(rows))
       setPage(1)
     } catch (error: any) {
@@ -651,7 +669,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 className="pl-9"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-                placeholder="Search product, flavour, code or Stock SKU"
+                placeholder="Search product, flavour, product code or alternative name"
                 disabled={!selectedWarehouse}
               />
             </div>
@@ -745,7 +763,6 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       </TableHead>
                       <TableHead>Product / Flavour</TableHead>
                       <TableHead>Configuration</TableHead>
-                      <TableHead>Stock SKU</TableHead>
                       <TableHead className="text-right">Current On Hand</TableHead>
                       <TableHead className="text-right">Add Quantity</TableHead>
                       <TableHead className="text-right">Unit Cost</TableHead>
@@ -767,20 +784,25 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                             <Checkbox
                               checked={selectedKeys.has(row.rowKey)}
                               onCheckedChange={(checked) => toggleRow(row.rowKey, Boolean(checked))}
-                              aria-label={`Select ${row.stockSku}`}
+                              aria-label={`Select ${row.variantName || row.productName}`}
                             />
                           </TableCell>
                           <TableCell>
                             <div className="font-medium text-slate-900">{row.productName}</div>
-                            <div className="text-xs text-slate-500">{row.flavour || row.variantName}</div>
-                            <div className="text-xs text-slate-400">{row.productCode}</div>
+                            <div className="text-xs text-slate-500">
+                              {variantIdentityLabel(row.variantName, row.variantProductCode)}
+                            </div>
+                            {variantAlternativeLabel(row.alternativeName) && (
+                              <div className="text-xs text-slate-400">
+                                {variantAlternativeLabel(row.alternativeName)}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
-                              {row.configLabel}
+                              {withStockStrengthUnit(row.configLabel)}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{row.stockSku}</TableCell>
                           <TableCell className="text-right tabular-nums">{row.currentOnHand.toLocaleString()}</TableCell>
                           <TableCell className="text-right">
                             <Input
@@ -797,7 +819,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               inputMode="decimal"
                               value={unitCosts[row.rowKey] || ''}
                               onChange={(e) => setUnitCosts((prev) => ({ ...prev, [row.rowKey]: e.target.value }))}
-                              placeholder={row.averageCost != null ? String(row.averageCost) : '—'}
+                              placeholder={row.baseCost != null ? String(row.baseCost) : (row.averageCost != null ? String(row.averageCost) : '—')}
                             />
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
@@ -818,7 +840,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     })}
                     {pageRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center text-sm text-slate-500 py-8">
+                        <TableCell colSpan={9} className="text-center text-sm text-slate-500 py-8">
                           No configurations match the current filters.
                         </TableCell>
                       </TableRow>
@@ -886,8 +908,8 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Product / Flavour</TableHead>
                     <TableHead>Configuration</TableHead>
-                    <TableHead>Stock SKU</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead className="text-right">Current → New</TableHead>
                     <TableHead className="text-right">Unit Cost</TableHead>
@@ -897,8 +919,13 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 <TableBody>
                   {reviewLines.map(({ item, row }) => (
                     <TableRow key={row.rowKey}>
-                      <TableCell>{row.configLabel}</TableCell>
-                      <TableCell className="font-mono text-xs">{row.stockSku}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{row.productName}</div>
+                        <div className="text-xs text-slate-500">
+                          {variantIdentityLabel(row.variantName, row.variantProductCode)}
+                        </div>
+                      </TableCell>
+                      <TableCell>{withStockStrengthUnit(row.configLabel)}</TableCell>
                       <TableCell className="text-right">{item.quantity}</TableCell>
                       <TableCell className="text-right">
                         {row.currentOnHand.toLocaleString()} → {newBalance(row.currentOnHand, item.quantity).toLocaleString()}

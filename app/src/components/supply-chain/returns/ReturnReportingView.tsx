@@ -1,47 +1,38 @@
 'use client'
 
 /**
- * Return Product Reports — management dashboard.
+ * Return Product Reports — one monthly report page with two tabs.
  *
- * Monthly / Quarterly reporting with previous-period comparison, management
- * KPIs, charts, breakdown tables, deterministic key insights, Excel export,
- * PDF preview/download and email delivery. All figures come from the
- * server-side aggregate at /api/returns/reporting/summary — nothing is
- * hardcoded and the browser never loads raw return items.
+ *   Overview          four management KPIs, a reason ranking, the top returned
+ *                     products, a slim status bar and a single key insight.
+ *   Detailed Report   the month's return cases, searchable and filterable.
+ *
+ * Both tabs describe exactly the same month, and every figure comes from the
+ * server-side aggregate at /api/returns/reporting/summary — nothing on this
+ * page is hardcoded. Excel, PDF and Email all export that same month.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-    Loader2, RefreshCw, Download, Search, Mail, FileText, Eye, RotateCcw,
-    Package, Boxes, Banknote, TrendingUp, Clock, CheckCircle2, ArrowUpRight,
-    ArrowDownRight, Minus, ChevronLeft, ChevronRight, ChevronDown, Lightbulb,
+    Loader2, Download, Search, Mail, FileText, FileSpreadsheet, Eye, Lightbulb,
+    Package, Boxes, Banknote, AlertCircle, ChevronLeft, ChevronRight, ChevronDown,
+    SlidersHorizontal, X,
 } from 'lucide-react'
-import {
-    ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid,
-    Tooltip as ChartTooltip, Legend, PieChart, Pie, Cell, BarChart, Bar, LabelList,
-} from 'recharts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
+import { RETURN_STATUS_LABELS, type ReturnStatus } from '@/lib/returns/constants'
 import {
-    RETURN_STATUS_LABELS, RETURN_SOURCE_LABELS, normalizeReturnSourceType,
-    type ReturnStatus, type ReturnSourceType,
-} from '@/lib/returns/constants'
-import type { ReturnMeta, OrgRef } from '@/lib/returns/types'
-import { normalizeReturnMeta } from '@/lib/returns/meta'
-import {
-    currentPeriod, previousPeriod, periodLabel, deltaText, formatRM, formatCount,
-    reportFilename, MONTH_NAMES,
-    type ReportMode, type ReportPeriod, type ReturnReportSummary, type ReportCaseRow, type KpiDelta,
+    periodLabel, formatRM, formatRMWhole, formatAmount, formatCount, reportFilename,
+    groupReasonsForDisplay, buildKeyInsight, MONTH_NAMES,
+    type ReportPeriod, type ReturnReportSummary, type ReportCaseRow,
 } from '@/lib/returns/reporting'
 import { buildReturnReportPdf, type ReturnReportPdf } from '@/lib/returns/report-pdf'
-import { ReturnSourceCombobox } from './ReturnSourceCombobox'
 import { ReturnReportEmailDialog } from './ReturnReportEmailDialog'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
@@ -52,65 +43,76 @@ interface SummaryResponse extends ReturnReportSummary {
     generatedBy: string | null
 }
 
-const CHART_COLORS = ['#e85d04', '#141210', '#059669', '#d97706', '#64748b', '#7c3aed', '#ef4444', '#0891b2']
+const PAGE_SIZE = 10
+
+/** Green once completed, amber while a case still needs attention, red when cancelled. */
+const STATUS_COLOR: Record<string, string> = {
+    return_draft: '#cbd5e1',
+    return_submitted: '#f59e0b',
+    return_received: '#fbbf24',
+    return_processing: '#fcd34d',
+    return_completed: '#10b981',
+    return_cancelled: '#f87171',
+}
 
 const STATUS_BADGE: Record<string, string> = {
     return_draft: 'bg-slate-100 text-slate-700',
-    return_submitted: 'bg-blue-100 text-blue-700',
-    return_received: 'bg-amber-100 text-amber-700',
-    return_processing: 'bg-indigo-100 text-indigo-700',
+    return_submitted: 'bg-amber-100 text-amber-700',
+    return_received: 'bg-amber-100 text-amber-800',
+    return_processing: 'bg-amber-50 text-amber-700',
     return_completed: 'bg-emerald-100 text-emerald-700',
     return_cancelled: 'bg-red-100 text-red-700',
 }
 
-// ── KPI card ────────────────────────────────────────────────────────────────
-
-/**
- * How a change should be coloured: 'neutral' KPIs (volume/value) are shown in
- * muted ink; for 'downIsGood' (overdue) an increase is red; for 'upIsGood'
- * (completion rate) a decrease is red.
- */
-type DeltaSentiment = 'neutral' | 'downIsGood' | 'upIsGood'
-
-function deltaColorClass(delta: KpiDelta, sentiment: DeltaSentiment): string {
-    if (delta.direction === 'flat' || sentiment === 'neutral') return 'text-muted-foreground'
-    const isGood = sentiment === 'downIsGood' ? delta.direction === 'down' : delta.direction === 'up'
-    return isGood ? 'text-emerald-600' : 'text-red-600'
+interface DetailFilters {
+    sourceType: string
+    source: string
+    warehouse: string
+    reason: string
+    status: string
 }
 
-function DeltaLine({ delta, comparisonLabel, sentiment }: { delta: KpiDelta; comparisonLabel: string; sentiment: DeltaSentiment }) {
-    const Icon = delta.direction === 'up' ? ArrowUpRight : delta.direction === 'down' ? ArrowDownRight : Minus
-    return (
-        <div className={cn('flex items-center gap-1 text-xs', deltaColorClass(delta, sentiment))}>
-            <Icon className="h-3 w-3 shrink-0" />
-            <span>{deltaText(delta, comparisonLabel).replace(/^[↑↓]\s*/, '')}</span>
-        </div>
-    )
-}
+const NO_FILTERS: DetailFilters = { sourceType: 'all', source: 'all', warehouse: 'all', reason: 'all', status: 'all' }
 
-function KpiCard({ icon: Icon, iconClass, label, value, delta, comparisonLabel, sentiment }: {
+/** Columns the detailed table can be sorted by. */
+type SortKey = 'return_no' | 'source_name' | 'warehouse_name' | 'status' | 'total_qty' | 'total_value' | 'created_at'
+
+// ── Small building blocks ───────────────────────────────────────────────────
+
+function KpiCard({ icon: Icon, iconClass, label, value, unit, note, noteClass }: {
     icon: any
     iconClass: string
     label: string
     value: string
-    delta: KpiDelta
-    comparisonLabel: string
-    sentiment: DeltaSentiment
+    unit?: string
+    note?: string
+    noteClass?: string
 }) {
     return (
-        <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
-            <div className="flex items-start gap-3">
-                <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', iconClass)}>
-                    <Icon className="h-4.5 w-4.5 h-[18px] w-[18px]" />
+        <div className="rounded-lg sera-sc-panel overflow-hidden p-5">
+            <div className="flex items-start gap-4">
+                <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full', iconClass)}>
+                    <Icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                    <div className="text-xs text-muted-foreground">{label}</div>
-                    <div className="truncate text-xl font-semibold text-foreground">{value}</div>
-                    <DeltaLine delta={delta} comparisonLabel={comparisonLabel} sentiment={sentiment} />
+                    <div className="text-sm text-muted-foreground">{label}</div>
+                    <div className="mt-1 truncate text-[26px] font-semibold leading-tight text-foreground">
+                        {value}
+                        {unit ? <span className="ml-1 text-base font-normal text-muted-foreground">{unit}</span> : null}
+                    </div>
+                    <div className={cn('mt-1 h-4 text-xs', noteClass || 'text-muted-foreground')}>{note || ''}</div>
                 </div>
             </div>
         </div>
     )
+}
+
+function PanelHeading({ children }: { children: React.ReactNode }) {
+    return <h3 className="text-base font-semibold text-foreground">{children}</h3>
+}
+
+function EmptyPanel({ children }: { children: React.ReactNode }) {
+    return <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">{children}</div>
 }
 
 // ── Main view ───────────────────────────────────────────────────────────────
@@ -121,70 +123,54 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
 }) {
     const { toast } = useToast()
     const now = useMemo(() => new Date(), [])
+    const thisYear = now.getFullYear()
+    const thisMonth = now.getMonth() + 1
 
-    // Report period
-    const [mode, setMode] = useState<ReportMode>('monthly')
-    const [year, setYear] = useState(now.getFullYear())
-    const [month, setMonth] = useState(now.getMonth() + 1)
-    const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1)
-    /** null = default (immediately preceding period). */
-    const [cmpOverride, setCmpOverride] = useState<ReportPeriod | null>(null)
+    const [tab, setTab] = useState('overview')
 
-    const period: ReportPeriod = useMemo(() => ({ mode, year, month, quarter }), [mode, year, month, quarter])
-    const comparison: ReportPeriod = useMemo(
-        () => cmpOverride ? { ...cmpOverride, mode } : previousPeriod(period),
-        [cmpOverride, period, mode],
+    // ── Selected month (the one boundary both tabs report on) ───────────────
+    const [year, setYear] = useState(thisYear)
+    const [month, setMonth] = useState(thisMonth)
+    const period: ReportPeriod = useMemo(
+        () => ({ mode: 'monthly', year, month, quarter: Math.floor((month - 1) / 3) + 1 }),
+        [year, month],
     )
+    /** The current month is the newest reportable one — the future holds no returns. */
+    const atCurrentMonth = year === thisYear && month === thisMonth
 
-    // Filters
-    const [filters, setFilters] = useState({ sourceType: 'all', source: 'all', warehouse: 'all', reason: 'all', status: 'all' })
-    const [sourceFilterOrg, setSourceFilterOrg] = useState<OrgRef | null>(null)
+    const stepMonth = (delta: number) => {
+        const next = new Date(year, month - 1 + delta, 1)
+        if (next.getFullYear() > thisYear || (next.getFullYear() === thisYear && next.getMonth() + 1 > thisMonth)) return
+        setYear(next.getFullYear())
+        setMonth(next.getMonth() + 1)
+    }
 
-    // Data
-    const [meta, setMeta] = useState<ReturnMeta | null>(null)
+    // ── Data ────────────────────────────────────────────────────────────────
     const [data, setData] = useState<SummaryResponse | null>(null)
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState<string | null>(null)
 
-    // Action states
+    // ── Export / email state ────────────────────────────────────────────────
     const [exporting, setExporting] = useState(false)
     const [pdfBusy, setPdfBusy] = useState(false)
     const [emailOpen, setEmailOpen] = useState(false)
-    const [showAllReasons, setShowAllReasons] = useState(false)
-    const [showAllSources, setShowAllSources] = useState(false)
 
-    // Detailed table state
+    // ── Detailed Report state ───────────────────────────────────────────────
     const [search, setSearch] = useState('')
-    const [sortKey, setSortKey] = useState<keyof ReportCaseRow>('created_at')
+    const [filters, setFilters] = useState<DetailFilters>(NO_FILTERS)
+    const [draftFilters, setDraftFilters] = useState<DetailFilters>(NO_FILTERS)
+    const [filtersOpen, setFiltersOpen] = useState(false)
+    const [sortKey, setSortKey] = useState<SortKey>('created_at')
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
     const [page, setPage] = useState(1)
-    const PAGE_SIZE = 10
-    const detailRef = useRef<HTMLDivElement>(null)
 
     const queryString = useCallback(() => {
         const p = new URLSearchParams()
-        p.set('mode', mode)
+        p.set('mode', 'monthly')
         p.set('year', String(year))
-        if (mode === 'monthly') p.set('month', String(month))
-        else p.set('quarter', String(quarter))
-        p.set('cmp_year', String(comparison.year))
-        if (mode === 'monthly') p.set('cmp_month', String(comparison.month))
-        else p.set('cmp_quarter', String(comparison.quarter))
-        if (filters.sourceType !== 'all') p.set('source_type', filters.sourceType)
-        if (filters.source !== 'all') p.set('source', filters.source)
-        if (filters.warehouse !== 'all') p.set('warehouse', filters.warehouse)
-        if (filters.reason !== 'all') p.set('reason', filters.reason)
-        if (filters.status !== 'all') p.set('status', filters.status)
+        p.set('month', String(month))
         return p.toString()
-    }, [mode, year, month, quarter, comparison, filters])
-
-    const loadMeta = useCallback(async () => {
-        try {
-            const res = await fetch('/api/returns/meta')
-            const json = await res.json()
-            if (res.ok) setMeta(normalizeReturnMeta(json))
-        } catch { /* non-fatal */ }
-    }, [])
+    }, [year, month])
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -202,38 +188,19 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
         }
     }, [queryString])
 
-    useEffect(() => { loadMeta() }, [loadMeta])
     useEffect(() => { load() }, [load])
 
-    const resetFilters = () => {
-        setFilters({ sourceType: 'all', source: 'all', warehouse: 'all', reason: 'all', status: 'all' })
-        setSourceFilterOrg(null)
-        setCmpOverride(null)
+    // A new month brings a different set of sources, warehouses and reasons, so
+    // the detailed filters start clean rather than pointing at options that are
+    // no longer on offer.
+    useEffect(() => {
         setSearch('')
-    }
+        setFilters(NO_FILTERS)
+        setDraftFilters(NO_FILTERS)
+        setFiltersOpen(false)
+    }, [year, month])
 
-    // ── Period / comparison selectors ───────────────────────────────────────
-
-    const availableYears = data?.availableYears?.length
-        ? data.availableYears
-        : [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
-
-    /** Comparison candidates: the 12 periods immediately before the selected one, plus the same period last year. */
-    const comparisonOptions = useMemo(() => {
-        const options: ReportPeriod[] = []
-        let cursor = previousPeriod(period)
-        for (let i = 0; i < 12; i++) {
-            options.push(cursor)
-            cursor = previousPeriod(cursor)
-        }
-        const lastYear = { ...period, year: period.year - 1 }
-        if (!options.some((o) => periodLabel(o) === periodLabel(lastYear))) options.push(lastYear)
-        return options
-    }, [period])
-
-    const comparisonValue = periodLabel(comparison)
-
-    // ── Exports ─────────────────────────────────────────────────────────────
+    // ── Exports (always the selected month, matching what is on screen) ─────
 
     const exportExcel = async () => {
         setExporting(true)
@@ -295,10 +262,9 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                 '',
                 'Report summary:',
                 `- Total Returns: ${formatCount(k?.totalReturns || 0)}`,
-                `- Total Quantity: ${formatCount(k?.totalQty || 0)}`,
-                `- Total Return Value: ${formatRM(k?.totalValue || 0)}`,
-                `- Completed Returns: ${formatCount(k?.completed || 0)}`,
-                `- Overdue Returns: ${formatCount(k?.overdue || 0)}`,
+                `- Total Units: ${formatCount(k?.totalQty || 0)} pcs`,
+                `- Return Value: ${formatRM(k?.totalValue || 0)}`,
+                `- Open Cases: ${formatCount(k?.open || 0)}`,
                 '',
                 `This report was generated from Serapod2U on ${generatedDate}.`,
                 '',
@@ -308,20 +274,63 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
         }
     }, [data, period])
 
-    // ── Detailed table derivation ───────────────────────────────────────────
+    // ── Overview derivations ────────────────────────────────────────────────
+
+    const reasonGroups = useMemo(() => groupReasonsForDisplay(data?.byReason || [], 4), [data])
+    const maxReasonPct = reasonGroups.reduce((m, r) => Math.max(m, r.pct), 0)
+    const topProducts = useMemo(() => (data?.byProduct || []).slice(0, 5), [data])
+    const keyInsight = useMemo(
+        () => data ? buildKeyInsight(data.kpis, reasonGroups, MONTH_NAMES[period.month - 1]) : null,
+        [data, reasonGroups, period.month],
+    )
+    const statusSlices = data?.byStatus || []
+    const activeStatuses = statusSlices.filter((s) => s.cases > 0)
+    const quietStatuses = statusSlices.filter((s) => s.cases === 0)
+
+    // ── Detailed Report derivations ─────────────────────────────────────────
+
+    /** Filter options come from the month on screen, so nothing offered returns nothing. */
+    const sourceOptions = useMemo(() => {
+        const map = new Map<string, string>()
+        for (const r of data?.cases || []) {
+            if (r.source_id && r.source_name) map.set(r.source_id, r.source_name)
+        }
+        return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+    }, [data])
+
+    const warehouseOptions = useMemo(() => {
+        const map = new Map<string, string>()
+        for (const r of data?.cases || []) {
+            map.set(r.warehouse_id || 'unassigned', r.warehouse_name || 'Unassigned')
+        }
+        return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+    }, [data])
+
+    const reasonOptions = useMemo(
+        () => (data?.byReason || []).filter((r) => r.reason !== 'unspecified').map((r) => ({ code: r.reason, label: r.label })),
+        [data],
+    )
+
+    const statusOptions = useMemo(() => statusSlices.map((s) => ({ status: s.status, label: s.label })), [statusSlices])
 
     const detailedRows = useMemo(() => {
         let rows = data?.cases || []
+        if (filters.sourceType !== 'all') rows = rows.filter((r) => r.return_source_type === filters.sourceType)
+        if (filters.source !== 'all') rows = rows.filter((r) => r.source_id === filters.source)
+        if (filters.warehouse !== 'all') rows = rows.filter((r) => (r.warehouse_id || 'unassigned') === filters.warehouse)
+        if (filters.reason !== 'all') rows = rows.filter((r) => (r.reason_codes || []).includes(filters.reason))
+        if (filters.status !== 'all') rows = rows.filter((r) => r.status === filters.status)
+
         const q = search.trim().toLowerCase()
         if (q) {
             rows = rows.filter((r) =>
                 r.return_no.toLowerCase().includes(q)
                 || (r.source_name || '').toLowerCase().includes(q)
                 || (r.source_code || '').toLowerCase().includes(q)
-                || (r.warehouse_name || '').toLowerCase().includes(q)
-                || (RETURN_STATUS_LABELS[r.status] || '').toLowerCase().includes(q),
+                || (r.warehouse_name || '').toLowerCase().includes(q),
             )
         }
+
         const dir = sortDir === 'asc' ? 1 : -1
         return [...rows].sort((a, b) => {
             const av = a[sortKey]
@@ -329,13 +338,20 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
             if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
             return String(av ?? '').localeCompare(String(bv ?? '')) * dir
         })
-    }, [data, search, sortKey, sortDir])
+    }, [data, filters, search, sortKey, sortDir])
 
+    const activeFilterCount = Object.values(filters).filter((v) => v !== 'all').length
     const pageCount = Math.max(1, Math.ceil(detailedRows.length / PAGE_SIZE))
     const pageRows = detailedRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-    useEffect(() => { setPage(1) }, [search, sortKey, sortDir])
+    /** At most five numbered buttons, centred on the current page. */
+    const pageWindow = useMemo(() => {
+        const first = Math.max(1, Math.min(page - 2, pageCount - 4))
+        const last = Math.min(pageCount, first + 4)
+        return Array.from({ length: last - first + 1 }, (_, i) => first + i)
+    }, [page, pageCount])
+    useEffect(() => { setPage(1) }, [search, filters, sortKey, sortDir])
 
-    const toggleSort = (key: keyof ReportCaseRow) => {
+    const toggleSort = (key: SortKey) => {
         if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
         else { setSortKey(key); setSortDir('desc') }
     }
@@ -346,17 +362,45 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
         onViewChange('return-product')
     }
 
-    const scrollToDetail = () => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const openFilters = () => {
+        setDraftFilters(filters)
+        setFiltersOpen((o) => !o)
+    }
 
-    // ── Render helpers ──────────────────────────────────────────────────────
+    const applyFilters = () => {
+        setFilters(draftFilters)
+        setFiltersOpen(false)
+    }
 
-    const comparisonLabel = data?.comparisonLabel || periodLabel(comparison)
-    const noData = !loading && !loadError && (data?.kpis.totalReturns || 0) === 0
+    const clearFilters = () => {
+        setFilters(NO_FILTERS)
+        setDraftFilters(NO_FILTERS)
+    }
+
+    /** The always-visible status dropdown edits the applied filter directly. */
+    const setStatusFilter = (status: string) => {
+        setFilters((f) => ({ ...f, status }))
+        setDraftFilters((f) => ({ ...f, status }))
+    }
+
+    // ── Render ──────────────────────────────────────────────────────────────
+
     const busy = loading || !data
+    const monthLabel = periodLabel(period)
 
-    const SortHeader = ({ label, k, align = 'left' }: { label: string; k: keyof ReportCaseRow; align?: 'left' | 'right' }) => (
+    /** Months the picker can jump to: every month up to and including this one. */
+    const monthOptions = useMemo(() => {
+        const out: { year: number; month: number; label: string }[] = []
+        for (let i = 0; i < 24; i++) {
+            const d = new Date(thisYear, thisMonth - 1 - i, 1)
+            out.push({ year: d.getFullYear(), month: d.getMonth() + 1, label: periodLabel({ mode: 'monthly', year: d.getFullYear(), month: d.getMonth() + 1, quarter: 1 }) })
+        }
+        return out
+    }, [thisYear, thisMonth])
+
+    const SortHeader = ({ label, k, align = 'left' }: { label: string; k: SortKey; align?: 'left' | 'right' }) => (
         <th
-            className={cn('cursor-pointer select-none px-3 py-2 font-medium hover:text-foreground', align === 'right' && 'text-right')}
+            className={cn('cursor-pointer select-none whitespace-nowrap px-4 py-3 font-medium hover:text-foreground', align === 'right' && 'text-right')}
             onClick={() => toggleSort(k)}
         >
             {label}{sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -364,528 +408,420 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
     )
 
     return (
-        <div className="sera-sc-page space-y-4">
+        <div className="sera-sc-page space-y-5">
             <SupplyChainPageHeader
                 eyebrow="Quality · Returns"
                 title="Return Product Reports"
-                description={`${mode === 'monthly' ? 'Monthly' : 'Quarterly'} overview of return product performance. Period: ${periodLabel(period)}`}
+                description="Monthly overview of product returns"
             />
 
-            <div className="flex flex-wrap items-center gap-2">
-                    <Tabs value={mode} onValueChange={(v) => { setMode(v as ReportMode); setCmpOverride(null) }}>
-                        <TabsList className="h-9">
-                            <TabsTrigger value="monthly" className="text-xs">Monthly</TabsTrigger>
-                            <TabsTrigger value="quarterly" className="text-xs">Quarterly</TabsTrigger>
-                        </TabsList>
-                    </Tabs>
-                    {mode === 'monthly' ? (
-                        <Select value={String(month)} onValueChange={(v) => { setMonth(Number(v)); setCmpOverride(null) }}>
-                            <SelectTrigger className="h-9 w-[130px]"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                {MONTH_NAMES.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    ) : (
-                        <Select value={String(quarter)} onValueChange={(v) => { setQuarter(Number(v)); setCmpOverride(null) }}>
-                            <SelectTrigger className="h-9 w-[150px]"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="1">Q1 (Jan–Mar)</SelectItem>
-                                <SelectItem value="2">Q2 (Apr–Jun)</SelectItem>
-                                <SelectItem value="3">Q3 (Jul–Sep)</SelectItem>
-                                <SelectItem value="4">Q4 (Oct–Dec)</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    )}
-                    <Select value={String(year)} onValueChange={(v) => { setYear(Number(v)); setCmpOverride(null) }}>
-                        <SelectTrigger className="h-9 w-[92px]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            {availableYears.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={load} disabled={loading} title="Refresh">
-                        <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-                    </Button>
-                    <Button variant="outline" className="h-9 gap-1.5" onClick={exportExcel} disabled={exporting || busy}>
-                        {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export Excel
+            {/* Month selector + the single export entry point — shared by both tabs */}
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" className="h-10 w-10" onClick={() => stepMonth(-1)} title="Previous month">
+                        <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline" className="h-9 gap-1.5" disabled={pdfBusy || busy}>
-                                {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                                PDF <ChevronDown className="h-3 w-3" />
-                            </Button>
+                            <Button variant="outline" className="h-10 w-[170px] justify-center font-medium">{monthLabel}</Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handlePdf('preview')} className="gap-2"><Eye className="h-4 w-4" /> Preview PDF</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handlePdf('download')} className="gap-2"><Download className="h-4 w-4" /> Download PDF</DropdownMenuItem>
+                        <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+                            {monthOptions.map((o) => (
+                                <DropdownMenuItem
+                                    key={o.label}
+                                    onClick={() => { setYear(o.year); setMonth(o.month) }}
+                                    className={cn(o.year === year && o.month === month && 'font-semibold text-[var(--sera-orange)]')}
+                                >
+                                    {o.label}
+                                </DropdownMenuItem>
+                            ))}
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button className="h-9 gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={() => setEmailOpen(true)} disabled={busy}>
-                        <Mail className="h-4 w-4" /> Email Report
+                    <Button
+                        variant="outline" size="icon" className="h-10 w-10"
+                        onClick={() => stepMonth(1)} disabled={atCurrentMonth}
+                        title={atCurrentMonth ? 'The current month is the latest report' : 'Next month'}
+                    >
+                        <ChevronRight className="h-4 w-4" />
                     </Button>
+                </div>
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="h-10 gap-2" disabled={busy || exporting || pdfBusy}>
+                            {exporting || pdfBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            Export Report <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={exportExcel} className="gap-2">
+                            <FileSpreadsheet className="h-4 w-4" /> Export to Excel
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handlePdf('preview')} className="gap-2">
+                            <Eye className="h-4 w-4" /> Preview PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handlePdf('download')} className="gap-2">
+                            <FileText className="h-4 w-4" /> Download PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setEmailOpen(true)} className="gap-2">
+                            <Mail className="h-4 w-4" /> Email Report
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
-            {/* Filters */}
-            <div className="rounded-lg sera-sc-panel overflow-hidden p-3">
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-                    <div className="space-y-1">
-                        <div className="text-[11px] font-medium text-muted-foreground">Source Type</div>
-                        <Select
-                            value={filters.sourceType}
-                            onValueChange={(v) => { setSourceFilterOrg(null); setFilters({ ...filters, sourceType: v, source: 'all' }) }}
-                        >
-                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Types</SelectItem>
-                                <SelectItem value="shop">Shop</SelectItem>
-                                <SelectItem value="distributor">Distributor</SelectItem>
-                            </SelectContent>
-                        </Select>
+            <Tabs value={tab} onValueChange={setTab}>
+                <TabsList className="h-auto w-full justify-start gap-6 rounded-none border-b border-border bg-transparent p-0">
+                    <TabsTrigger
+                        value="overview"
+                        className="rounded-none border-b-2 border-transparent bg-transparent px-1 pb-3 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-[var(--sera-orange)] data-[state=active]:bg-transparent data-[state=active]:text-[var(--sera-orange)] data-[state=active]:shadow-none"
+                    >
+                        Overview
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="detailed"
+                        className="rounded-none border-b-2 border-transparent bg-transparent px-1 pb-3 pt-0 text-sm font-medium text-muted-foreground shadow-none data-[state=active]:border-[var(--sera-orange)] data-[state=active]:bg-transparent data-[state=active]:text-[var(--sera-orange)] data-[state=active]:shadow-none"
+                    >
+                        Detailed Report
+                    </TabsTrigger>
+                </TabsList>
+
+                {loadError ? (
+                    <div className="mt-5 rounded-lg border border-destructive/40 bg-destructive/5 p-8 text-center">
+                        <p className="text-sm text-destructive">{loadError}</p>
+                        <Button variant="outline" className="mt-3" onClick={load}>Try again</Button>
                     </div>
-                    <div className="space-y-1">
-                        <div className="text-[11px] font-medium text-muted-foreground">Return From</div>
-                        {filters.sourceType === 'shop' || filters.sourceType === 'distributor' ? (
-                            <ReturnSourceCombobox
-                                sourceType={filters.sourceType as ReturnSourceType}
-                                value={filters.source !== 'all' ? filters.source : null}
-                                selectedOrg={sourceFilterOrg}
-                                onSelect={(org) => { setSourceFilterOrg(org); setFilters((f) => ({ ...f, source: org.id })) }}
-                            />
-                        ) : (
-                            <Input className="h-9" value="All sources" readOnly disabled title="Choose a source type to filter by organization" />
-                        )}
-                    </div>
-                    <div className="space-y-1">
-                        <div className="text-[11px] font-medium text-muted-foreground">Warehouse</div>
-                        <Select value={filters.warehouse} onValueChange={(v) => setFilters({ ...filters, warehouse: v })}>
-                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Warehouses</SelectItem>
-                                {(meta?.warehouses || []).map((w) => <SelectItem key={w.id} value={w.id}>{w.org_name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-1">
-                        <div className="text-[11px] font-medium text-muted-foreground">Return Reason</div>
-                        <Select value={filters.reason} onValueChange={(v) => setFilters({ ...filters, reason: v })}>
-                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Reasons</SelectItem>
-                                {(meta?.reasons || []).map((r) => <SelectItem key={r.code} value={r.code}>{r.label}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-1">
-                        <div className="text-[11px] font-medium text-muted-foreground">Return Status</div>
-                        <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v })}>
-                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Status</SelectItem>
-                                {Object.entries(RETURN_STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-1">
-                        <div className="text-[11px] font-medium text-muted-foreground">Compare With</div>
-                        <div className="flex gap-2">
-                            <Select
-                                value={comparisonValue}
-                                onValueChange={(v) => {
-                                    const match = comparisonOptions.find((o) => periodLabel(o) === v)
-                                    setCmpOverride(match || null)
-                                }}
-                            >
-                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    {comparisonOptions.map((o) => (
-                                        <SelectItem key={periodLabel(o)} value={periodLabel(o)}>{periodLabel(o)}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <Button variant="outline" className="h-9 shrink-0 gap-1.5" onClick={resetFilters} title="Reset filters">
-                                <RotateCcw className="h-3.5 w-3.5" /> Reset
-                            </Button>
+                ) : busy ? (
+                    <div className="mt-5 space-y-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 animate-pulse rounded-lg border border-border bg-muted/40" />)}
                         </div>
+                        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted/40" />
                     </div>
-                </div>
-            </div>
-
-            {/* Error / loading */}
-            {loadError ? (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-6 text-center">
-                    <p className="text-sm text-destructive">{loadError}</p>
-                    <Button variant="outline" className="mt-3" onClick={load}>Try again</Button>
-                </div>
-            ) : busy ? (
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-                        {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-muted/40" />)}
-                    </div>
-                    <div className="h-72 animate-pulse rounded-lg border border-border bg-muted/40" />
-                </div>
-            ) : data && (
-                <>
-                    {noData && (
-                        <div className="rounded-lg border border-border bg-muted/30 p-4 text-center text-sm text-muted-foreground">
-                            No Return Product activity was recorded for {data.periodLabel}. KPIs are shown as zero; exports will state that no activity was recorded.
-                        </div>
-                    )}
-
-                    {/* KPI cards */}
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-                        <KpiCard icon={Package} iconClass="bg-violet-100 text-violet-600" label="Total Returns"
-                            value={formatCount(data.kpis.totalReturns)} delta={data.deltas.totalReturns} comparisonLabel={comparisonLabel} sentiment="neutral" />
-                        <KpiCard icon={Boxes} iconClass="bg-blue-100 text-blue-600" label="Total Quantity"
-                            value={formatCount(data.kpis.totalQty)} delta={data.deltas.totalQty} comparisonLabel={comparisonLabel} sentiment="neutral" />
-                        <KpiCard icon={Banknote} iconClass="bg-emerald-100 text-emerald-600" label="Total Value"
-                            value={formatRM(data.kpis.totalValue)} delta={data.deltas.totalValue} comparisonLabel={comparisonLabel} sentiment="neutral" />
-                        <KpiCard icon={TrendingUp} iconClass="bg-orange-100 text-orange-600" label="Average Return Value"
-                            value={formatRM(data.kpis.avgValue)} delta={data.deltas.avgValue} comparisonLabel={comparisonLabel} sentiment="neutral" />
-                        <KpiCard icon={Clock} iconClass="bg-red-100 text-red-600" label="Overdue Returns"
-                            value={formatCount(data.kpis.overdue)} delta={data.deltas.overdue} comparisonLabel={comparisonLabel} sentiment="downIsGood" />
-                        <KpiCard icon={CheckCircle2} iconClass="bg-teal-100 text-teal-600" label="Completion Rate"
-                            value={`${data.kpis.completionRate.toFixed(1)}%`} delta={data.deltas.completionRate} comparisonLabel={comparisonLabel} sentiment="upIsGood" />
-                    </div>
-
-                    {/* Charts row */}
-                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-                        {/* Trend */}
-                        <div className="rounded-lg sera-sc-panel overflow-hidden p-4 xl:col-span-1">
-                            <div className="mb-2 flex items-center justify-between">
-                                <h3 className="text-sm font-semibold text-foreground">Returns Trend</h3>
-                                <span className="text-xs text-muted-foreground">{mode === 'monthly' ? `Monthly · ${year}` : 'Last 8 quarters'}</span>
+                ) : data && (
+                    <>
+                        {/* ── Overview ───────────────────────────────────── */}
+                        <TabsContent value="overview" className="mt-5 space-y-5">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                <KpiCard
+                                    icon={Package} iconClass="bg-violet-100 text-violet-600"
+                                    label="Total Returns" value={formatCount(data.kpis.totalReturns)}
+                                    note="return cases"
+                                />
+                                <KpiCard
+                                    icon={Boxes} iconClass="bg-blue-100 text-blue-600"
+                                    label="Total Units" value={formatCount(data.kpis.totalQty)} unit="pcs"
+                                />
+                                <KpiCard
+                                    icon={Banknote} iconClass="bg-emerald-100 text-emerald-600"
+                                    label="Return Value" value={formatRMWhole(data.kpis.totalValue)}
+                                />
+                                <KpiCard
+                                    icon={AlertCircle} iconClass="bg-amber-100 text-amber-600"
+                                    label="Open Cases" value={formatCount(data.kpis.open)}
+                                    note={data.kpis.open > 0 ? 'Requires attention' : undefined}
+                                    noteClass="text-amber-600"
+                                />
                             </div>
-                            <div className="h-60">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={data.trend} margin={{ top: 5, right: 0, bottom: 0, left: -14 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                        <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-                                        <YAxis yAxisId="qty" tick={{ fontSize: 10 }} allowDecimals={false} />
-                                        <YAxis yAxisId="value" orientation="right" tick={{ fontSize: 10 }} width={44} />
-                                        <ChartTooltip
-                                            formatter={(v: any, name: any) => name === 'Value (RM)' ? [formatRM(Number(v)), name] : [formatCount(Number(v)), name]}
-                                        />
-                                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                                        <Area yAxisId="qty" type="monotone" dataKey="qty" name="Quantity" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.12} strokeWidth={2} />
-                                        <Line yAxisId="value" type="monotone" dataKey="value" name="Value (RM)" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
 
-                        {/* Reasons donut */}
-                        <div className="rounded-lg sera-sc-panel overflow-hidden p-4 xl:col-span-1">
-                            <div className="mb-2 flex items-center justify-between">
-                                <h3 className="text-sm font-semibold text-foreground">Returns by Reason</h3>
-                                {data.byReason.length > 5 && (
-                                    <button className="text-xs font-medium text-primary hover:underline" onClick={() => setShowAllReasons((s) => !s)}>
-                                        {showAllReasons ? 'Show top 5' : 'View all'}
-                                    </button>
-                                )}
-                            </div>
-                            {data.byReason.length === 0 ? (
-                                <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">No data for this period.</div>
-                            ) : (
-                                <div className="flex h-60 items-center gap-2">
-                                    <div className="h-full w-1/2 min-w-0">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={data.byReason.slice(0, showAllReasons ? undefined : 5) as any[]}
-                                                    dataKey="value" nameKey="label" innerRadius="55%" outerRadius="85%" paddingAngle={2}
-                                                >
-                                                    {data.byReason.slice(0, showAllReasons ? undefined : 5).map((_, i) => (
-                                                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <ChartTooltip formatter={(v: any, name: any) => [formatRM(Number(v)), name]} />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <div className="max-h-full w-1/2 space-y-1.5 overflow-y-auto pr-1 text-xs">
-                                        {data.byReason.slice(0, showAllReasons ? undefined : 5).map((r, i) => (
-                                            <div key={r.reason} className="flex items-start gap-1.5">
-                                                <span className="mt-1 h-2 w-2 shrink-0 rounded-sm" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                                                <div className="min-w-0">
-                                                    <div className="truncate font-medium text-foreground">{r.label}</div>
-                                                    <div className="text-muted-foreground">{r.pct.toFixed(1)}% ({formatRM(r.value)})</div>
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                {/* Returns by Reason */}
+                                <div className="rounded-lg sera-sc-panel overflow-hidden p-5">
+                                    <PanelHeading>Returns by Reason</PanelHeading>
+                                    {reasonGroups.length === 0 ? (
+                                        <EmptyPanel>No returns recorded for {data.periodLabel}.</EmptyPanel>
+                                    ) : (
+                                        <div className="mt-5 space-y-4">
+                                            {reasonGroups.map((r) => (
+                                                <div key={r.reason} className="flex items-center gap-4">
+                                                    <div className="w-[132px] shrink-0 truncate text-sm text-foreground" title={r.label}>{r.label}</div>
+                                                    <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+                                                        <div
+                                                            className="h-full rounded-full bg-[var(--sera-orange)]"
+                                                            style={{ width: `${maxReasonPct > 0 ? Math.max(2, (r.pct / maxReasonPct) * 100) : 0}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="w-12 shrink-0 text-right text-sm tabular-nums text-foreground">{Math.round(r.pct)}%</div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                            <p className="pt-1 text-xs text-muted-foreground">Share of {data.periodLabel} return value.</p>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Sources top 5 */}
-                        <div className="rounded-lg sera-sc-panel overflow-hidden p-4 xl:col-span-1">
-                            <div className="mb-2 flex items-center justify-between">
-                                <h3 className="text-sm font-semibold text-foreground">Returns by Source (Top 5)</h3>
-                                {data.bySource.length > 5 && (
-                                    <button className="text-xs font-medium text-primary hover:underline" onClick={() => setShowAllSources((s) => !s)}>
-                                        {showAllSources ? 'Show top 5' : 'View all'}
-                                    </button>
+                                {/* Top Returned Products */}
+                                <div className="rounded-lg sera-sc-panel overflow-hidden p-5">
+                                    <PanelHeading>Top Returned Products</PanelHeading>
+                                    {topProducts.length === 0 ? (
+                                        <EmptyPanel>No returns recorded for {data.periodLabel}.</EmptyPanel>
+                                    ) : (
+                                        <table className="mt-4 w-full table-fixed text-sm">
+                                            <thead className="text-left text-xs text-muted-foreground">
+                                                <tr className="border-b border-border">
+                                                    <th className="py-2 font-medium">Product</th>
+                                                    <th className="w-20 py-2 text-right font-medium">Units</th>
+                                                    <th className="w-28 py-2 text-right font-medium">Value</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border">
+                                                {topProducts.map((p) => (
+                                                    <tr key={p.key}>
+                                                        <td className="truncate py-2.5 pr-3 text-foreground" title={p.name}>{p.name}</td>
+                                                        <td className="py-2.5 text-right tabular-nums">{formatCount(p.qty)}</td>
+                                                        <td className="whitespace-nowrap py-2.5 text-right tabular-nums">{formatRMWhole(p.value)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Status Breakdown */}
+                            <div className="rounded-lg sera-sc-panel overflow-hidden p-5">
+                                <PanelHeading>Status Breakdown</PanelHeading>
+                                {activeStatuses.length === 0 ? (
+                                    <p className="mt-4 text-sm text-muted-foreground">No returns recorded for {data.periodLabel}.</p>
+                                ) : (
+                                    <>
+                                        <div className="mt-5 flex h-2.5 w-full gap-1">
+                                            {activeStatuses.map((s) => (
+                                                <div
+                                                    key={s.status}
+                                                    className="h-full rounded-full"
+                                                    style={{ flexGrow: s.cases, flexBasis: 0, background: STATUS_COLOR[s.status] || STATUS_COLOR.return_draft }}
+                                                    title={`${s.label}: ${formatCount(s.cases)}`}
+                                                />
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-5">
+                                            {activeStatuses.map((s) => (
+                                                <div key={s.status} className="flex items-start gap-2">
+                                                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[s.status] || STATUS_COLOR.return_draft }} />
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-sm text-muted-foreground">{s.label.replace('Return ', '')}</div>
+                                                        <div className="text-lg font-semibold leading-tight text-foreground">{formatCount(s.cases)}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {quietStatuses.length > 0 && (
+                                            <p className="mt-3 text-xs text-muted-foreground">
+                                                No cases: {quietStatuses.map((s) => s.label.replace('Return ', '')).join(', ')}.
+                                            </p>
+                                        )}
+                                    </>
                                 )}
                             </div>
-                            {data.bySource.length === 0 ? (
-                                <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">No data for this period.</div>
-                            ) : (
-                                <div className="h-60 overflow-y-auto">
-                                    <ResponsiveContainer width="100%" height={Math.max(230, (showAllSources ? data.bySource.length : Math.min(5, data.bySource.length)) * 44)}>
-                                        <BarChart
-                                            layout="vertical"
-                                            data={data.bySource.slice(0, showAllSources ? undefined : 5).map((s) => ({
-                                                ...s,
-                                                display: `${s.name}${s.sourceType === 'distributor' ? ' (Dist)' : ''}`,
-                                                pctLabel: `${s.cases} (${s.pct.toFixed(1)}%)`,
-                                            }))}
-                                            margin={{ top: 0, right: 56, bottom: 0, left: 8 }}
-                                        >
-                                            <XAxis type="number" hide domain={[0, 'dataMax']} allowDecimals={false} />
-                                            <YAxis type="category" dataKey="display" width={118} tick={{ fontSize: 10 }} />
-                                            <ChartTooltip formatter={(v: any) => [formatCount(Number(v)), 'Returns']} />
-                                            <Bar dataKey="cases" fill="#3b82f6" radius={[0, 3, 3, 0]} barSize={16}>
-                                                <LabelList dataKey="pctLabel" position="right" style={{ fontSize: 10, fill: '#64748b' }} />
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
+
+                            {/* One calculated insight, or nothing at all */}
+                            {keyInsight && (
+                                <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-5">
+                                    <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                                    <p className="text-sm text-foreground">
+                                        <span className="font-semibold">Key insight:</span> {keyInsight}
+                                    </p>
                                 </div>
                             )}
-                        </div>
-                    </div>
+                        </TabsContent>
 
-                    {/* Status breakdown strip */}
-                    <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
-                        <h3 className="mb-3 text-sm font-semibold text-foreground">Status Breakdown</h3>
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-                            {data.byStatus.map((s) => {
-                                const pct = data.kpis.totalReturns > 0 ? (s.cases / data.kpis.totalReturns) * 100 : 0
-                                return (
-                                    <div key={s.status}>
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="text-muted-foreground">{s.label}</span>
-                                            <span className="font-semibold text-foreground">{s.cases}</span>
+                        {/* ── Detailed Report ────────────────────────────── */}
+                        <TabsContent value="detailed" className="mt-5 space-y-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search return no., shop or distributor"
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        className="h-11 pl-10"
+                                    />
+                                </div>
+                                <Button variant="outline" className="h-11 gap-2" onClick={openFilters}>
+                                    <SlidersHorizontal className="h-4 w-4" /> More Filters
+                                    <span className={cn(
+                                        'ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-medium',
+                                        activeFilterCount > 0 ? 'bg-[var(--sera-orange)] text-white' : 'bg-muted text-muted-foreground',
+                                    )}>
+                                        {activeFilterCount}
+                                    </span>
+                                </Button>
+                                <Select value={filters.status} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="h-11 lg:w-[190px]"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Statuses</SelectItem>
+                                        {statusOptions.map((s) => <SelectItem key={s.status} value={s.status}>{s.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {filtersOpen && (
+                                <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                                        <div className="space-y-1.5">
+                                            <div className="text-xs font-medium text-muted-foreground">Source Type</div>
+                                            <Select value={draftFilters.sourceType} onValueChange={(v) => setDraftFilters((f) => ({ ...f, sourceType: v }))}>
+                                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Types</SelectItem>
+                                                    <SelectItem value="shop">Shop</SelectItem>
+                                                    <SelectItem value="distributor">Distributor</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-                                            <div className="h-full rounded-full bg-primary/70" style={{ width: `${pct}%` }} />
+                                        <div className="space-y-1.5">
+                                            <div className="text-xs font-medium text-muted-foreground">Return From</div>
+                                            <Select value={draftFilters.source} onValueChange={(v) => setDraftFilters((f) => ({ ...f, source: v }))}>
+                                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Sources</SelectItem>
+                                                    {sourceOptions.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="text-xs font-medium text-muted-foreground">Warehouse</div>
+                                            <Select value={draftFilters.warehouse} onValueChange={(v) => setDraftFilters((f) => ({ ...f, warehouse: v }))}>
+                                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Warehouses</SelectItem>
+                                                    {warehouseOptions.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="text-xs font-medium text-muted-foreground">Return Reason</div>
+                                            <Select value={draftFilters.reason} onValueChange={(v) => setDraftFilters((f) => ({ ...f, reason: v }))}>
+                                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Reasons</SelectItem>
+                                                    {reasonOptions.map((o) => <SelectItem key={o.code} value={o.code}>{o.label}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <div className="text-xs font-medium text-muted-foreground">Status</div>
+                                            <Select value={draftFilters.status} onValueChange={(v) => setDraftFilters((f) => ({ ...f, status: v }))}>
+                                                <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All Statuses</SelectItem>
+                                                    {statusOptions.map((s) => <SelectItem key={s.status} value={s.status}>{s.label}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-
-                    {/* Tables row */}
-                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-                        {/* Warehouses */}
-                        <div className="rounded-lg sera-sc-panel overflow-hidden">
-                            <div className="border-b border-border px-4 py-3">
-                                <h3 className="text-sm font-semibold text-foreground">Returns by Warehouse</h3>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="text-left text-[11px] uppercase text-muted-foreground">
-                                        <tr>
-                                            <th className="px-4 py-2 font-medium">Warehouse</th>
-                                            <th className="px-2 py-2 text-right font-medium">Cases</th>
-                                            <th className="px-2 py-2 text-right font-medium">Qty</th>
-                                            <th className="px-2 py-2 text-right font-medium">Value</th>
-                                            <th className="px-4 py-2 text-right font-medium">%</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {data.byWarehouse.length === 0 ? (
-                                            <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No data for this period.</td></tr>
-                                        ) : data.byWarehouse.map((w) => (
-                                            <tr key={w.id}>
-                                                <td className="max-w-[180px] truncate px-4 py-2" title={w.name}>{w.name}</td>
-                                                <td className="px-2 py-2 text-right">{formatCount(w.cases)}</td>
-                                                <td className="px-2 py-2 text-right">{formatCount(w.qty)}</td>
-                                                <td className="whitespace-nowrap px-2 py-2 text-right">{formatRM(w.value)}</td>
-                                                <td className="px-4 py-2 text-right text-muted-foreground">{w.pct.toFixed(1)}%</td>
-                                            </tr>
-                                        ))}
-                                        {data.byWarehouse.length > 0 && (
-                                            <tr className="font-semibold">
-                                                <td className="px-4 py-2">Total</td>
-                                                <td className="px-2 py-2 text-right">{formatCount(data.kpis.totalReturns)}</td>
-                                                <td className="px-2 py-2 text-right">{formatCount(data.kpis.totalQty)}</td>
-                                                <td className="whitespace-nowrap px-2 py-2 text-right">{formatRM(data.kpis.totalValue)}</td>
-                                                <td className="px-4 py-2" />
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Products top 5 */}
-                        <div className="rounded-lg sera-sc-panel overflow-hidden">
-                            <div className="border-b border-border px-4 py-3">
-                                <h3 className="text-sm font-semibold text-foreground">Returns by Product (Top 5)</h3>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="text-left text-[11px] uppercase text-muted-foreground">
-                                        <tr>
-                                            <th className="px-4 py-2 font-medium">Product</th>
-                                            <th className="px-2 py-2 text-right font-medium">Qty</th>
-                                            <th className="px-2 py-2 text-right font-medium">Value</th>
-                                            <th className="px-4 py-2 font-medium">Main Reason</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {data.byProduct.length === 0 ? (
-                                            <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">No data for this period.</td></tr>
-                                        ) : data.byProduct.slice(0, 5).map((p) => (
-                                            <tr key={p.key}>
-                                                <td className="max-w-[200px] truncate px-4 py-2" title={p.name}>{p.name}</td>
-                                                <td className="px-2 py-2 text-right">{formatCount(p.qty)}</td>
-                                                <td className="whitespace-nowrap px-2 py-2 text-right">{formatRM(p.value)}</td>
-                                                <td className="max-w-[110px] truncate px-4 py-2 text-muted-foreground" title={p.topReason || undefined}>{p.topReason || '—'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Recent returns */}
-                        <div className="rounded-lg sera-sc-panel overflow-hidden">
-                            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                                <h3 className="text-sm font-semibold text-foreground">Recent Returns</h3>
-                                <button className="text-xs font-medium text-primary hover:underline" onClick={scrollToDetail}>View all returns</button>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="text-left text-[11px] uppercase text-muted-foreground">
-                                        <tr>
-                                            <th className="px-4 py-2 font-medium">Return No</th>
-                                            <th className="px-2 py-2 font-medium">From</th>
-                                            <th className="px-2 py-2 text-right font-medium">Qty</th>
-                                            <th className="px-2 py-2 text-right font-medium">Value</th>
-                                            <th className="px-4 py-2 font-medium">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-border">
-                                        {data.recent.length === 0 ? (
-                                            <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No data for this period.</td></tr>
-                                        ) : data.recent.slice(0, 6).map((r) => (
-                                            <tr key={r.id} className={cn(onViewChange && 'cursor-pointer hover:bg-accent/50')} onClick={() => openCase(r.id)}>
-                                                <td className="px-4 py-2 font-medium text-foreground">{r.return_no}</td>
-                                                <td className="max-w-[130px] truncate px-2 py-2" title={r.source_name || undefined}>{r.source_name || '—'}</td>
-                                                <td className="px-2 py-2 text-right">{formatCount(r.total_qty)}</td>
-                                                <td className="whitespace-nowrap px-2 py-2 text-right">{formatRM(r.total_value)}</td>
-                                                <td className="px-4 py-2">
-                                                    <span className={cn('inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_BADGE[r.status] || STATUS_BADGE.return_draft)}>
-                                                        {(RETURN_STATUS_LABELS[r.status] || r.status).replace('Return ', '')}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Key insights */}
-                    <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
-                        <div className="mb-2 flex items-center gap-2">
-                            <Lightbulb className="h-4 w-4 text-amber-500" />
-                            <h3 className="text-sm font-semibold text-foreground">Key Insights</h3>
-                            <span className="text-xs text-muted-foreground">· {data.periodLabel} vs {comparisonLabel}</span>
-                        </div>
-                        <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm text-muted-foreground md:grid-cols-2">
-                            {data.insights.map((insight, i) => (
-                                <li key={i} className="flex gap-2"><span className="text-primary">•</span><span>{insight}</span></li>
-                            ))}
-                        </ul>
-                    </div>
-
-                    {/* Detailed report */}
-                    <div ref={detailRef} className="scroll-mt-4 rounded-lg sera-sc-panel overflow-hidden">
-                        <div className="flex flex-col gap-2 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <h3 className="text-sm font-semibold text-foreground">Detailed Report</h3>
-                                <p className="text-xs text-muted-foreground">{detailedRows.length} return case(s) in {data.periodLabel} matching the current filters.</p>
-                            </div>
-                            <div className="relative md:w-72">
-                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input placeholder="Search return no / source / warehouse" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8" />
-                            </div>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                                    <tr>
-                                        <SortHeader label="Return No" k="return_no" />
-                                        <th className="px-3 py-2 font-medium">Source Type</th>
-                                        <SortHeader label="Return From" k="source_name" />
-                                        <SortHeader label="Warehouse" k="warehouse_name" />
-                                        <SortHeader label="Status" k="status" />
-                                        <SortHeader label="Total Qty" k="total_qty" align="right" />
-                                        <SortHeader label="Total Value" k="total_value" align="right" />
-                                        <SortHeader label="Created" k="created_at" />
-                                        <SortHeader label="Updated" k="updated_at" />
-                                        <SortHeader label="Days Open" k="days_open" align="right" />
-                                        <th className="px-3 py-2 font-medium">Overdue</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border">
-                                    {pageRows.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={11} className="px-3 py-10 text-center text-muted-foreground">
-                                                {search ? 'No returns match the search.' : `No Return Product activity was recorded for ${data.periodLabel}.`}
-                                            </td>
-                                        </tr>
-                                    ) : pageRows.map((r) => (
-                                        <tr key={r.id} className={cn(onViewChange && 'cursor-pointer', 'hover:bg-accent/50')} onClick={() => openCase(r.id)}>
-                                            <td className="px-3 py-2 font-medium text-foreground">{r.return_no}</td>
-                                            <td className="px-3 py-2">
-                                                <Badge variant="outline" className="text-[10px]">{RETURN_SOURCE_LABELS[normalizeReturnSourceType(r.return_source_type)]}</Badge>
-                                            </td>
-                                            <td className="px-3 py-2">{r.source_name || '—'}{r.source_code ? <span className="ml-1 text-xs text-muted-foreground">({r.source_code})</span> : null}</td>
-                                            <td className="px-3 py-2">{r.warehouse_name || '—'}</td>
-                                            <td className="px-3 py-2">{RETURN_STATUS_LABELS[r.status] || r.status}</td>
-                                            <td className="px-3 py-2 text-right">{formatCount(r.total_qty)}</td>
-                                            <td className="whitespace-nowrap px-3 py-2 text-right">{formatRM(r.total_value)}</td>
-                                            <td className="px-3 py-2 text-muted-foreground">{r.created_at ? new Date(r.created_at).toLocaleDateString('en-MY') : '—'}</td>
-                                            <td className="px-3 py-2 text-muted-foreground">{r.updated_at ? new Date(r.updated_at).toLocaleDateString('en-MY') : '—'}</td>
-                                            <td className="px-3 py-2 text-right">{r.days_open}</td>
-                                            <td className="px-3 py-2">{r.is_overdue ? <Badge variant="destructive" className="text-[10px]">Overdue</Badge> : '—'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        {pageCount > 1 && (
-                            <div className="flex items-center justify-between border-t border-border px-4 py-2 text-sm">
-                                <span className="text-xs text-muted-foreground">
-                                    Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, detailedRows.length)} of {detailedRows.length}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                    <Button variant="outline" size="icon" className="h-7 w-7" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                                        <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <span className="px-2 text-xs text-muted-foreground">Page {page} of {pageCount}</span>
-                                    <Button variant="outline" size="icon" className="h-7 w-7" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
+                                    <div className="mt-4 flex items-center justify-end gap-2">
+                                        <Button variant="ghost" className="h-9 gap-1.5" onClick={clearFilters}>
+                                            <X className="h-3.5 w-3.5" /> Clear Filters
+                                        </Button>
+                                        <Button
+                                            className="h-9 bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)]"
+                                            onClick={applyFilters}
+                                        >
+                                            Apply Filters
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                </>
-            )}
+                            )}
 
-            {/* Email dialog */}
+                            <p className="text-sm text-muted-foreground">
+                                {formatCount(detailedRows.length)} return case{detailedRows.length === 1 ? '' : 's'} in {data.periodLabel}
+                                {activeFilterCount > 0 || search.trim() ? ' matching the current filters' : ''}
+                            </p>
+
+                            <div className="rounded-lg sera-sc-panel overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                            <tr>
+                                                <SortHeader label="Return No." k="return_no" />
+                                                <SortHeader label="Return From" k="source_name" />
+                                                <SortHeader label="Warehouse" k="warehouse_name" />
+                                                <SortHeader label="Status" k="status" />
+                                                <SortHeader label="Units" k="total_qty" align="right" />
+                                                <SortHeader label="Value (RM)" k="total_value" align="right" />
+                                                <SortHeader label="Created" k="created_at" />
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border">
+                                            {pageRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={7} className="px-4 py-14 text-center text-muted-foreground">
+                                                        {search.trim() || activeFilterCount > 0
+                                                            ? 'No returns match the current search and filters.'
+                                                            : `No Return Product activity was recorded for ${data.periodLabel}.`}
+                                                    </td>
+                                                </tr>
+                                            ) : pageRows.map((r) => (
+                                                <tr
+                                                    key={r.id}
+                                                    className={cn('hover:bg-accent/50', onViewChange && 'cursor-pointer')}
+                                                    onClick={() => openCase(r.id)}
+                                                >
+                                                    <td className="whitespace-nowrap px-4 py-3 font-medium text-foreground">{r.return_no}</td>
+                                                    <td className="max-w-[220px] truncate px-4 py-3" title={r.source_name || undefined}>
+                                                        {r.source_name || '—'}
+                                                    </td>
+                                                    <td className="max-w-[220px] truncate px-4 py-3" title={r.warehouse_name || undefined}>
+                                                        {r.warehouse_name || '—'}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={cn(
+                                                            'inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium',
+                                                            STATUS_BADGE[r.status] || STATUS_BADGE.return_draft,
+                                                        )}>
+                                                            {RETURN_STATUS_LABELS[r.status as ReturnStatus] || r.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right tabular-nums">{formatCount(r.total_qty)}</td>
+                                                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{formatAmount(r.total_value)}</td>
+                                                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                                                        {r.created_at ? new Date(r.created_at).toLocaleDateString('en-MY') : '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {detailedRows.length > 0 && (
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
+                                        <span className="text-xs text-muted-foreground">
+                                            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, detailedRows.length)} of {detailedRows.length}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </Button>
+                                            {pageWindow.map((n) => (
+                                                <Button
+                                                    key={n}
+                                                    variant={n === page ? 'default' : 'outline'}
+                                                    size="icon"
+                                                    className={cn('h-8 w-8 text-xs', n === page && 'bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)]')}
+                                                    onClick={() => setPage(n)}
+                                                >
+                                                    {n}
+                                                </Button>
+                                            ))}
+                                            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </TabsContent>
+                    </>
+                )}
+            </Tabs>
+
             <ReturnReportEmailDialog
                 open={emailOpen}
                 onOpenChange={setEmailOpen}
                 buildPdf={buildPdf}
-                reportMode={mode}
-                periodLabel={data?.periodLabel || periodLabel(period)}
+                reportMode="monthly"
+                periodLabel={data?.periodLabel || monthLabel}
                 defaultSubject={emailDefaults.subject}
                 defaultMessage={emailDefaults.message}
             />

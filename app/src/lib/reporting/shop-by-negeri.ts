@@ -8,10 +8,21 @@
  *  - organizations     (id, org_name, branch, state_id, contact_name, contact_phone)
  *  - states            (id, state_name, region_id)
  *  - regions           (id, region_name)
+ *
+ * The `states` table holds duplicate rows for the same real Negeri, so every
+ * bucket here is keyed on a canonical state key (see ./canonical-state) rather
+ * than on the raw `states.id`. Duplicate rows are aggregated into one logical
+ * state; nothing is dropped and no row is rewritten.
  */
 
 import { subDays, subMonths } from 'date-fns'
 import { REPORTING_TIME_ZONE } from './reporting-period'
+import {
+  buildCanonicalStates,
+  canonicalKeyByStateId,
+  resolveCanonicalStateSelection,
+  type CanonicalState,
+} from './canonical-state'
 
 // ── Row types ──────────────────────────────────────────────────────────
 export interface NegeriScanRow {
@@ -87,8 +98,25 @@ function growthPct(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100
 }
 
-function stateLabel(states: Map<string, NegeriStateRow>, stateId: string): string {
-  return states.get(stateId)?.state_name || 'Unassigned'
+/**
+ * Canonical states allowed by the current region / negeri filter.
+ * A canonical state belongs to a region when *any* of its underlying rows
+ * carries that region_id — the duplicate Selangor rows do not agree on it.
+ */
+export function selectCanonicalStates(
+  states: NegeriStateRow[],
+  regionId?: string | null,
+  negeriId?: string | null,
+): CanonicalState[] {
+  const all = buildCanonicalStates(states)
+  const hasRegion = !!regionId && regionId !== 'all'
+  const negeriKey = resolveCanonicalStateSelection(negeriId, states)
+
+  return all.filter((state) => {
+    if (negeriKey && state.key !== negeriKey) return false
+    if (hasRegion && !state.regionIds.includes(regionId!)) return false
+    return true
+  })
 }
 
 // ── Output types ───────────────────────────────────────────────────────
@@ -106,7 +134,10 @@ export interface NegeriKpis {
 
 export interface StateRankRow {
   rank: number
-  stateId: string
+  /** canonical Negeri key — one row per logical state, not per states.id */
+  stateKey: string
+  /** every underlying states.id folded into this row */
+  stateIds: string[]
   negeri: string
   shops: number
   scans: number
@@ -117,7 +148,7 @@ export interface StateRankRow {
 }
 
 export interface TopShopRow {
-  stateId: string
+  stateKey: string
   negeri: string
   shopId: string
   shopName: string
@@ -139,7 +170,7 @@ export interface MonthlyTrendRow {
 export interface MonthlyByStateRow {
   monthKey: string
   monthLabel: string
-  stateId: string
+  stateKey: string
   negeri: string
   scans: number
   shops: number
@@ -160,7 +191,10 @@ export interface BuildNegeriReportArgs {
   states: NegeriStateRow[]
   /** region_id filter, or 'all' / '' for no filter */
   regionId?: string | null
-  /** state_id filter, or 'all' / '' for no filter */
+  /**
+   * Negeri filter. Accepts a canonical state key (what the UI now sends), a raw
+   * `states.id` (older links) or a plain state name; 'all' / '' means no filter.
+   */
   negeriId?: string | null
   /** free-text search applied to negeri name (ranking / top shops) */
   search?: string | null
@@ -182,31 +216,27 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
     topShopsPerState = 5,
   } = args
 
-  const stateMap = new Map<string, NegeriStateRow>(states.map((s) => [s.id, s]))
   const orgMap = new Map<string, NegeriOrgRow>(orgs.map((o) => [o.id, o]))
-
-  const hasRegion = !!regionId && regionId !== 'all'
-  const hasNegeri = !!negeriId && negeriId !== 'all'
+  const keyByStateId = canonicalKeyByStateId(states)
   const searchLc = (search || '').trim().toLowerCase()
 
-  // Set of state ids allowed by the region/negeri filter
-  const allowedStateIds = new Set<string>()
-  for (const s of states) {
-    if (hasNegeri && s.id !== negeriId) continue
-    if (hasRegion && s.region_id !== regionId) continue
-    allowedStateIds.add(s.id)
-  }
+  // Canonical states surviving the region / negeri filter, plus the flattened
+  // set of raw state ids they cover.
+  const allowedStates = selectCanonicalStates(states, regionId, negeriId)
+  const allowedByKey = new Map<string, CanonicalState>(allowedStates.map((s) => [s.key, s]))
+  const stateName = (key: string) => allowedByKey.get(key)?.name || 'Unassigned'
 
   const startISO = window.start.toISOString()
   const endISO = window.end.toISOString()
   const prevStartISO = window.prevStart.toISOString()
   const prevEndISO = window.prevEnd.toISOString()
 
-  function stateIdForScan(scan: NegeriScanRow): string | null {
+  /** canonical Negeri key for the shop a scan belongs to */
+  function stateKeyForScan(scan: NegeriScanRow): string | null {
     if (!scan.shop_id) return null
     const org = orgMap.get(scan.shop_id)
     if (!org || !org.state_id) return null
-    return org.state_id
+    return keyByStateId.get(org.state_id) || null
   }
 
   // ── Period partitioning ──────────────────────────────────────────────
@@ -222,7 +252,7 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
 
   // Per-shop aggregation (current period only)
   type ShopAgg = {
-    stateId: string
+    stateKey: string
     scans: number
     consumers: Set<string>
     prevScans: number
@@ -235,9 +265,9 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
   let totalPoints = 0
 
   for (const scan of scans) {
-    const stId = stateIdForScan(scan)
-    if (!stId) continue
-    if (!allowedStateIds.has(stId)) continue
+    const stKey = stateKeyForScan(scan)
+    if (!stKey) continue
+    if (!allowedByKey.has(stKey)) continue
     const at = scan.scanned_at
     if (!at) continue
 
@@ -245,11 +275,11 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
     const inPrev = at >= prevStartISO && at < prevEndISO
 
     if (inCurrent) {
-      activeStates.add(stId)
-      let agg = byState.get(stId)
+      activeStates.add(stKey)
+      let agg = byState.get(stKey)
       if (!agg) {
         agg = { scans: 0, shops: new Set(), consumers: new Set(), points: 0, prevScans: 0 }
-        byState.set(stId, agg)
+        byState.set(stKey, agg)
       }
       agg.scans++
       if (scan.shop_id) agg.shops.add(scan.shop_id)
@@ -264,17 +294,17 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
       if (scan.shop_id) {
         let sa = byShop.get(scan.shop_id)
         if (!sa) {
-          sa = { stateId: stId, scans: 0, consumers: new Set(), prevScans: 0 }
+          sa = { stateKey: stKey, scans: 0, consumers: new Set(), prevScans: 0 }
           byShop.set(scan.shop_id, sa)
         }
         sa.scans++
         if (scan.consumer_id) sa.consumers.add(scan.consumer_id)
       }
     } else if (inPrev) {
-      let agg = byState.get(stId)
+      let agg = byState.get(stKey)
       if (!agg) {
         agg = { scans: 0, shops: new Set(), consumers: new Set(), points: 0, prevScans: 0 }
-        byState.set(stId, agg)
+        byState.set(stKey, agg)
       }
       agg.prevScans++
       if (scan.shop_id) {
@@ -287,18 +317,16 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
   // ── KPIs ─────────────────────────────────────────────────────────────
   let topNegeri = '—'
   let topNegeriScans = 0
-  for (const [stId, agg] of byState.entries()) {
+  for (const [stKey, agg] of byState.entries()) {
     if (agg.scans > topNegeriScans) {
       topNegeriScans = agg.scans
-      topNegeri = stateLabel(stateMap, stId)
+      topNegeri = stateName(stKey)
     }
   }
 
-  const totalStates = hasNegeri
-    ? 1
-    : hasRegion
-      ? states.filter((s) => s.region_id === regionId).length
-      : states.length
+  // Denominator counts logical Negeri, so duplicate `states` rows never inflate
+  // "Total States".
+  const totalStates = allowedStates.length
 
   const kpis: NegeriKpis = {
     totalStatesActive: activeStates.size,
@@ -315,10 +343,11 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
   // ── State ranking ────────────────────────────────────────────────────
   let ranking: StateRankRow[] = [...byState.entries()]
     .filter(([, agg]) => agg.scans > 0)
-    .map(([stId, agg]) => ({
+    .map(([stKey, agg]) => ({
       rank: 0,
-      stateId: stId,
-      negeri: stateLabel(stateMap, stId),
+      stateKey: stKey,
+      stateIds: allowedByKey.get(stKey)?.stateIds || [],
+      negeri: stateName(stKey),
       shops: agg.shops.size,
       scans: agg.scans,
       consumers: agg.consumers.size,
@@ -335,13 +364,13 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
   const shopsByState = new Map<string, TopShopRow[]>()
   for (const [shopId, sa] of byShop.entries()) {
     const org = orgMap.get(shopId)
-    const negeri = stateLabel(stateMap, sa.stateId)
+    const negeri = stateName(sa.stateKey)
     if (searchLc && !negeri.toLowerCase().includes(searchLc)) continue
     const name = org
       ? `${org.org_name}${org.branch ? ` (${org.branch})` : ''}`
       : shopId.slice(0, 8)
     const row: TopShopRow = {
-      stateId: sa.stateId,
+      stateKey: sa.stateKey,
       negeri,
       shopId,
       shopName: name,
@@ -351,9 +380,9 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
       avgPerShop: sa.consumers.size > 0 ? sa.scans / sa.consumers.size : sa.scans,
       growth: growthPct(sa.scans, sa.prevScans),
     }
-    const list = shopsByState.get(sa.stateId) || []
+    const list = shopsByState.get(sa.stateKey) || []
     list.push(row)
-    shopsByState.set(sa.stateId, list)
+    shopsByState.set(sa.stateKey, list)
   }
 
   const topShops: TopShopRow[] = []
@@ -384,17 +413,17 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
 
   for (const scan of scans) {
     if (!scan.scanned_at || scan.scanned_at < startISO || scan.scanned_at >= endISO) continue
-    const stId = stateIdForScan(scan)
-    if (!stId || !allowedStateIds.has(stId)) continue
+    const stKey = stateKeyForScan(scan)
+    if (!stKey || !allowedByKey.has(stKey)) continue
 
     mScans++
     if (scan.shop_id) mShops.add(scan.shop_id)
     if (scan.consumer_id) mConsumers.add(scan.consumer_id)
 
-    let ps = perState.get(stId)
+    let ps = perState.get(stKey)
     if (!ps) {
       ps = { scans: 0, shops: new Set(), consumers: new Set() }
-      perState.set(stId, ps)
+      perState.set(stKey, ps)
     }
     ps.scans++
     if (scan.shop_id) ps.shops.add(scan.shop_id)
@@ -403,12 +432,12 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
 
   monthlyTrend.push({ monthKey: key, monthLabel: label, scans: mScans, shops: mShops.size, consumers: mConsumers.size })
 
-  for (const [stId, ps] of perState.entries()) {
+  for (const [stKey, ps] of perState.entries()) {
     monthlyByState.push({
       monthKey: key,
       monthLabel: label,
-      stateId: stId,
-      negeri: stateLabel(stateMap, stId),
+      stateKey: stKey,
+      negeri: stateName(stKey),
       scans: ps.scans,
       shops: ps.shops.size,
       consumers: ps.consumers.size,

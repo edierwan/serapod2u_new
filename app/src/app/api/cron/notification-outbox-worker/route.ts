@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppConfig, callGateway, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCodes'
 import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
+import { requireCronAuth } from '@/lib/cron/auth'
+import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 import { recordSmsDelivery, refreshOpenSmsStatuses, sendSmsWithActiveProvider } from '@/lib/notifications/sms-send'
 import { getSmsTemplateBody, getSmsTemplatesForEvent } from '@/config/smsTemplates'
 import { queueRoutingFallback } from '@/lib/notifications/outbox-fallback'
@@ -312,9 +314,19 @@ async function sendEmailWithActiveProvider(supabase: any, orgId: string, to: str
     }
 }
 
+const WORKER = WORKER_NAMES.notificationOutbox
+
 export async function GET(request: NextRequest) {
-    const startTime = Date.now()
+    const unauthorized = requireCronAuth(request, WORKER)
+    if (unauthorized) return unauthorized
+
     const supabase = createAdminClient()
+    const outcome = await withWorkerLease(supabase, WORKER, () => runOutbox(supabase))
+    return outcome.status === 'ran' ? outcome.result : outcome.response
+}
+
+async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promise<NextResponse> {
+    const startTime = Date.now()
 
     try {
         // Re-queue SMS/Email cancelled by the old "do not send after WhatsApp failed" rule.
@@ -328,7 +340,12 @@ export async function GET(request: NextRequest) {
             console.warn('[NotifWorker] Email UI-test status rewrite failed:', err?.message || err)
         })
 
-        // 1. Fetch pending notifications from outbox (uses FOR UPDATE SKIP LOCKED)
+        // 1. Fetch pending notifications from outbox.
+        // NOTE: get_pending_notifications uses FOR UPDATE SKIP LOCKED, but those
+        // row locks are released as soon as this RPC's transaction commits -
+        // i.e. BEFORE anything is dispatched. It therefore does NOT prevent two
+        // executions from sending the same message. The worker lease around this
+        // function is what guarantees single-dispatch.
         const { data: pendingItems, error: fetchError } = await supabase
             .rpc('get_pending_notifications', { p_limit: 20 })
 

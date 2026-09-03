@@ -5,7 +5,9 @@ import {
     percentDelta, deltaText, computeKpis, computeKpiDeltas, bucketTrend,
     aggregateByReason, aggregateBySource, aggregateByWarehouse, aggregateByProduct,
     aggregateByStatus, buildInsights, EMPTY_KPIS,
-    type ReportPeriod,
+    groupReasonsForDisplay, buildKeyInsight, toReportCaseRow,
+    formatAmount, formatRMWhole,
+    type ReportPeriod, type ReasonSlice,
 } from './reporting'
 import type { ReturnCase } from './types'
 
@@ -128,8 +130,20 @@ describe('computeKpis', () => {
         expect(kpis.totalValue).toBe(200)
         expect(kpis.avgValue).toBeCloseTo(200 / 3)
         expect(kpis.overdue).toBe(1)
+        expect(kpis.open).toBe(2)
         expect(kpis.completed).toBe(1)
         expect(kpis.completionRate).toBeCloseTo(33.33, 1)
+    })
+
+    it('counts open cases as everything neither completed nor cancelled', () => {
+        const kpis = computeKpis([
+            makeCase({ id: 'a', status: 'return_completed' }),
+            makeCase({ id: 'b', status: 'return_cancelled' }),
+            makeCase({ id: 'c', status: 'return_submitted' }),
+            makeCase({ id: 'd', status: 'return_processing' }),
+        ])
+        expect(kpis.totalReturns).toBe(4)
+        expect(kpis.open).toBe(2)
     })
 
     it('produces deltas for every KPI', () => {
@@ -268,5 +282,99 @@ describe('buildInsights', () => {
         expect(insights.join(' ')).toContain('Balakong contributed 100.0% of total return value')
         expect(insights.join(' ')).toContain('Overdue returns appeared in July 2026')
         expect(insights.join(' ')).toContain('Cellera Vanilla 30ml had the highest returned quantity')
+    })
+})
+
+describe('groupReasonsForDisplay', () => {
+    const slice = (reason: string, pct: number, value = pct * 10): ReasonSlice =>
+        ({ reason, label: reason, cases: 1, qty: 1, value, pct })
+
+    it('is empty for a period with no reasons', () => {
+        expect(groupReasonsForDisplay([], 4)).toEqual([])
+    })
+
+    it('keeps every reason on its own row when they already fit', () => {
+        const groups = groupReasonsForDisplay([slice('wrong_item', 50), slice('damaged', 30), slice('other', 20)], 4)
+        expect(groups.map((g) => g.reason)).toEqual(['wrong_item', 'damaged', 'other'])
+        expect(groups[2].label).toBe('Other')
+    })
+
+    it('folds the tail into a single Other group that keeps the totals', () => {
+        const groups = groupReasonsForDisplay([
+            slice('wrong_item', 36), slice('packaging_change', 35), slice('damaged', 18),
+            slice('expired', 6), slice('leaking', 3), slice('other', 2),
+        ], 4)
+        expect(groups).toHaveLength(4)
+        expect(groups.map((g) => g.reason)).toEqual(['wrong_item', 'packaging_change', 'damaged', 'other'])
+        expect(groups[3].label).toBe('Other')
+        expect(groups[3].pct).toBeCloseTo(11)
+        expect(groups.reduce((n, g) => n + g.pct, 0)).toBeCloseTo(100)
+    })
+
+    it('always sends a stored "other" reason to the tail', () => {
+        const groups = groupReasonsForDisplay([slice('other', 60), slice('damaged', 40)], 4)
+        expect(groups.map((g) => g.reason)).toEqual(['damaged', 'other'])
+    })
+})
+
+describe('buildKeyInsight', () => {
+    const kpis = { ...EMPTY_KPIS, totalReturns: 27, totalValue: 153_785 }
+    const slice = (reason: string, label: string, pct: number): ReasonSlice =>
+        ({ reason, label, cases: 1, qty: 1, value: pct * 100, pct })
+
+    it('names the two dominant reasons when they carry the period', () => {
+        const insight = buildKeyInsight(kpis, [
+            slice('wrong_item', 'Wrong Item', 36),
+            slice('packaging_change', 'Packaging Change', 35),
+            slice('damaged', 'Damaged', 18),
+            slice('other', 'Other', 11),
+        ], 'August')
+        expect(insight).toBe('Wrong Item and Packaging Change account for 71% of August return value.')
+    })
+
+    it('falls back to a single dominant reason', () => {
+        const insight = buildKeyInsight(kpis, [
+            slice('damaged', 'Damaged', 45),
+            slice('other', 'Other', 55),
+        ], 'August')
+        expect(insight).toBe('Damaged accounts for 45% of August return value.')
+    })
+
+    it('stays silent when nothing stands out', () => {
+        expect(buildKeyInsight(kpis, [
+            slice('wrong_item', 'Wrong Item', 25),
+            slice('damaged', 'Damaged', 20),
+        ], 'August')).toBeNull()
+    })
+
+    it('stays silent when the period has no data', () => {
+        expect(buildKeyInsight(EMPTY_KPIS, [slice('damaged', 'Damaged', 100)], 'August')).toBeNull()
+    })
+})
+
+describe('toReportCaseRow', () => {
+    it('carries the ids and reason codes the detailed table filters on', () => {
+        const row = toReportCaseRow(makeCase({
+            id: 'a',
+            return_warehouse_id: 'wh-1',
+            warehouse: { id: 'wh-1', org_code: 'WH1', org_name: 'Balakong' },
+            source: { id: 'org-1', org_code: 'SH003', org_name: '24 Street Vapor' },
+            items: [
+                { reason: 'damaged', total_units: 2, unit_cost: 1 },
+                { reason: 'damaged', total_units: 1, unit_cost: 1 },
+                { reason: null, total_units: 1, unit_cost: 1 },
+            ] as any,
+        }))
+        expect(row.source_id).toBe('org-1')
+        expect(row.warehouse_id).toBe('wh-1')
+        expect(row.warehouse_name).toBe('Balakong')
+        expect(row.reason_codes).toEqual(['damaged'])
+    })
+})
+
+describe('currency formatting', () => {
+    it('formats an amount without the prefix and a whole-ringgit KPI', () => {
+        expect(formatAmount(1624)).toBe('1,624.00')
+        expect(formatRMWhole(153_784.6)).toBe('RM 153,785')
     })
 })

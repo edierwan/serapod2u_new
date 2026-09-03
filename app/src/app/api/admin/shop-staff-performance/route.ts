@@ -3,6 +3,13 @@ import { createClient } from '@supabase/supabase-js'
 import { loadScopedShopUsers, normalizePhone } from '../_user-management-scope'
 
 /**
+ * PostgREST sends `id=in.(...)` in the query string, so a few hundred UUIDs push the
+ * request line past the gateway's 8 KB limit and the whole endpoint dies with
+ * "URI too long" (414). Keep every id filter well under that.
+ */
+const ID_FILTER_CHUNK_SIZE = 50
+
+/**
  * GET /api/admin/shop-staff-performance
  * Returns shop staff performance rows across the current company hierarchy.
  */
@@ -49,12 +56,17 @@ export async function GET(_request: NextRequest) {
         }
 
         const shopOrgIds = Array.from(new Set(shopUsers.map((item) => item.organization_id).filter(Boolean))) as string[]
-        const { data: shopOrgs, error: shopError } = await admin
-            .from('organizations')
-            .select('id, org_name, state_id, states(state_name)')
-            .in('id', shopOrgIds)
+        const shopOrgs: any[] = []
 
-        if (shopError) throw shopError
+        for (let index = 0; index < shopOrgIds.length; index += ID_FILTER_CHUNK_SIZE) {
+            const { data: shopOrgChunk, error: shopError } = await admin
+                .from('organizations')
+                .select('id, org_name, state_id, states(state_name)')
+                .in('id', shopOrgIds.slice(index, index + ID_FILTER_CHUNK_SIZE))
+
+            if (shopError) throw shopError
+            shopOrgs.push(...(shopOrgChunk || []))
+        }
 
         const shopNameById = new Map((shopOrgs || []).map((item) => [item.id, item.org_name]))
         const shopStateById = new Map((shopOrgs || []).map((item: any) => [item.id, item.states?.state_name || null]))
@@ -81,10 +93,8 @@ export async function GET(_request: NextRequest) {
         }>()
 
         if (userIds.length > 0) {
-            const chunkSize = 100
-
-            for (let index = 0; index < userIds.length; index += chunkSize) {
-                const userIdChunk = userIds.slice(index, index + chunkSize)
+            for (let index = 0; index < userIds.length; index += ID_FILTER_CHUNK_SIZE) {
+                const userIdChunk = userIds.slice(index, index + ID_FILTER_CHUNK_SIZE)
                 const { data: scanRows, error: scanError } = await admin
                     .from('consumer_qr_scans')
                     .select('consumer_id, points_amount, points_collected_at, is_manual_adjustment')

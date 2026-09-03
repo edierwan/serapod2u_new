@@ -115,6 +115,7 @@ import {
   Upload,
   Warehouse,
 } from 'lucide-react'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 type CountType = 'full_count' | 'cycle_count' | 'spot_check' | 'initial_configuration_classification' | 'opening_balance_cutoff'
 type SessionStatus = 'draft' | 'posted' | 'archived'
@@ -2072,7 +2073,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setPreflight({
         status: 'error',
         code: 'classification_incomplete',
-        message: `Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) for ${names.join('; ')}${classificationPartialSelected.length > names.length ? '; …' : ''}, or clear its counts to defer it to a later round.`,
+        message: `Enter a physical count for all three target configurations (20 mg New Box, 50 mg New Box, 50 mg Old Box) for ${names.join('; ')}${classificationPartialSelected.length > names.length ? '; …' : ''}, or clear its counts to defer it to a later round.`,
       })
       return
     }
@@ -2753,7 +2754,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                         const adjustmentValue = adjustmentValueForRow(row)
                         return (
                           <TableRow key={row.stockConfigId}>
-                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge>{!row.variantIsActive && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Archived variant — historical snapshot item">Archived variant · historical</Badge>}{row.variantIsActive && (!row.productIsActive || row.configStatus !== 'active') && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Inactive master data — historical snapshot item">Historical configuration</Badge>}{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
+                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{withStockStrengthUnit(row.configLabel)}</Badge>{!row.variantIsActive && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Archived variant — historical snapshot item">Archived variant · historical</Badge>}{row.variantIsActive && (!row.productIsActive || row.configStatus !== 'active') && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Inactive master data — historical snapshot item">Historical configuration</Badge>}{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
                             <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                             <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>
@@ -2829,7 +2830,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                             const eligible = lifecycleAllowsReservation && physical !== null && physical >= required
                             return (
                               <SelectItem key={row.stockConfigId} value={row.stockConfigId} disabled={!eligible}>
-                                {row.configLabel} {eligible
+                                {withStockStrengthUnit(row.configLabel)} {eligible
                                   ? `(final ${formatNumber(physical!)})`
                                   : !lifecycleAllowsReservation
                                     ? '(not available for an active order reservation)'
@@ -2860,7 +2861,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                     <TableHeader><TableRow><TableHead className="min-w-[180px]">Configuration</TableHead><TableHead className="min-w-[170px]">Row Type</TableHead><TableHead className="text-right">System Quantity</TableHead><TableHead className="min-w-[170px]">Physical Count</TableHead></TableRow></TableHeader>
                     <TableBody>
                       <TableRow className="bg-slate-50">
-                        <TableCell><Badge variant="outline">{group.legacyRow.configLabel}</Badge><p className="mt-1 text-xs text-slate-500">To be classified</p></TableCell>
+                        <TableCell><Badge variant="outline">{withStockStrengthUnit(group.legacyRow.configLabel)}</Badge><p className="mt-1 text-xs text-slate-500">To be classified</p></TableCell>
                         <TableCell><Badge variant="outline" className="border-slate-300 text-slate-600">Legacy Source — Read Only</Badge></TableCell>
                         <TableCell className="text-right font-medium tabular-nums">{formatNumber(group.legacyRow.systemQuantity)}</TableCell>
                         <TableCell>
@@ -2872,7 +2873,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                       </TableRow>
                       {group.targetRows.map(row => (
                         <TableRow key={row.stockConfigId}>
-                          <TableCell><Badge variant="secondary">{row.configLabel}</Badge></TableCell>
+                          <TableCell><Badge variant="secondary">{withStockStrengthUnit(row.configLabel)}</Badge></TableCell>
                           <TableCell><Badge className="bg-[var(--sera-orange)]/[0.06] text-blue-700 hover:bg-[var(--sera-orange)]/[0.06]">Target Configuration</Badge></TableCell>
                           <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
                           <TableCell><Input inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>

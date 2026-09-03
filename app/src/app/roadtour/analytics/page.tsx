@@ -1,5 +1,6 @@
-﻿import { RoadtourAdminView } from '../_RoadtourAdminView'
+import { redirect } from 'next/navigation'
 
+/** Legacy "Analytics Overview" — consolidated into Monthly Overview. */
 export default function Page() {
-  return <RoadtourAdminView view="roadtour-analytics" />
+  redirect('/roadtour/reporting')
 }

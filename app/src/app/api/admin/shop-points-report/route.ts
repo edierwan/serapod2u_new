@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
 
     const shopIds = (shops || []).map((row: any) => row.id).filter(Boolean)
     const bonusByUser = new Map<string, number>()
-    let referenceByShop = new Map<string, string>()
+    const referenceByShop = new Map<string, string>()
+    const referenceIdByShop = new Map<string, string>()
     const anonymousMetricsByShop = new Map<string, { anonymousShopScanPoints: number; anonymousShopScanCount: number }>()
     const usersByShop = new Map<string, Array<{ id: string; referral_phone: string | null }>>()
     const balanceByUser = new Map<string, any>()
@@ -143,7 +144,7 @@ export async function GET(request: NextRequest) {
         if (normalizedReferralPhones.length > 0) {
           const { data: referenceUsers, error: referenceUsersError } = await admin
             .from('users')
-            .select('full_name, phone')
+            .select('id, full_name, phone')
 
           if (referenceUsersError) throw referenceUsersError
 
@@ -161,6 +162,7 @@ export async function GET(request: NextRequest) {
           const normalized = String(shopUser.referral_phone).replace(/\D/g, '')
           const referenceUser = normalizedPhoneMap.get(normalized) || normalizedPhoneMap.get(normalized.startsWith('0') ? `6${normalized}` : normalized)
           referenceByShop.set(shopId, referenceUser?.full_name || shopUser.referral_phone)
+          if (referenceUser?.id) referenceIdByShop.set(shopId, referenceUser.id)
         }
       }
     }
@@ -192,6 +194,7 @@ export async function GET(request: NextRequest) {
           shop_name: shop.org_name,
           branch_name: shop.branch || null,
           shop_reference_am: referenceByShop.get(shop.id) || null,
+          reference_user_id: referenceIdByShop.get(shop.id) || null,
           contact_name: shop.contact_name || null,
           contact_phone: shop.contact_phone || null,
           state: stateById.get(shop.state_id) || null,

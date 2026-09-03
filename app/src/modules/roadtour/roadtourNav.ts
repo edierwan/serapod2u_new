@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, TrendingUp, Store, UserCheck, Flag, Target, CalendarCheck } from 'lucide-react'
+import { Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, Store, UserCheck, Flag, Target, CalendarCheck } from 'lucide-react'
 
 export interface RoadtourNavChild {
     id: string
@@ -28,17 +28,15 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
         ],
     },
     {
-        id: 'rt-analytics',
-        label: 'Analytics',
+        id: 'rt-reporting',
+        label: 'RoadTour Reporting',
         icon: BarChart3,
-        description: 'Monitor campaign performance, post-visit shop impact, and account manager effectiveness.',
+        description: 'One monthly view of shops visited, shop response, account manager performance and follow-up.',
         children: [
-            { id: 'roadtour-analytics', label: 'Analytics Overview', icon: BarChart3, route: '/roadtour/analytics' },
-            { id: 'roadtour-visits', label: 'Visits', icon: Users, route: '/roadtour/visits' },
-            { id: 'roadtour-post-visit-impact', label: 'Post-Visit Impact Report', icon: TrendingUp, route: '/roadtour/analytics/post-visit-impact' },
-            { id: 'roadtour-shop-impact', label: 'Shop Impact Detail', icon: Store, route: '/roadtour/analytics/shop-impact' },
-            { id: 'roadtour-am-impact', label: 'Account Manager Impact', icon: UserCheck, route: '/roadtour/analytics/am-impact' },
-            { id: 'roadtour-follow-up-priority', label: 'Follow-Up Priority Queue', icon: Flag, route: '/roadtour/analytics/follow-up-priority' },
+            { id: 'roadtour-monthly-overview', label: 'Monthly Overview', icon: BarChart3, route: '/roadtour/reporting' },
+            { id: 'roadtour-am-performance', label: 'AM Performance', icon: UserCheck, route: '/roadtour/reporting/am-performance' },
+            { id: 'roadtour-shop-follow-up', label: 'Shop Follow-Up', icon: Flag, route: '/roadtour/reporting/follow-up' },
+            { id: 'roadtour-visits', label: 'Visit Log', icon: Users, route: '/roadtour/visits' },
             { id: 'roadtour-monthly-kpi-report', label: 'Monthly KPI Performance Report', icon: CalendarCheck, route: '/roadtour/analytics/monthly-kpi' },
             { id: 'roadtour-whatsapp', label: 'WhatsApp Monitoring', icon: Smartphone, route: '/roadtour/whatsapp' },
         ],
@@ -56,9 +54,37 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
     },
 ]
 
+/**
+ * Views that are reachable and URL-addressable but are drill-downs rather than
+ * menu entries — they are opened from a report, not from the navigation.
+ */
+export const roadtourHiddenViews: Array<{ id: string; label: string; icon: any; groupId: string }> = [
+    { id: 'roadtour-shop-drilldown', label: 'Shop Impact Detail', icon: Store, groupId: 'rt-reporting' },
+]
+
+/**
+ * Old Analytics view ids kept working after the reporting consolidation, so
+ * bookmarks and any in-app link that still names them land on the report that
+ * replaced them instead of a blank page.
+ */
+export const legacyRoadtourViewRedirects: Record<string, string> = {
+    'roadtour-analytics': 'roadtour-monthly-overview',
+    'roadtour-post-visit-impact': 'roadtour-monthly-overview',
+    'roadtour-shop-impact': 'roadtour-shop-drilldown',
+    'roadtour-am-impact': 'roadtour-am-performance',
+    'roadtour-follow-up-priority': 'roadtour-shop-follow-up',
+}
+
+/** Map a possibly-legacy view id onto the view that renders it today. */
+export function resolveRoadtourViewId(viewId: string): string {
+    return legacyRoadtourViewRedirects[viewId] || viewId
+}
+
 const _allRoadtourViewIds = new Set<string>([
     'roadtour',
     ...roadtourNavGroups.flatMap((g) => g.children.map((c) => c.id)),
+    ...roadtourHiddenViews.map((v) => v.id),
+    ...Object.keys(legacyRoadtourViewRedirects),
 ])
 
 export function isRoadtourViewId(viewId: string): boolean {
@@ -75,11 +101,10 @@ export const roadtourViewToPath: Record<string, string> = {
     'roadtour-qr': 'qr',
     'roadtour-surveys': 'surveys',
     'roadtour-visits': 'visits',
-    'roadtour-analytics': 'analytics',
-    'roadtour-post-visit-impact': 'analytics/post-visit-impact',
-    'roadtour-shop-impact': 'analytics/shop-impact',
-    'roadtour-am-impact': 'analytics/am-impact',
-    'roadtour-follow-up-priority': 'analytics/follow-up-priority',
+    'roadtour-monthly-overview': 'reporting',
+    'roadtour-am-performance': 'reporting/am-performance',
+    'roadtour-shop-follow-up': 'reporting/follow-up',
+    'roadtour-shop-drilldown': 'reporting/shops',
     'roadtour-monthly-kpi-report': 'analytics/monthly-kpi',
     'roadtour-whatsapp': 'whatsapp',
     'roadtour-kpi-settings': 'settings/kpi',
@@ -93,7 +118,7 @@ export const roadtourPathToView: Record<string, string> = Object.fromEntries(
 /** Full admin href for a RoadTour view id, or null if not URL-addressable here. */
 export function roadtourHrefForView(viewId: string): string | null {
     if (viewId === 'roadtour') return '/roadtour'
-    const path = roadtourViewToPath[viewId]
+    const path = roadtourViewToPath[resolveRoadtourViewId(viewId)]
     return path ? `/roadtour/${path}` : null
 }
 
@@ -102,12 +127,18 @@ export function resolveRoadtourAdminPath(path: string): string {
 }
 
 export function findRoadtourGroupForView(viewId: string): RoadtourNavGroup | undefined {
-    return roadtourNavGroups.find((g) => g.children.some((c) => c.id === viewId))
+    const resolved = resolveRoadtourViewId(viewId)
+    const hidden = roadtourHiddenViews.find((v) => v.id === resolved)
+    if (hidden) return roadtourNavGroups.find((g) => g.id === hidden.groupId)
+    return roadtourNavGroups.find((g) => g.children.some((c) => c.id === resolved))
 }
 
 export function getRoadtourBreadcrumb(viewId: string): { group?: string; item?: string } {
-    const group = findRoadtourGroupForView(viewId)
+    const resolved = resolveRoadtourViewId(viewId)
+    const group = findRoadtourGroupForView(resolved)
     if (!group) return {}
-    const child = group.children.find((c) => c.id === viewId)
-    return { group: group.label, item: child?.label }
+    const child = group.children.find((c) => c.id === resolved)
+    if (child) return { group: group.label, item: child.label }
+    const hidden = roadtourHiddenViews.find((v) => v.id === resolved)
+    return { group: group.label, item: hidden?.label }
 }

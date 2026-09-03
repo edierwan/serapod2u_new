@@ -169,6 +169,12 @@ export function getStorageUrl(pathOrUrl: string | null | undefined, bucket?: str
   const normalized = String(pathOrUrl ?? '').trim()
   if (!normalized) return ''
 
+  // In-browser previews of a freshly selected file are already renderable and
+  // are not storage objects - never rewrite them into a storage URL.
+  if (normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+    return normalized
+  }
+
   if (normalized.startsWith('/') && !normalized.startsWith(STORAGE_PUBLIC_PATH)) {
     return normalized
   }

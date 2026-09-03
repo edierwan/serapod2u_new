@@ -5,6 +5,7 @@ import { Map, ChevronDown, ChevronRight, Menu as MenuIcon } from 'lucide-react'
 import {
   roadtourNavGroups,
   findRoadtourGroupForView,
+  resolveRoadtourViewId,
   type RoadtourNavGroup,
   type RoadtourNavChild,
 } from '@/modules/roadtour/roadtourNav'
@@ -22,17 +23,19 @@ export default function RoadtourTopNav({ currentView, onNavigate }: RoadtourTopN
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const [dropdownStyle, setDropdownStyle] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
 
-  const activeGroupId = useMemo(() => findRoadtourGroupForView(currentView)?.id ?? null, [currentView])
+  // Legacy Analytics view ids still highlight the report that replaced them.
+  const activeViewId = useMemo(() => resolveRoadtourViewId(currentView), [currentView])
+  const activeGroupId = useMemo(() => findRoadtourGroupForView(activeViewId)?.id ?? null, [activeViewId])
 
   const isGroupActive = useCallback(
     (group: RoadtourNavGroup) =>
-      group.id === activeGroupId || group.children.some((c) => c.id === currentView),
-    [currentView, activeGroupId]
+      group.id === activeGroupId || group.children.some((c) => c.id === activeViewId),
+    [activeViewId, activeGroupId]
   )
 
   const isChildActive = useCallback(
-    (child: RoadtourNavChild) => child.id === currentView,
-    [currentView]
+    (child: RoadtourNavChild) => child.id === activeViewId,
+    [activeViewId]
   )
 
   useEffect(() => {

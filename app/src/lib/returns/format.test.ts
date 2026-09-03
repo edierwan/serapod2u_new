@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getVariantDisplayName, classifyProductLine, productLineLabel, getUnitsPerCase } from './format'
+import { getVariantDisplayName, classifyProductLine, productLineLabel, getUnitsPerCase, formatReturnAmount, caseUnitLabel } from './format'
 
 describe('getVariantDisplayName', () => {
     // Spec §5 display-extraction table.
@@ -62,5 +62,34 @@ describe('getUnitsPerCase', () => {
     it('falls back to 1 for non-Cellera products without a reliable pack size', () => {
         expect(getUnitsPerCase('Some Device', 1)).toBe(1)
         expect(getUnitsPerCase('Accessory', null)).toBe(1)
+    })
+})
+
+describe('formatReturnAmount', () => {
+    it.each([
+        [1788, '1,788.00'],
+        [1050, '1,050.00'],
+        [3513, '3,513.00'],
+        [1234, '1,234.00'],
+        [1234567.5, '1,234,567.50'],
+        [28, '28.00'],
+        [0, '0.00'],
+    ])('%s -> %s', (input, expected) => {
+        expect(formatReturnAmount(input)).toBe(expected)
+    })
+
+    it('accepts numeric strings and falls back to 0.00 for missing/invalid values', () => {
+        expect(formatReturnAmount('3513.00')).toBe('3,513.00')
+        expect(formatReturnAmount(null)).toBe('0.00')
+        expect(formatReturnAmount(undefined)).toBe('0.00')
+        expect(formatReturnAmount('abc')).toBe('0.00')
+    })
+})
+
+describe('caseUnitLabel', () => {
+    it('is singular only for exactly one', () => {
+        expect(caseUnitLabel(1)).toBe('Case')
+        expect(caseUnitLabel(0)).toBe('Cases')
+        expect(caseUnitLabel(2)).toBe('Cases')
     })
 })

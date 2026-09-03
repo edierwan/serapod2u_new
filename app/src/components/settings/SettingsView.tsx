@@ -7,6 +7,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -47,6 +48,7 @@ import {
 } from 'lucide-react'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import { getStorageUrl } from '@/lib/utils'
+import { getOrganizationTerms, TERMS_SETTINGS_KEY } from '@/lib/organizations/terms'
 
 interface UserProfile {
   id: string
@@ -99,6 +101,7 @@ interface OrganizationSettings {
   country_code: string
   require_payment_proof: boolean
   logo_url: string | null
+  terms_conditions: string
   signature_type: 'none' | 'upload' | 'electronic'
   signature_url: string | null
   journey_builder_activation: 'shipped_distributor' | 'received_warehouse'
@@ -152,6 +155,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
     country_code: 'MY',
     require_payment_proof: true,
     logo_url: null,
+    terms_conditions: '',
     signature_type: 'none',
     signature_url: null,
     journey_builder_activation: 'shipped_distributor',
@@ -263,6 +267,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
         country_code: orgData.country_code || 'MY',
         require_payment_proof: settings.require_payment_proof ?? true,
         logo_url: orgData.logo_url || null,
+        terms_conditions: getOrganizationTerms(orgData),
         signature_type: orgData.signature_type || 'none',
         signature_url: orgData.signature_url || null,
         journey_builder_activation: settings.journey_builder_activation || 'shipped_distributor',
@@ -273,7 +278,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       // Set initial logo preview (resolve to a browsable URL - self-hosted
       // Supabase requires an apikey query param even on "public" storage URLs)
       setLogoPreview(orgData.logo_url ? getStorageUrl(orgData.logo_url) : null)
-      setSignaturePreview(orgData.signature_url || null)
+      setSignaturePreview(orgData.signature_url ? getStorageUrl(orgData.signature_url) : null)
 
       // Load branding settings from database
       if (settings.branding) {
@@ -475,7 +480,10 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
         settings: {
           ...rawSettings,
           require_payment_proof: orgSettings.require_payment_proof,
-          journey_builder_activation: orgSettings.journey_builder_activation
+          journey_builder_activation: orgSettings.journey_builder_activation,
+          // Stored verbatim - the user's line breaks and indentation are the
+          // content, so nothing here trims or reformats the value.
+          [TERMS_SETTINGS_KEY]: orgSettings.terms_conditions
         },
         is_active: true,
         updated_at: new Date().toISOString()
@@ -485,9 +493,9 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       if (orgSettings.signature_type) {
         updateData.signature_type = orgSettings.signature_type
       }
-      if (signatureUrl) {
-        updateData.signature_url = signatureUrl
-      }
+      // Persist the signature reference even when it is cleared, so "Remove"
+      // is not silently reverted by the reload below.
+      updateData.signature_url = signatureUrl ?? null
 
       const { error } = await (supabase as any)
         .from('organizations')
@@ -812,95 +820,6 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                     </div>
                   )}
 
-                  {/* Signature Section */}
-                  {canEditOrganization && (
-                    <div className="pb-6 border-b border-gray-200 mb-6">
-                      <Label className="text-base font-semibold mb-4 block">Organization Signature</Label>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="signatureType">Signature Type</Label>
-                          <Select
-                            value={orgSettings.signature_type}
-                            onValueChange={(value: any) => setOrgSettings({ ...orgSettings, signature_type: value })}
-                          >
-                            <SelectTrigger id="signatureType" className="w-full md:w-1/2">
-                              <SelectValue placeholder="Select signature type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">No signature</SelectItem>
-                              <SelectItem value="electronic">Electronic signature</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-gray-500">
-                            This signature will be used for documentation created by this organization.
-                          </p>
-                        </div>
-
-                        {orgSettings.signature_type === 'electronic' && (
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6 mt-4">
-                            {/* Signature Preview */}
-                            <div className="flex-shrink-0">
-                              <div className="w-48 h-24 border border-gray-200 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
-                                {signaturePreview ? (
-                                  <img
-                                    src={signaturePreview}
-                                    alt="Signature preview"
-                                    className="max-w-full max-h-full object-contain"
-                                  />
-                                ) : (
-                                  <span className="text-gray-400 text-sm">No signature</span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Upload Controls */}
-                            <div className="flex-1 space-y-3">
-                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-                                <input
-                                  ref={signatureInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleSignatureFileChange}
-                                  className="hidden"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => signatureInputRef.current?.click()}
-                                  disabled={loading}
-                                >
-                                  <Upload className="w-4 h-4 mr-2" />
-                                  {signaturePreview ? 'Change Signature' : 'Upload Signature'}
-                                </Button>
-                                {signaturePreview && (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleRemoveSignature}
-                                    disabled={loading}
-                                  >
-                                    <X className="w-4 h-4 mr-2" />
-                                    Remove
-                                  </Button>
-                                )}
-                              </div>
-                              <div className="text-sm text-gray-500 space-y-1">
-                                <p>Recommended: Transparent PNG, approx 300x100px</p>
-                                {signatureFile && (
-                                  <p className="text-blue-600 font-medium">
-                                    New file selected: {signatureFile.name}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="orgName">Organization Name</Label>
@@ -1044,6 +963,118 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                       )}
                     </div>
                   </div>
+
+                  {/* Terms & Conditions Section */}
+                  {canEditOrganization && (
+                    <div className="pb-6 border-b border-gray-200 mb-6">
+                      <Label htmlFor="termsConditions" className="text-base font-semibold mb-4 block">Terms &amp; Conditions</Label>
+                      <div className="space-y-2">
+                        <Textarea
+                          id="termsConditions"
+                          value={orgSettings.terms_conditions}
+                          onChange={(e) => setOrgSettings({ ...orgSettings, terms_conditions: e.target.value })}
+                          disabled={loading}
+                          rows={10}
+                          spellCheck={false}
+                          className="min-h-[220px] font-mono text-sm whitespace-pre-wrap"
+                          placeholder={'Payment to be made to:\n(Bank name)\nACCOUNT HOLDER\n0000 0000 000'}
+                        />
+                        <p className="text-xs text-gray-500">
+                          Shown on order documents exactly as typed - line breaks, blank lines and
+                          indentation are preserved. Leave empty to omit the section entirely.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Signature Section */}
+                  {canEditOrganization && (
+                    <div className="pb-6 border-b border-gray-200 mb-6">
+                      <Label className="text-base font-semibold mb-4 block">Organization Signature</Label>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="signatureType">Signature Type</Label>
+                          <Select
+                            value={orgSettings.signature_type}
+                            onValueChange={(value: any) => setOrgSettings({ ...orgSettings, signature_type: value })}
+                          >
+                            <SelectTrigger id="signatureType" className="w-full md:w-1/2">
+                              <SelectValue placeholder="Select signature type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No signature</SelectItem>
+                              <SelectItem value="electronic">Electronic signature</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-gray-500">
+                            This signature will be used for documentation created by this organization.
+                          </p>
+                        </div>
+
+                        {orgSettings.signature_type === 'electronic' && (
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6 mt-4">
+                            {/* Signature Preview */}
+                            <div className="flex-shrink-0">
+                              <div className="w-48 h-24 border border-gray-200 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+                                {signaturePreview ? (
+                                  <img
+                                    src={signaturePreview}
+                                    alt="Signature preview"
+                                    className="max-w-full max-h-full object-contain"
+                                  />
+                                ) : (
+                                  <span className="text-gray-400 text-sm">No signature</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Upload Controls */}
+                            <div className="flex-1 space-y-3">
+                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+                                <input
+                                  ref={signatureInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleSignatureFileChange}
+                                  className="hidden"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => signatureInputRef.current?.click()}
+                                  disabled={loading}
+                                >
+                                  <Upload className="w-4 h-4 mr-2" />
+                                  {signaturePreview ? 'Change Signature' : 'Upload Signature'}
+                                </Button>
+                                {signaturePreview && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleRemoveSignature}
+                                    disabled={loading}
+                                  >
+                                    <X className="w-4 h-4 mr-2" />
+                                    Remove
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-500 space-y-1">
+                                <p>Recommended: Transparent PNG, approx 300x100px</p>
+                                {signatureFile && (
+                                  <p className="text-blue-600 font-medium">
+                                    New file selected: {signatureFile.name}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {canEditOrganization && (
                     <div className="flex justify-end">

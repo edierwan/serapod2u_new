@@ -1,4 +1,5 @@
 import { getSmsTemplatesForEvent } from './smsTemplates'
+import { REQUIRED_NOTIFICATION_TYPES } from '@/lib/notifications/notificationEventCatalog'
 
 /**
  * WhatsApp and email templates for system events.
@@ -18,6 +19,7 @@ export type NotificationKey =
     | 'out_of_stock'
     | 'stock_received'
     | 'stock_count_posting_verification'
+    | 'delete_organization_verification_code'
     | 'qr_activated'
     | 'points_awarded'
     | 'lucky_draw_entry'
@@ -1105,6 +1107,13 @@ export const notificationTemplates: Record<string, Template[]> = {
 };
 
 export const getTemplatesForEvent = (eventCode: string, channel: string): Template[] => {
+    // An event that declares its channels in the catalog is taken at its word:
+    // the generic per-channel fallbacks below must not offer, say, an SMS body
+    // for an email-only security code. Events absent from the catalog are
+    // unrestricted, so nothing that worked before stops working.
+    const declared = REQUIRED_NOTIFICATION_TYPES.find(type => type.event_code === eventCode)
+    if (declared && !(declared.available_channels as readonly string[]).includes(channel)) return []
+
     if (channel === 'sms') {
         return getSmsTemplatesForEvent(eventCode)
     }

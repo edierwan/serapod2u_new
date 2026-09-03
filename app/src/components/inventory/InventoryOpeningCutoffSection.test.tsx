@@ -1003,7 +1003,7 @@ describe('Opening Balance guided wizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Review Orders to Carry Into New Inventory/ }))
     expect(await screen.findByText('Blocked — Outside Session Scope')).toBeTruthy()
     // Concise explanation + affected variant + corrective action, not a raw code.
-    expect(screen.getByText(/do not have a valid 20ml New Box stock configuration/)).toBeTruthy()
+    expect(screen.getByText(/do not have a valid 20 mg New Box stock configuration/)).toBeTruthy()
     expect(screen.getAllByText(/Potato/).length).toBeGreaterThan(0)
     expect(screen.getByText(/not part of this Opening Balance session’s immutable scope/)).toBeTruthy()
     expect(screen.queryByText('inventory_cutoff_20ml_new_box_missing')).toBeNull()
