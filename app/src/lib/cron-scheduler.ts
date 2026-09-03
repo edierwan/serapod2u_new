@@ -123,6 +123,8 @@ interface CronSchedulerRegistry {
   registeredPaths: Set<string>
   /** path -> cron period index already dispatched (secondary guard) */
   lastDispatchPeriod: Map<string, number>
+  /** Keeps the "workers disabled" notice to one line per process. */
+  disabledNoticeLogged: boolean
 }
 
 type RegistryHolder = typeof globalThis & {
@@ -137,6 +139,7 @@ function getRegistry(): CronSchedulerRegistry {
       schedulerInstanceId: randomUUID().slice(0, 8),
       registeredPaths: new Set<string>(),
       lastDispatchPeriod: new Map<string, number>(),
+      disabledNoticeLogged: false,
     }
   }
   return holder[REGISTRY_KEY]
@@ -150,6 +153,29 @@ export function __resetCronRegistryForTests(): void {
 /** Exported for tests only. */
 export function __getCronRegistryForTests(): CronSchedulerRegistry {
   return getRegistry()
+}
+
+/**
+ * Kill switch for the internal cron workers.
+ *
+ * Why an explicit flag rather than a NODE_ENV check: a developer's localhost
+ * commonly points at a SHARED database, and these workers write to it — running
+ * `next dev` to review a UI would quietly mutate staging. But development is
+ * also exactly where someone may need the workers running on purpose, so the
+ * environment alone must never decide. Only this flag disables them, and its
+ * absence leaves staging and production behaviour untouched.
+ *
+ * Accepts the usual falsey spellings so `DISABLE_INTERNAL_CRON_WORKERS=0`
+ * means what it looks like it means.
+ */
+export function internalCronWorkersDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.DISABLE_INTERNAL_CRON_WORKERS
+  if (raw === undefined || raw === null) return false
+
+  const value = String(raw).trim().toLowerCase()
+  if (value === '') return false
+
+  return !['0', 'false', 'off', 'no'].includes(value)
 }
 
 /** A 5-field expression is minute-granular; a 6-field one carries seconds. */
@@ -179,6 +205,17 @@ export function claimDispatchSlot(path: string, expression: string, now: number)
 
 export function startCronScheduler(): void {
   const registry = getRegistry()
+
+  // Checked before the started flag is claimed and before any cron.schedule
+  // call, so a disabled process registers nothing at all — not a registered
+  // task that later declines to fire.
+  if (internalCronWorkersDisabled()) {
+    if (!registry.disabledNoticeLogged) {
+      registry.disabledNoticeLogged = true
+      console.log('[Cron] Internal cron workers DISABLED by DISABLE_INTERNAL_CRON_WORKERS — no workers registered')
+    }
+    return
+  }
 
   if (registry.started) {
     // Reached when the runtime evaluates this module a second time. One concise

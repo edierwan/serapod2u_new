@@ -206,3 +206,93 @@ describe('dispatch behaviour', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
+
+/**
+ * Localhost safety switch.
+ *
+ * A developer's `.env.local` commonly points at a SHARED database. These four
+ * workers write to it every minute, so running `next dev` to review a UI would
+ * quietly mutate staging. The flag makes that opt-out explicit — and, just as
+ * importantly, the environment alone must never make the decision.
+ */
+describe('DISABLE_INTERNAL_CRON_WORKERS', () => {
+    it('registers nothing when the flag is set', async () => {
+        process.env.DISABLE_INTERNAL_CRON_WORKERS = '1'
+        const mod = await import('./cron-scheduler')
+        mod.startCronScheduler()
+
+        expect(scheduleMock).not.toHaveBeenCalled()
+        expect(mod.__getCronRegistryForTests().registeredPaths.size).toBe(0)
+        // Never claims the started flag, so nothing is left half-initialised.
+        expect(mod.__getCronRegistryForTests().started).toBe(false)
+    })
+
+    it('never dispatches a worker while disabled', async () => {
+        process.env.DISABLE_INTERNAL_CRON_WORKERS = '1'
+        const mod = await import('./cron-scheduler')
+        mod.startCronScheduler()
+        await flush()
+
+        expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('logs exactly one concise line, even across a second module evaluation', async () => {
+        process.env.DISABLE_INTERNAL_CRON_WORKERS = '1'
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+        const modA = await import('./cron-scheduler')
+        modA.startCronScheduler()
+        modA.startCronScheduler()
+
+        vi.resetModules()
+        const modB = await import('./cron-scheduler')
+        modB.startCronScheduler()
+
+        const disabledLines = logSpy.mock.calls
+            .map((call) => String(call[0]))
+            .filter((line) => line.includes('DISABLED'))
+        expect(disabledLines).toHaveLength(1)
+        expect(disabledLines[0]).toContain('DISABLE_INTERNAL_CRON_WORKERS')
+        // The duplicate-initialization warning belongs to the enabled path only.
+        expect(warnSpy).not.toHaveBeenCalled()
+
+        logSpy.mockRestore()
+        warnSpy.mockRestore()
+    })
+
+    it('leaves staging and production behaviour unchanged when the flag is absent', async () => {
+        delete process.env.DISABLE_INTERNAL_CRON_WORKERS
+        const mod = await import('./cron-scheduler')
+        mod.startCronScheduler()
+
+        expect(scheduleMock).toHaveBeenCalledTimes(4)
+        expect(mod.__getCronRegistryForTests().started).toBe(true)
+        expect([...mod.__getCronRegistryForTests().registeredPaths].sort()).toEqual([...WORKERS].sort())
+    })
+
+    it('does not disable cron merely because NODE_ENV is development', async () => {
+        delete process.env.DISABLE_INTERNAL_CRON_WORKERS
+        vi.stubEnv('NODE_ENV', 'development')
+
+        const mod = await import('./cron-scheduler')
+        mod.startCronScheduler()
+
+        expect(scheduleMock).toHaveBeenCalledTimes(4)
+    })
+
+    it('treats explicit falsey spellings as enabled', async () => {
+        const mod = await import('./cron-scheduler')
+        for (const value of ['0', 'false', 'off', 'no', 'FALSE', ' ', '']) {
+            expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as NodeJS.ProcessEnv)).toBe(false)
+        }
+        expect(mod.internalCronWorkersDisabled({} as NodeJS.ProcessEnv)).toBe(false)
+    })
+
+    it('treats the usual truthy spellings as disabled', async () => {
+        const mod = await import('./cron-scheduler')
+        for (const value of ['1', 'true', 'TRUE', 'yes', 'on']) {
+            expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as NodeJS.ProcessEnv)).toBe(true)
+        }
+    })
+})
