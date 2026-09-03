@@ -85,6 +85,12 @@ export interface ReportingDatasetMeta {
     /** Visits whose account manager could not be resolved to a real user. */
     unassignedVisitCount: number
     unassignedShopCount: number
+    /**
+     * First visit date pulled in ahead of the selected month, or null when the
+     * report is strictly month-scoped. Shop Follow-Up sets this so the queue can
+     * say which earlier visits it is still carrying.
+     */
+    carryForwardFromDate: string | null
     /** Non-fatal enrichment problems worth telling management about. */
     warnings: string[]
 }

@@ -2,6 +2,10 @@
 
 // Shop Follow-Up — an action queue, not a dashboard. One row per shop, one
 // recommended action, one due date. Unassigned high-priority shops come first.
+//
+// Unlike the month-scoped reports, the queue carries shops forward: an item
+// raised in August is still an open item in September, so it stays listed until
+// the shop is revisited or recovers rather than disappearing when the month ends.
 
 import { useMemo, useState } from 'react'
 import { AlertTriangle, CalendarClock, Flag, Search, UserX } from 'lucide-react'
@@ -30,6 +34,7 @@ import {
     buildShopEntries,
     isOverdueFollowUp,
     selectFollowUpKpiEntries,
+    selectFollowUpQueueEntries,
     sortFollowUpQueue,
     type FollowUpKpiKey,
 } from '@/modules/roadtour/lib/reporting/aggregate'
@@ -40,7 +45,7 @@ import {
 import { nextSortState, type SortState } from '@/modules/roadtour/lib/reporting/tableSort'
 import { IMPACT_METHOD_NOTE } from '@/modules/roadtour/lib/reporting/impactModel'
 import { UNASSIGNED_AM_LABEL } from '@/modules/roadtour/lib/reporting/types'
-import type { FollowUpPriority } from '@/modules/roadtour/lib/reporting/followUp'
+import { FOLLOW_UP_CARRY_FORWARD_MONTHS, type FollowUpPriority } from '@/modules/roadtour/lib/reporting/followUp'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
@@ -56,7 +61,7 @@ const KPI_DRILLDOWN_TITLE: Record<FollowUpKpiKey, string> = {
 
 export function ShopFollowUpView({ userProfile }: Props) {
     const organizationId = userProfile?.organizations?.id ?? userProfile?.organization_id ?? null
-    const reporting = useMonthlyReporting(organizationId)
+    const reporting = useMonthlyReporting(organizationId, { carryForwardMonths: FOLLOW_UP_CARRY_FORWARD_MONTHS })
     const { dataset, loading, error, month } = reporting
     const [queueFilter, setQueueFilter] = useState<QueueFilter>('actionable')
     const [search, setSearch] = useState('')
@@ -64,7 +69,14 @@ export function ShopFollowUpView({ userProfile }: Props) {
     const [sort, setSort] = useState<SortState<FollowUpSortKey> | null>(null)
     const [kpiDrilldown, setKpiDrilldown] = useState<FollowUpKpiKey | null>(null)
 
-    const entries = useMemo(() => (dataset ? buildShopEntries(dataset.rows) : []), [dataset])
+    // Shops visited this month, plus every earlier shop whose follow-up is still
+    // open — the queue tracks outstanding work, not one calendar month's visits.
+    const entries = useMemo(() => (
+        dataset ? selectFollowUpQueueEntries(buildShopEntries(dataset.rows), month) : []
+    ), [dataset, month])
+    const carriedForward = useMemo(() => (
+        entries.filter((entry) => entry.currentRow.visit_date < month.startDate).length
+    ), [entries, month])
     const summary = useMemo(() => buildFollowUpSummary(entries), [entries])
 
     const queue = useMemo(() => {
@@ -179,6 +191,7 @@ export function ShopFollowUpView({ userProfile }: Props) {
                                     <CardTitle className="text-base">Follow-Up Queue</CardTitle>
                                     <p className="text-xs text-[var(--sera-muted)]">
                                         {queue.length} {queue.length === 1 ? 'shop' : 'shops'} · {IMPACT_METHOD_NOTE}
+                                        {carriedForward > 0 && ` · ${carriedForward} still open from an earlier month.`}
                                     </p>
                                 </div>
                                 <div className="flex flex-1 items-center gap-2 sm:max-w-md">
@@ -227,7 +240,7 @@ export function ShopFollowUpView({ userProfile }: Props) {
                                                 <TableCell colSpan={10}>
                                                     <EmptyBlock
                                                         title="Nothing in this queue"
-                                                        description="No shop matches the selected month, filters and search."
+                                                        description="No shop visited this month, and nothing left open from an earlier one, matches the filters and search."
                                                     />
                                                 </TableCell>
                                             </TableRow>

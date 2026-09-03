@@ -111,6 +111,39 @@ export function isOverdueFollowUp(entry: ShopReportEntry): boolean {
     return isActionableFollowUp(entry.priority) && entry.dueState === 'overdue'
 }
 
+/**
+ * A follow-up is still open while it needs an action (`high`/`medium`) or while
+ * its observation window has not finished yet (`observing`). `observing` counts
+ * because a shop visited on 30 August only matures on 6 September — dropping it
+ * on 1 September would hide it for the week that decides its outcome.
+ * `healthy` and `low` shops need nothing, so they do not carry forward.
+ */
+const OPEN_FOLLOW_UP_PRIORITIES: readonly FollowUpPriority[] = ['high', 'medium', 'observing']
+
+export function isOpenFollowUp(entry: ShopReportEntry): boolean {
+    return OPEN_FOLLOW_UP_PRIORITIES.includes(entry.priority)
+}
+
+/**
+ * The shops the Follow-Up queue shows for the selected month.
+ *
+ * A shop visited during the month is always listed, whatever its priority — that
+ * is the month's own work. A shop last visited BEFORE the month is carried
+ * forward only while its follow-up is still open, so an unresolved shop stays in
+ * the queue month after month instead of vanishing when the calendar rolls over,
+ * while resolved and healthy shops do not pile up in it forever.
+ */
+export function selectFollowUpQueueEntries(
+    entries: ShopReportEntry[],
+    month: { startDate: string; endDate: string },
+): ShopReportEntry[] {
+    return entries.filter((entry) => {
+        const visitDate = entry.currentRow.visit_date
+        if (visitDate >= month.startDate && visitDate <= month.endDate) return true
+        return isOpenFollowUp(entry)
+    })
+}
+
 export interface OverviewSummary {
     shopsVisited: number
     maturedShops: number

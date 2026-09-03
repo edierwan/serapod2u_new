@@ -8,6 +8,7 @@ import {
     buildShopEntries,
     isOverdueFollowUp,
     MIN_MATURED_SAMPLE_FOR_RANKING,
+    selectFollowUpQueueEntries,
     sortFollowUpQueue,
 } from './aggregate'
 import { attributeShopVisits, findOverlappingObservationWindows } from './attribution'
@@ -350,5 +351,59 @@ describe('follow-up queue ordering', () => {
         expect(summary.unassignedShops).toBe(1)
         expect(summary.overdue).toBe(2)
         expect(summary.dueToday).toBe(0)
+    })
+})
+
+describe('follow-up queue carries unresolved shops across months', () => {
+    // Viewing September while the field work happened in August — the situation
+    // that used to empty the queue on the 1st of every month.
+    const SEPTEMBER = { startDate: '2026-09-01', endDate: '2026-09-30' }
+    const SEPTEMBER_NOW = new Date('2026-09-04T01:00:00Z')
+
+    const augustNoResponse = row({
+        visit_at: '2026-08-10T02:00:00.000Z', shop_id: 'shop-open',
+        before_scans: 4, after_scans: 0, matured: true,
+    })
+    const augustImproved = row({
+        visit_at: '2026-08-10T02:00:00.000Z', shop_id: 'shop-healthy',
+        before_scans: 2, after_scans: 9, matured: true,
+    })
+    const augustStillObserving = row({
+        visit_at: '2026-08-30T02:00:00.000Z', shop_id: 'shop-observing',
+        before_scans: 1, after_scans: 0, matured: false,
+    })
+    const septemberVisit = row({
+        visit_at: '2026-09-02T02:00:00.000Z', shop_id: 'shop-september',
+        before_scans: 3, after_scans: 8, matured: true,
+    })
+
+    const allRows = [augustNoResponse, augustImproved, augustStillObserving, septemberVisit]
+    const queue = selectFollowUpQueueEntries(buildShopEntries(allRows, SEPTEMBER_NOW), SEPTEMBER)
+    const shopIds = queue.map((entry) => entry.shopId).sort()
+
+    it('keeps an August shop that never responded in September\'s queue', () => {
+        expect(shopIds).toContain('shop-open')
+        const carried = queue.find((entry) => entry.shopId === 'shop-open')!
+        expect(carried.priority).toBe('high')
+        expect(isOverdueFollowUp(carried)).toBe(true)
+    })
+
+    it('keeps an August shop whose observation window is still running', () => {
+        expect(shopIds).toContain('shop-observing')
+        expect(queue.find((entry) => entry.shopId === 'shop-observing')!.priority).toBe('observing')
+    })
+
+    it('drops a healthy August shop instead of piling it up forever', () => {
+        expect(shopIds).not.toContain('shop-healthy')
+    })
+
+    it('still lists every shop visited during the selected month', () => {
+        expect(shopIds).toContain('shop-september')
+    })
+
+    it('reports the carried-forward shops as overdue work, not as an empty month', () => {
+        const summary = buildFollowUpSummary(queue)
+        expect(queue.length).toBe(3)
+        expect(summary.highPriority).toBeGreaterThan(0)
     })
 })

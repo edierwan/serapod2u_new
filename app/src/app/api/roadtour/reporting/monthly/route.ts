@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { loadRoadtourReportingDataset } from '@/lib/roadtour/reporting-data'
-import { isValidMonthKey, normalizeMonthKey } from '@/modules/roadtour/lib/reporting/month'
+import { isValidMonthKey, normalizeCarryForwardMonths, normalizeMonthKey } from '@/modules/roadtour/lib/reporting/month'
 import { normalizeImpactWindowDays } from '@/modules/roadtour/lib/reporting/impactModel'
 // The RoadTour admin guard (authenticated, role_level <= 20, own organization)
 // lives with the KPI APIs and is shared as-is — the permission surface for
@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
             campaignId: String(searchParams.get('campaignId') || '').trim() || null,
             accountManagerUserId: String(searchParams.get('accountManagerUserId') || '').trim() || null,
             regionStateId: String(searchParams.get('regionStateId') || '').trim() || null,
+            carryForwardMonths: normalizeCarryForwardMonths(searchParams.get('carryForwardMonths')),
         })
 
         return NextResponse.json({ success: true, data: dataset })

@@ -30,7 +30,12 @@ import {
     type IdentityUser,
 } from '@/modules/roadtour/lib/reporting/identity'
 import { bucketScansAroundAnchor, resolveVisitAnchorIso } from '@/modules/roadtour/lib/reporting/scanWindow'
-import { resolveReportingMonth, reportingCutoffDate } from '@/modules/roadtour/lib/reporting/month'
+import {
+    normalizeCarryForwardMonths,
+    reportingCutoffDate,
+    resolveReportingMonth,
+    shiftMonthKey,
+} from '@/modules/roadtour/lib/reporting/month'
 import { resolveShopDisplay } from '@/modules/roadtour/lib/reporting/shopDisplay'
 import type {
     ReportingFilterOption,
@@ -51,6 +56,13 @@ export interface LoadReportingParams {
     campaignId?: string | null
     accountManagerUserId?: string | null
     regionStateId?: string | null
+    /**
+     * Months of earlier visits to pull in ahead of the selected month. Shop
+     * Follow-Up passes a non-zero value so a shop whose follow-up is still open
+     * stays visible after its visit month ends; the month-scoped reports
+     * (Monthly Overview, AM Performance) leave it at 0.
+     */
+    carryForwardMonths?: number
     now?: Date
 }
 
@@ -80,7 +92,13 @@ interface ConsumerScanRecord {
     scanned_at: string
 }
 
-function emptyDataset(monthKey: string, windowDays: number, now: Date, warning: string | null): RoadtourReportingDataset {
+function emptyDataset(
+    monthKey: string,
+    windowDays: number,
+    now: Date,
+    warning: string | null,
+    carryForwardFromDate: string | null = null,
+): RoadtourReportingDataset {
     const month = resolveReportingMonth(monthKey, now)
     return {
         rows: [],
@@ -96,6 +114,7 @@ function emptyDataset(monthKey: string, windowDays: number, now: Date, warning: 
             generatedAt: now.toISOString(),
             unassignedVisitCount: 0,
             unassignedShopCount: 0,
+            carryForwardFromDate,
             warnings: warning ? [warning] : [],
         },
     }
@@ -113,6 +132,16 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
     const windowDays = normalizeImpactWindowDays(params.windowDays)
     const warnings: string[] = []
 
+    // The selected month always bounds the END of the report — looking at August
+    // never shows a September visit. The START moves back by `carryForwardMonths`
+    // so a shop whose follow-up is still open does not drop out of view the
+    // moment a new calendar month begins.
+    const carryForwardMonths = normalizeCarryForwardMonths(params.carryForwardMonths)
+    const visitWindowStart = carryForwardMonths > 0
+        ? resolveReportingMonth(shiftMonthKey(month.key, -carryForwardMonths), now)
+        : month
+    const carryForwardFromDate = carryForwardMonths > 0 ? visitWindowStart.startDate : null
+
     const { data: campaignRows, error: campaignError } = await params.admin
         .from('roadtour_campaigns')
         .select('id, name')
@@ -124,19 +153,19 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
         name: normalizeText(row.name) || 'Untitled campaign',
     }))
     if (campaigns.length === 0) {
-        return emptyDataset(month.key, windowDays, now, 'No RoadTour campaigns exist for this organization yet.')
+        return emptyDataset(month.key, windowDays, now, 'No RoadTour campaigns exist for this organization yet.', carryForwardFromDate)
     }
 
     const campaignIds = campaigns.map((campaign) => campaign.id)
     const campaignNameById = new Map(campaigns.map((campaign) => [campaign.id, campaign.name]))
 
-    // ── Official visits inside the selected calendar month ──────────────────
+    // ── Official visits inside the reporting window ─────────────────────────
     let visitQuery = params.admin
         .from('roadtour_official_visits')
         .select('id, campaign_id, account_manager_user_id, shop_id, visit_date, visit_status, notes, official_scan_event_id, created_at')
         .in('campaign_id', campaignIds)
         .in('visit_status', REPORTABLE_VISIT_STATUSES)
-        .gte('visit_date', month.startDate)
+        .gte('visit_date', visitWindowStart.startDate)
         .lte('visit_date', month.endDate)
     if (params.campaignId) visitQuery = visitQuery.eq('campaign_id', params.campaignId)
     if (params.accountManagerUserId) visitQuery = visitQuery.eq('account_manager_user_id', params.accountManagerUserId)
@@ -148,7 +177,7 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
 
     const visits = (visitRows || []) as VisitRecord[]
     if (visits.length === 0) {
-        return emptyDataset(month.key, windowDays, now, null)
+        return emptyDataset(month.key, windowDays, now, null, carryForwardFromDate)
     }
 
     const shopIds = Array.from(new Set(visits.map((visit) => visit.shop_id).filter(Boolean)))
@@ -157,7 +186,7 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
     // ── Official scan events: the impact anchor and the visit participant ───
     const scanEventsByShop = new Map<string, ScanEventRecord[]>()
     const officialScanById = new Map<string, ScanEventRecord>()
-    const scanWindowFrom = new Date(new Date(month.startUtc).getTime() - windowDays * DAY_MS).toISOString()
+    const scanWindowFrom = new Date(new Date(visitWindowStart.startUtc).getTime() - windowDays * DAY_MS).toISOString()
     const scanWindowTo = new Date(new Date(month.endUtc).getTime() + windowDays * DAY_MS).toISOString()
 
     const { data: scanEventRows, error: scanEventError } = await params.admin
@@ -273,7 +302,7 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
         ? visits.filter((visit) => shopsById.get(visit.shop_id)?.state_id === params.regionStateId)
         : visits
     if (scopedVisits.length === 0) {
-        const dataset = emptyDataset(month.key, windowDays, now, null)
+        const dataset = emptyDataset(month.key, windowDays, now, null, carryForwardFromDate)
         dataset.campaigns = campaigns
         dataset.regions = buildRegionOptions(shopsById)
         dataset.accountManagers = buildAmOptions(amIds, usersById)
@@ -432,6 +461,7 @@ export async function loadRoadtourReportingDataset(params: LoadReportingParams):
             generatedAt: now.toISOString(),
             unassignedVisitCount: unassignedRows.length,
             unassignedShopCount: new Set(unassignedRows.map((row) => row.shop_id)).size,
+            carryForwardFromDate,
             warnings,
         },
     }
