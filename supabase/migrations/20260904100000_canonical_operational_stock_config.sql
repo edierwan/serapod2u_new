@@ -132,10 +132,89 @@ COMMENT ON FUNCTION public.resolve_default_stock_config(uuid) IS
   'LEGACY SINK RESOLVER — returns the is_variant_default configuration, which is UNCLASSIFIED for Cellera cartridges and STD for non-vape. Use ONLY to reverse or release a posting against the balance it actually landed in. Never use it on a forward operational write path: use resolve_operational_stock_config(uuid).';
 
 -- ---------------------------------------------------------------------------
--- 2. Repointed write paths
+-- 2. Activation stamp
+-- ---------------------------------------------------------------------------
+-- The exact instant the write-path fix went live in this environment.
+--
+-- Without it the cutover preflight cannot tell a legacy movement that PROVES
+-- the fix failed from one that merely predates the fix. Production carries 484
+-- historical UNCLASSIFIED return movements; those must never block the cutover
+-- forever, while a single movement posted AFTER this stamp must block it
+-- immediately.
+--
+-- Written inside the same transaction as the repointed functions below, so the
+-- stamp and the behaviour it describes can never disagree. Re-applying the
+-- migration keeps the original stamp: activation happened once, and resetting
+-- the clock would silently forgive writes that came after it.
+
+CREATE TABLE IF NOT EXISTS public.canonical_stock_config_activation (
+  singleton    boolean     PRIMARY KEY DEFAULT true CHECK (singleton),
+  activated_at timestamptz NOT NULL DEFAULT now(),
+  migration    text        NOT NULL,
+  note         text
+);
+
+COMMENT ON TABLE public.canonical_stock_config_activation IS
+  'Single row. activated_at is the instant resolve_operational_stock_config() replaced the is_variant_default sink on every forward write path in this environment. Legacy movements before it are history; legacy movements after it mean a write path was missed.';
+
+INSERT INTO public.canonical_stock_config_activation (singleton, migration, note)
+VALUES (
+  true,
+  '20260904100000_canonical_operational_stock_config',
+  'Forward write paths repointed from resolve_default_stock_config (is_variant_default sink: UNCLASSIFIED for Cellera, STD for non-vape) onto resolve_operational_stock_config.'
+)
+ON CONFLICT (singleton) DO NOTHING;
+
+ALTER TABLE public.canonical_stock_config_activation ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS canonical_stock_config_activation_read ON public.canonical_stock_config_activation;
+CREATE POLICY canonical_stock_config_activation_read
+  ON public.canonical_stock_config_activation
+  FOR SELECT TO authenticated
+  USING (true);
+
+GRANT SELECT ON public.canonical_stock_config_activation TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.canonical_stock_config_activated_at()
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT activated_at FROM public.canonical_stock_config_activation WHERE singleton
+$$;
+
+COMMENT ON FUNCTION public.canonical_stock_config_activated_at() IS
+  'When the canonical resolver became the forward write path in this environment, or NULL if migration 20260904100000 has not been applied. The cutover preflight blocks only on legacy movements posted after this instant.';
+
+REVOKE ALL ON FUNCTION public.canonical_stock_config_activated_at() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.canonical_stock_config_activated_at() TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3. Repointed write paths
 -- ---------------------------------------------------------------------------
 -- Each body below is the current production definition with exactly one call
 -- to resolve_default_stock_config replaced by resolve_operational_stock_config.
+--
+-- THE RESOLVER NEVER OVERRIDES AN EXPLICIT CONFIGURATION.
+--
+-- In all three functions that touch a configuration on the way in, the
+-- resolver sits behind a null check and nothing re-resolves afterwards:
+--
+--   record_stock_movement                 COALESCE(p_stock_config_id, resolve)
+--   trg_stock_movements_fill_cost_...     IF NEW.stock_config_id IS NULL THEN
+--   stock_movements_apply_to_inventory    COALESCE(NEW.stock_config_id, resolve)
+--
+-- record_stock_movement then validates only that the configuration BELONGS to
+-- the variant. It deliberately does not check status, so a phase_out 50NB or
+-- UNCLASSIFIED configuration is still postable — which is exactly what the
+-- cutover needs in order to retire those balances, and what a historical
+-- correction needs in order to land on the balance it actually belongs to.
+--
+-- The chosen configuration is then used verbatim: it is the stock_config_id
+-- written to stock_movements, and the key the product_inventory row is locked
+-- and updated by. A movement of -1,300 posted explicitly against 50NB reduces
+-- the 50NB balance to zero and does not read, touch or credit 20NB.
 
 -- ---- record_stock_movement ---------------------------------------------
 CREATE OR REPLACE FUNCTION public.record_stock_movement(p_movement_type text, p_variant_id uuid, p_organization_id uuid, p_quantity_change integer, p_unit_cost numeric DEFAULT NULL::numeric, p_manufacturer_id uuid DEFAULT NULL::uuid, p_warehouse_location text DEFAULT NULL::text, p_reason text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_reference_type text DEFAULT 'manual'::text, p_reference_id uuid DEFAULT NULL::uuid, p_reference_no text DEFAULT NULL::text, p_company_id uuid DEFAULT NULL::uuid, p_created_by uuid DEFAULT NULL::uuid, p_evidence_urls text[] DEFAULT NULL::text[], p_stock_config_id uuid DEFAULT NULL::uuid)

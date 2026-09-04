@@ -167,7 +167,7 @@ describe('SQL resolver mirrors the TypeScript rule', () => {
       expect(migration).toContain(`CREATE OR REPLACE FUNCTION public.${fn}(`)
     }
     // Seven repointed bodies, and not one leftover forward call to the sink.
-    const repointed = migration.split('-- 2. Repointed write paths')[1]
+    const repointed = migration.split('Repointed write paths')[1]
     expect(repointed.match(/public\.resolve_operational_stock_config\(/g)?.length).toBe(7)
     expect(repointed).not.toContain('resolve_default_stock_config(')
   })

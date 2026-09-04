@@ -248,6 +248,11 @@ BEGIN
       JOIN public.organizations o ON o.id = pi.organization_id
      WHERE c.config_code = ANY (v_codes)
        AND COALESCE(pi.quantity_on_hand, 0) <> 0
+       -- record_stock_movement only locates active inventory rows, so an
+       -- inactive one cannot be posted against. The preflight blocks on those
+       -- (INACTIVE_LEGACY_INVENTORY_ROWS) rather than letting them be skipped
+       -- silently here.
+       AND pi.is_active
      ORDER BY o.org_code, c.config_code, pi.variant_id
      FOR UPDATE OF pi
   LOOP

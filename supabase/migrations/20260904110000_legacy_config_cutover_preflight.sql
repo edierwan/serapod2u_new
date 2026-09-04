@@ -54,6 +54,9 @@ DECLARE
   v_open_adjustments jsonb;
   v_open_counts      jsonb;
   v_live_writers     jsonb;
+  v_historical_writers jsonb;
+  v_inactive_rows    jsonb;
+  v_activated_at     timestamptz;
   v_unbound_orders   jsonb;
   v_ambiguous        jsonb;
   v_allocated        jsonb;
@@ -160,12 +163,68 @@ BEGIN
   END IF;
 
   -- --- Blocker 4: a live writer into a legacy configuration ---------------
-  -- The proven case: post_return_case_inventory resolved through the
-  -- is_variant_default sink and posted 484 UNCLASSIFIED movements into WH002
-  -- between 2026-07-29 and 2026-09-03. Migration 20260904100000 repoints it.
-  -- This check proves the repoint actually held before any balance is zeroed.
+  -- Activation-relative, never window-relative.
+  --
+  -- Production carries 484 historical UNCLASSIFIED return movements from
+  -- post_return_case_inventory resolving through the is_variant_default sink,
+  -- and more arrive until migration 20260904100000 is applied. Those are
+  -- history: they are the reason for the cutover, not a reason to refuse it,
+  -- and a rolling day-window would let them block it permanently.
+  --
+  -- What must block is a legacy movement posted AFTER the write-path fix went
+  -- live, because that proves a path was missed and the retired balance would
+  -- grow back. canonical_stock_config_activation.activated_at is stamped in the
+  -- same transaction that repoints those paths, so the boundary is exact and
+  -- cannot drift with the clock or with when the preflight happens to run.
+  --
+  -- Cutover retirement movements are excluded: they post to legacy
+  -- configurations by design.
+  v_activated_at := public.canonical_stock_config_activated_at();
+
+  IF v_activated_at IS NULL THEN
+    v_blockers := v_blockers || jsonb_build_object(
+      'code', 'CANONICAL_RESOLVER_NOT_ACTIVATED',
+      'severity', 'blocking',
+      'message', 'Migration 20260904100000 has not been applied here, so operational write paths still resolve to the legacy sink. Retiring balances now would let them grow straight back.',
+      'action_owner', 'engineering'
+    );
+  ELSE
+    SELECT jsonb_agg(x ORDER BY x->>'last_seen' DESC)
+      INTO v_live_writers
+      FROM (
+        SELECT jsonb_build_object(
+                 'config_code', c.config_code,
+                 'movement_type', sm.movement_type,
+                 'reference_type', sm.reference_type,
+                 'movements', count(*),
+                 'net_quantity', sum(sm.quantity_change),
+                 'first_seen', min(sm.created_at),
+                 'last_seen', max(sm.created_at)
+               ) AS x
+          FROM public.stock_movements sm
+          JOIN public.inventory_stock_configurations c ON c.id = sm.stock_config_id
+         WHERE c.config_code = ANY (v_codes)
+           AND sm.created_at > v_activated_at
+           AND sm.reference_type <> 'legacy_config_cutover'
+         GROUP BY c.config_code, sm.movement_type, sm.reference_type
+      ) s;
+
+    IF v_live_writers IS NOT NULL THEN
+      v_blockers := v_blockers || jsonb_build_object(
+        'code', 'LIVE_LEGACY_WRITER',
+        'severity', 'blocking',
+        'activated_at', v_activated_at,
+        'message', 'A code path posted into a legacy configuration AFTER the canonical resolver was activated. A write path was missed; retiring the balance now would leave the next posting stranded.',
+        'action_owner', 'engineering',
+        'detail', v_live_writers
+      );
+    END IF;
+  END IF;
+
+  -- Historical legacy writes, reported for context and never blocking. These
+  -- are what the cutover exists to retire.
   SELECT jsonb_agg(x ORDER BY x->>'last_seen' DESC)
-    INTO v_live_writers
+    INTO v_historical_writers
     FROM (
       SELECT jsonb_build_object(
                'config_code', c.config_code,
@@ -180,17 +239,40 @@ BEGIN
         JOIN public.inventory_stock_configurations c ON c.id = sm.stock_config_id
        WHERE c.config_code = ANY (v_codes)
          AND sm.created_at > now() - make_interval(days => GREATEST(p_writer_window_days, 0))
+         AND (v_activated_at IS NULL OR sm.created_at <= v_activated_at)
        GROUP BY c.config_code, sm.movement_type, sm.reference_type
     ) s;
 
-  IF v_live_writers IS NOT NULL THEN
+  -- --- Blocker 4b: legacy balance on a deactivated inventory row ----------
+  -- record_stock_movement only finds product_inventory rows with
+  -- is_active = true, so the cutover cannot retire an inactive row and would
+  -- silently leave the balance behind. Report it rather than skip it.
+  SELECT jsonb_agg(x ORDER BY x->>'org_code')
+    INTO v_inactive_rows
+    FROM (
+      SELECT jsonb_build_object(
+               'org_code', o.org_code,
+               'config_code', c.config_code,
+               'rows', count(*),
+               'quantity_on_hand', sum(pi.quantity_on_hand)
+             ) AS x
+        FROM public.product_inventory pi
+        JOIN public.inventory_stock_configurations c ON c.id = pi.stock_config_id
+        JOIN public.organizations o ON o.id = pi.organization_id
+       WHERE c.config_code = ANY (v_codes)
+         AND COALESCE(pi.quantity_on_hand, 0) <> 0
+         AND pi.is_active IS DISTINCT FROM true
+       GROUP BY o.org_code, c.config_code
+    ) s;
+
+  IF v_inactive_rows IS NOT NULL THEN
     v_blockers := v_blockers || jsonb_build_object(
-      'code', 'LIVE_LEGACY_WRITER',
+      'code', 'INACTIVE_LEGACY_INVENTORY_ROWS',
       'severity', 'blocking',
-      'window_days', p_writer_window_days,
-      'message', 'A code path is still posting movements into a legacy configuration. Retiring the balance now would leave the next posting stranded.',
-      'action_owner', 'engineering',
-      'detail', v_live_writers
+      'count', jsonb_array_length(v_inactive_rows),
+      'message', 'Legacy balances sit on deactivated product_inventory rows, which the cutover cannot post against. Reactivate the rows or clear them separately, so nothing is left behind.',
+      'action_owner', 'operations',
+      'detail', v_inactive_rows
     );
   END IF;
 
@@ -313,14 +395,16 @@ BEGIN
                         WHERE b->>'severity' = 'blocking'),
     'warning_count', (SELECT count(*) FROM jsonb_array_elements(v_blockers) b
                        WHERE b->>'severity' = 'warning'),
+    'canonical_resolver_activated_at', v_activated_at,
     'blockers', v_blockers,
+    'historical_legacy_writers', COALESCE(v_historical_writers, '[]'::jsonb),
     'retirement_scope', COALESCE(v_scope, '[]'::jsonb)
   );
 END;
 $$;
 
 COMMENT ON FUNCTION public.legacy_config_cutover_preflight(integer) IS
-  'Read-only readiness report for LEGACY-CONFIG-CUTOVER-2026. Reports open transfers, unposted adjustments, open count sessions, live legacy writers, unbound open order items, unresolvable variants and allocated legacy stock. Cancels nothing. execute_legacy_config_cutover() refuses to run while any blocking entry stands.';
+  'Read-only readiness report for LEGACY-CONFIG-CUTOVER-2026. Reports open transfers, unposted adjustments, open count sessions, legacy writes after canonical-resolver activation, inactive legacy inventory rows, unbound open order items, unresolvable variants and allocated legacy stock. Legacy movements from BEFORE activation are reported as history and never block. p_writer_window_days sizes that historical summary only; blocking is decided by canonical_stock_config_activation.activated_at. Cancels nothing. execute_legacy_config_cutover() refuses to run while any blocking entry stands.';
 
 REVOKE ALL ON FUNCTION public.legacy_config_cutover_preflight(integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.legacy_config_cutover_preflight(integer) TO authenticated, service_role;

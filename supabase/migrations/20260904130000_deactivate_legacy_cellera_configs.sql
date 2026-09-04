@@ -10,7 +10,8 @@
 --   * 50NB balance          = 0 in every organization
 --   * UNCLASSIFIED balance  = 0 in every organization
 --   * 50OB balance          = 0 in every organization
---   * no movement posted into any legacy configuration inside the writer window
+--   * no movement posted into any legacy configuration since the canonical
+--     resolver was activated (history before activation never blocks)
 --   * legacy_config_cutover_preflight() reports no blocker
 --
 -- Configuration ROWS ARE NEVER DELETED. status becomes 'inactive' so that
@@ -34,7 +35,8 @@ AS $$
 DECLARE
   v_codes      text[] := public.legacy_cutover_config_codes();
   v_residual   jsonb;
-  v_writers    integer;
+  v_writers      integer;
+  v_activated_at timestamptz;
   v_preflight  jsonb;
   v_affected   integer := 0;
   v_rows       jsonb;
@@ -61,21 +63,29 @@ BEGIN
   END IF;
 
   -- --- Precondition 2: no live writer --------------------------------------
-  -- Any movement into a legacy configuration since the cutover means something
-  -- is still resolving there and the balance would re-grow behind an inactive
-  -- status. Cutover retirement movements themselves are excluded.
+  -- Measured from canonical-resolver activation, not from a rolling day window.
+  -- Historical legacy movements predate the fix and must never block; a single
+  -- non-cutover movement AFTER activation proves a write path was missed and
+  -- the balance would re-grow behind an inactive status.
+  v_activated_at := public.canonical_stock_config_activated_at();
+  IF v_activated_at IS NULL THEN
+    RAISE EXCEPTION
+      'Refusing to deactivate: migration 20260904100000 has not been applied here, so operational write paths still resolve to the legacy sink.'
+      USING ERRCODE = 'raise_exception';
+  END IF;
+
   SELECT count(*)
     INTO v_writers
     FROM public.stock_movements sm
     JOIN public.inventory_stock_configurations c ON c.id = sm.stock_config_id
    WHERE c.config_code = ANY (v_codes)
      AND sm.reference_type <> 'legacy_config_cutover'
-     AND sm.created_at > now() - interval '7 days';
+     AND sm.created_at > v_activated_at;
 
   IF v_writers > 0 THEN
     RAISE EXCEPTION
-      'Refusing to deactivate: % non-cutover movement(s) posted into a legacy configuration in the last 7 days. Eliminate the writer first.',
-      v_writers
+      'Refusing to deactivate: % non-cutover movement(s) posted into a legacy configuration after the canonical resolver was activated (%). Eliminate the writer first.',
+      v_writers, v_activated_at
       USING ERRCODE = 'raise_exception';
   END IF;
 
