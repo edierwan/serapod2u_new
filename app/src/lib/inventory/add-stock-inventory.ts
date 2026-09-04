@@ -1,4 +1,5 @@
 import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
+import { isLegacyConfigCode } from './canonical-stock-config'
 
 export interface ExistingStockBalance {
   quantity_on_hand: number
@@ -100,7 +101,12 @@ export function isSelectableManualStockConfiguration(row: {
   if (!row.stockConfigId) return false
   const code = (row.configCode || '').toUpperCase()
   const label = (row.configLabel || '').toUpperCase()
-  if (!code || code === 'UNCLASSIFIED' || code.includes('LEGACY')) return false
+  if (!code) return false
+  // Legacy configurations (50NB / 50OB / UNCLASSIFIED) are retired to zero by
+  // LEGACY-CONFIG-CUTOVER-2026 and can never receive new stock. Only the
+  // canonical operational configuration is selectable - 20NB for Cellera
+  // cartridges, STD for non-vape.
+  if (isLegacyConfigCode(code)) return false
   if (label.includes('LEGACY') || label.includes('UNCLASSIFIED')) return false
   if (row.status && row.status !== 'active') return false
   return true

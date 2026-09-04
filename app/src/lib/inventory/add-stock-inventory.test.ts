@@ -168,12 +168,29 @@ describe('Add Stock existing inventory balance', () => {
 })
 
 describe('Manual Stock Addition bulk helpers', () => {
-  it('rejects Legacy/Unclassified and inactive configurations', () => {
+  it('rejects every legacy and inactive configuration, admitting only the canonical one', () => {
     expect(isSelectableManualStockConfiguration({
       stockConfigId: 'legacy',
       configCode: 'UNCLASSIFIED',
       status: 'active',
     })).toBe(false)
+    // 50NB and 50OB are retired to zero, never restocked.
+    expect(isSelectableManualStockConfiguration({
+      stockConfigId: 'c-50nb',
+      configCode: '50NB',
+      status: 'active',
+    })).toBe(false)
+    expect(isSelectableManualStockConfiguration({
+      stockConfigId: 'c-50ob',
+      configCode: '50OB',
+      status: 'active',
+    })).toBe(false)
+    // STD stays selectable: it is the canonical configuration for non-vape.
+    expect(isSelectableManualStockConfiguration({
+      stockConfigId: 'c-std',
+      configCode: 'STD',
+      status: 'active',
+    })).toBe(true)
     expect(isSelectableManualStockConfiguration({
       stockConfigId: 'c1',
       configCode: '20NB',
@@ -193,7 +210,7 @@ describe('Manual Stock Addition bulk helpers', () => {
     expect(parseAddQuantity('12')).toEqual({ ok: true, value: 12 })
   })
 
-  it('preserves exact 20NB/50NB/50OB identity through filters and RPC items', () => {
+  it('keeps exact configuration identity and admits only the canonical configuration', () => {
     const rows = [
       catalogRow(),
       catalogRow({
@@ -234,16 +251,30 @@ describe('Manual Stock Addition bulk helpers', () => {
     expect(filtered).toHaveLength(1)
     expect(filtered[0].stockConfigId).toBe('c-20nb')
 
-    const selected = new Set([rows[0].rowKey, rows[1].rowKey])
+    // Canonical operational configuration only. 50NB, 50OB and UNCLASSIFIED are
+    // retired to zero by LEGACY-CONFIG-CUTOVER-2026 and can never receive new
+    // stock, so posting against them fails closed rather than silently adding.
+    const selected = new Set([rows[0].rowKey])
     const items = buildManualStockRpcItems(
       rows,
       selected,
-      { [rows[0].rowKey]: '5', [rows[1].rowKey]: '3' },
-      { [rows[0].rowKey]: '10', [rows[1].rowKey]: '11' },
+      { [rows[0].rowKey]: '5' },
+      { [rows[0].rowKey]: '10' },
       {},
     )
-    expect(items.map((item) => item.stockConfigId)).toEqual(['c-20nb', 'c-50nb'])
+    expect(items.map((item) => item.stockConfigId)).toEqual(['c-20nb'])
     expect(items.every((item) => item.variantId === 'v-1')).toBe(true)
+
+    for (const legacy of [rows[1], rows[2], rows[3]]) {
+      expect(isSelectableManualStockConfiguration(legacy)).toBe(false)
+      expect(() => buildManualStockRpcItems(
+        rows,
+        new Set([legacy.rowKey]),
+        { [legacy.rowKey]: '3' },
+        { [legacy.rowKey]: '11' },
+        {},
+      )).toThrow(/Legacy\/Unclassified/)
+    }
   })
 
   it('preserves entered quantities across pagination and filtering', () => {

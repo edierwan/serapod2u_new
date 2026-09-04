@@ -67,46 +67,54 @@ describe('stock transfer validation and identity', () => {
     expect(validateTransferRoute('wh-a', 'wh-b')).toBeNull()
   })
 
-  it('rejects Legacy/Unclassified sources and keeps exact configuration identity', () => {
+  it('admits only the canonical configuration and keeps its exact identity', () => {
     expect(isTransferableConfiguration({ stockConfigId: null })).toBe(false)
     expect(isTransferableConfiguration({ stockConfigId: 'x', configCode: 'UNCLASSIFIED' })).toBe(false)
     expect(isTransferableConfiguration({ stockConfigId: 'cfg-20nb', configCode: '20NB', status: 'active' })).toBe(true)
+    // STD is the canonical configuration for non-vape and stays transferable.
+    expect(isTransferableConfiguration({ stockConfigId: 'cfg-std', configCode: 'STD', status: 'active' })).toBe(true)
+    // 50NB and 50OB are retired to zero by LEGACY-CONFIG-CUTOVER-2026, never
+    // moved between warehouses.
+    expect(isTransferableConfiguration({ stockConfigId: 'cfg-50nb', configCode: '50NB', status: 'active' })).toBe(false)
+    expect(isTransferableConfiguration({ stockConfigId: 'cfg-50ob', configCode: '50OB', status: 'active' })).toBe(false)
 
+    const legacyRows = [
+      row({
+        inventoryKey: inventoryRowKey('var-1', 'cfg-50nb'),
+        stockConfigId: 'cfg-50nb',
+        configLabel: '50ml New Box',
+        stockSku: 'CEL-MANGO-50NB',
+        volumeMl: 50,
+        configCode: '50NB',
+        available: 12,
+      }),
+      row({
+        inventoryKey: inventoryRowKey('var-2', 'cfg-50ob'),
+        variantId: 'var-2',
+        stockConfigId: 'cfg-50ob',
+        variantName: 'Cellera [Mint]',
+        configLabel: '50ml Old Box',
+        stockSku: 'CEL-MINT-50OB',
+        volumeMl: 50,
+        packaging: 'old_box',
+        configCode: '50OB',
+        available: 8,
+      }),
+    ]
+
+    for (const legacy of legacyRows) {
+      expect(() => buildTransferRpcItems([legacy], { [legacy.inventoryKey]: '2' }))
+        .toThrow(/Legacy\/Unclassified/)
+    }
+
+    // The canonical row still carries its exact stock_config_id through.
     const items = buildTransferRpcItems(
-      [
-        row(),
-        row({
-          inventoryKey: inventoryRowKey('var-1', 'cfg-50nb'),
-          stockConfigId: 'cfg-50nb',
-          configLabel: '50ml New Box',
-          stockSku: 'CEL-MANGO-50NB',
-          volumeMl: 50,
-          configCode: '50NB',
-          available: 12,
-        }),
-        row({
-          inventoryKey: inventoryRowKey('var-2', 'cfg-50ob'),
-          variantId: 'var-2',
-          stockConfigId: 'cfg-50ob',
-          variantName: 'Cellera [Mint]',
-          configLabel: '50ml Old Box',
-          stockSku: 'CEL-MINT-50OB',
-          volumeMl: 50,
-          packaging: 'old_box',
-          configCode: '50OB',
-          available: 8,
-        }),
-      ],
-      {
-        [inventoryRowKey('var-1', 'cfg-20nb')]: '5',
-        [inventoryRowKey('var-1', 'cfg-50nb')]: '2',
-        [inventoryRowKey('var-2', 'cfg-50ob')]: '1',
-      },
+      [row(), ...legacyRows],
+      { [inventoryRowKey('var-1', 'cfg-20nb')]: '5' },
     )
-
-    expect(items).toHaveLength(3)
-    expect(items.map((item) => item.stock_config_id).sort()).toEqual(['cfg-20nb', 'cfg-50nb', 'cfg-50ob'])
-    expect(items.find((item) => item.stock_config_id === 'cfg-20nb')?.quantity).toBe(5)
+    expect(items).toHaveLength(1)
+    expect(items[0].stock_config_id).toBe('cfg-20nb')
+    expect(items[0].quantity).toBe(5)
   })
 
   it('consolidates duplicate configuration rows safely', () => {

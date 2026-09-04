@@ -116,6 +116,7 @@ import {
   Warehouse,
 } from 'lucide-react'
 import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
+import { shouldShowConfigurationColumn } from '@/lib/inventory/canonical-stock-config'
 
 type CountType = 'full_count' | 'cycle_count' | 'spot_check' | 'initial_configuration_classification' | 'opening_balance_cutoff'
 type SessionStatus = 'draft' | 'posted' | 'archived'
@@ -901,6 +902,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return matchesStockCountSearch(row, query)
     })
   }, [visibleRows, searchTerm, selectedGroupId, showVarianceOnly, showNotCountedOnly])
+
+  // Operational counting shows the Configuration badge only when a variant
+  // genuinely carries more than one. Legacy classification (the Legacy Source →
+  // target sub-table below) always shows it: there the configuration IS the
+  // information being captured.
+  const showConfiguration = useMemo(
+    () => shouldShowConfigurationColumn(visibleRows),
+    [visibleRows],
+  )
 
   const pageSummary = useMemo(() => {
     const counted = visibleRows.filter(row => parseCount(row.physicalCount) !== null)
@@ -2745,7 +2755,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               {groupExpanded && (
                 <div className="overflow-x-auto border-t">
                   <Table>
-                    <TableHeader><TableRow><TableHead className="min-w-[320px]">Variant / Stock Configuration</TableHead><TableHead className="text-right">System Quantity</TableHead><TableHead className="min-w-[170px]">Physical Count</TableHead><TableHead className="text-right">Variance</TableHead>{visibleColumns.unitCost && <TableHead className="text-right">Unit Cost</TableHead>}{visibleColumns.adjustmentValue && <TableHead className="text-right">Adjustment Value</TableHead>}{visibleColumns.note && <TableHead className="min-w-[240px]">Note / Status</TableHead>}</TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead className="min-w-[320px]">{showConfiguration ? 'Variant / Stock Configuration' : 'Variant'}</TableHead><TableHead className="text-right">System Quantity</TableHead><TableHead className="min-w-[170px]">Physical Count</TableHead><TableHead className="text-right">Variance</TableHead>{visibleColumns.unitCost && <TableHead className="text-right">Unit Cost</TableHead>}{visibleColumns.adjustmentValue && <TableHead className="text-right">Adjustment Value</TableHead>}{visibleColumns.note && <TableHead className="min-w-[240px]">Note / Status</TableHead>}</TableRow></TableHeader>
                     <TableBody>
                       {loadingRows && <TableRow><TableCell colSpan={7} className="py-8 text-center text-slate-500">Loading inventory configurations...</TableCell></TableRow>}
                       {!loadingRows && selectedGroupRows.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-slate-500">No variants match this view.</TableCell></TableRow>}
@@ -2754,7 +2764,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                         const adjustmentValue = adjustmentValueForRow(row)
                         return (
                           <TableRow key={row.stockConfigId}>
-                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{withStockStrengthUnit(row.configLabel)}</Badge>{!row.variantIsActive && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Archived variant — historical snapshot item">Archived variant · historical</Badge>}{row.variantIsActive && (!row.productIsActive || row.configStatus !== 'active') && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Inactive master data — historical snapshot item">Historical configuration</Badge>}{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
+                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5">{showConfiguration && <Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{withStockStrengthUnit(row.configLabel)}</Badge>}{!row.variantIsActive && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Archived variant — historical snapshot item">Archived variant · historical</Badge>}{row.variantIsActive && (!row.productIsActive || row.configStatus !== 'active') && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Inactive master data — historical snapshot item">Historical configuration</Badge>}{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
                             <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                             <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>

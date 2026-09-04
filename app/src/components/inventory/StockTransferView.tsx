@@ -62,6 +62,7 @@ import {
   variantAlternativeLabel,
   variantIdentityLabel,
 } from '@/lib/inventory/variant-display-label'
+import { shouldShowConfigurationColumn } from '@/lib/inventory/canonical-stock-config'
 
 interface Warehouse {
   id: string
@@ -294,6 +295,14 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
 
   const productLines = useMemo(
     () => Array.from(new Set(sourceRows.map((row) => row.productLine))).sort(),
+    [sourceRows],
+  )
+
+  // One canonical operational configuration per variant means the column would
+  // print the same badge on every row. It returns automatically if a variant
+  // ever carries two.
+  const showConfiguration = useMemo(
+    () => shouldShowConfigurationColumn(sourceRows),
     [sourceRows],
   )
 
@@ -789,15 +798,17 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={configurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!fromWarehouse}>
-                  <SelectTrigger><SelectValue placeholder="Configuration" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All configurations</SelectItem>
-                    {configurationOptions.map(([key, label]) => (
-                      <SelectItem key={key} value={key}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {showConfiguration && (
+                  <Select value={configurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!fromWarehouse}>
+                    <SelectTrigger><SelectValue placeholder="Configuration" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All configurations</SelectItem>
+                      {configurationOptions.map(([key, label]) => (
+                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -841,7 +852,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                         />
                       </TableHead>
                       <TableHead>Product / Flavour</TableHead>
-                      <TableHead>Configuration</TableHead>
+                      {showConfiguration && <TableHead>Configuration</TableHead>}
                       <TableHead className="text-right">Available</TableHead>
                       <TableHead className="w-32">Transfer Qty</TableHead>
                       <TableHead className="text-right">After Transfer</TableHead>
@@ -850,17 +861,17 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                   <TableBody>
                     {!fromWarehouse ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-slate-500 py-10">
+                        <TableCell colSpan={showConfiguration ? 6 : 5} className="text-center text-slate-500 py-10">
                           Select a source warehouse to load transferable configurations.
                         </TableCell>
                       </TableRow>
                     ) : loadingInventory ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-slate-500 py-10">Loading inventory…</TableCell>
+                        <TableCell colSpan={showConfiguration ? 6 : 5} className="text-center text-slate-500 py-10">Loading inventory…</TableCell>
                       </TableRow>
                     ) : pageRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-slate-500 py-10">No matching stock configurations.</TableCell>
+                        <TableCell colSpan={showConfiguration ? 6 : 5} className="text-center text-slate-500 py-10">No matching stock configurations.</TableCell>
                       </TableRow>
                     ) : pageRows.map((row) => {
                       const qtyRaw = quantities[row.inventoryKey] || ''
@@ -887,11 +898,13 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                               </div>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
-                              {withStockStrengthUnit(row.configLabel)}
-                            </Badge>
-                          </TableCell>
+                          {showConfiguration && (
+                            <TableCell>
+                              <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
+                                {withStockStrengthUnit(row.configLabel)}
+                              </Badge>
+                            </TableCell>
+                          )}
                           <TableCell className="text-right">{row.available.toLocaleString()}</TableCell>
                           <TableCell>
                             <Input
