@@ -52,6 +52,9 @@ WHERE c.config_code = '20NB' AND sm.created_at > a.activated_at
 GROUP BY 1, 2 ORDER BY 5;
 
 \echo '--- R3: balances now, against the frozen containment-day figures ---'
+-- Baselines are the CONTAINMENT-day figures. After the legacy cutover the two
+-- retired codes are expected to show a large negative delta (that is the whole
+-- point); 20NB and STD must still show exactly zero.
 SELECT c.config_code,
        COALESCE(sum(pi.quantity_on_hand), 0) AS quantity_on_hand,
        CASE c.config_code
@@ -72,8 +75,12 @@ FROM public.inventory_stock_configurations c
 LEFT JOIN public.product_inventory pi ON pi.stock_config_id = c.id
 GROUP BY c.config_code ORDER BY c.config_code;
 
-\echo '--- R4: 50NB must have no movement since activation ---'
-SELECT count(*) AS fiftynb_movements_since_activation
+\echo '--- R4: 50NB movement since activation, split by whether it is the cutover ---'
+-- Before the cutover this had to be zero outright. Now the retirement
+-- movements themselves are legitimately here, so the number that must stay at
+-- zero is the non-cutover column.
+SELECT count(*) FILTER (WHERE sm.reference_type = 'legacy_config_cutover') AS cutover_retirements,
+       count(*) FILTER (WHERE sm.reference_type <> 'legacy_config_cutover') AS must_be_zero
 FROM public.stock_movements sm
 JOIN public.inventory_stock_configurations c ON c.id = sm.stock_config_id
 CROSS JOIN public.canonical_stock_config_activation a
