@@ -301,6 +301,7 @@ BEGIN
     v_blockers := v_blockers || jsonb_build_object(
       'code', 'UNBOUND_OPEN_ORDER_ITEMS',
       'severity', 'warning',
+      'count', jsonb_array_length(v_unbound_orders),
       'message', 'Open order items carry no confirmed stock configuration. After migration 20260904100000 they resolve to the canonical configuration rather than to the legacy sink, but they should be confirmed before cutover so the resolution is explicit.',
       'action_owner', 'operations',
       'detail', v_unbound_orders
