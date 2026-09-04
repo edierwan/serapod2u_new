@@ -1,227 +1,10 @@
--- ============================================================================
--- Canonical operational stock configuration — Phase 1
--- ----------------------------------------------------------------------------
--- Business decision (final): each operational product variant has exactly ONE
--- canonical active stock configuration, and the application resolves it rather
--- than asking the operator to choose.
---
---   Cellera cartridges → 20NB (20 mg · New Box)
---   Non-vape products  → STD  (Standard)
---
--- 20NB is deliberately NOT hard-coded: non-vape variants resolve to STD, and a
--- future family would resolve to its own code without a code change.
---
--- ----------------------------------------------------------------------------
--- WHY THIS MIGRATION EXISTS
--- ----------------------------------------------------------------------------
--- public.resolve_default_stock_config() returns the configuration flagged
--- is_variant_default. In both staging and production that flag resolves to:
---
---   UNCLASSIFIED  for all 36 Cellera cartridge variants
---   STD           for all 39 non-vape variants
---
--- So every write path that omitted an explicit configuration posted Cellera
--- stock into UNCLASSIFIED — the legacy bucket the business has now decided to
--- retire. That is not a historical accident: production recorded 484 such
--- movements between 2026-07-29 and 2026-09-03, all from
--- post_return_case_inventory (Returns received into WH002).
---
--- This migration adds an operational resolver and repoints the write paths at
--- it. It changes no balance, no historical movement and no configuration row.
---
--- ----------------------------------------------------------------------------
--- WHAT IS DELIBERATELY NOT REPOINTED
--- ----------------------------------------------------------------------------
--- Two paths still call resolve_default_stock_config, correctly:
---
---   release_allocation_for_order        releases a reservation from the balance
---                                       the allocation was actually pinned to
---   revert_inventory_on_movement_delete reverses a movement against the balance
---                                       that movement was actually applied to
---
--- Both look BACKWARDS at where stock already sits. Repointing them would
--- release or reverse against the wrong balance. They must keep resolving to
--- the legacy sink for as long as legacy balances exist.
---
--- The seven repointed bodies below are the current production definitions,
--- byte-identical to staging, with exactly one line changed in each.
--- ============================================================================
+-- Prior definitions captured 2026-09-04T16:11:59Z from container serapod-prd-db (prd), database supabase,
+-- BEFORE migration 20260904100000_canonical_operational_stock_config.sql was applied.
+-- Restore with: psql -U postgres -d supabase -v ON_ERROR_STOP=1 -f <this file>
 
 BEGIN;
 
--- ---------------------------------------------------------------------------
--- 1. The canonical rule, in one place
--- ---------------------------------------------------------------------------
--- A configuration is a canonical operational candidate when it is:
---   * active                       — not phase_out, not inactive
---   * default_for_ord              — master data's own "this is the one" flag
---   * not UNCLASSIFIED             — the legacy bucket is never operational
---   * not requires_repacking       — 50OB-style stock cannot be transacted raw
---
--- Verified against live data before writing this migration: every active
--- variant resolves to exactly one candidate — 62 of 62 in production, 60 of 60
--- in staging — and no active variant resolves to zero or to more than one.
-
-CREATE OR REPLACE VIEW public.v_canonical_stock_config AS
-SELECT
-  c.variant_id,
-  c.id            AS stock_config_id,
-  c.config_code,
-  c.config_label,
-  c.stock_sku,
-  count(*) OVER (PARTITION BY c.variant_id) AS candidate_count
-FROM public.inventory_stock_configurations c
-WHERE c.status = 'active'
-  AND c.default_for_ord
-  AND c.config_code <> 'UNCLASSIFIED'
-  AND NOT COALESCE(c.requires_repacking_before_sale, false);
-
-COMMENT ON VIEW public.v_canonical_stock_config IS
-  'One row per canonical operational stock configuration candidate. candidate_count > 1 means the variant is ambiguous and resolve_operational_stock_config() will fail closed on it.';
-
-GRANT SELECT ON public.v_canonical_stock_config TO authenticated, service_role;
-
-CREATE OR REPLACE FUNCTION public.resolve_operational_stock_config(p_variant_id uuid)
-RETURNS uuid
-LANGUAGE plpgsql
-STABLE
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_config_id uuid;
-  v_count     integer;
-  v_codes     text;
-BEGIN
-  IF p_variant_id IS NULL THEN
-    RAISE EXCEPTION 'Cannot resolve an operational stock configuration for a null variant';
-  END IF;
-
-  -- array_agg, not min: PostgreSQL has no min(uuid) aggregate. The subscript is
-  -- only ever read when v_count = 1, and the ORDER BY keeps the choice
-  -- deterministic in the ambiguous case that is about to raise anyway.
-  SELECT count(*),
-         (array_agg(stock_config_id ORDER BY stock_config_id))[1],
-         string_agg(config_code, ', ' ORDER BY config_code)
-    INTO v_count, v_config_id, v_codes
-    FROM public.v_canonical_stock_config
-   WHERE variant_id = p_variant_id;
-
-  -- Fail loudly in both directions. Silently picking one of several, or
-  -- silently falling back to the legacy sink, is what produced 303,598 units
-  -- of UNCLASSIFIED stock in the first place.
-  IF v_count = 0 THEN
-    RAISE EXCEPTION
-      'No canonical operational stock configuration for variant %. Master data must carry exactly one active default_for_ord configuration that is not UNCLASSIFIED.',
-      p_variant_id
-      USING ERRCODE = 'no_data_found';
-  END IF;
-
-  IF v_count > 1 THEN
-    RAISE EXCEPTION
-      'Ambiguous canonical operational stock configuration for variant %: % candidates (%). Exactly one is required.',
-      p_variant_id, v_count, v_codes
-      USING ERRCODE = 'cardinality_violation';
-  END IF;
-
-  RETURN v_config_id;
-END;
-$$;
-
-COMMENT ON FUNCTION public.resolve_operational_stock_config(uuid) IS
-  'The one canonical operational stock configuration for a variant (20NB for Cellera cartridges, STD for non-vape). Fails closed when zero or more than one candidate exists. Operational write paths use this; resolve_default_stock_config remains only for reversing historical postings against the legacy sink they actually landed in.';
-
-REVOKE ALL ON FUNCTION public.resolve_operational_stock_config(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.resolve_operational_stock_config(uuid) TO authenticated, service_role;
-
-COMMENT ON FUNCTION public.resolve_default_stock_config(uuid) IS
-  'LEGACY SINK RESOLVER — returns the is_variant_default configuration, which is UNCLASSIFIED for Cellera cartridges and STD for non-vape. Use ONLY to reverse or release a posting against the balance it actually landed in. Never use it on a forward operational write path: use resolve_operational_stock_config(uuid).';
-
--- ---------------------------------------------------------------------------
--- 2. Activation stamp
--- ---------------------------------------------------------------------------
--- The exact instant the write-path fix went live in this environment.
---
--- Without it the cutover preflight cannot tell a legacy movement that PROVES
--- the fix failed from one that merely predates the fix. Production carries 484
--- historical UNCLASSIFIED return movements; those must never block the cutover
--- forever, while a single movement posted AFTER this stamp must block it
--- immediately.
---
--- Written inside the same transaction as the repointed functions below, so the
--- stamp and the behaviour it describes can never disagree. Re-applying the
--- migration keeps the original stamp: activation happened once, and resetting
--- the clock would silently forgive writes that came after it.
-
-CREATE TABLE IF NOT EXISTS public.canonical_stock_config_activation (
-  singleton    boolean     PRIMARY KEY DEFAULT true CHECK (singleton),
-  activated_at timestamptz NOT NULL DEFAULT now(),
-  migration    text        NOT NULL,
-  note         text
-);
-
-COMMENT ON TABLE public.canonical_stock_config_activation IS
-  'Single row. activated_at is the instant resolve_operational_stock_config() replaced the is_variant_default sink on every forward write path in this environment. Legacy movements before it are history; legacy movements after it mean a write path was missed.';
-
-INSERT INTO public.canonical_stock_config_activation (singleton, migration, note)
-VALUES (
-  true,
-  '20260904100000_canonical_operational_stock_config',
-  'Forward write paths repointed from resolve_default_stock_config (is_variant_default sink: UNCLASSIFIED for Cellera, STD for non-vape) onto resolve_operational_stock_config.'
-)
-ON CONFLICT (singleton) DO NOTHING;
-
-ALTER TABLE public.canonical_stock_config_activation ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS canonical_stock_config_activation_read ON public.canonical_stock_config_activation;
-CREATE POLICY canonical_stock_config_activation_read
-  ON public.canonical_stock_config_activation
-  FOR SELECT TO authenticated
-  USING (true);
-
-GRANT SELECT ON public.canonical_stock_config_activation TO authenticated, service_role;
-
-CREATE OR REPLACE FUNCTION public.canonical_stock_config_activated_at()
-RETURNS timestamptz
-LANGUAGE sql
-STABLE
-SET search_path = public, pg_temp
-AS $$
-  SELECT activated_at FROM public.canonical_stock_config_activation WHERE singleton
-$$;
-
-COMMENT ON FUNCTION public.canonical_stock_config_activated_at() IS
-  'When the canonical resolver became the forward write path in this environment, or NULL if migration 20260904100000 has not been applied. The cutover preflight blocks only on legacy movements posted after this instant.';
-
-REVOKE ALL ON FUNCTION public.canonical_stock_config_activated_at() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.canonical_stock_config_activated_at() TO authenticated, service_role;
-
--- ---------------------------------------------------------------------------
--- 3. Repointed write paths
--- ---------------------------------------------------------------------------
--- Each body below is the current production definition with exactly one call
--- to resolve_default_stock_config replaced by resolve_operational_stock_config.
---
--- THE RESOLVER NEVER OVERRIDES AN EXPLICIT CONFIGURATION.
---
--- In all three functions that touch a configuration on the way in, the
--- resolver sits behind a null check and nothing re-resolves afterwards:
---
---   record_stock_movement                 COALESCE(p_stock_config_id, resolve)
---   trg_stock_movements_fill_cost_...     IF NEW.stock_config_id IS NULL THEN
---   stock_movements_apply_to_inventory    COALESCE(NEW.stock_config_id, resolve)
---
--- record_stock_movement then validates only that the configuration BELONGS to
--- the variant. It deliberately does not check status, so a phase_out 50NB or
--- UNCLASSIFIED configuration is still postable — which is exactly what the
--- cutover needs in order to retire those balances, and what a historical
--- correction needs in order to land on the balance it actually belongs to.
---
--- The chosen configuration is then used verbatim: it is the stock_config_id
--- written to stock_movements, and the key the product_inventory row is locked
--- and updated by. A movement of -1,300 posted explicitly against 50NB reduces
--- the 50NB balance to zero and does not read, touch or credit 20NB.
-
--- ---- record_stock_movement ---------------------------------------------
+-- ---- record_stock_movement ----
 CREATE OR REPLACE FUNCTION public.record_stock_movement(p_movement_type text, p_variant_id uuid, p_organization_id uuid, p_quantity_change integer, p_unit_cost numeric DEFAULT NULL::numeric, p_manufacturer_id uuid DEFAULT NULL::uuid, p_warehouse_location text DEFAULT NULL::text, p_reason text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_reference_type text DEFAULT 'manual'::text, p_reference_id uuid DEFAULT NULL::uuid, p_reference_no text DEFAULT NULL::text, p_company_id uuid DEFAULT NULL::uuid, p_created_by uuid DEFAULT NULL::uuid, p_evidence_urls text[] DEFAULT NULL::text[], p_stock_config_id uuid DEFAULT NULL::uuid)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -257,7 +40,7 @@ BEGIN
   END IF;
 
   -- Resolve configuration: explicit > variant catch-all default.
-  v_config_id := COALESCE(p_stock_config_id, public.resolve_operational_stock_config(p_variant_id));
+  v_config_id := COALESCE(p_stock_config_id, public.resolve_default_stock_config(p_variant_id));
   IF v_config_id IS NULL THEN
     RAISE EXCEPTION 'No stock configuration found for variant %', p_variant_id;
   END IF;
@@ -392,9 +175,11 @@ BEGIN
 
   RETURN v_movement_id;
 END;
-$function$;
+$function$
 
--- ---- trg_stock_movements_fill_cost_and_balance -------------------------
+;
+
+-- ---- trg_stock_movements_fill_cost_and_balance ----
 CREATE OR REPLACE FUNCTION public.trg_stock_movements_fill_cost_and_balance()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -409,7 +194,7 @@ BEGIN
   -- not (yet) specify one are folded onto the variant's catch-all default —
   -- identical to pre-configuration behaviour. Historical rows are untouched.
   IF NEW.stock_config_id IS NULL THEN
-    NEW.stock_config_id := public.resolve_operational_stock_config(NEW.variant_id);
+    NEW.stock_config_id := public.resolve_default_stock_config(NEW.variant_id);
     IF NEW.stock_config_id IS NULL THEN
       RAISE EXCEPTION 'No stock configuration found for variant %', NEW.variant_id;
     END IF;
@@ -530,9 +315,11 @@ BEGIN
 
   RETURN NEW;
 END;
-$function$;
+$function$
 
--- ---- post_return_case_inventory ----------------------------------------
+;
+
+-- ---- post_return_case_inventory ----
 CREATE OR REPLACE FUNCTION public.post_return_case_inventory(p_return_case_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -636,7 +423,7 @@ BEGIN
       CONTINUE;
     END IF;
 
-    v_cfg := public.resolve_operational_stock_config(v_item.variant_id);
+    v_cfg := public.resolve_default_stock_config(v_item.variant_id);
     IF v_cfg IS NULL THEN
       RAISE EXCEPTION 'No stock configuration available for returned variant %', v_item.variant_id;
     END IF;
@@ -671,9 +458,11 @@ BEGIN
     'skipped_lines', v_skipped
   );
 END;
-$function$;
+$function$
 
--- ---- adjust_inventory_quantity -----------------------------------------
+;
+
+-- ---- adjust_inventory_quantity ----
 CREATE OR REPLACE FUNCTION public.adjust_inventory_quantity(p_variant_id uuid, p_organization_id uuid, p_delta integer)
  RETURNS void
  LANGUAGE plpgsql
@@ -682,7 +471,7 @@ AS $function$
 DECLARE
   v_config_id uuid;
 BEGIN
-  v_config_id := public.resolve_operational_stock_config(p_variant_id);
+  v_config_id := public.resolve_default_stock_config(p_variant_id);
 
   UPDATE public.product_inventory
   SET
@@ -711,9 +500,11 @@ BEGIN
     );
   END IF;
 END;
-$function$;
+$function$
 
--- ---- apply_inventory_ship_adjustment -----------------------------------
+;
+
+-- ---- apply_inventory_ship_adjustment ----
 CREATE OR REPLACE FUNCTION public.apply_inventory_ship_adjustment(p_variant_id uuid, p_organization_id uuid, p_units integer, p_cases integer DEFAULT 0, p_shipped_at timestamp with time zone DEFAULT now())
  RETURNS void
  LANGUAGE plpgsql
@@ -725,7 +516,7 @@ DECLARE
   v_variant_name text;
   v_config_id uuid;
 BEGIN
-  v_config_id := public.resolve_operational_stock_config(p_variant_id);
+  v_config_id := public.resolve_default_stock_config(p_variant_id);
 
   -- Get current quantity
   SELECT quantity_on_hand INTO v_current_qty
@@ -766,9 +557,11 @@ BEGIN
        COALESCE(v_variant_name, 'Unknown'), p_variant_id, COALESCE(v_org_name, 'Unknown'), p_organization_id;
   END IF;
 END;
-$function$;
+$function$
 
--- ---- wms_deduct_and_summarize ------------------------------------------
+;
+
+-- ---- wms_deduct_and_summarize ----
 CREATE OR REPLACE FUNCTION public.wms_deduct_and_summarize(p_variant_id uuid, p_from_org_id uuid, p_to_org_id uuid, p_units integer, p_order_id uuid, p_shipped_at timestamp with time zone DEFAULT now())
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -783,7 +576,7 @@ BEGIN
     RAISE EXCEPTION 'p_units must be > 0 (got %)', p_units;
   END IF;
 
-  v_config_id := public.resolve_operational_stock_config(p_variant_id);
+  v_config_id := public.resolve_default_stock_config(p_variant_id);
 
   -- Read BEFORE qty (warehouse side)
   SELECT pi.quantity_on_hand
@@ -826,9 +619,11 @@ BEGIN
     'shipped_at',  p_shipped_at
   );
 END;
-$function$;
+$function$
 
--- ---- stock_movements_apply_to_inventory --------------------------------
+;
+
+-- ---- stock_movements_apply_to_inventory ----
 CREATE OR REPLACE FUNCTION public.stock_movements_apply_to_inventory()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -864,7 +659,7 @@ BEGIN
 
   -- The BEFORE trigger (fill_cost_and_balance) has already assigned the
   -- configuration on every new row; fall back defensively anyway.
-  v_config_id := COALESCE(NEW.stock_config_id, public.resolve_operational_stock_config(NEW.variant_id));
+  v_config_id := COALESCE(NEW.stock_config_id, public.resolve_default_stock_config(NEW.variant_id));
 
   -- Lock/ensure inventory row
   SELECT id, quantity_on_hand
@@ -906,6 +701,24 @@ BEGIN
 
   RETURN NEW;
 END
-$function$;
+$function$
+
+;
+
+-- ---- resolve_default_stock_config ----
+CREATE OR REPLACE FUNCTION public.resolve_default_stock_config(p_variant_id uuid)
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT c.id
+  FROM public.inventory_stock_configurations c
+  WHERE c.variant_id = p_variant_id
+    AND c.is_variant_default
+  LIMIT 1
+$function$
+
+;
 
 COMMIT;
