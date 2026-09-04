@@ -58,7 +58,11 @@ describe('cutover preflight', () => {
   it('separates blocking conditions from warnings', () => {
     expect(preflight).toContain("'blocking_count'")
     expect(preflight).toContain("'warning_count'")
-    expect(preflight).toContain("'ok', v_blockers = '[]'::jsonb")
+    // ok is decided by BLOCKING entries alone. A warning that made ok false
+    // would mean the same thing as a blocker, and since the cutover gates on
+    // ok, an advisory note could hold it shut forever.
+    expect(preflight).toContain("'ok', NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_blockers) b")
+    expect(preflight).toContain("WHERE b->>'severity' = 'blocking')")
   })
 })
 

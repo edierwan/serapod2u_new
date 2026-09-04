@@ -158,6 +158,19 @@ BEGIN
     RAISE EXCEPTION 'A cutover request id is required (it is the idempotency key)';
   END IF;
 
+  -- stock_movements.created_by is NOT NULL and references users(id), so a
+  -- retirement posted without an identity cannot be written at all. Refuse up
+  -- front rather than failing 400 rows into the loop, and because the runbook
+  -- requires every retired unit to name who retired it.
+  IF NOT p_dry_run THEN
+    IF p_performed_by IS NULL THEN
+      RAISE EXCEPTION 'A performed_by user id is required: every retirement movement records who executed the cutover';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = p_performed_by) THEN
+      RAISE EXCEPTION 'performed_by % is not a known user', p_performed_by;
+    END IF;
+  END IF;
+
   v_codes := COALESCE(p_config_codes, public.legacy_cutover_config_codes());
 
   -- STD is the canonical operational configuration for every non-vape product

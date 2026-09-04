@@ -388,7 +388,12 @@ BEGIN
     ) s;
 
   RETURN jsonb_build_object(
-    'ok', v_blockers = '[]'::jsonb,
+    -- ok is decided by BLOCKING entries only. A warning that made ok false
+    -- would mean exactly the same thing as a blocker, and since
+    -- execute_legacy_config_cutover() gates on ok, an advisory note could hold
+    -- the cutover shut forever.
+    'ok', NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_blockers) b
+                       WHERE b->>'severity' = 'blocking'),
     'checked_at', now(),
     'legacy_config_codes', to_jsonb(v_codes),
     'writer_window_days', p_writer_window_days,
