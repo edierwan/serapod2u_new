@@ -1411,10 +1411,22 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 {loading ? 'Loading...' : `${filteredSummaries.length} flavour summar${filteredSummaries.length === 1 ? 'y' : 'ies'} found`}
               </CardDescription>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" checked={showInactive} onChange={event => setShowInactive(event.target.checked)} />
-              Show inactive zero-balance configurations
-            </label>
+            {/* Audit affordance, not an operational one. It reveals retired
+                configurations that carry NO stock — after cutover those are the
+                50NB / UNCLASSIFIED rows sitting at zero, which tell an operator
+                nothing and invite them to read a dead code as a live one. It is
+                kept rather than deleted because a retired configuration's zero
+                row is still the audit answer to "where did that balance go", so
+                it is restricted to the inventory administrators who ask that
+                question. A non-zero legacy balance is never governed by this
+                control: it is always visible, and flagged on the row itself. */}
+            {canEditSettings() && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input type="checkbox" checked={showInactive} onChange={event => setShowInactive(event.target.checked)} />
+                Show retired zero-balance configurations
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">Audit</span>
+              </label>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -1519,28 +1531,41 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 </TableRow>
               ) : (
                 paginatedSummaries.map((summary: VariantInventorySummary) => {
-                  const expanded = expandedVariants.has(summary.key)
+                  // After cutover a flavour has exactly one operational
+                  // configuration and the expander carries nothing, so it is
+                  // dropped entirely. While legacy stock is still on hand the
+                  // expander is the only place the operator can account for the
+                  // On Hand total above, so it stays.
+                  const configurationDetailAvailable = !summary.operationalOnly
+                  const expanded = configurationDetailAvailable && expandedVariants.has(summary.key)
                   const incomingBreakdown = getIncomingBreakdown(
                     incomingMap.get(incomingKey(summary.organizationId, summary.variantId))
                   )
-                  const toggleExpanded = () => setExpandedVariants(current => {
-                    const next = new Set(current)
-                    next.has(summary.key) ? next.delete(summary.key) : next.add(summary.key)
-                    return next
-                  })
+                  const toggleExpanded = () => {
+                    if (!configurationDetailAvailable) return
+                    setExpandedVariants(current => {
+                      const next = new Set(current)
+                      next.has(summary.key) ? next.delete(summary.key) : next.add(summary.key)
+                      return next
+                    })
+                  }
                   return (
                   <Fragment key={summary.key}>
-                  <TableRow className="cursor-pointer" onClick={toggleExpanded}>
+                  <TableRow className={configurationDetailAvailable ? 'cursor-pointer' : undefined} onClick={toggleExpanded}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(event) => { event.stopPropagation(); toggleExpanded() }}
-                          className="text-gray-400 hover:text-gray-700 focus:outline-none"
-                          aria-label={expanded ? 'Collapse configurations' : 'Expand configurations'}
-                        >
-                          <ChevronDown className={`h-4 w-4 transition ${expanded ? '' : '-rotate-90'}`} />
-                        </button>
+                        {configurationDetailAvailable ? (
+                          <button
+                            type="button"
+                            onClick={(event) => { event.stopPropagation(); toggleExpanded() }}
+                            className="text-gray-400 hover:text-gray-700 focus:outline-none"
+                            aria-label={expanded ? 'Collapse configurations' : 'Expand configurations'}
+                          >
+                            <ChevronDown className={`h-4 w-4 transition ${expanded ? '' : '-rotate-90'}`} />
+                          </button>
+                        ) : (
+                          <span className="inline-block h-4 w-4" aria-hidden="true" />
+                        )}
                         <ProductThumbnail
                           src={summary.variantImageUrl ?? undefined}
                           alt={summary.variantName || summary.productName || 'Product'}
@@ -1557,6 +1582,19 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             <p className="text-xs text-[var(--sera-muted)]/80">
                               {variantAlternativeLabel(summary.alternativeName)}
                             </p>
+                          )}
+                          {/* On Hand above INCLUDES this legacy balance. Saying so
+                              is the difference between a simplified view and a
+                              misleading one, so the row names the quantity and
+                              points at the expander that accounts for it. */}
+                          {summary.hasUnretiredLegacy && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 border-amber-300 text-[10px] font-medium text-amber-700"
+                              title="Legacy 50 mg / Unclassified stock is still on hand and is included in the On Hand total. Expand the row to see it. It is retired by the legacy configuration cutover, not by this screen."
+                            >
+                              Includes {summary.legacyOnHand.toLocaleString()} legacy · pre-cutover
+                            </Badge>
                           )}
                         </div>
                       </div>
