@@ -13,7 +13,7 @@
  * under the config org but pin `to_phone` / `to_email` to the source contact.
  */
 import { RETURN_STATUS_LABELS, RETURN_SOURCE_LABELS, normalizeReturnSourceType, type ReturnStatus } from './constants'
-import { resolveNotificationRoutingPreset, type NotificationRoutingPreset } from '@/lib/notifications/routing'
+import { deliveryChainForPreset, isFallbackRoutingPreset, resolveNotificationRoutingPreset, type NotificationRoutingPreset } from '@/lib/notifications/routing'
 import { itemsTotalQty, itemsTotalValue } from './compute'
 import { RETURN_ORG_SELECT } from './server'
 
@@ -95,12 +95,15 @@ async function channelsForPreset(
     if (preset === 'whatsapp_only') return ['whatsapp']
     if (preset === 'email_only') return ['email']
     if (preset === 'sms_only') return ['sms']
-    // whatsapp_email_fallback: start on WhatsApp; if WhatsApp is unavailable but
-    // Email is, queue Email directly instead of dropping the notification.
-    const whatsapp = await hasActiveProvider(admin, configOrgId, 'whatsapp')
-    if (whatsapp) return ['whatsapp']
-    const email = await hasActiveProvider(admin, configOrgId, 'email')
-    return email ? ['email'] : ['whatsapp']
+    // Fallback presets start on the first hop that has an active provider.
+    if (isFallbackRoutingPreset(preset)) {
+        const chain = deliveryChainForPreset(preset)
+        for (const channel of chain) {
+            if (await hasActiveProvider(admin, configOrgId, channel)) return [channel]
+        }
+        return [chain[0]]
+    }
+    return ['whatsapp']
 }
 
 interface ReturnNotificationContext {

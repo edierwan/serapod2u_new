@@ -14,6 +14,7 @@ import { type AiChatRequest, type AiResponse, type AiProvider } from './types'
 import { getProviderConfig, getDefaultProvider } from './config'
 import { callMoltbot } from './providers/moltbot'
 import { callOllama } from './providers/ollama'
+import { callOpenai } from './providers/openai'
 
 // ─── Rate limiting (simple in-memory, per deployment) ──────────────
 
@@ -115,6 +116,8 @@ export async function sendToAi(
   try {
     if (provider === 'moltbot') {
       response = await callMoltbot(config, enrichedRequest)
+    } else if (provider === 'openai') {
+      response = await callOpenai(config, enrichedRequest)
     } else {
       response = await callOllama(config, enrichedRequest)
     }

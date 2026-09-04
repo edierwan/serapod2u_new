@@ -689,13 +689,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         throw new Error(submitError.message || 'Failed to submit and allocate the order')
       }
 
-      await fetch('/api/notifications/order-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id, eventCode: 'order_submitted' })
-      }).catch((error) => {
-        console.warn('Failed to queue order_submitted notification:', error)
-      })
+      // Notification queueing is handled by the trigger_order_notification()
+      // DB trigger, which fires automatically on the status UPDATE inside
+      // submit_and_allocate_d2h_order(). The explicit /api/notifications/order-event
+      // call that used to be here was queueing a second, duplicate notification.
 
       // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
       fetch('/api/cron/notification-outbox-worker').catch(() => { })

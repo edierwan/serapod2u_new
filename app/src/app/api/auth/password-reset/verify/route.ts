@@ -1,49 +1,57 @@
 /**
  * POST /api/auth/password-reset/verify
  *
- * Verify the 4-digit email OTP and issue a short-lived reset token.
+ * Verify the 4-digit OTP and issue a short-lived reset token.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isValidEmail, normalizeEmail } from '@/lib/auth/password-reset-otp-email'
 import {
-    findActiveCode,
+    findActivePasswordResetCode,
     hashOtp,
     incrementAttemptCount,
-    markCodeVerified,
     logNotificationEvent,
+    markCodeVerified,
+    parsePasswordResetIdentifier,
+    resolvePasswordResetChannel,
 } from '@/server/auth/passwordResetService'
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        const emailRaw: string | undefined = body?.email
+        const identifierRaw = typeof body?.identifier === 'string'
+            ? body.identifier
+            : typeof body?.email === 'string'
+                ? body.email
+                : ''
         const code: string | undefined = body?.code
 
-        if (!emailRaw || !code || typeof code !== 'string') {
-            return NextResponse.json({ error: 'Email and code are required.' }, { status: 400 })
+        const identifier = parsePasswordResetIdentifier(identifierRaw)
+        if (!identifier || !code || typeof code !== 'string') {
+            return NextResponse.json({
+                error: 'Email or phone and code are required.',
+            }, { status: 400 })
         }
 
-        if (!isValidEmail(emailRaw)) {
-            return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
-        }
+        const channel = resolvePasswordResetChannel(identifier, body?.delivery)
 
         if (!/^\d{4}$/.test(code)) {
             return NextResponse.json({ error: 'Code must be a 4-digit number.' }, { status: 400 })
         }
 
-        const email = normalizeEmail(emailRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
         const admin = createAdminClient()
+        const lookupEmail = identifier.kind === 'email' ? identifier.value : ''
 
-        const activeCode = await findActiveCode(admin, email)
+        const activeCode = await findActivePasswordResetCode(admin, identifier, channel)
         if (!activeCode) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_verify_failed',
-                email,
+                email: lookupEmail,
+                phone: identifier.kind === 'phone' ? identifier.value : null,
                 status: 'failed',
                 errorMessage: 'No active code found or code expired',
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -55,12 +63,13 @@ export async function POST(req: NextRequest) {
         if (activeCode.attempt_count >= activeCode.max_attempts) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_verify_failed',
-                email,
+                email: activeCode.email_normalized || lookupEmail,
                 phone: activeCode.phone_normalized,
                 userId: activeCode.user_id,
                 status: 'failed',
                 errorMessage: 'Max attempts exceeded',
                 meta: { codeId: activeCode.id, attempts: activeCode.attempt_count },
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -76,12 +85,13 @@ export async function POST(req: NextRequest) {
             const remaining = activeCode.max_attempts - (activeCode.attempt_count + 1)
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_verify_failed',
-                email,
+                email: activeCode.email_normalized || lookupEmail,
                 phone: activeCode.phone_normalized,
                 userId: activeCode.user_id,
                 status: 'failed',
                 errorMessage: 'Invalid code',
                 meta: { codeId: activeCode.id, remaining },
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -97,11 +107,12 @@ export async function POST(req: NextRequest) {
 
         await logNotificationEvent(admin, {
             eventType: 'password_reset_otp_verified',
-            email,
+            email: activeCode.email_normalized || lookupEmail,
             phone: activeCode.phone_normalized,
             userId: activeCode.user_id,
             status: 'verified',
             meta: { codeId: activeCode.id },
+            channel,
             ip,
         })
 

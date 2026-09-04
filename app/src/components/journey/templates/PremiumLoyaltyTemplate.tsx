@@ -9185,7 +9185,7 @@ export default function PremiumLoyaltyTemplate({
             </Dialog>
             {/* Reward Detail Modal — sticky actions so Collect stays visible on short phones */}
             <Dialog open={showRewardDetailModal} onOpenChange={setShowRewardDetailModal}>
-                <DialogContent className="flex max-h-[min(92dvh,92vh)] w-full max-w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0">
+                <DialogContent className="flex w-full max-w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0 top-[max(0.5rem,env(safe-area-inset-top))] max-h-[calc(100dvh-1rem)] translate-y-0 sm:top-[50%] sm:max-h-[min(92dvh,92vh)] sm:translate-y-[-50%]">
                     <DialogTitle className="sr-only">
                         {selectedRewardForDetail?.item_name || 'Reward Details'}
                     </DialogTitle>
@@ -9203,11 +9203,11 @@ export default function PremiumLoyaltyTemplate({
                         images.forEach(img => mediaItems.push({ type: 'image', url: img }))
 
                         return (
-                            <div className="relative h-[min(11rem,26dvh)] w-full shrink-0 overflow-hidden bg-white sm:h-56">
+                            <div className="relative h-[min(8.5rem,20dvh)] w-full shrink-0 overflow-hidden bg-white sm:h-56">
                                 <button
                                     type="button"
                                     onClick={() => setShowRewardDetailModal(false)}
-                                    className="absolute top-4 right-4 z-20 rounded-full bg-black/10 p-2 transition-colors hover:bg-black/20"
+                                    className="absolute top-3 right-3 z-20 rounded-full bg-black/10 p-2 transition-colors hover:bg-black/20"
                                 >
                                     <X className="h-5 w-5 text-gray-600" />
                                 </button>
@@ -9285,13 +9285,13 @@ export default function PremiumLoyaltyTemplate({
                         )
                     })()}
 
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-4">
+                    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-3 sm:space-y-4 sm:px-6 sm:py-4">
                         <div>
-                            <h3 className="text-xl font-bold text-gray-900">{selectedRewardForDetail?.item_name}</h3>
+                            <h3 className="text-lg font-bold text-gray-900 sm:text-xl">{selectedRewardForDetail?.item_name}</h3>
                             <p className="mt-1 text-sm text-gray-500">{selectedRewardForDetail?.item_description || 'No description available'}</p>
                         </div>
 
-                        <div className="flex items-center justify-between border-b border-t border-gray-100 py-4">
+                        <div className="flex items-center justify-between border-b border-t border-gray-100 py-3 sm:py-4">
                             <div className="space-y-1">
                                 {(selectedRewardForDetail as any)?.category === 'point' ? (
                                     <>

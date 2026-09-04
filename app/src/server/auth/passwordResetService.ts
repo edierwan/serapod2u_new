@@ -1,9 +1,9 @@
 /**
  * Password Reset OTP Service
  *
- * Consumer Collect Points / loyalty forgot-password flow.
- * Primary channel: email (Dynamic Config email providers).
- * WhatsApp helpers remain for legacy/admin use only.
+ * Collect Points / loyalty: email OTP (generic, non-enumerating).
+ * Portal /login forgot-password: email → email OTP, phone → SMS OTP.
+ * Unregistered or missing contacts are disclosed so the user can ask an admin.
  *
  * Tables:
  *   - auth_verification_codes
@@ -21,6 +21,7 @@ import {
     isValidEmail,
     normalizeEmail,
 } from '@/lib/auth/password-reset-otp-email'
+import { getSmsTemplateBody } from '@/config/smsTemplates'
 
 export const OTP_LENGTH = 4
 export const OTP_EXPIRY_MINUTES = 5
@@ -33,7 +34,46 @@ export const RESET_TOKEN_EXPIRY_MINUTES = 10
 const PURPOSE = 'password_reset'
 /** Consumer password-reset OTP uses email (Dynamic Config / notification providers). */
 export const CHANNEL = 'email' as const
+export const SMS_CHANNEL = 'sms' as const
+export type PasswordResetChannel = typeof CHANNEL | typeof SMS_CHANNEL
 const EMAIL_PROVIDER_FALLBACK = 'email'
+const SMS_PROVIDER_FALLBACK = 'local_my'
+
+export const GENERIC_EMAIL_OTP_MESSAGE =
+    'If this email exists, we will send a verification code via email.'
+export const GENERIC_SMS_OTP_MESSAGE =
+    'If this account has a registered phone number, a 4-digit SMS code will arrive shortly.'
+
+export const ADMIN_CONTACT_HELP =
+    'Ask your administrator to register and verify your email or phone on the account, then try again.'
+
+export function passwordResetMessageForChannel(channel: PasswordResetChannel): string {
+    return channel === SMS_CHANNEL ? GENERIC_SMS_OTP_MESSAGE : GENERIC_EMAIL_OTP_MESSAGE
+}
+
+export function sentPasswordResetMessage(channel: PasswordResetChannel): string {
+    return channel === SMS_CHANNEL
+        ? 'We sent a 4-digit verification code by SMS to this phone number.'
+        : 'We sent a 4-digit verification code to this email address.'
+}
+
+export function unregisteredPasswordResetMessage(kind: 'email' | 'phone'): string {
+    return kind === 'phone'
+        ? `This phone number is not registered. ${ADMIN_CONTACT_HELP}`
+        : `This email is not registered. ${ADMIN_CONTACT_HELP}`
+}
+
+export function missingContactPasswordResetMessage(channel: PasswordResetChannel): string {
+    return channel === SMS_CHANNEL
+        ? `This account has no verified phone number. ${ADMIN_CONTACT_HELP}`
+        : `This account has no verified email address. ${ADMIN_CONTACT_HELP}`
+}
+
+export function failedSendPasswordResetMessage(channel: PasswordResetChannel): string {
+    return channel === SMS_CHANNEL
+        ? `We could not send the SMS code. ${ADMIN_CONTACT_HELP}`
+        : `We could not send the email code. ${ADMIN_CONTACT_HELP}`
+}
 
 export function generateOtp(): string {
     const num = crypto.randomInt(0, 10000)
@@ -53,6 +93,7 @@ export interface ConsumerLookupResult {
     email: string
     fullName: string | null
     phone: string | null
+    organizationId: string | null
 }
 
 export async function lookupConsumerByEmail(
@@ -64,7 +105,7 @@ export async function lookupConsumerByEmail(
 
     const { data } = await admin
         .from('users')
-        .select('id, email, full_name, phone')
+        .select('id, email, full_name, phone, organization_id')
         .ilike('email', email)
         .eq('is_active', true)
         .limit(1)
@@ -76,6 +117,7 @@ export async function lookupConsumerByEmail(
         email: normalizeEmail(data.email),
         fullName: data.full_name,
         phone: data.phone ? normalizePhoneE164(data.phone) : null,
+        organizationId: data.organization_id || null,
     }
 }
 
@@ -90,7 +132,7 @@ export async function lookupConsumerByPhone(
     let data: any = null
     const { data: d1 } = await admin
         .from('users')
-        .select('id, email, full_name, phone')
+        .select('id, email, full_name, phone, organization_id')
         .eq('phone', phone)
         .eq('is_active', true)
         .limit(1)
@@ -100,7 +142,7 @@ export async function lookupConsumerByPhone(
     if (!data) {
         const { data: d2 } = await admin
             .from('users')
-            .select('id, email, full_name, phone')
+            .select('id, email, full_name, phone, organization_id')
             .eq('phone', phoneDigits)
             .eq('is_active', true)
             .limit(1)
@@ -114,6 +156,7 @@ export async function lookupConsumerByPhone(
         email: normalizeEmail(data.email || ''),
         fullName: data.full_name,
         phone,
+        organizationId: data.organization_id || null,
     }
 }
 
@@ -158,15 +201,36 @@ export async function checkResendRateLimit(
 export async function invalidateExistingCodes(
     admin: SupabaseClient,
     email: string,
+    channel: PasswordResetChannel = CHANNEL,
 ) {
     await admin
         .from('auth_verification_codes')
         .update({ invalidated_at: new Date().toISOString() })
         .eq('email_normalized', email)
         .eq('purpose', PURPOSE)
-        .eq('channel', CHANNEL)
+        .eq('channel', channel)
         .is('invalidated_at', null)
         .is('used_at', null)
+}
+
+export async function invalidateExistingCodesForAccount(
+    admin: SupabaseClient,
+    account: Pick<ConsumerLookupResult, 'email' | 'phone'>,
+    channel: PasswordResetChannel,
+) {
+    if (account.email) {
+        await invalidateExistingCodes(admin, account.email, channel)
+    }
+    if (account.phone) {
+        await admin
+            .from('auth_verification_codes')
+            .update({ invalidated_at: new Date().toISOString() })
+            .eq('phone_normalized', account.phone)
+            .eq('purpose', PURPOSE)
+            .eq('channel', channel)
+            .is('invalidated_at', null)
+            .is('used_at', null)
+    }
 }
 
 export async function createVerificationCode(
@@ -177,6 +241,7 @@ export async function createVerificationCode(
     ip: string | null,
     userAgent: string | null,
     phone?: string | null,
+    channel: PasswordResetChannel = CHANNEL,
 ): Promise<string> {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString()
 
@@ -184,8 +249,8 @@ export async function createVerificationCode(
         .from('auth_verification_codes')
         .insert({
             purpose: PURPOSE,
-            channel: CHANNEL,
-            email_normalized: email,
+            channel,
+            email_normalized: email || null,
             phone_normalized: phone || null,
             user_id: userId,
             code_hash: codeHash,
@@ -204,20 +269,26 @@ export async function createVerificationCode(
 export async function findActiveCode(
     admin: SupabaseClient,
     email: string,
+    channel: PasswordResetChannel = CHANNEL,
 ) {
-    const { data, error } = await admin
+    let query = admin
         .from('auth_verification_codes')
         .select('*')
-        .eq('email_normalized', email)
         .eq('purpose', PURPOSE)
-        .eq('channel', CHANNEL)
+        .eq('channel', channel)
         .is('invalidated_at', null)
         .is('used_at', null)
         .gt('expires_at', new Date().toISOString())
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle()
 
+    if (email.includes('@')) {
+        query = query.eq('email_normalized', email)
+    } else {
+        query = query.eq('phone_normalized', email)
+    }
+
+    const { data, error } = await query.maybeSingle()
     if (error) return null
     return data
 }
@@ -296,16 +367,18 @@ export async function logNotificationEvent(
         errorMessage?: string | null
         meta?: Record<string, any>
         ip?: string | null
+        channel?: PasswordResetChannel
     },
 ) {
     const now = new Date().toISOString()
     const sentTypes = ['password_reset_otp_sent', 'password_reset_otp_resend_sent']
     const verifiedTypes = ['password_reset_otp_verified']
     const completedTypes = ['password_reset_password_updated']
+    const channel = params.channel || CHANNEL
 
     await admin.from('notification_events').insert({
-        channel: CHANNEL,
-        provider: params.provider || EMAIL_PROVIDER_FALLBACK,
+        channel,
+        provider: params.provider || (channel === SMS_CHANNEL ? SMS_PROVIDER_FALLBACK : EMAIL_PROVIDER_FALLBACK),
         event_type: params.eventType,
         purpose: PURPOSE,
         recipient_email: params.email,
@@ -353,6 +426,134 @@ export async function sendOtpViaEmail(
     } catch (err: any) {
         return { success: false, error: err.message || 'Email send failed' }
     }
+}
+
+export function parsePasswordResetIdentifier(
+    raw: string,
+): { kind: 'email' | 'phone'; value: string } | null {
+    const value = String(raw || '').trim()
+    if (!value) return null
+    if (value.includes('@')) {
+        const email = normalizeEmail(value)
+        return isValidEmail(email) ? { kind: 'email', value: email } : null
+    }
+    const phone = normalizePhoneE164(value)
+    if (!phone || phone.replace(/\D/g, '').length < 8) return null
+    return { kind: 'phone', value: phone }
+}
+
+export function isSmsPasswordResetDelivery(value: unknown): boolean {
+    return String(value || '').trim().toLowerCase() === 'sms'
+}
+
+export function isPortalPasswordReset(value: unknown): boolean {
+    const mode = String(value || '').trim().toLowerCase()
+    return mode === 'portal' || mode === 'true'
+}
+
+export function resolvePasswordResetChannel(
+    identifier: { kind: 'email' | 'phone' },
+    delivery?: unknown,
+): PasswordResetChannel {
+    const requested = String(delivery || '').trim().toLowerCase()
+    if (requested === 'sms') return SMS_CHANNEL
+    if (requested === 'email') return CHANNEL
+    return identifier.kind === 'phone' ? SMS_CHANNEL : CHANNEL
+}
+
+export async function lookupPasswordResetAccount(
+    admin: SupabaseClient,
+    identifier: { kind: 'email' | 'phone'; value: string },
+): Promise<ConsumerLookupResult | null> {
+    if (identifier.kind === 'email') return lookupConsumerByEmail(admin, identifier.value)
+    return lookupConsumerByPhone(admin, identifier.value)
+}
+
+export function buildPasswordResetOtpSms(code: string): string {
+    if (!/^\d{4}$/.test(code)) {
+        throw new Error('Password reset OTP must be exactly 4 digits.')
+    }
+    const template = String(getSmsTemplateBody('password_reset_otp') || '').trim()
+    const fallback = `[Serapod2U] Password reset code: ${code}. Expires in ${OTP_EXPIRY_MINUTES} minutes.`
+    if (!template || !template.includes('{{verification_code}}')) return fallback
+    return template
+        .replace(/\{\{verification_code\}\}/g, code)
+        .replace(/\{\{otp_expiry_minutes\}\}/g, String(OTP_EXPIRY_MINUTES))
+}
+
+export async function sendOtpViaSms(
+    admin: SupabaseClient,
+    phone: string,
+    code: string,
+    orgId: string,
+): Promise<{ success: boolean; providerName?: string; error?: string }> {
+    const { toSmsE164 } = await import('@/lib/notifications/manualPhoneNumbers')
+    const parsed = toSmsE164(phone)
+    if (!('e164' in parsed)) {
+        return { success: false, error: parsed.reason || 'Invalid phone number' }
+    }
+
+    const { sendSmsWithActiveProvider, recordSmsDelivery } = await import('@/lib/notifications/sms-send')
+    const text = buildPasswordResetOtpSms(code)
+    const result = await sendSmsWithActiveProvider(admin, orgId, parsed.e164, text)
+    await recordSmsDelivery(admin, {
+        orgId,
+        to: parsed.e164,
+        eventCode: 'password_reset_otp',
+        result,
+    })
+    return {
+        success: Boolean(result.success),
+        providerName: result.providerName || SMS_PROVIDER_FALLBACK,
+        error: result.error,
+    }
+}
+
+export async function resolveOrgForSms(
+    admin: SupabaseClient,
+    preferredOrgId?: string | null,
+): Promise<string | null> {
+    if (preferredOrgId) return preferredOrgId
+    const { data: preferred } = await admin
+        .from('notification_provider_configs')
+        .select('org_id')
+        .eq('channel', 'sms')
+        .eq('is_default', true)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+    if (preferred?.org_id) return preferred.org_id
+
+    const { data: anyActive } = await admin
+        .from('notification_provider_configs')
+        .select('org_id')
+        .eq('channel', 'sms')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    return anyActive?.org_id ?? null
+}
+
+export async function findActivePasswordResetCode(
+    admin: SupabaseClient,
+    identifier: { kind: 'email' | 'phone'; value: string },
+    channel: PasswordResetChannel,
+) {
+    const lookupKey = identifier.kind === 'email' ? identifier.value : identifier.value
+    return findActiveCode(admin, lookupKey, channel)
+}
+
+export function identifierMatchesCodeRow(
+    identifier: { kind: 'email' | 'phone'; value: string },
+    codeRow: { email_normalized?: string | null; phone_normalized?: string | null },
+): boolean {
+    if (identifier.kind === 'email') {
+        return normalizeEmail(codeRow.email_normalized || '') === identifier.value
+    }
+    const stored = String(codeRow.phone_normalized || '')
+    return stored === identifier.value || stored.replace(/^\+/, '') === identifier.value.replace(/^\+/, '')
 }
 
 /** Resolve org that owns an active email provider (Dynamic Config → Providers). */
@@ -423,5 +624,191 @@ export async function resolveOrgForWhatsApp(
     return data?.org_id ?? null
 }
 
-export const GENERIC_EMAIL_OTP_MESSAGE =
-    'If this email exists, we will send a verification code via email.'
+export async function issuePasswordResetOtp(
+    admin: SupabaseClient,
+    input: {
+        identifierRaw: string
+        delivery?: unknown
+        disclose?: boolean
+        ip: string | null
+        ua: string | null
+        isResend?: boolean
+    },
+): Promise<
+    | { ok: true; message: string; resendCooldown: number; channel: PasswordResetChannel }
+    | { ok: false; error: string; status: number; code?: string }
+> {
+    const identifier = parsePasswordResetIdentifier(input.identifierRaw)
+    if (!identifier) {
+        return {
+            ok: false,
+            status: 400,
+            code: 'invalid_identifier',
+            error: 'Please enter a valid email address or phone number.',
+        }
+    }
+
+    const channel = resolvePasswordResetChannel(identifier, input.delivery)
+    const disclose = Boolean(input.disclose)
+    const genericMessage = passwordResetMessageForChannel(channel)
+    const rateEmail = identifier.kind === 'email' ? identifier.value : ''
+    const rateCheck = input.isResend
+        ? await checkResendRateLimit(admin, rateEmail || identifier.value)
+        : await checkSendRateLimit(admin, rateEmail || identifier.value)
+
+    if (!rateCheck.allowed) {
+        await logNotificationEvent(admin, {
+            eventType: input.isResend ? 'password_reset_resend_rate_limited' : 'password_reset_rate_limited',
+            email: identifier.kind === 'email' ? identifier.value : '',
+            phone: identifier.kind === 'phone' ? identifier.value : null,
+            status: 'rate_limited',
+            channel,
+            ip: input.ip,
+        })
+        if (disclose) {
+            return {
+                ok: false,
+                status: 429,
+                code: 'rate_limited',
+                error: 'Too many reset attempts. Please wait a minute and try again.',
+            }
+        }
+        return { ok: true, message: genericMessage, resendCooldown: RESEND_COOLDOWN_SECONDS, channel }
+    }
+
+    const account = await lookupPasswordResetAccount(admin, identifier)
+    if (!account) {
+        await logNotificationEvent(admin, {
+            eventType: input.isResend ? 'password_reset_otp_resend' : 'password_reset_otp_requested',
+            email: identifier.kind === 'email' ? identifier.value : '',
+            phone: identifier.kind === 'phone' ? identifier.value : null,
+            status: 'no_account',
+            channel,
+            meta: { anonymous: true, disclose },
+            ip: input.ip,
+        })
+        if (disclose) {
+            return {
+                ok: false,
+                status: 404,
+                code: 'not_registered',
+                error: unregisteredPasswordResetMessage(identifier.kind),
+            }
+        }
+        return { ok: true, message: genericMessage, resendCooldown: RESEND_COOLDOWN_SECONDS, channel }
+    }
+
+    if (channel === SMS_CHANNEL && !account.phone) {
+        await logNotificationEvent(admin, {
+            eventType: input.isResend ? 'password_reset_otp_resend' : 'password_reset_otp_requested',
+            email: account.email,
+            userId: account.userId,
+            status: 'no_phone',
+            channel,
+            ip: input.ip,
+        })
+        if (disclose) {
+            return {
+                ok: false,
+                status: 409,
+                code: 'missing_contact',
+                error: missingContactPasswordResetMessage(channel),
+            }
+        }
+        return { ok: true, message: genericMessage, resendCooldown: RESEND_COOLDOWN_SECONDS, channel }
+    }
+
+    if (channel === CHANNEL && !account.email) {
+        await logNotificationEvent(admin, {
+            eventType: input.isResend ? 'password_reset_otp_resend' : 'password_reset_otp_requested',
+            phone: account.phone,
+            userId: account.userId,
+            status: 'no_email',
+            channel,
+            ip: input.ip,
+        })
+        if (disclose) {
+            return {
+                ok: false,
+                status: 409,
+                code: 'missing_contact',
+                error: missingContactPasswordResetMessage(channel),
+            }
+        }
+        return { ok: true, message: genericMessage, resendCooldown: RESEND_COOLDOWN_SECONDS, channel }
+    }
+
+    await invalidateExistingCodesForAccount(admin, account, channel)
+
+    const code = generateOtp()
+    const codeHash = hashOtp(code)
+    const codeId = await createVerificationCode(
+        admin,
+        account.email,
+        codeHash,
+        account.userId,
+        input.ip,
+        input.ua,
+        account.phone,
+        channel,
+    )
+
+    let sendResult: { success: boolean; providerName?: string; error?: string } = { success: false }
+
+    if (channel === SMS_CHANNEL) {
+        const orgId = await resolveOrgForSms(admin, account.organizationId)
+        if (orgId && account.phone) {
+            sendResult = await sendOtpViaSms(admin, account.phone, code, orgId)
+        } else {
+            sendResult = { success: false, error: 'No SMS provider configured' }
+        }
+    } else {
+        const orgId = await resolveOrgForEmail(admin)
+        if (orgId && account.email) {
+            sendResult = await sendOtpViaEmail(admin, account.email, code, orgId, account.fullName)
+        } else {
+            sendResult = { success: false, error: 'No email provider configured' }
+        }
+    }
+
+    const sentEvent = input.isResend ? 'password_reset_otp_resend_sent' : 'password_reset_otp_sent'
+    await logNotificationEvent(admin, {
+        eventType: sendResult.success ? sentEvent : 'password_reset_otp_send_failed',
+        email: account.email,
+        phone: account.phone,
+        userId: account.userId,
+        status: sendResult.success ? 'sent' : 'failed',
+        provider: sendResult.providerName,
+        errorMessage: sendResult.success ? null : sendResult.error,
+        channel,
+        meta: { codeId },
+        ip: input.ip,
+    })
+
+    await logNotificationEvent(admin, {
+        eventType: input.isResend ? 'password_reset_otp_resend' : 'password_reset_otp_requested',
+        email: account.email,
+        phone: account.phone,
+        userId: account.userId,
+        status: sendResult.success ? 'sent' : 'send_failed',
+        provider: sendResult.providerName,
+        channel,
+        ip: input.ip,
+    })
+
+    if (!sendResult.success && disclose) {
+        return {
+            ok: false,
+            status: 502,
+            code: 'send_failed',
+            error: failedSendPasswordResetMessage(channel),
+        }
+    }
+
+    return {
+        ok: true,
+        message: disclose ? sentPasswordResetMessage(channel) : genericMessage,
+        resendCooldown: RESEND_COOLDOWN_SECONDS,
+        channel,
+    }
+}

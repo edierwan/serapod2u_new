@@ -93,6 +93,25 @@ export function normalizeManualPhone(raw: string): ValidManualPhone | InvalidMan
     }
 }
 
+/** Malaysia local 01163739729 -> +601163739729 for SMS gateways. */
+export function toSmsE164(raw: string): { e164: string; normalized: string } | InvalidManualPhone {
+    const phone = normalizeManualPhone(raw)
+    if (!('normalized' in phone)) return phone
+    return {
+        normalized: phone.normalized,
+        e164: `+${phone.normalized}`,
+    }
+}
+
+/** Digits-only key so +963992240668 and 963992240668 collapse to one recipient. */
+export function notificationPhoneKey(raw: string | null | undefined): string {
+    const value = String(raw || '').trim()
+    if (!value) return ''
+    const parsed = toSmsE164(value)
+    if ('normalized' in parsed) return parsed.normalized
+    return value.replace(/[^\d]/g, '')
+}
+
 function isValid(p: ValidManualPhone | InvalidManualPhone): p is ValidManualPhone {
     return typeof (p as ValidManualPhone).normalized === 'string'
 }

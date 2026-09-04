@@ -14,9 +14,11 @@ import { getPostLoginRedirect } from '@/server/auth/getPostLoginRedirect'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const result = await getPostLoginRedirect()
+    const url = new URL(request.url)
+    const next = url.searchParams.get('next')
+    const result = await getPostLoginRedirect(next)
 
     // Log warnings server-side for observability
     if (result.warnings.length > 0) {

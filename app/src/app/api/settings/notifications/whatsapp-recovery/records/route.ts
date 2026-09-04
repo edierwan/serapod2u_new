@@ -12,6 +12,7 @@ import { resolveRecoveryContacts } from '@/lib/wa-recovery/contact-resolver'
 import { loadRecoveryTemplates, pickRecoveryTemplate } from '@/lib/wa-recovery/template-store'
 import { buildRecoveryMessageVariables, renderTemplate } from '@/lib/wa-recovery/templates'
 import { normalizePhoneE164 } from '@/utils/phone'
+import { extractOrderRef, type NotificationOrderRef } from '@/lib/notifications/orderRef'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +57,35 @@ function toRecoverySnapshot(row: any) {
     }
 }
 
+function orderRefFromEvent(row: any): NotificationOrderRef {
+    const relatedType = String(row.related_entity_type || '').toLowerCase()
+    const relatedId = relatedType === 'order' ? String(row.related_entity_id || '').trim() || null : null
+    const fromMeta = extractOrderRef(row.meta)
+    return {
+        orderId: fromMeta.orderId || relatedId,
+        orderNo: fromMeta.orderNo,
+    }
+}
+
+async function resolveMissingOrderNumbers(admin: any, refs: NotificationOrderRef[]): Promise<Map<string, string>> {
+    const missing = Array.from(new Set(
+        refs.filter((ref) => ref.orderId && !ref.orderNo).map((ref) => ref.orderId as string),
+    ))
+    if (missing.length === 0) return new Map()
+
+    const { data } = await admin
+        .from('orders')
+        .select('id, display_doc_no, order_no')
+        .in('id', missing)
+
+    const labels = new Map<string, string>()
+    for (const order of data || []) {
+        const label = String(order.display_doc_no || order.order_no || '').trim()
+        if (order?.id && label) labels.set(String(order.id), label)
+    }
+    return labels
+}
+
 export async function GET(_request: NextRequest) {
     try {
         const supabase = await createClient()
@@ -76,14 +106,14 @@ export async function GET(_request: NextRequest) {
         const [eventRowsRes, logRowsRes, templates] = await Promise.all([
             (admin as any)
                 .from('notification_events')
-                .select('id, created_at, requested_at, sent_at, status, recipient_phone, event_type, purpose, provider, error_message, provider_message_id, user_id, message_template, message_body, meta')
+                .select('id, created_at, requested_at, sent_at, status, recipient_phone, event_type, purpose, provider, error_message, provider_message_id, user_id, message_template, message_body, meta, related_entity_id, related_entity_type')
                 .eq('channel', 'whatsapp')
                 .order('created_at', { ascending: false })
                 .limit(500),
             orgId
                 ? (admin as any)
                     .from('notification_logs')
-                    .select('id, created_at, sent_at, delivered_at, failed_at, status, recipient_value, event_code, provider_name, error_message, provider_response')
+                    .select('id, created_at, sent_at, delivered_at, failed_at, status, recipient_value, event_code, provider_name, error_message, provider_response, outbox_id')
                     .eq('channel', 'whatsapp')
                     .eq('org_id', orgId)
                     .order('created_at', { ascending: false })
@@ -103,6 +133,18 @@ export async function GET(_request: NextRequest) {
         const logRows = ((logRowsRes.data || []) as any[]).filter((row) => !isMonitoringDismissed(row.provider_response))
         const recoveryBySourceKey = new Map<string, ReturnType<typeof toRecoverySnapshot>>()
         const recoveryByPhoneAndPurpose = new Map<string, ReturnType<typeof toRecoverySnapshot>>()
+
+        const outboxIds = Array.from(new Set(logRows.map((row) => String(row.outbox_id || '')).filter(Boolean)))
+        const outboxById = new Map<string, any>()
+        if (outboxIds.length > 0) {
+            const { data: outboxRows } = await (admin as any)
+                .from('notifications_outbox')
+                .select('id, payload_json')
+                .in('id', outboxIds)
+            for (const row of outboxRows || []) {
+                outboxById.set(String(row.id), row)
+            }
+        }
 
         for (const row of eventRows) {
             if (!RECOVERY_PURPOSE_SET.has(String(row.purpose || ''))) continue
@@ -125,6 +167,7 @@ export async function GET(_request: NextRequest) {
         const records = [
             ...eventRows.map((row) => {
                 const normalizedPhone = normalizePhoneE164(String(row.recipient_phone || '').trim()) || String(row.recipient_phone || '').trim()
+                const order = orderRefFromEvent(row)
                 return {
                     id: `event-${row.id}`,
                     sourceType: 'notification_event',
@@ -142,10 +185,14 @@ export async function GET(_request: NextRequest) {
                     messageTemplate: row.message_template ? String(row.message_template) : null,
                     messageBody: row.message_body ? String(row.message_body) : null,
                     meta: normalizeActivityMetadata(row.meta),
+                    orderId: order.orderId,
+                    orderNo: order.orderNo,
                 }
             }),
             ...logRows.map((row) => {
                 const normalizedPhone = normalizePhoneE164(resolveLogRecipientPhone(row.recipient_value, row.provider_response))
+                const outbox = row.outbox_id ? outboxById.get(String(row.outbox_id)) : null
+                const order = extractOrderRef(outbox?.payload_json)
                 return {
                     id: `log-${row.id}`,
                     sourceType: 'notification_log',
@@ -163,9 +210,18 @@ export async function GET(_request: NextRequest) {
                     messageTemplate: null,
                     messageBody: null,
                     meta: normalizeActivityMetadata(row.provider_response),
+                    orderId: order.orderId,
+                    orderNo: order.orderNo,
                 }
             }),
         ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+
+        const orderLabels = await resolveMissingOrderNumbers(admin, records)
+        for (const record of records) {
+            if (!record.orderNo && record.orderId) {
+                record.orderNo = orderLabels.get(record.orderId) || record.orderNo
+            }
+        }
 
         const contacts = await resolveRecoveryContacts(
             admin as any,

@@ -1,0 +1,109 @@
+import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { isMissingChatTable, requireSerappActor } from '@/lib/serapp/chat-auth'
+import {
+  getAccessibleConversation,
+  parseSession,
+  updateConversationSession,
+} from '@/lib/serapp/conversation-service'
+import { parseSerappLineResolutions, parseSerappQuantityResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
+import { loadSerappCatalog, resolveSerappDistributorContext } from '@/lib/serapp/order-context'
+import type { SerappChatCheckPayload } from '@/lib/serapp/chat-types'
+
+/**
+ * Apply one unmatched-line pick, re-check stock, persist session.
+ * Does not allocate or create an order.
+ */
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const actor = await requireSerappActor()
+    if (!actor.ok) return actor.error
+
+    const { id } = await context.params
+    const body = await request.json().catch(() => null)
+    const line = Number(body?.line)
+    const variantId = typeof body?.variantId === 'string' ? body.variantId.trim() : ''
+    const quantity = Number(body?.quantity)
+    const hasVariantPick = Number.isInteger(line) && line >= 1 && Boolean(variantId)
+    const hasQuantityPick = Number.isInteger(line) && line >= 1 && Number.isFinite(quantity) && quantity > 0
+    if (!hasVariantPick && !hasQuantityPick) {
+      return NextResponse.json({ error: 'line and variantId or quantity are required.' }, { status: 400 })
+    }
+
+    const admin = createAdminClient()
+    const conversation = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
+    }
+
+    let session = parseSession(conversation.session_json)
+    const distributorId = typeof body?.distributorId === 'string'
+      ? body.distributorId
+      : session.distributorId
+    if (distributorId) session = { ...session, distributorId }
+
+    const pasteText = session.pendingPasteText
+    if (!pasteText) {
+      return NextResponse.json({ error: 'Paste a list first, then pick a product.' }, { status: 409 })
+    }
+
+    const ctx = await resolveSerappDistributorContext({
+      distributorId: distributorId || undefined,
+    })
+    const catalog = await loadSerappCatalog(ctx)
+    const lineResolutions = parseSerappLineResolutions([
+      ...(session.lineResolutions || []),
+      ...(hasVariantPick ? [{ line, variantId }] : []),
+    ])
+    const quantityResolutions = parseSerappQuantityResolutions([
+      ...(session.quantityResolutions || []),
+      ...(hasQuantityPick ? [{ line, quantity: Math.floor(quantity) }] : []),
+    ])
+    const checked = runSerappPasteCheck(pasteText, catalog.variants, lineResolutions, quantityResolutions)
+
+    const check: SerappChatCheckPayload = {
+      summary: checked.summary,
+      results: checked.results,
+      estimatedOrderValue: checked.estimatedOrderValue,
+      warehouseName: catalog.fulfillmentWarehouseName,
+      distributorName: ctx.distributorName,
+      pasteText,
+    }
+
+    session = {
+      ...session,
+      phase: 'checked',
+      lastCheck: check,
+      lastConfirm: null,
+      lineResolutions,
+      quantityResolutions,
+    }
+    await updateConversationSession(admin, id, session, {
+      distributorOrgId: ctx.distributorId,
+    })
+
+    return NextResponse.json({
+      session,
+      check,
+    })
+  } catch (error) {
+    if (isMissingChatTable(error)) {
+      return NextResponse.json({ error: 'Chat tables not installed yet.' }, { status: 503 })
+    }
+    const status = typeof (error as { status?: number })?.status === 'number'
+      ? (error as { status: number }).status
+      : 500
+    const message = error instanceof Error ? error.message : 'Could not resolve that line.'
+    console.error('[serapp/resolve-line]', error)
+    return NextResponse.json({ error: message }, { status })
+  }
+}
+
+export const dynamic = 'force-dynamic'

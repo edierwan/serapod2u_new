@@ -9,7 +9,7 @@
  */
 import 'server-only'
 import { type AiProviderConfig, type AiProvider } from '@/lib/ai/types'
-import { getMoltbotConfig, getOllamaConfig, getDefaultProvider } from '@/lib/ai/config'
+import { getMoltbotConfig, getOllamaConfig, getOpenaiConfig, getDefaultProvider } from '@/lib/ai/config'
 import { decryptSecret } from './secrets'
 
 export interface DbProviderRow {
@@ -122,6 +122,7 @@ export async function resolveProviderConfig(
   // Fallback to .env — but ONLY for the SAME provider, never swap
   console.log(`[AI Settings] No DB config for ${targetProvider}, falling back to .env`)
   if (targetProvider === 'moltbot') return getMoltbotConfig()
+  if (targetProvider === 'openai') return getOpenaiConfig()
   return getOllamaConfig()
 }
 

@@ -216,3 +216,7 @@ z_*
 
 # Vercel
 .vercel
+
+# Next.js artifacts created when dev is started from the repo root instead of app/
+/tsconfig.json
+/next-env.d.ts

@@ -1,3 +1,10 @@
+import { getSmsTemplatesForEvent } from './smsTemplates'
+import { REQUIRED_NOTIFICATION_TYPES } from '@/lib/notifications/notificationEventCatalog'
+
+/**
+ * WhatsApp and email templates for system events.
+ * SMS bodies live in smsTemplates.ts — that file is what the SMS send path uses.
+ */
 export type Channel = 'whatsapp' | 'sms' | 'email';
 export type NotificationKey =
     | 'order_approved'
@@ -24,6 +31,7 @@ export type NotificationKey =
     | 'password_changed'
     | 'password_reset_request'
     | 'password_reset_otp'
+    | 'delete_user_otp'
     | 'login_suspicious'
     | 'po_created'
     | 'po_acknowledged'
@@ -33,6 +41,7 @@ export type NotificationKey =
     | 'payment_received'
     | 'balance_payment_received'
     | 'receipt_issued'
+    | 'system_sms_check'
     | 'generic';
 
 export interface Template {
@@ -77,7 +86,7 @@ export const notificationTemplates: Record<string, Template[]> = {
             name: 'SMS Approval Alert',
             description: 'Short SMS notification',
             channel: 'sms',
-            body: `[Serapod2U] Order #{{order_no}} submitted by {{customer_name}} for RM {{amount}} needs approval. Review: {{order_url}}`
+            body: `[Serapod2U] Order #{{order_no}} submitted by {{created_by}} for RM {{amount}} needs approval.`
         },
         {
             id: 'os_email_1',
@@ -696,6 +705,29 @@ export const notificationTemplates: Record<string, Template[]> = {
         }
     ],
 
+    'delete_user_otp': [
+        {
+            id: 'delete_user_otp_wa_1',
+            name: 'User Deletion OTP — WhatsApp',
+            description: 'HQ user removal verification code to organization contact',
+            channel: 'whatsapp',
+            body: `⚠️ *Your Deletion Code*\n\n *{{verification_code}}*\n\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes. Only enter this code if you authorize this deletion.`
+        },
+        {
+            id: 'delete_user_otp_sms_1',
+            name: 'User Deletion OTP — SMS',
+            channel: 'sms',
+            body: `DELETION VERIFICATION\nCode: {{verification_code}}\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\nExpires in {{otp_expiry_minutes}} minutes.`
+        },
+        {
+            id: 'delete_user_otp_email_1',
+            name: 'User Deletion OTP — Email',
+            channel: 'email',
+            subject: 'Serapod2U deletion verification code',
+            body: `DELETION VERIFICATION\n\nCode: {{verification_code}}\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes.\nOnly enter this code if you authorize this deletion.`
+        }
+    ],
+
     'login_suspicious': [
         {
             id: 'sl_wa_1',
@@ -1047,6 +1079,20 @@ export const notificationTemplates: Record<string, Template[]> = {
     ],
 
     // ══════════════════════════════════════════════════════════
+    // SYSTEM CHECK
+    // ══════════════════════════════════════════════════════════
+
+    'system_sms_check': [
+        {
+            id: 'sms_check_1',
+            name: 'SMS Delivery Check',
+            description: 'Short test SMS to confirm the Local Malaysian gateway is working',
+            channel: 'sms',
+            body: `Serapod2U SMS check. If you received this, Local Malaysian SMS is working.`
+        }
+    ],
+
+    // ══════════════════════════════════════════════════════════
     // FALLBACK / GENERIC
     // ══════════════════════════════════════════════════════════
 
@@ -1061,6 +1107,16 @@ export const notificationTemplates: Record<string, Template[]> = {
 };
 
 export const getTemplatesForEvent = (eventCode: string, channel: string): Template[] => {
+    // An event that declares its channels in the catalog is taken at its word:
+    // the generic per-channel fallbacks below must not offer, say, an SMS body
+    // for an email-only security code. Events absent from the catalog are
+    // unrestricted, so nothing that worked before stops working.
+    const declared = REQUIRED_NOTIFICATION_TYPES.find(type => type.event_code === eventCode)
+    if (declared && !(declared.available_channels as readonly string[]).includes(channel)) return []
+
+    if (channel === 'sms') {
+        return getSmsTemplatesForEvent(eventCode)
+    }
     const templates = notificationTemplates[eventCode] || notificationTemplates['generic'] || [];
     return templates.filter(t => t.channel === channel);
 };

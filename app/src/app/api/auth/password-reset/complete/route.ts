@@ -1,39 +1,48 @@
 /**
  * POST /api/auth/password-reset/complete
  *
- * Set new password using the reset token issued after email OTP verification.
+ * Set new password using the reset token issued after OTP verification.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isValidEmail, normalizeEmail } from '@/lib/auth/password-reset-otp-email'
 import {
     findCodeByResetToken,
-    markCodeUsed,
+    identifierMatchesCodeRow,
     logNotificationEvent,
+    markCodeUsed,
+    parsePasswordResetIdentifier,
+    resolvePasswordResetChannel,
 } from '@/server/auth/passwordResetService'
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        const emailRaw: string | undefined = body?.email
+        const identifierRaw = typeof body?.identifier === 'string'
+            ? body.identifier
+            : typeof body?.email === 'string'
+                ? body.email
+                : ''
         const resetToken: string | undefined = body?.resetToken
         const newPassword: string | undefined = body?.newPassword
         const confirmPassword: string | undefined = body?.confirmPassword
 
-        if (!emailRaw || !resetToken || !newPassword || !confirmPassword) {
+        if (!identifierRaw || !resetToken || !newPassword || !confirmPassword) {
             return NextResponse.json(
                 { error: 'All fields are required.' },
                 { status: 400 },
             )
         }
 
-        if (!isValidEmail(emailRaw)) {
+        const identifier = parsePasswordResetIdentifier(identifierRaw)
+        if (!identifier) {
             return NextResponse.json(
-                { error: 'Please enter a valid email address.' },
+                { error: 'Please enter a valid email address or phone number.' },
                 { status: 400 },
             )
         }
+
+        const channel = resolvePasswordResetChannel(identifier, body?.delivery)
 
         if (newPassword !== confirmPassword) {
             return NextResponse.json(
@@ -49,17 +58,18 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const email = normalizeEmail(emailRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
         const admin = createAdminClient()
+        const lookupEmail = identifier.kind === 'email' ? identifier.value : ''
 
         const codeRow = await findCodeByResetToken(admin, resetToken)
         if (!codeRow) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_complete_failed',
-                email,
+                email: lookupEmail,
                 status: 'failed',
                 errorMessage: 'Invalid or expired reset token',
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -68,14 +78,15 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        if (normalizeEmail(codeRow.email_normalized || '') !== email) {
+        if (!identifierMatchesCodeRow(identifier, codeRow)) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_complete_failed',
-                email,
+                email: lookupEmail,
                 phone: codeRow.phone_normalized,
                 userId: codeRow.user_id,
                 status: 'failed',
-                errorMessage: 'Email mismatch with reset token',
+                errorMessage: 'Identifier mismatch with reset token',
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -94,9 +105,10 @@ export async function POST(req: NextRequest) {
         if (!codeRow.user_id) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_complete_failed',
-                email,
+                email: codeRow.email_normalized || lookupEmail,
                 status: 'failed',
                 errorMessage: 'No user_id associated with verification code',
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -113,11 +125,12 @@ export async function POST(req: NextRequest) {
         if (updateError) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_complete_failed',
-                email,
+                email: codeRow.email_normalized || lookupEmail,
                 phone: codeRow.phone_normalized,
                 userId: codeRow.user_id,
                 status: 'failed',
                 errorMessage: updateError.message,
+                channel,
                 ip,
             })
             return NextResponse.json(
@@ -130,11 +143,12 @@ export async function POST(req: NextRequest) {
 
         await logNotificationEvent(admin, {
             eventType: 'password_reset_password_updated',
-            email,
+            email: codeRow.email_normalized || lookupEmail,
             phone: codeRow.phone_normalized,
             userId: codeRow.user_id,
             status: 'completed',
             meta: { codeId: codeRow.id },
+            channel,
             ip,
         })
 
