@@ -29,6 +29,17 @@ describe('HQ → Warehouse transfer readiness', () => {
     expect(transferLifecycle).toContain('ready_to_dispatch')
   })
 
+  it('drops the Stock SKU column and shows the Add Stock variant identity', () => {
+    expect(transferView).not.toContain('<TableHead>Stock SKU</TableHead>')
+    expect(transferView).not.toContain('{row.stockSku}')
+    expect(transferView).toContain('variantIdentityLabel(row.variantName, row.variantProductCode)')
+    expect(transferView).toContain('variantAlternativeLabel(row.alternativeName)')
+    expect(transferView).toContain('product_code,\n            alternative_name,')
+    // stock_config_id stays the transfer identity; only the display changed.
+    expect(transferView).toContain('stock_config_id')
+    expect(transferView).toContain('<TableHead>Configuration</TableHead>')
+  })
+
   it('documents the later cutover without transferring production stock now', () => {
     expect(runbook).toContain('Do **not** run against staging/production inventory until explicitly approved')
     expect(runbook).toContain('Total Serapod-controlled inventory before')

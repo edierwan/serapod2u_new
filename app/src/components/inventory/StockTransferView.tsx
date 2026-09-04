@@ -58,6 +58,10 @@ import {
   transferNoteLinesFromItems,
 } from '@/lib/inventory/stock-transfer-note'
 import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
+import {
+  variantAlternativeLabel,
+  variantIdentityLabel,
+} from '@/lib/inventory/variant-display-label'
 
 interface Warehouse {
   id: string
@@ -213,6 +217,8 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
             id,
             variant_name,
             variant_code,
+            product_code,
+            alternative_name,
             image_url,
             product_id,
             products!inner (
@@ -261,6 +267,8 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
           productCode: product?.product_code || '',
           productName: product?.product_name || '',
           variantName: variant.variant_name || '',
+          variantProductCode: variant.product_code || '',
+          alternativeName: variant.alternative_name || '',
           flavour: variant.variant_name || '',
           productLine: group?.group_name || 'Ungrouped',
           configLabel: config.config_label || config.stock_sku,
@@ -766,7 +774,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <Input
                     className="pl-9"
-                    placeholder="Search flavour, product, code or Stock SKU"
+                    placeholder="Search flavour, product or code"
                     value={search}
                     onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                     disabled={!fromWarehouse}
@@ -834,7 +842,6 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                       </TableHead>
                       <TableHead>Product / Flavour</TableHead>
                       <TableHead>Configuration</TableHead>
-                      <TableHead>Stock SKU</TableHead>
                       <TableHead className="text-right">Available</TableHead>
                       <TableHead className="w-32">Transfer Qty</TableHead>
                       <TableHead className="text-right">After Transfer</TableHead>
@@ -843,17 +850,17 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                   <TableBody>
                     {!fromWarehouse ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-slate-500 py-10">
+                        <TableCell colSpan={6} className="text-center text-slate-500 py-10">
                           Select a source warehouse to load transferable configurations.
                         </TableCell>
                       </TableRow>
                     ) : loadingInventory ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-slate-500 py-10">Loading inventory…</TableCell>
+                        <TableCell colSpan={6} className="text-center text-slate-500 py-10">Loading inventory…</TableCell>
                       </TableRow>
                     ) : pageRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-slate-500 py-10">No matching stock configurations.</TableCell>
+                        <TableCell colSpan={6} className="text-center text-slate-500 py-10">No matching stock configurations.</TableCell>
                       </TableRow>
                     ) : pageRows.map((row) => {
                       const qtyRaw = quantities[row.inventoryKey] || ''
@@ -871,15 +878,20 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                           </TableCell>
                           <TableCell>
                             <div className="font-medium text-slate-900">{row.productName}</div>
-                            <div className="text-xs text-slate-500">{row.variantName}</div>
-                            <div className="text-xs text-slate-400">{row.productCode}</div>
+                            <div className="text-xs text-slate-500">
+                              {variantIdentityLabel(row.variantName, row.variantProductCode)}
+                            </div>
+                            {variantAlternativeLabel(row.alternativeName) && (
+                              <div className="text-xs text-slate-400">
+                                {variantAlternativeLabel(row.alternativeName)}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
                               {withStockStrengthUnit(row.configLabel)}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-xs">{row.stockSku}</TableCell>
                           <TableCell className="text-right">{row.available.toLocaleString()}</TableCell>
                           <TableCell>
                             <Input

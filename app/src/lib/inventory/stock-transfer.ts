@@ -87,6 +87,8 @@ export interface SourceInventoryRow {
   productCode: string
   productName: string
   variantName: string
+  variantProductCode: string
+  alternativeName: string
   flavour: string
   productLine: string
   configLabel: string
@@ -362,6 +364,8 @@ export function filterSourceInventoryRows(
     const haystack = [
       row.flavour,
       row.variantName,
+      row.variantProductCode,
+      row.alternativeName,
       row.productName,
       row.productCode,
       row.stockSku,
