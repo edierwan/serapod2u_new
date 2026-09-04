@@ -31,6 +31,7 @@ import {
 } from '@/lib/returns/constants'
 import { ReturnSourceCombobox } from './ReturnSourceCombobox'
 import { generateReturnPdf } from '@/lib/returns/pdf'
+import { variantAlternativeLabel, variantIdentityLabel } from '@/lib/inventory/variant-display-label'
 import {
     getVariantDisplayName, classifyProductLine, productLineLabel,
     isDeviceLine, getRowUnitsPerCase,
@@ -253,6 +254,8 @@ interface WorksheetRow {
     barcode: string | null
     product_name: string
     variant_name: string | null
+    variant_product_code: string | null
+    alternative_name: string | null
     product_line: ProductLine
     image_url: string | null
     units_per_case: number
@@ -287,6 +290,8 @@ function eligibleToRow(p: EligibleProduct): WorksheetRow {
         barcode: p.barcode,
         product_name: p.product_name,
         variant_name: p.variant_name,
+        variant_product_code: p.variant_product_code ?? null,
+        alternative_name: p.alternative_name ?? null,
         product_line: p.product_line,
         image_url: p.image_url,
         units_per_case: getRowUnitsPerCase(p.product_line, p.product_name, p.units_per_case),
@@ -327,6 +332,10 @@ function savedItemToExtraRow(it: ReturnCaseItem): WorksheetRow {
         barcode: null,
         product_name: productName,
         variant_name: it.variant_name,
+        // return_case_items stores a name snapshot only, so a saved historical
+        // row degrades to product + variant name with no code or alternative.
+        variant_product_code: null,
+        alternative_name: null,
         product_line: classifyProductLine(productName),
         image_url: null,
         units_per_case: upcVal,
@@ -735,6 +744,8 @@ function ReturnCaseEditor({
                 product_id: v.product_id, variant_id: v.variant_id, sku_id: null,
                 sku: v.sku, manual_sku: v.manual_sku, manufacturer_sku: v.manufacturer_sku,
                 barcode: v.barcode, product_name: v.product_name, variant_name: v.variant_name,
+                variant_product_code: v.variant_product_code ?? null,
+                alternative_name: v.alternative_name ?? null,
                 product_line: vLine,
                 image_url: v.image_url, units_per_case: upc,
                 unit_cost: v.unit_cost, is_active: v.is_active, isExtra: true,
@@ -1402,6 +1413,8 @@ interface ExtraProductOption {
     barcode: string | null
     product_name: string
     variant_name: string | null
+    variant_product_code: string | null
+    alternative_name: string | null
     image_url: string | null
     units_per_case: number
     unit_cost: number
@@ -1453,9 +1466,14 @@ function ReturnWorksheet({
             if (viewMode === 'entered' && total <= 0) return false
             if (hideEmpty && total <= 0) return false
             if (q) {
+                // The Product Line and Internal SKU columns are gone from the
+                // table, not from the data: both stay searchable, alongside the
+                // variant Product Code and Alternative Name now on screen.
                 const hay = [
                     getVariantDisplayName(r.variant_name), r.variant_name, r.product_name,
+                    r.variant_product_code, r.alternative_name,
                     r.manual_sku, r.manufacturer_sku, r.sku, r.barcode,
+                    r.product_line, productLineLabel(r.product_line),
                 ].filter(Boolean).join(' ').toLowerCase()
                 if (!hay.includes(q)) return false
             }
@@ -1557,9 +1575,7 @@ function ReturnWorksheet({
                         <tr>
                             <th className="px-2 py-2 font-medium">No.</th>
                             <th className="px-2 py-2 font-medium">Image</th>
-                            <th className="px-2 py-2 font-medium">Variant / Flavour</th>
-                            <th className="px-2 py-2 font-medium">Product Line</th>
-                            <th className="px-2 py-2 font-medium">Internal SKU</th>
+                            <th className="px-2 py-2 font-medium">Product Name</th>
                             <th className="px-2 py-2 font-medium" style={{ minWidth: 200 }}>Return Qty</th>
                             <th className="px-2 py-2 font-medium">Breakdown</th>
                             <th className="px-2 py-2 font-medium">Total Pcs</th>
@@ -1571,11 +1587,11 @@ function ReturnWorksheet({
                     </thead>
                     <tbody className="divide-y divide-border">
                         {loading ? (
-                            <tr><td colSpan={12} className="px-2 py-10 text-center text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+                            <tr><td colSpan={10} className="px-2 py-10 text-center text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
                         ) : !shopSelected ? (
-                            <tr><td colSpan={12} className="px-2 py-10 text-center text-muted-foreground">Select a shop or distributor to load its eligible products.</td></tr>
+                            <tr><td colSpan={10} className="px-2 py-10 text-center text-muted-foreground">Select a shop or distributor to load its eligible products.</td></tr>
                         ) : visibleRows.length === 0 ? (
-                            <tr><td colSpan={12} className="px-2 py-10 text-center text-muted-foreground">No products match the current view.</td></tr>
+                            <tr><td colSpan={10} className="px-2 py-10 text-center text-muted-foreground">No products match the current view.</td></tr>
                         ) : visibleRows.map((r, i) => {
                             const total = rowTotal(r)
                             const entered = total > 0
@@ -1592,19 +1608,23 @@ function ReturnWorksheet({
                                             title={[
                                                 `Product: ${r.product_name}`,
                                                 r.variant_name ? `Full Variant: ${r.variant_name}` : null,
+                                                `Product Line: ${productLineLabel(r.product_line)}`,
+                                                r.manual_sku ? `Internal SKU: ${r.manual_sku}` : 'Internal SKU: not assigned',
                                                 r.manufacturer_sku ? `Manufacturer SKU: ${r.manufacturer_sku}` : null,
                                                 r.barcode ? `Barcode: ${r.barcode}` : null,
                                             ].filter(Boolean).join('\n')}
                                         >
-                                            <div className="font-medium text-foreground">{getVariantDisplayName(r.variant_name) || r.product_name}</div>
+                                            <div className="font-medium text-foreground">{r.product_name}</div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {variantIdentityLabel(r.variant_name, r.variant_product_code)}
+                                            </div>
+                                            {variantAlternativeLabel(r.alternative_name) && (
+                                                <div className="text-xs text-muted-foreground/80">
+                                                    {variantAlternativeLabel(r.alternative_name)}
+                                                </div>
+                                            )}
                                             {!r.is_active && <Badge variant="outline" className="mt-0.5 text-[10px]">Inactive</Badge>}
                                         </div>
-                                    </td>
-                                    <td className="px-2 py-2"><ProductLineBadge line={r.product_line} /></td>
-                                    <td className="px-2 py-2 text-xs">
-                                        {r.manual_sku
-                                            ? <span className="font-medium text-foreground">{r.manual_sku}</span>
-                                            : <span className="text-amber-600 dark:text-amber-400">Not assigned</span>}
                                     </td>
                                     <td className="px-2 py-2">
                                         {readOnly ? (
@@ -1969,7 +1989,7 @@ function AddOtherProduct({
         try {
             const { data, error } = await (supabase as any)
                 .from('product_variants')
-                .select('id, product_id, variant_name, barcode, manufacturer_sku, manual_sku, image_url, base_cost, is_active, products!inner(id, product_name, units_per_case), product_skus(sku_code, quantity_per_package, is_active)')
+                .select('id, product_id, variant_name, product_code, alternative_name, barcode, manufacturer_sku, manual_sku, image_url, base_cost, is_active, products!inner(id, product_name, units_per_case), product_skus(sku_code, quantity_per_package, is_active)')
                 .order('variant_name', { ascending: true })
                 .limit(500)
             if (error) throw error
@@ -1985,6 +2005,8 @@ function AddOtherProduct({
                     barcode: v.barcode || null,
                     product_name: v.products?.product_name || 'Product',
                     variant_name: v.variant_name || null,
+                    variant_product_code: v.product_code || null,
+                    alternative_name: v.alternative_name || null,
                     image_url: v.image_url || null,
                     units_per_case: Number.isFinite(upc) && upc > 0 ? Math.floor(upc) : 1,
                     unit_cost: v.base_cost != null ? Number(v.base_cost) : 0,
