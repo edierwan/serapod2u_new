@@ -146,7 +146,7 @@ export const smsTemplates: Record<string, SmsTemplate[]> = {
         id: 'pro_sms_1',
         name: 'SMS Password Reset OTP',
         channel: 'sms',
-        body: `[Your Password: {{verification_code}}\nExpires in {{otp_expiry_minutes}} minutes.`,
+        body: `[Serapod2U] Password reset code: {{verification_code}}. Expires in {{otp_expiry_minutes}} minutes.`,
     }],
     delete_user_otp: [{
         id: 'delete_user_otp_sms_1',

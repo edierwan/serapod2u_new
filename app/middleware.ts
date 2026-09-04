@@ -245,7 +245,7 @@ export async function middleware(request: NextRequest) {
         console.error('⚠️ Rate limit reached - too many requests')
         // Don't redirect on rate limit, just continue
         // The session might still be valid
-        if (request.nextUrl.pathname === '/login') {
+        if (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/forgot-password') {
           return response // Allow access to login page
         }
       }
@@ -269,7 +269,7 @@ export async function middleware(request: NextRequest) {
         console.log('🔴 Invalid/expired token - clearing session and redirecting to login')
 
         // Only redirect if not already on login page
-        if (request.nextUrl.pathname !== '/login') {
+        if (request.nextUrl.pathname !== '/login' && request.nextUrl.pathname !== '/forgot-password') {
           response = NextResponse.redirect(new URL('/login', request.url))
 
           // Clear ALL session cookies

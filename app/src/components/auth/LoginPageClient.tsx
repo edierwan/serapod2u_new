@@ -563,7 +563,9 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
 
                         <div className="mt-4 login-rise login-rise-delay-3">
                             <Link
-                                href="/forgot-password"
+                                href={email.trim()
+                                    ? `/forgot-password?identifier=${encodeURIComponent(email.trim())}`
+                                    : '/forgot-password'}
                                 className="text-sm font-medium text-[var(--sera-ink-soft)] underline-offset-4 hover:text-[var(--sera-orange)] hover:underline transition-colors"
                             >
                                 Forgot Password
