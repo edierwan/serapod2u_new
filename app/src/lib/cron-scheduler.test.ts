@@ -289,7 +289,7 @@ describe('DISABLE_INTERNAL_CRON_WORKERS', () => {
     it('treats explicit falsey spellings as enabled', async () => {
         const mod = await import('./cron-scheduler')
         for (const value of ['0', 'false', 'off', 'no', 'FALSE', ' ', '']) {
-            expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as NodeJS.ProcessEnv)).toBe(false)
+            expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as unknown as NodeJS.ProcessEnv)).toBe(false)
         }
         expect(mod.internalCronWorkersDisabled({} as NodeJS.ProcessEnv)).toBe(false)
     })
@@ -297,7 +297,7 @@ describe('DISABLE_INTERNAL_CRON_WORKERS', () => {
     it('treats the usual truthy spellings as disabled', async () => {
         const mod = await import('./cron-scheduler')
         for (const value of ['1', 'true', 'TRUE', 'yes', 'on']) {
-            expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as NodeJS.ProcessEnv)).toBe(true)
+            expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as unknown as NodeJS.ProcessEnv)).toBe(true)
         }
     })
 })

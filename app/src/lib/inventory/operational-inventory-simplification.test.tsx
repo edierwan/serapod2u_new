@@ -25,7 +25,7 @@ const row = (overrides: Partial<InventoryConfigRow> = {}): InventoryConfigRow =>
   config_label: '20ml · New Box',
   volume_ml: 20,
   packaging: 'new_box',
-  status: 'active',
+  stock_config_status: 'active',
   quantity_on_hand: 5520,
   quantity_allocated: 0,
   quantity_available: 5520,
@@ -39,7 +39,7 @@ describe('Inventory View simplifies only once legacy stock is actually retired',
     const [summary] = aggregateVariantInventory([
       row(),
       row({ stock_config_id: 'cfg-50nb', config_code: '50NB', config_label: '50ml · New Box', volume_ml: 50, quantity_on_hand: 1300, quantity_available: 1300 }),
-      row({ stock_config_id: 'cfg-unc', config_code: 'UNCLASSIFIED', config_label: 'Unclassified (pending stock take)', volume_ml: null, packaging: null, status: 'phase_out', quantity_on_hand: 27, quantity_available: 27 }),
+      row({ stock_config_id: 'cfg-unc', config_code: 'UNCLASSIFIED', config_label: 'Unclassified (pending stock take)', volume_ml: null, packaging: null, stock_config_status: 'phase_out', quantity_on_hand: 27, quantity_available: 27 }),
     ], noIncoming)
 
     expect(summary.hasUnretiredLegacy).toBe(true)
@@ -64,8 +64,8 @@ describe('Inventory View simplifies only once legacy stock is actually retired',
   it('collapses to one operational row once every legacy balance is zero', () => {
     const [summary] = aggregateVariantInventory([
       row(),
-      row({ stock_config_id: 'cfg-50nb', config_code: '50NB', config_label: '50ml · New Box', volume_ml: 50, status: 'inactive', quantity_on_hand: 0, quantity_allocated: 0, quantity_available: 0 }),
-      row({ stock_config_id: 'cfg-unc', config_code: 'UNCLASSIFIED', config_label: 'Unclassified (pending stock take)', volume_ml: null, packaging: null, status: 'inactive', quantity_on_hand: 0, quantity_allocated: 0, quantity_available: 0 }),
+      row({ stock_config_id: 'cfg-50nb', config_code: '50NB', config_label: '50ml · New Box', volume_ml: 50, stock_config_status: 'inactive', quantity_on_hand: 0, quantity_allocated: 0, quantity_available: 0 }),
+      row({ stock_config_id: 'cfg-unc', config_code: 'UNCLASSIFIED', config_label: 'Unclassified (pending stock take)', volume_ml: null, packaging: null, stock_config_status: 'inactive', quantity_on_hand: 0, quantity_allocated: 0, quantity_available: 0 }),
     ], noIncoming)
 
     expect(summary.hasUnretiredLegacy).toBe(false)
