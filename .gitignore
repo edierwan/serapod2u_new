@@ -148,6 +148,9 @@ vite.config.ts.timestamp-*
 # SQL files (Keep local only)
 *.sql
 !supabase/migrations/**/*.sql
+# Cutover runbook scripts are versioned: they are executed against staging and
+# production by hand, so the reviewed text and the executed text must match.
+!supabase/operations/**/*.sql
 
 # Markdown files (Keep local only)
 *.md
