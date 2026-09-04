@@ -57,7 +57,11 @@ describe('stock configuration operational UI contracts', () => {
     // master-data variant identity line, so anchor on the aggregation itself.
     expect(inventory).toContain('aggregateVariantInventory')
     expect(inventory).toContain('variantIdentityLabel(summary.variantName, summary.variantProductCode)')
-    expect(inventory).toContain('Show inactive zero-balance configurations')
+    // Renamed and restricted to inventory administrators: it reveals RETIRED
+    // configurations carrying no stock, which is an audit question rather than
+    // an operational one. See operational-inventory-simplification.test.tsx.
+    expect(inventory).toContain('Show retired zero-balance configurations')
+    expect(inventory).toContain('{canEditSettings() && (')
     expect(inventory).toContain('Legacy / Unclassified')
     expect(movementReport).toContain('Stock SKU / Configuration')
     expect(movementReport).toContain('All volumes')
