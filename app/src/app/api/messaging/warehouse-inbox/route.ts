@@ -2,6 +2,26 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+const INBOX_TABLE = 'messaging_warehouse_inbox'
+
+/**
+ * The messaging fulfilment migrations are optional per environment: an
+ * environment that has not received them has no messaging_warehouse_inbox at
+ * all, and PostgREST answers the read with Postgres 42P01 (undefined_table).
+ * That is a "feature not installed here" signal, not a fault, so the route
+ * reports an empty inbox instead of a 500. PostgREST reports the same absence
+ * two ways: Postgres 42P01 when it runs the query, PGRST205 when the table is
+ * simply not in its schema cache. Both are only ever treated as "not installed"
+ * when the message names this table - every other database error still
+ * propagates, and this must not become a blanket catch.
+ */
+function isInboxTableMissing(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const { code, message } = error as { code?: unknown; message?: unknown }
+  if (typeof message !== 'string' || !message.includes(INBOX_TABLE)) return false
+  return code === '42P01' || code === 'PGRST205'
+}
+
 /**
  * Warehouse incoming queue for messaging D2H orders (after HQ approve).
  * Additive — does not replace Serapp hold accept or classic Current Orders.
@@ -38,7 +58,7 @@ export async function GET() {
 
     const admin = createAdminClient()
     let query = admin
-      .from('messaging_warehouse_inbox')
+      .from(INBOX_TABLE)
       .select(`
         id,
         order_id,
@@ -69,11 +89,22 @@ export async function GET() {
     }
 
     const { data: rows, error } = await query
-    if (error) throw error
+
+    if (error) {
+      if (isInboxTableMissing(error)) {
+        return NextResponse.json({
+          items: [],
+          actor: { orgType, organizationId: requester.organization_id },
+          messagingAvailable: false,
+        })
+      }
+      throw error
+    }
 
     return NextResponse.json({
       items: rows || [],
       actor: { orgType, organizationId: requester.organization_id },
+      messagingAvailable: true,
     })
   } catch (error) {
     console.error('[messaging/warehouse-inbox]', error)
