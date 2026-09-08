@@ -566,7 +566,6 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             {paginatedVariants.length > 0 ? (
               paginatedVariants.map((variant, index) => {
                 const preview = getPreviewMedia(variant)
-                const mediaCount = variant.media?.length || 0
                 return (
                   <TableRow key={variant.id} className="hover:bg-gray-50">
                     <TableCell className="text-center text-sm text-[var(--sera-muted)] font-medium">{startIndex + index + 1}</TableCell>
@@ -583,9 +582,6 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-[var(--sera-orange)] text-xs font-semibold">
                             {getVariantInitials(variant.variant_name)}
                           </div>
-                        )}
-                        {mediaCount > 1 && (
-                          <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{mediaCount}</span>
                         )}
                       </div>
                     </TableCell>
