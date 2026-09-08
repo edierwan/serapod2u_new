@@ -220,6 +220,11 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     const [distributors, setDistributors] = useState<any[]>([])
     const [selectedDistributor, setSelectedDistributor] = useState<string>('all')
     const [activeTab, setActiveTab] = useState('overview')
+    const isConsumerAnalytics = activeTab === 'consumer-analytics'
+    const isProductAnalytics = activeTab === 'products'
+    const isDistributorAnalytics = activeTab === 'distributors'
+    /** Tabs that drive themselves from their own Reporting Month selector. */
+    const isMonthlyReportTab = isConsumerAnalytics || isProductAnalytics || isDistributorAnalytics
     const [financialData, setFinancialData] = useState<any>(null)
     const supabase = createClient()
     const { resolvedTheme } = useTheme()
@@ -442,6 +447,13 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                 description="Real-time business intelligence & analytics"
                 actions={(
                     <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Consumer Analytics and Product Analytics are monthly
+                            reports driven by their own Reporting Month selector, so
+                            the generic executive date-range and distributor filters
+                            are hidden while either is active rather than competing
+                            with it. */}
+                        {!isMonthlyReportTab && (
+                          <>
                         <Select value={dateRange} onValueChange={setDateRange}>
                             <SelectTrigger className="w-[150px] h-10 bg-white border-[var(--sera-line)] text-[var(--sera-ink)]">
                                 <Calendar className="w-4 h-4 mr-2 text-[var(--sera-muted)]" />
@@ -469,6 +481,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 ))}
                             </SelectContent>
                         </Select>
+                          </>
+                        )}
 
                         <Button
                             variant="outline"
@@ -947,7 +961,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                     {/* Distributor Reports Tab */}
                     <TabsContent value="distributors" className="space-y-6 animate-in fade-in-50 duration-500">
-                        <DistributorReportsTab userProfile={userProfile} />
+                        <DistributorReportsTab
+                            userProfile={userProfile}
+                            chartGridColor={chartGridColor}
+                            chartTickColor={chartTickColor}
+                            isDark={isDark}
+                        />
                     </TabsContent>
                 </Tabs>
 

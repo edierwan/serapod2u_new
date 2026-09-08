@@ -1,29 +1,30 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ComposedChart, Line, Cell, PieChart, Pie,
+  Area, Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
-  Users, Scan, Target, BarChart3, Activity, Zap, Crown, Eye,
-  UserPlus, UserCheck, Clock, Calendar, Flame, Star, Package, Info,
+  AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, Calendar, ChevronLeft,
+  ChevronRight, Clock, Crown, Eye, Info, Loader2, Minus, RefreshCw, Repeat,
+  Scan, Target, TrendingUp, Users,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import {
-  format, subDays, subMonths, startOfMonth, endOfMonth,
-  eachMonthOfInterval, parseISO, differenceInDays, getDay, getHours,
-} from 'date-fns'
+  buildReportingMonthOptions,
+  currentReportingMonthKey,
+  type ConsumerAnalyticsReport,
+  type MetricDelta,
+} from '@/lib/reporting/consumer-analytics'
+import type { ReportingPeriod } from '@/lib/reporting/reporting-period'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
-import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
+import { REPORTING_COLORS, REPORTING_PANEL_CLASS, ReportingTabLoading } from './reportingChrome'
 
-// ── Types ──────────────────────────────────────────────────────────────────
 interface ConsumerAnalyticsTabProps {
   userProfile: any
   chartGridColor: string
@@ -31,1000 +32,780 @@ interface ConsumerAnalyticsTabProps {
   isDark: boolean
 }
 
-interface ScanRow {
-  id: string
-  consumer_id: string | null
-  scanned_at: string | null
-  qr_code_id: string | null
-  collected_points: boolean
-  entered_lucky_draw: boolean
-  redeemed_gift: boolean
-  points_amount: number | null
-  consumer_name: string | null
-  consumer_phone: string | null
-  consumer_user?: {
-    id: string
-    full_name: string | null
-    phone: string | null
-    email: string | null
-  } | null
+interface ReportResponse {
+  report: ConsumerAnalyticsReport
+  meta: { source: 'rpc' | 'fallback'; degraded: boolean; notice: string | null; generatedAt: string }
 }
-
-interface ResolvedConsumer {
-  key: string
-  consumerId: string | null
-  name: string
-  phone: string
-  email: string | null
-  scans: number
-  lastScan: string
-}
-
-// ── Constants ──────────────────────────────────────────────────────────────
-const COLORS = {
-  primary: '#e85d04',
-  success: '#059669',
-  warning: '#d97706',
-  danger: '#dc2626',
-  purple: '#7c3aed',
-  cyan: '#0891b2',
-  indigo: '#6366f1',
-  pink: '#db2777',
-}
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#ef4444']
-
-const PERIOD_OPTIONS = [
-  { value: '7', label: 'Last 7 Days' },
-  { value: '30', label: 'Last 30 Days' },
-  { value: '90', label: 'Last 90 Days' },
-  { value: '12months', label: 'Last 12 Months' },
-]
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`)
+const HEATMAP_HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21]
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function AnimatedCounter({ value, prefix = '', suffix = '', decimals = 0 }: {
-  value: number; prefix?: string; suffix?: string; decimals?: number
+const SERIES = {
+  scans: REPORTING_COLORS.primary,
+  consumers: REPORTING_COLORS.success,
+  returning: REPORTING_COLORS.success,
+  heat: '#3b82f6',
+}
+
+function formatCount(value: number): string {
+  return value.toLocaleString('en-MY')
+}
+
+function formatRate(value: number | null, fractionDigits = 1): string {
+  return value === null ? '—' : `${value.toFixed(fractionDigits)}%`
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('en-MY', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    timeZone: 'Asia/Kuala_Lumpur',
+  }).format(new Date(value))
+}
+
+function formatDateOnly(value: string | null): string {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('en-MY', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur',
+  }).format(new Date(value))
+}
+
+/**
+ * Growth pill. A `null` movement means the comparison month had no base to
+ * measure against — that is shown as "no prior data" rather than a misleading
+ * 0%.
+ */
+function DeltaPill({ value, unit, comparisonLabel }: {
+  value: number | null
+  unit: '%' | 'pp'
+  comparisonLabel: string
 }) {
-  const [display, setDisplay] = useState(0)
-  useEffect(() => {
-    let raf: number
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / 900, 1)
-      const ease = 1 - Math.pow(1 - p, 4)
-      setDisplay(ease * value)
-      if (p < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [value])
-  return <span>{prefix}{display.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}{suffix}</span>
-}
-
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
-}
-
-function KPICardSkeleton() {
+  if (value === null) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-[var(--sera-muted)]">
+        <Minus className="h-3 w-3" /> no {comparisonLabel} baseline
+      </span>
+    )
+  }
+  const up = value >= 0
+  const Icon = up ? ArrowUpRight : ArrowDownRight
   return (
-    <Card className="sera-sc-panel overflow-hidden">
-      <CardContent className="pt-6 space-y-3">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-8 w-32" />
-        <Skeleton className="h-3 w-20" />
+    <span className="inline-flex items-center gap-1.5">
+      <Badge
+        variant="secondary"
+        className={cn(
+          'gap-0.5 px-1.5 py-0 text-[11px] font-semibold',
+          up
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+        )}
+      >
+        <Icon className="h-3 w-3" />
+        {Math.abs(value).toFixed(1)}{unit}
+      </Badge>
+      <span className="text-[11px] text-[var(--sera-muted)]">vs {comparisonLabel}</span>
+    </span>
+  )
+}
+
+function KpiCard({ label, icon: Icon, accent, value, delta, caption, hint }: {
+  label: string
+  icon: typeof Scan
+  accent: string
+  value: string
+  delta: React.ReactNode
+  caption?: string | null
+  hint?: string
+}) {
+  return (
+    <Card className={cn(REPORTING_PANEL_CLASS, 'transition-colors hover:border-[var(--sera-orange)]/35')}>
+      <CardContent className="pt-5 pb-4">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <span className="inline-flex items-center gap-1 text-xs font-semibold tracking-wider text-[var(--sera-muted)]">
+            {label}
+            {hint ? <Info className="h-3 w-3 opacity-70" aria-label={hint} /> : null}
+          </span>
+          <span className="rounded-xl p-2 shadow-sm" style={{ backgroundColor: `${accent}15` }}>
+            <Icon className="h-4 w-4" style={{ color: accent }} strokeWidth={1.75} />
+          </span>
+        </div>
+        <ExecutiveKpiValue>{value}</ExecutiveKpiValue>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">{delta}</div>
+        {caption ? <p className="mt-1 text-[11px] text-[var(--sera-muted)]">{caption}</p> : null}
       </CardContent>
     </Card>
   )
 }
 
-function formatNum(val: number): string {
-  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`
-  if (val >= 1_000) return `${(val / 1_000).toFixed(1)}K`
-  return val.toLocaleString()
+function SectionCard({ title, description, icon: Icon, action, children, className }: {
+  title: string
+  description?: string
+  icon: typeof Scan
+  action?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <Card className={cn(REPORTING_PANEL_CLASS, className)}>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2 text-base text-[var(--sera-ink)]">
+            <Icon className="h-4 w-4 text-[var(--sera-orange)]" strokeWidth={1.75} />
+            <span className="truncate">{title}</span>
+          </CardTitle>
+          {description ? <CardDescription className="mt-0.5">{description}</CardDescription> : null}
+        </div>
+        {action}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  )
 }
 
-function normalizeText(value: string | null | undefined) {
-  const text = value?.trim()
-  return text ? text : null
-}
-
-function getConsumerIdentity(scan: ScanRow) {
-  const name = normalizeText(scan.consumer_user?.full_name) || normalizeText(scan.consumer_name)
-  const phone = normalizeText(scan.consumer_user?.phone) || normalizeText(scan.consumer_phone)
-  const email = normalizeText(scan.consumer_user?.email)
-  const key = scan.consumer_id || phone || email
-
-  return {
-    key,
-    consumerId: scan.consumer_id,
-    name: name || (phone ? `User: ${phone}` : email ? `User: ${email}` : 'Anonymous'),
-    phone: phone || '-',
-    email,
-  }
-}
-
-// ── Main Component ─────────────────────────────────────────────────────────
-export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, chartTickColor, isDark }: ConsumerAnalyticsTabProps) {
-  const supabase = useMemo(() => createClient(), [])
-
-  const [period, setPeriod] = useState('30')
+export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }: ConsumerAnalyticsTabProps) {
+  const [month, setMonth] = useState<string>(() => currentReportingMonthKey())
+  const [availableMonths, setAvailableMonths] = useState<string[]>([])
+  const [response, setResponse] = useState<ReportResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [scans, setScans] = useState<ScanRow[]>([])
-  const [allScans, setAllScans] = useState<ScanRow[]>([]) // 12mo for monthly trends
-  const [qrProductMap, setQrProductMap] = useState<Map<string, string>>(new Map()) // qr_code_id -> product name
-  const [showUniqueConsumersDialog, setShowUniqueConsumersDialog] = useState(false)
-  const [showRetentionDialog, setShowRetentionDialog] = useState(false)
+  const [reloading, setReloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestId = useRef(0)
 
-  // ── Data Fetching ────────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
-    try {
-      const last12Start = subMonths(new Date(), 12).toISOString()
-
-      const { data, error } = await supabase
-        .from('consumer_qr_scans')
-        .select(`
-          id,
-          consumer_id,
-          scanned_at,
-          qr_code_id,
-          collected_points,
-          entered_lucky_draw,
-          redeemed_gift,
-          points_amount,
-          consumer_user:users!consumer_qr_scans_consumer_id_fkey (
-            id,
-            full_name,
-            phone,
-            email
-          )
-        `)
-        .eq('is_manual_adjustment', false)
-        .gte('scanned_at', last12Start)
-        .order('scanned_at', { ascending: false })
-
-      if (!error && data) {
-        const normalizedScans = (data as any[]).map((row) => ({
-          ...row,
-          consumer_name: row.consumer_user?.full_name || null,
-          consumer_phone: row.consumer_user?.phone || null,
-        })) as ScanRow[]
-
-        setAllScans(normalizedScans)
-        setScans(normalizedScans)
-
-        // Build QR code → product name lookup
-        const qrIds = [...new Set(normalizedScans.map(s => s.qr_code_id).filter(Boolean))]
-        if (qrIds.length > 0) {
-          const nameMap = new Map<string, string>()
-          const batchSize = 200
-          for (let i = 0; i < qrIds.length; i += batchSize) {
-            const batch = qrIds.slice(i, i + batchSize)
-            const { data: qrRows } = await supabase
-              .from('qr_codes')
-              .select('id, product_id, products(product_name), product_variants(variant_name)')
-              .in('id', batch)
-            if (qrRows) {
-              (qrRows as any[]).forEach(qr => {
-                const prodName = qr.products?.product_name || ''
-                const varName = qr.product_variants?.variant_name || ''
-                const label = varName ? `${prodName} - ${varName}` : prodName || `QR-${qr.id.slice(0, 8)}`
-                nameMap.set(qr.id, label)
-              })
-            }
-          }
-          setQrProductMap(nameMap)
-        }
-      }
-    } catch (err) {
-      console.error('ConsumerAnalyticsTab fetch error:', err)
-    }
-  }, [supabase])
-
+  // Month options are discovered independently so the current month's report
+  // can start loading immediately, with no "select a month first" step.
   useEffect(() => {
-    setLoading(true)
-    fetchData().finally(() => setLoading(false))
-  }, [fetchData])
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/reporting/consumer-analytics/periods', { cache: 'no-store' })
+        const payload = await res.json()
+        if (cancelled || !res.ok) return
+        setAvailableMonths(((payload.periods || []) as ReportingPeriod[]).map((period) => period.key))
+      } catch {
+        // A failed month list is not fatal: the current month is always offered.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await fetchData()
-    setRefreshing(false)
+  const loadReport = useCallback(async (targetMonth: string, isInitial: boolean) => {
+    const id = ++requestId.current
+    if (isInitial) setLoading(true)
+    else setReloading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/reporting/consumer-analytics?month=${targetMonth}`, { cache: 'no-store' })
+      const payload = await res.json()
+      if (id !== requestId.current) return
+      if (!res.ok) throw new Error(payload.error || 'Unable to load consumer analytics')
+      setResponse(payload as ReportResponse)
+    } catch (err: any) {
+      if (id !== requestId.current) return
+      setError(err?.message || 'Unable to load consumer analytics')
+    } finally {
+      if (id === requestId.current) {
+        setLoading(false)
+        setReloading(false)
+      }
+    }
+  }, [])
+
+  // Selecting a month reloads automatically — there is no Apply step.
+  useEffect(() => {
+    void loadReport(month, response === null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, loadReport])
+
+  const monthOptions = useMemo(
+    () => buildReportingMonthOptions([...availableMonths, month]),
+    [availableMonths, month],
+  )
+
+  const monthIndex = monthOptions.findIndex((option) => option.value === month)
+  const olderMonth = monthIndex >= 0 ? monthOptions[monthIndex + 1]?.value : undefined
+  const newerMonth = monthIndex > 0 ? monthOptions[monthIndex - 1]?.value : undefined
+
+  const report = response?.report ?? null
+  const meta = response?.meta ?? null
+
+  const heatmapGrid = useMemo(() => {
+    const grid = Array.from({ length: 7 }, () => Array<number>(24).fill(0))
+    for (const cell of report?.activityHeatmap ?? []) grid[cell.dayOfWeek][cell.hour] = cell.scans
+    return grid
+  }, [report])
+
+  const newVsReturningSlices = useMemo(() => {
+    if (!report) return []
+    return [
+      { name: 'New Consumers', value: report.newVsReturning.newConsumers, fill: SERIES.scans },
+      { name: 'Returning Consumers', value: report.newVsReturning.returningConsumers, fill: SERIES.returning },
+    ]
+  }, [report])
+
+  const controls = (
+    <div className="flex flex-wrap items-end gap-3">
+      <div className="space-y-1.5">
+        <label htmlFor="consumer-analytics-month" className="text-xs font-medium text-[var(--sera-muted)]">
+          Reporting Month
+        </label>
+        <div className="flex items-center gap-1.5">
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger id="consumer-analytics-month" className="h-9 w-[190px] bg-white text-sm border-[var(--sera-line)]">
+              <Calendar className="mr-2 h-3.5 w-3.5 text-[var(--sera-muted)]" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline" size="icon"
+            className="h-9 w-9 border-[var(--sera-line)]"
+            onClick={() => olderMonth && setMonth(olderMonth)}
+            disabled={!olderMonth}
+            title="Previous month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline" size="icon"
+            className="h-9 w-9 border-[var(--sera-line)]"
+            onClick={() => newerMonth && setMonth(newerMonth)}
+            disabled={!newerMonth}
+            title="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        {report ? (
+          <p className="text-[11px] text-[var(--sera-muted)]">
+            Comparing with {report.period.previousMonthLabel}
+          </p>
+        ) : null}
+      </div>
+      <Button
+        variant="outline"
+        className="h-9 gap-2 border-[var(--sera-line)]"
+        onClick={() => loadReport(month, false)}
+        disabled={loading || reloading}
+      >
+        <RefreshCw className={cn('h-4 w-4', reloading && 'animate-spin')} />
+        Refresh
+      </Button>
+    </div>
+  )
+
+  const header = (
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--sera-ink)]">
+          <Scan className="h-5 w-5 text-[var(--sera-orange)]" strokeWidth={1.75} />
+          Consumer Analytics
+        </h2>
+        <p className="mt-0.5 text-sm text-[var(--sera-muted)]">Monthly consumer engagement report</p>
+      </div>
+      {controls}
+    </div>
+  )
+
+  if (loading && !report) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <ReportingTabLoading label="Loading consumer analytics" />
+      </div>
+    )
   }
 
-  // ── Period scans ─────────────────────────────────────────────────────────
-  const periodScans = useMemo(() => {
-    const now = new Date()
-    let start: Date
-    if (period === '12months') start = subMonths(now, 12)
-    else start = subDays(now, parseInt(period))
-    const sISO = start.toISOString()
-    return allScans.filter(s => s.scanned_at && s.scanned_at >= sISO)
-  }, [allScans, period])
-
-  // ── KPI Metrics ──────────────────────────────────────────────────────────
-  const kpis = useMemo(() => {
-    const now = new Date()
-    const days = period === '12months' ? 365 : parseInt(period)
-    const prevStart = subDays(now, days * 2).toISOString()
-    const prevEnd = subDays(now, days).toISOString()
-    const prevScans = allScans.filter(s => s.scanned_at && s.scanned_at >= prevStart && s.scanned_at < prevEnd)
-    const todayKey = format(now, 'yyyy-MM-dd')
-    const yesterdayKey = format(subDays(now, 1), 'yyyy-MM-dd')
-
-    const totalScans = periodScans.length
-    const prevTotal = prevScans.length
-    const scanGrowth = prevTotal > 0 ? ((totalScans - prevTotal) / prevTotal) * 100 : 0
-
-    const uniqueConsumers = new Set(periodScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
-    const prevUnique = new Set(prevScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
-    const uniqueGrowth = prevUnique > 0 ? ((uniqueConsumers - prevUnique) / prevUnique) * 100 : 0
-
-    const avgPerConsumer = uniqueConsumers > 0 ? totalScans / uniqueConsumers : 0
-    const avgPerDay = totalScans / Math.max(days, 1)
-
-    // Retention: consumers who scanned in both periods
-    const currIds = new Set(periodScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean))
-    const prevIds = new Set(prevScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean))
-    const returnees = [...currIds].filter(id => prevIds.has(id)).length
-    const retentionRate = prevIds.size > 0 ? (returnees / prevIds.size) * 100 : 0
-
-    // Peak day
-    const dayMap = new Map<string, number>()
-    periodScans.forEach(s => {
-      if (!s.scanned_at) return
-      const key = s.scanned_at.slice(0, 10)
-      dayMap.set(key, (dayMap.get(key) || 0) + 1)
-    })
-    let peakDay = '-'
-    let peakCount = 0
-    dayMap.forEach((c, d) => { if (c > peakCount) { peakCount = c; peakDay = d } })
-
-    const pointsCollected = periodScans.filter(s => s.collected_points).length
-    const redemptions = periodScans.filter(s => s.redeemed_gift).length
-    const todayScans = allScans.filter(s => s.scanned_at?.startsWith(todayKey)).length
-    const yesterdayScans = allScans.filter(s => s.scanned_at?.startsWith(yesterdayKey)).length
-
-    return {
-      totalScans, scanGrowth, uniqueConsumers, uniqueGrowth,
-      avgPerConsumer, avgPerDay, retentionRate, peakDay, peakCount,
-      pointsCollected, redemptions, days, todayScans, yesterdayScans,
-      returnees, retainedBase: prevIds.size,
-    }
-  }, [periodScans, allScans, period])
-
-  const uniqueConsumersList = useMemo<ResolvedConsumer[]>(() => {
-    const map = new Map<string, ResolvedConsumer>()
-
-    periodScans.forEach((scan) => {
-      const identity = getConsumerIdentity(scan)
-      if (!identity.key) return
-
-      const existing = map.get(identity.key) || {
-        key: identity.key,
-        consumerId: identity.consumerId,
-        name: identity.name,
-        phone: identity.phone,
-        email: identity.email,
-        scans: 0,
-        lastScan: '',
-      }
-
-      existing.scans += 1
-      if (scan.scanned_at && scan.scanned_at > existing.lastScan) {
-        existing.lastScan = scan.scanned_at
-        existing.consumerId = identity.consumerId || existing.consumerId
-        existing.name = identity.name
-        existing.phone = identity.phone
-        existing.email = identity.email || existing.email
-      }
-
-      map.set(identity.key, existing)
-    })
-
-    return [...map.values()].sort((a, b) => {
-      if (b.scans !== a.scans) return b.scans - a.scans
-      return (b.lastScan || '').localeCompare(a.lastScan || '')
-    })
-  }, [periodScans])
-
-  // ── Daily Scan Trend ─────────────────────────────────────────────────────
-  const dailyTrend = useMemo(() => {
-    const days = period === '12months' ? 365 : parseInt(period)
-    const now = new Date()
-    const data: { date: string; scans: number; consumers: number }[] = []
-    for (let i = days - 1; i >= 0; i--) {
-      const d = subDays(now, i)
-      const key = format(d, 'yyyy-MM-dd')
-      const dayScans = periodScans.filter(s => s.scanned_at?.startsWith(key))
-      data.push({
-        date: format(d, days > 90 ? 'MMM' : 'dd MMM'),
-        scans: dayScans.length,
-        consumers: new Set(dayScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size,
-      })
-    }
-    // Aggregate by month for 12months
-    if (period === '12months') {
-      const months = eachMonthOfInterval({ start: subMonths(now, 11), end: now })
-      return months.map(m => {
-        const key = format(m, 'yyyy-MM')
-        const mScans = allScans.filter(s => s.scanned_at?.startsWith(key))
-        return {
-          date: format(m, 'MMM yyyy'),
-          scans: mScans.length,
-          consumers: new Set(mScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size,
-        }
-      })
-    }
-    // For 90+ days, aggregate weekly
-    if (days >= 90) {
-      const weekly: typeof data = []
-      for (let i = 0; i < data.length; i += 7) {
-        const chunk = data.slice(i, i + 7)
-        weekly.push({
-          date: chunk[0].date,
-          scans: chunk.reduce((a, c) => a + c.scans, 0),
-          consumers: chunk.reduce((a, c) => a + c.consumers, 0),
-        })
-      }
-      return weekly
-    }
-    return data
-  }, [periodScans, allScans, period])
-
-  // ── Monthly Analytics (always last 12 months) ────────────────────────────
-  const monthlyAnalytics = useMemo(() => {
-    const now = new Date()
-    const months = eachMonthOfInterval({ start: subMonths(now, 11), end: now })
-    return months.map(m => {
-      const key = format(m, 'yyyy-MM')
-      const mScans = allScans.filter(s => s.scanned_at?.startsWith(key))
-      const uniq = new Set(mScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
-      return {
-        month: format(m, 'MMM yyyy'),
-        monthShort: format(m, 'MMM'),
-        scans: mScans.length,
-        consumers: uniq,
-        avgPerConsumer: uniq > 0 ? Math.round((mScans.length / uniq) * 10) / 10 : 0,
-      }
-    })
-  }, [allScans])
-
-  // ── Month-over-Month Comparison ──────────────────────────────────────────
-  const momComparison = useMemo(() => {
-    const now = new Date()
-    const thisMonthKey = format(now, 'yyyy-MM')
-    const lastMonthKey = format(subMonths(now, 1), 'yyyy-MM')
-    const thisScans = allScans.filter(s => s.scanned_at?.startsWith(thisMonthKey))
-    const lastScans = allScans.filter(s => s.scanned_at?.startsWith(lastMonthKey))
-    const thisUniq = new Set(thisScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
-    const lastUniq = new Set(lastScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
-
-    const scanGrowth = lastScans.length > 0 ? ((thisScans.length - lastScans.length) / lastScans.length) * 100 : 0
-    const consumerGrowth = lastUniq > 0 ? ((thisUniq - lastUniq) / lastUniq) * 100 : 0
-
-    return {
-      thisMonth: { scans: thisScans.length, consumers: thisUniq },
-      lastMonth: { scans: lastScans.length, consumers: lastUniq },
-      scanGrowth, consumerGrowth,
-    }
-  }, [allScans])
-
-  // ── Consumer Growth (New vs Returning) ───────────────────────────────────
-  const consumerGrowth = useMemo(() => {
-    const now = new Date()
-    const months = eachMonthOfInterval({ start: subMonths(now, 11), end: now })
-    const seenBefore = new Set<string>()
-
-    return months.map(m => {
-      const key = format(m, 'yyyy-MM')
-      const mScans = allScans
-        .filter(s => s.scanned_at?.startsWith(key) && getConsumerIdentity(s).key)
-        .sort((a, b) => (a.scanned_at || '') < (b.scanned_at || '') ? -1 : 1)
-
-      const monthIds = new Set<string>()
-      let newCount = 0
-      let returningCount = 0
-
-      mScans.forEach(s => {
-        const cid = getConsumerIdentity(s).key!
-        if (!monthIds.has(cid)) {
-          monthIds.add(cid)
-          if (seenBefore.has(cid)) {
-            returningCount++
-          } else {
-            newCount++
-          }
-        }
-      })
-
-      // Add all this month's consumers to seenBefore for next month
-      monthIds.forEach(id => seenBefore.add(id))
-
-      return {
-        month: format(m, 'MMM'),
-        new: newCount,
-        returning: returningCount,
-        total: newCount + returningCount,
-      }
-    })
-  }, [allScans])
-
-  // ── Product Engagement ───────────────────────────────────────────────────
-  const productEngagement = useMemo(() => {
-    // Group scans by qr_code_id then resolve to product names
-    const qrMap = new Map<string, number>()
-    periodScans.forEach(s => {
-      if (s.qr_code_id) {
-        qrMap.set(s.qr_code_id, (qrMap.get(s.qr_code_id) || 0) + 1)
-      }
-    })
-    // Merge by product name (multiple QR codes can map to same product)
-    const productAgg = new Map<string, number>()
-    qrMap.forEach((count, qrId) => {
-      const name = qrProductMap.get(qrId) || `QR-${qrId.slice(0, 8)}`
-      productAgg.set(name, (productAgg.get(name) || 0) + count)
-    })
-    const sorted = [...productAgg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
-    return sorted.map(([name, count], i) => ({
-      name,
-      scans: count,
-      fill: CHART_COLORS[i % CHART_COLORS.length],
-    }))
-  }, [periodScans, qrProductMap])
-
-  // ── Top Consumers ────────────────────────────────────────────────────────
-  const topConsumers = useMemo(() => {
-    return uniqueConsumersList
-      .slice(0, 15)
-      .map((consumer, i) => ({
-        rank: i + 1,
-        id: consumer.key,
-        name: consumer.name,
-        phone: consumer.phone,
-        scans: consumer.scans,
-        lastScan: consumer.lastScan,
-        frequency: consumer.scans > 10 ? 'High' : consumer.scans > 3 ? 'Medium' : 'Low',
-      }))
-  }, [uniqueConsumersList])
-
-  // ── Activity Heatmap ─────────────────────────────────────────────────────
-  const heatmapData = useMemo(() => {
-    const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
-    periodScans.forEach(s => {
-      if (!s.scanned_at) return
-      const d = new Date(s.scanned_at)
-      const day = getDay(d)
-      const hour = getHours(d)
-      grid[day][hour]++
-    })
-    // Flatten for rendering
-    const result: { day: number; hour: number; count: number }[] = []
-    for (let d = 0; d < 7; d++) {
-      for (let h = 0; h < 24; h++) {
-        result.push({ day: d, hour: h, count: grid[d][h] })
-      }
-    }
-    return { grid, flat: result, max: Math.max(...result.map(r => r.count), 1) }
-  }, [periodScans])
-
-  // ── Retention Cohort (simple month-over-month) ───────────────────────────
-  const retentionCohort = useMemo(() => {
-    const now = new Date()
-    const months = eachMonthOfInterval({ start: subMonths(now, 5), end: now })
-
-    return months.slice(0, -1).map((m, i) => {
-      const key = format(m, 'yyyy-MM')
-      const nextKey = format(months[i + 1], 'yyyy-MM')
-
-      const thisIds = new Set<string>()
-      const nextIds = new Set<string>()
-      allScans.forEach((scan) => {
-        const identityKey = getConsumerIdentity(scan).key
-        if (!identityKey || !scan.scanned_at) return
-        if (scan.scanned_at.startsWith(key)) thisIds.add(identityKey)
-        if (scan.scanned_at.startsWith(nextKey)) nextIds.add(identityKey)
-      })
-      const retained = [...thisIds].filter(id => nextIds.has(id)).length
-
-      return {
-        cohort: format(m, 'MMM yyyy'),
-        total: thisIds.size,
-        retained,
-        rate: thisIds.size > 0 ? Math.round((retained / thisIds.size) * 100) : 0,
-      }
-    })
-  }, [allScans])
-
-  // ── Render ───────────────────────────────────────────────────────────────
-  if (loading) {
-    return <ReportingTabLoading label="Loading consumer analytics" />
+  if (error && !report) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <Card className={REPORTING_PANEL_CLASS}>
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <AlertTriangle className="h-8 w-8 text-red-500" />
+            <p className="font-medium text-[var(--sera-ink)]">Unable to load consumer analytics</p>
+            <p className="max-w-xl text-sm text-[var(--sera-muted)]">{error}</p>
+            <Button variant="outline" onClick={() => loadReport(month, true)} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
-  const kpiCards = [
-    {
-      title: 'TOTAL SCANS', value: kpis.totalScans, icon: Scan, color: COLORS.primary,
-      sub: `avg ${Math.round(kpis.avgPerDay)}/day`, growth: kpis.scanGrowth,
-    },
-    {
-      title: 'UNIQUE CONSUMERS', value: kpis.uniqueConsumers, icon: Users, color: COLORS.success,
-      sub: `${kpis.avgPerConsumer.toFixed(0)} scans/user`, growth: kpis.uniqueGrowth, clickable: true,
-      onClick: () => setShowUniqueConsumersDialog(true),
-      titleHint: 'Click the number to view the unique consumer list.',
-    },
-    ...(period === '7' ? [
-      {
-        title: 'TODAY SCANS', value: kpis.todayScans, icon: Calendar, color: COLORS.cyan,
-        sub: format(new Date(), 'dd MMM yyyy'), growth: null,
-      },
-      {
-        title: 'YESTERDAY SCANS', value: kpis.yesterdayScans, icon: Clock, color: COLORS.indigo,
-        sub: format(subDays(new Date(), 1), 'dd MMM yyyy'), growth: null,
-      },
-    ] : []),
-    {
-      title: 'PEAK DAY', value: kpis.peakCount, icon: Flame, color: COLORS.warning,
-      sub: kpis.peakDay !== '-' ? format(new Date(kpis.peakDay), 'dd MMM (EEEE)') : '-', growth: null,
-    },
-    {
-      title: 'RETENTION RATE', value: kpis.retentionRate, icon: Target, color: COLORS.purple,
-      sub: 'returning consumers', growth: null, suffix: '%', decimals: 1, clickable: true,
-      onClick: () => setShowRetentionDialog(true),
-      titleHint: 'Click the percentage to see the retention formula.',
-    },
-  ]
+  if (!report) return <div className="space-y-6">{header}</div>
+
+  const { period, summary, comparison, newVsReturning } = report
+  const comparisonShort = period.previousMonthShortLabel
 
   return (
-    <div className="space-y-6">
-      <ReportingTabHeader
-        icon={Scan}
-        title="Consumer Scan Analytics"
-        description={`${period === '12months' ? 'Last 12 Months' : `Last ${period} Days`} · Real-time consumer engagement intelligence`}
-        period={period}
-        onPeriodChange={setPeriod}
-        periodOptions={PERIOD_OPTIONS}
-        periodIcon={Calendar}
-        onRefresh={handleRefresh}
-        refreshing={refreshing}
-      />
+    <div className={cn('space-y-6 transition-opacity', reloading && 'opacity-70')}>
+      {header}
 
-      {/* KPI Cards */}
-      <div className={`grid grid-cols-2 gap-4 ${period === '7' ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-4'}`}>
-        {kpiCards.map((card, i) => (
-          <Card key={i} className="sera-sc-panel overflow-hidden transition-colors hover:border-[var(--sera-orange)]/35">
-            <CardContent className="pt-5 pb-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <span className="text-xs font-semibold text-muted-foreground tracking-wider">{card.title}</span>
-                  {card.titleHint && (
-                    <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <Info className="h-3 w-3" />
-                      <span>{card.titleHint}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="p-2 rounded-xl shadow-sm" style={{ backgroundColor: `${card.color}15` }}>
-                  <card.icon className="h-4 w-4" style={{ color: card.color }} />
-                </div>
-              </div>
-              {card.clickable ? (
-                <button
-                  type="button"
-                  onClick={card.onClick}
-                  className="max-w-full text-foreground underline decoration-dotted underline-offset-4 hover:text-[var(--sera-orange)] transition-colors"
-                >
-                  <ExecutiveKpiValue className="text-foreground hover:text-[var(--sera-orange)]">
-                    <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
-                  </ExecutiveKpiValue>
-                </button>
-              ) : (
-                <ExecutiveKpiValue>
-                  <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
-                </ExecutiveKpiValue>
-              )}
-              <div className="flex items-center gap-2 mt-1">
-                {card.growth !== null && (
-                  <Badge variant="secondary" className={`text-xs ${card.growth >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                    {card.growth >= 0 ? <ArrowUpRight className="h-3 w-3 mr-0.5" /> : <ArrowDownRight className="h-3 w-3 mr-0.5" />}
-                    {Math.abs(card.growth).toFixed(1)}%
-                  </Badge>
-                )}
-                <span className="text-xs text-muted-foreground">{card.sub}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {error ? (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{error} — showing the last report that loaded successfully.</span>
+        </div>
+      ) : null}
 
-      {/* Daily Scan Trend */}
-      <Card className="sera-sc-panel overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between">
+      {meta?.degraded && meta.notice ? (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{meta.notice}</span>
+        </div>
+      ) : null}
+
+      {/* ── Section 2 · Monthly Summary ─────────────────────────────────── */}
+      <Card className={REPORTING_PANEL_CLASS}>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-3">
           <div>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Activity className="h-5 w-5 text-[var(--sera-orange)]" />
-              {period === '12months' ? 'Monthly' : 'Daily'} Scan Trend
+            <CardTitle className="flex items-center gap-2 text-base text-[var(--sera-ink)]">
+              <BarChart3 className="h-4 w-4 text-[var(--sera-orange)]" strokeWidth={1.75} />
+              Monthly Summary
             </CardTitle>
-            <CardDescription>Scans &amp; unique consumers over time</CardDescription>
+            <CardDescription className="mt-0.5">
+              Key metrics for {period.label} vs {period.previousMonthLabel}
+            </CardDescription>
           </div>
-          <Badge variant="outline">{dailyTrend.length} {period === '12months' ? 'months' : 'days'}</Badge>
+          <div className="flex items-center gap-2 text-[11px] text-[var(--sera-muted)]">
+            {reloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <span>Data updated: {formatTimestamp(meta?.generatedAt ?? null)}</span>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={dailyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                <XAxis dataKey="date" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: 'none', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }} />
-                <Legend />
-                <Area yAxisId="left" type="monotone" dataKey="scans" stroke={COLORS.primary} fill={`${COLORS.primary}30`} name="Scans" />
-                <Line yAxisId="right" type="monotone" dataKey="consumers" stroke={COLORS.success} strokeWidth={2} dot={false} name="Unique Consumers" />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiCard
+              label="TOTAL SCANS"
+              icon={Scan}
+              accent={REPORTING_COLORS.primary}
+              value={formatCount(summary.totalScans)}
+              delta={<DeltaPill value={comparison.totalScans.changePct} unit="%" comparisonLabel={comparisonShort} />}
+              caption={`avg ${formatCount(summary.avgScansPerDay)}/day`}
+            />
+            <KpiCard
+              label="IDENTIFIED CONSUMERS"
+              icon={Users}
+              accent={REPORTING_COLORS.success}
+              value={formatCount(summary.identifiedConsumers)}
+              delta={<DeltaPill value={comparison.identifiedConsumers.changePct} unit="%" comparisonLabel={comparisonShort} />}
+              caption={
+                summary.identityCoveragePct === null
+                  ? 'no scans to measure identity coverage'
+                  : `${formatRate(summary.identityCoveragePct)} of scans carry a consumer ID`
+              }
+              hint="Distinct consumer_id values. Anonymous scans are counted in Total Scans only."
+            />
+            <KpiCard
+              label="REPEAT CONSUMERS"
+              icon={Repeat}
+              accent={REPORTING_COLORS.warning}
+              value={formatCount(summary.repeatConsumers)}
+              delta={<DeltaPill value={comparison.repeatConsumers.changePct} unit="%" comparisonLabel={comparisonShort} />}
+              caption={
+                summary.repeatSharePct === null
+                  ? 'no identified consumers this month'
+                  : `${formatRate(summary.repeatSharePct)} of identified consumers`
+              }
+              hint="Identified this month and known from an earlier scan before the month started."
+            />
+            <KpiCard
+              label="RETENTION RATE"
+              icon={Target}
+              accent={REPORTING_COLORS.purple}
+              value={formatRate(summary.retentionRate)}
+              delta={<DeltaPill value={comparison.retentionRate.changePoints} unit="pp" comparisonLabel={comparisonShort} />}
+              caption={`${period.previousMonthShortLabel} identified consumers who scanned again`}
+              hint={`Retained ÷ ${period.previousMonthLabel} identified consumers.`}
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Monthly Analytics + Month-over-Month */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Monthly Trend Chart */}
-        <Card className="sera-sc-panel overflow-hidden lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-[var(--sera-orange-deep,#c44a00)]" />
-              Monthly Analytics (12 Months)
-            </CardTitle>
-            <CardDescription>Scans, consumers, and avg per consumer by month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={monthlyAnalytics}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                  <XAxis dataKey="monthShort" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                  <YAxis yAxisId="left" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                  <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: 'none', borderRadius: 12 }} />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="scans" fill={COLORS.primary} name="Scans" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="left" dataKey="consumers" fill={COLORS.success} name="Consumers" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="avgPerConsumer" stroke={COLORS.warning} strokeWidth={2} name="Avg/Consumer" />
+      {report.isEmpty ? (
+        <Card className={REPORTING_PANEL_CLASS}>
+          <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
+            <Eye className="h-8 w-8 text-[var(--sera-muted)]" strokeWidth={1.5} />
+            <p className="font-medium text-[var(--sera-ink)]">
+              No consumer activity recorded for {period.label}.
+            </p>
+            <p className="max-w-md text-sm text-[var(--sera-muted)]">
+              Pick another Reporting Month above to review a period with recorded scans.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* ── Sections 3 & 4 · Daily trend + month comparison ─────────── */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <SectionCard
+              className="lg:col-span-3"
+              icon={TrendingUp}
+              title={`Daily Scan Trend — ${period.label}`}
+              description="Total scans and identified consumers per day"
+            >
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={report.dailyTrend} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="ca-scan-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={SERIES.scans} stopOpacity={0.28} />
+                      <stop offset="100%" stopColor={SERIES.scans} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: chartTickColor }} interval="preserveStartEnd" minTickGap={24} />
+                  <YAxis tick={{ fontSize: 11, fill: chartTickColor }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    formatter={(value: any, name: any) => [formatCount(Number(value)), name]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="scans" name="Scans" stroke={SERIES.scans} strokeWidth={2} fill="url(#ca-scan-fill)" />
+                  <Line type="monotone" dataKey="consumers" name="Identified Consumers" stroke={SERIES.consumers} strokeWidth={2} dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+            </SectionCard>
 
-        {/* Month-over-Month Comparison */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">This Month vs Last Month</CardTitle>
-            <CardDescription>Month-over-month comparison</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-muted/50">
-                <div className="text-xs font-semibold text-muted-foreground mb-1">TOTAL SCANS</div>
-                <div className="flex items-end justify-between">
-                  <div>
-                    <span className="text-2xl font-bold">{momComparison.thisMonth.scans.toLocaleString()}</span>
-                    <span className="text-sm text-muted-foreground ml-2">vs {momComparison.lastMonth.scans.toLocaleString()}</span>
-                  </div>
-                  <Badge className={momComparison.scanGrowth >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}>
-                    {momComparison.scanGrowth >= 0 ? '+' : ''}{momComparison.scanGrowth.toFixed(1)}%
-                  </Badge>
+            <SectionCard
+              className="lg:col-span-2"
+              icon={BarChart3}
+              title={`${period.label} vs ${period.previousMonthLabel}`}
+              description="Key comparison"
+            >
+              <div className="space-y-4">
+                {([
+                  { label: 'Total Scans', delta: comparison.totalScans },
+                  { label: 'Identified Consumers', delta: comparison.identifiedConsumers },
+                  { label: 'Repeat Consumers', delta: comparison.repeatConsumers },
+                ] as { label: string; delta: MetricDelta }[]).map(({ label, delta }) => {
+                  const scale = Math.max(delta.current, delta.previous, 1)
+                  return (
+                    <div key={label} className="space-y-1.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-medium text-[var(--sera-ink)]">{label}</span>
+                        <DeltaPill value={delta.changePct} unit="%" comparisonLabel={comparisonShort} />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--sera-mist)]">
+                            <div className="h-full rounded-full" style={{ width: `${(delta.current / scale) * 100}%`, backgroundColor: SERIES.scans }} />
+                          </div>
+                          <span className="w-16 shrink-0 text-right text-xs font-semibold tabular-nums text-[var(--sera-ink)]">
+                            {formatCount(delta.current)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--sera-mist)]">
+                            <div className="h-full rounded-full" style={{ width: `${(delta.previous / scale) * 100}%`, backgroundColor: `${SERIES.scans}55` }} />
+                          </div>
+                          <span className="w-16 shrink-0 text-right text-xs tabular-nums text-[var(--sera-muted)]">
+                            {formatCount(delta.previous)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="flex items-center gap-4 border-t border-[var(--sera-line)] pt-3 text-[11px] text-[var(--sera-muted)]">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: SERIES.scans }} /> {period.label}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: `${SERIES.scans}55` }} /> {period.previousMonthLabel}
+                  </span>
                 </div>
               </div>
-              <div className="p-4 rounded-xl bg-muted/50">
-                <div className="text-xs font-semibold text-muted-foreground mb-1">UNIQUE CONSUMERS</div>
-                <div className="flex items-end justify-between">
-                  <div>
-                    <span className="text-2xl font-bold">{momComparison.thisMonth.consumers.toLocaleString()}</span>
-                    <span className="text-sm text-muted-foreground ml-2">vs {momComparison.lastMonth.consumers.toLocaleString()}</span>
-                  </div>
-                  <Badge className={momComparison.consumerGrowth >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}>
-                    {momComparison.consumerGrowth >= 0 ? '+' : ''}{momComparison.consumerGrowth.toFixed(1)}%
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Consumer Growth: New vs Returning */}
-      <Card className="sera-sc-panel overflow-hidden">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-green-600" />
-            Consumer Growth
-          </CardTitle>
-          <CardDescription>New vs returning consumers per month</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={consumerGrowth}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                <XAxis dataKey="month" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                <YAxis tick={{ fill: chartTickColor, fontSize: 11 }} />
-                <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: 'none', borderRadius: 12 }} />
-                <Legend />
-                <Bar dataKey="new" stackId="a" fill={COLORS.success} name="New" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="returning" stackId="a" fill={COLORS.primary} name="Returning" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            </SectionCard>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Activity Heatmap + Retention Cohort */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Activity Heatmap */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Clock className="h-5 w-5 text-orange-600" />
-              Activity Heatmap
-            </CardTitle>
-            <CardDescription>Scan activity by day-of-week and hour</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <div className="min-w-[500px]">
-                <div className="flex gap-0.5">
-                  <div className="w-10" />
-                  {[0, 3, 6, 9, 12, 15, 18, 21].map(h => (
-                    <div key={h} className="flex-1 text-center text-[10px] text-muted-foreground">{h}:00</div>
-                  ))}
+          {/* ── Sections 5 & 6 · New vs returning + 12-month trend ──────── */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <SectionCard
+              className="lg:col-span-2"
+              icon={Users}
+              title="New vs Returning Consumers"
+              description={`Consumer breakdown for ${period.label}`}
+            >
+              <div className="flex flex-col items-center gap-4 sm:flex-row">
+                <div className="relative h-[190px] w-[190px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={newVsReturningSlices}
+                        dataKey="value"
+                        innerRadius={58}
+                        outerRadius={88}
+                        paddingAngle={2}
+                        stroke="none"
+                        isAnimationActive={false}
+                      >
+                        {newVsReturningSlices.map((slice) => <Cell key={slice.name} fill={slice.fill} />)}
+                      </Pie>
+                      <Tooltip formatter={(value: any, name: any) => [formatCount(Number(value)), name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xl font-semibold text-[var(--sera-ink)]">
+                      {formatCount(newVsReturning.identifiedConsumers)}
+                    </span>
+                    <span className="text-[11px] text-[var(--sera-muted)]">Consumers</span>
+                  </div>
                 </div>
-                {DAY_NAMES.map((day, di) => (
-                  <div key={di} className="flex items-center gap-0.5 mb-0.5">
-                    <div className="w-10 text-xs text-muted-foreground text-right pr-1">{day}</div>
-                    {Array.from({ length: 24 }).map((_, hi) => {
-                      const count = heatmapData.grid[di][hi]
-                      const intensity = count / heatmapData.max
-                      return (
+                <div className="w-full space-y-3">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium text-[var(--sera-ink)]">
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: SERIES.scans }} />
+                      New Consumers
+                    </p>
+                    <p className="pl-[18px] text-sm text-[var(--sera-muted)]">
+                      {formatCount(newVsReturning.newConsumers)} ({formatRate(newVsReturning.newPct)})
+                    </p>
+                  </div>
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium text-[var(--sera-ink)]">
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: SERIES.returning }} />
+                      Returning Consumers
+                    </p>
+                    <p className="pl-[18px] text-sm text-[var(--sera-muted)]">
+                      {formatCount(newVsReturning.returningConsumers)} ({formatRate(newVsReturning.returningPct)})
+                    </p>
+                  </div>
+                  <p className="border-t border-[var(--sera-line)] pt-2 text-[11px] leading-relaxed text-[var(--sera-muted)]">
+                    New = first identified scan happened in {period.label}. Returning = identified before {period.label} and scanned again.
+                  </p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              className="lg:col-span-3"
+              icon={BarChart3}
+              title="12-Month Trend"
+              description={`Scans and identified consumers, ending ${period.label}`}
+            >
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={report.twelveMonthTrend} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: chartTickColor }} />
+                  <YAxis tick={{ fontSize: 11, fill: chartTickColor }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                    labelFormatter={(_label: any, payload: any) => payload?.[0]?.payload?.fullLabel ?? ''}
+                    formatter={(value: any, name: any) => [formatCount(Number(value)), name]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="scans" name="Scans" fill={SERIES.scans} radius={[4, 4, 0, 0]} maxBarSize={26} />
+                  <Line type="monotone" dataKey="consumers" name="Identified Consumers" stroke={SERIES.consumers} strokeWidth={2} dot={{ r: 2.5 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </SectionCard>
+          </div>
+
+          {/* ── Sections 7 & 8 · Heatmap + retention cohort ─────────────── */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <SectionCard
+              icon={Clock}
+              title="Activity Heatmap"
+              description={`Scan activity by day-of-week and hour (${period.label})`}
+            >
+              <div className="overflow-x-auto">
+                <div className="min-w-[520px]">
+                  <div className="mb-1 flex pl-9">
+                    {Array.from({ length: 24 }, (_, hour) => (
+                      <div key={hour} className="flex-1 text-center text-[9px] text-[var(--sera-muted)]">
+                        {HEATMAP_HOUR_TICKS.includes(hour) ? `${String(hour).padStart(2, '0')}:00` : ''}
+                      </div>
+                    ))}
+                  </div>
+                  {heatmapGrid.map((row, day) => (
+                    <div key={day} className="mb-0.5 flex items-center">
+                      <span className="w-9 shrink-0 text-[10px] text-[var(--sera-muted)]">{DAY_NAMES[day]}</span>
+                      {row.map((count, hour) => (
                         <div
-                          key={hi}
-                          className="flex-1 aspect-square rounded-sm transition-colors"
+                          key={hour}
+                          className="mx-px h-4 flex-1 rounded-[3px]"
                           style={{
                             backgroundColor: count === 0
-                              ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)')
-                              : `rgba(59, 130, 246, ${0.15 + intensity * 0.85})`,
+                              ? 'var(--sera-mist, #f4f4f5)'
+                              : SERIES.heat,
+                            opacity: count === 0 ? 1 : 0.18 + 0.82 * (count / Math.max(report.heatmapMax, 1)),
                           }}
-                          title={`${day} ${hi}:00 — ${count} scans`}
+                          title={`${DAY_NAMES[day]} ${String(hour).padStart(2, '0')}:00 — ${formatCount(count)} scans`}
                         />
-                      )
-                    })}
-                  </div>
-                ))}
-                <div className="flex items-center gap-2 mt-3 justify-end">
-                  <span className="text-xs text-muted-foreground">Less</span>
-                  {[0.1, 0.3, 0.5, 0.7, 1].map((v, i) => (
-                    <div key={i} className="w-3 h-3 rounded-sm" style={{ backgroundColor: `rgba(59, 130, 246, ${0.15 + v * 0.85})` }} />
+                      ))}
+                    </div>
                   ))}
-                  <span className="text-xs text-muted-foreground">More</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Retention Cohort */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-purple-600" />
-              Monthly Retention Cohort
-            </CardTitle>
-            <CardDescription>% of consumers who scanned again next month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {retentionCohort.map((c, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="w-24 text-sm font-medium text-muted-foreground">{c.cohort}</div>
-                  <div className="flex-1">
-                    <div className="h-6 bg-muted rounded-full overflow-hidden relative">
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
+                  <div className="mt-2 flex items-center justify-end gap-1.5 text-[10px] text-[var(--sera-muted)]">
+                    <span>Less</span>
+                    {[0, 0.25, 0.5, 0.75, 1].map((step) => (
+                      <span
+                        key={step}
+                        className="h-3 w-3 rounded-[3px]"
                         style={{
-                          width: `${c.rate}%`,
-                          backgroundColor: c.rate >= 50 ? COLORS.success : c.rate >= 25 ? COLORS.warning : COLORS.danger,
+                          backgroundColor: step === 0 ? 'var(--sera-mist, #f4f4f5)' : SERIES.heat,
+                          opacity: step === 0 ? 1 : 0.18 + 0.82 * step,
                         }}
                       />
-                      <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold">
-                        {c.rate}% ({c.retained}/{c.total})
-                      </span>
-                    </div>
+                    ))}
+                    <span>More</span>
                   </div>
                 </div>
-              ))}
-            </div>
-            {retentionCohort.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">Not enough data for retention analysis</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              </div>
+            </SectionCard>
 
-      {/* Top Consumers Leaderboard */}
-      <Card className="sera-sc-panel overflow-hidden">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Crown className="h-5 w-5 text-yellow-600" />
-            Top Consumers
-          </CardTitle>
-          <CardDescription>Ranking by engagement for the selected period</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {topConsumers.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">No consumer data available</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="pb-3 pr-4 font-semibold text-muted-foreground">#</th>
-                    <th className="pb-3 pr-4 font-semibold text-muted-foreground">Consumer</th>
-                    <th className="pb-3 pr-4 font-semibold text-muted-foreground text-right">Total Scans</th>
-                    <th className="pb-3 pr-4 font-semibold text-muted-foreground">Last Scan</th>
-                    <th className="pb-3 font-semibold text-muted-foreground">Frequency</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topConsumers.map((c) => (
-                    <tr key={c.id} className="border-b border-muted/50 hover:bg-muted/30 transition-colors">
-                      <td className="py-3 pr-4">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${c.rank === 1 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                          c.rank === 2 ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' :
-                            c.rank === 3 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                              'bg-muted text-muted-foreground'
-                          }`}>
-                          {c.rank <= 3 ? ['🥇', '🥈', '🥉'][c.rank - 1] : c.rank}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="font-medium">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">{c.phone}</div>
-                      </td>
-                      <td className="py-3 pr-4 text-right font-bold">{c.scans.toLocaleString()}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {c.lastScan ? format(new Date(c.lastScan), 'dd MMM yyyy') : '-'}
-                      </td>
-                      <td className="py-3">
-                        <Badge variant="secondary" className={
-                          c.frequency === 'High' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                            c.frequency === 'Medium' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                              'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                        }>{c.frequency}</Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            <SectionCard
+              icon={Target}
+              title="Monthly Retention Cohort"
+              description="% of a month's identified consumers who scanned again the following month"
+            >
+              <div className="space-y-3">
+                {report.retentionCohort.map((row) => (
+                  <div key={row.month} className="flex items-center gap-3">
+                    <span className="w-20 shrink-0 text-xs text-[var(--sera-ink)]">{row.label}</span>
+                    <div className="h-3 flex-1 overflow-hidden rounded-full bg-[var(--sera-mist)]">
+                      {row.retentionRate === null ? null : (
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${Math.min(row.retentionRate, 100)}%`, backgroundColor: SERIES.returning }}
+                        />
+                      )}
+                    </div>
+                    <span className="w-32 shrink-0 text-right text-xs tabular-nums text-[var(--sera-muted)]">
+                      {row.pending
+                        ? 'current month'
+                        : row.retentionRate === null
+                          ? 'no cohort'
+                          : `${formatRate(row.retentionRate, 0)} (${formatCount(row.retained ?? 0)}/${formatCount(row.consumers)})`}
+                    </span>
+                  </div>
+                ))}
+                <p className="border-t border-[var(--sera-line)] pt-2 text-[11px] text-[var(--sera-muted)]">
+                  {period.label} is the current cohort — its retention can only be measured once {period.label} closes and the
+                  following month has recorded activity.
+                </p>
+              </div>
+            </SectionCard>
+          </div>
 
-      {/* Product Engagement */}
-      {productEngagement.length > 0 && (
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Eye className="h-5 w-5 text-cyan-600" />
-              Product Engagement
-            </CardTitle>
-            <CardDescription>Top scanned products by engagement volume</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={productEngagement} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                  <XAxis type="number" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                  <YAxis dataKey="name" type="category" width={160} tick={{ fill: chartTickColor, fontSize: 11 }} />
-                  <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: 'none', borderRadius: 12 }} />
-                  <Bar dataKey="scans" radius={[0, 4, 4, 0]}>
-                    {productEngagement.map((entry, index) => (
-                      <Cell key={index} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+          {/* ── Sections 9 & 10 · Top consumers + top products ──────────── */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <SectionCard
+              icon={Crown}
+              title="Top Consumers"
+              description={`Top ${report.topConsumers.length} consumers by total scans (${period.label})`}
+            >
+              {report.topConsumers.length === 0 ? (
+                <p className="py-8 text-center text-sm text-[var(--sera-muted)]">
+                  No identified consumer scans in {period.label}.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[460px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-[11px] uppercase tracking-wider text-[var(--sera-muted)]">
+                        <th className="py-2 pr-2 font-medium">#</th>
+                        <th className="py-2 pr-2 font-medium">Consumer</th>
+                        <th className="py-2 pr-2 text-right font-medium">Total Scans</th>
+                        <th className="py-2 pr-2 text-right font-medium">Last Scan</th>
+                        <th className="py-2 text-right font-medium">Frequency</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.topConsumers.map((consumer) => (
+                        <tr key={consumer.consumerId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className="py-2 pr-2 text-[var(--sera-muted)]">{consumer.rank}</td>
+                          <td className="py-2 pr-2">
+                            <p className="truncate font-medium text-[var(--sera-ink)]">{consumer.name}</p>
+                            <p className="truncate text-[11px] text-[var(--sera-muted)]">{consumer.phone}</p>
+                          </td>
+                          <td className="py-2 pr-2 text-right font-semibold tabular-nums text-[var(--sera-ink)]">
+                            {formatCount(consumer.scans)}
+                          </td>
+                          <td className="py-2 pr-2 text-right text-[11px] tabular-nums text-[var(--sera-muted)]">
+                            {formatDateOnly(consumer.lastScan)}
+                          </td>
+                          <td className="py-2 text-right">
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                'text-[11px]',
+                                consumer.frequency === 'High' && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                                consumer.frequency === 'Medium' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                                consumer.frequency === 'Low' && 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                              )}
+                            >
+                              {consumer.frequency}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              icon={Eye}
+              title="Top Products / Variants"
+              description={`Most scanned products and variants (${period.label})`}
+            >
+              {report.topProducts.length === 0 ? (
+                <p className="py-8 text-center text-sm text-[var(--sera-muted)]">
+                  No product-linked scans in {period.label}.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[420px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-[11px] uppercase tracking-wider text-[var(--sera-muted)]">
+                        <th className="py-2 pr-2 font-medium">#</th>
+                        <th className="py-2 pr-2 font-medium">Product / Variant</th>
+                        <th className="py-2 pr-2 text-right font-medium">Scans</th>
+                        <th className="py-2 font-medium">% of Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.topProducts.map((product) => (
+                        <tr key={`${product.productId}:${product.variantId}`} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className="py-2 pr-2 text-[var(--sera-muted)]">{product.rank}</td>
+                          <td className="py-2 pr-2">
+                            <p className="truncate font-medium text-[var(--sera-ink)]">{product.productName}</p>
+                            {product.variantName ? (
+                              <p className="truncate text-[11px] text-[var(--sera-muted)]">[ {product.variantName} ]</p>
+                            ) : null}
+                          </td>
+                          <td className="py-2 pr-2 text-right font-semibold tabular-nums text-[var(--sera-ink)]">
+                            {formatCount(product.scans)}
+                          </td>
+                          <td className="py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-full min-w-[48px] overflow-hidden rounded-full bg-[var(--sera-mist)]">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{ width: `${product.sharePct ?? 0}%`, backgroundColor: SERIES.scans }}
+                                />
+                              </div>
+                              <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-[var(--sera-muted)]">
+                                {formatRate(product.sharePct)}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+        </>
       )}
-
-      <Dialog open={showUniqueConsumersDialog} onOpenChange={setShowUniqueConsumersDialog}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Unique Consumers ({uniqueConsumersList.length})</DialogTitle>
-            <DialogDescription>
-              Consumers identified in the selected reporting window. The list is grouped by registered user, then phone, then email.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="overflow-y-auto flex-1 -mx-6 px-6">
-            {uniqueConsumersList.length === 0 ? (
-              <div className="py-8 text-center text-muted-foreground">No identified consumers found for this period.</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 border-b bg-background">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">#</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Consumer</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Phone</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Scans</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Last Scan</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-muted/50">
-                  {uniqueConsumersList.map((consumer, index) => (
-                    <tr key={consumer.key} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{index + 1}</td>
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-foreground">{consumer.name}</div>
-                        {consumer.email && <div className="text-xs text-muted-foreground">{consumer.email}</div>}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{consumer.phone}</td>
-                      <td className="px-3 py-2 text-right font-semibold">{consumer.scans.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {consumer.lastScan ? format(new Date(consumer.lastScan), 'dd MMM yyyy, hh:mm a') : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showRetentionDialog} onOpenChange={setShowRetentionDialog}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Retention Rate Formula</DialogTitle>
-            <DialogDescription>
-              This shows how many consumers from the previous matching period came back and scanned again in the current period.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 text-sm text-muted-foreground">
-            <div className="rounded-xl bg-muted/50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Formula</div>
-              <div className="mt-2 text-lg font-semibold text-foreground">
-                Retention Rate = Returning Consumers / Previous Period Consumers × 100
-              </div>
-            </div>
-            <div className="rounded-xl border p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span>Returning consumers</span>
-                <span className="font-semibold text-foreground">{kpis.returnees.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Consumers in previous period</span>
-                <span className="font-semibold text-foreground">{kpis.retainedBase.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between border-t pt-2">
-                <span>Computed rate</span>
-                <span className="font-semibold text-foreground">{kpis.retentionRate.toFixed(1)}%</span>
-              </div>
-            </div>
-            <p>
-              For the selected {period === '12months' ? '12-month' : `${period}-day`} window, the system first builds the consumer list for the current period and for the immediately preceding period of the same length. It then counts the overlap between those two lists.
-            </p>
-            <p>
-              In this case: {kpis.returnees.toLocaleString()} returning consumers divided by {kpis.retainedBase.toLocaleString()} consumers in the previous period gives {kpis.retentionRate.toFixed(1)}%.
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
