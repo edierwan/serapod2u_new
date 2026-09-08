@@ -357,10 +357,14 @@ describe('Serapp hold-expiry schedule gate', () => {
   it('reads the usual falsey spellings as off', async () => {
     const mod = await import('./cron-scheduler')
     for (const off of [undefined, '', '0', 'false', 'off', 'no', 'FALSE']) {
-      expect(mod.serappHoldExpiryEnabled(off === undefined ? {} : { ENABLE_SERAPP_HOLD_EXPIRY: off })).toBe(false)
+      expect(
+        mod.serappHoldExpiryEnabled({ ...process.env, ENABLE_SERAPP_HOLD_EXPIRY: off }),
+      ).toBe(false)
     }
     for (const on of ['1', 'true', 'on', 'yes', 'TRUE']) {
-      expect(mod.serappHoldExpiryEnabled({ ENABLE_SERAPP_HOLD_EXPIRY: on })).toBe(true)
+      expect(
+        mod.serappHoldExpiryEnabled({ ...process.env, ENABLE_SERAPP_HOLD_EXPIRY: on }),
+      ).toBe(true)
     }
   })
 })
