@@ -53,6 +53,8 @@ import {
   remapRowsForHqConsolidatedView,
 } from '@/lib/inventory/hq-consolidated-location'
 import {
+  inventoryVariantFilterOption,
+  inventoryVariantProductName,
   variantAlternativeLabel,
   variantIdentityLabel,
 } from '@/lib/inventory/variant-display-label'
@@ -1050,6 +1052,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           product_variants (
             variant_code,
             variant_name,
+            product_code,
             products (
               product_name
             )
@@ -1085,12 +1088,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     if (productFilter === 'all') {
       return variants
     }
-    return variants.filter(variant => {
-      const product = Array.isArray(variant.products)
-        ? variant.products[0]
-        : variant.products
-      return product?.product_name === productFilter
-    })
+    return variants.filter(variant => inventoryVariantProductName(variant) === productFilter)
   }, [variants, productFilter])
 
   // Reset variant filter when product filter changes
@@ -1324,11 +1322,16 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Variants</SelectItem>
-                    {filteredVariants.map((variant) => (
-                      <SelectItem key={variant.variant_code} value={variant.variant_code}>
-                        {variant.variant_code} - {variant.variant_name}
-                      </SelectItem>
-                    ))}
+                    {filteredVariants.map((variant) => {
+                      // Presentation only: the option still selects the
+                      // variant_code the inventory query filters on.
+                      const option = inventoryVariantFilterOption(variant)
+                      return (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  inventoryVariantFilterOption,
+  inventoryVariantProductName,
   productVariantIdentityLabel,
   variantAlternativeLabel,
   variantFlavourLabel,
@@ -130,5 +132,60 @@ describe('administration and picker labels', () => {
       .toBe('Deluxe Hazelnut – HA')
     expect(variantSelectorLabel('Deluxe Cellera Cartridge [ Hazelnut ]', null, null))
       .toBe('Deluxe Hazelnut')
+  })
+})
+
+describe('View Inventory variant filter options', () => {
+  const bananaVanilla = {
+    variant_code: 'DEL-150490',
+    variant_name: 'Deluxe Cellera Cartridge [ Banana Vanilla ]',
+    product_code: 'BV',
+    products: { product_name: 'Cellera Hero' },
+  }
+
+  it('labels the option with the business identity, not the generated code', () => {
+    expect(inventoryVariantFilterOption(bananaVanilla).label)
+      .toBe('Cellera Hero / Banana Vanilla – BV')
+  })
+
+  it('never shows the generated variant_code in the option text', () => {
+    const { label } = inventoryVariantFilterOption(bananaVanilla)
+    expect(label).not.toContain('DEL-150490')
+    expect(label).not.toContain('[')
+  })
+
+  it('keeps the internal variant_code as the value the query filters on', () => {
+    expect(inventoryVariantFilterOption(bananaVanilla).value).toBe('DEL-150490')
+  })
+
+  it('reads the parent product whichever shape the embed arrives in', () => {
+    expect(inventoryVariantProductName(bananaVanilla)).toBe('Cellera Hero')
+    expect(inventoryVariantProductName({ products: [{ product_name: 'Fruity Pod' }] }))
+      .toBe('Fruity Pod')
+    expect(inventoryVariantProductName({ products: null })).toBeNull()
+    expect(inventoryVariantProductName(null)).toBeNull()
+  })
+
+  it('is not Cellera-specific', () => {
+    expect(inventoryVariantFilterOption({
+      variant_code: 'FRU-220011',
+      variant_name: 'Fruity Cellera Cartridge [ Mango ]',
+      product_code: 'MG',
+      products: [{ product_name: 'Fruity Cellera' }],
+    }).label).toBe('Fruity Cellera / Mango – MG')
+  })
+
+  it('degrades to the variant it does know instead of printing undefined', () => {
+    expect(inventoryVariantFilterOption({
+      variant_code: 'DEL-141367',
+      variant_name: 'Deluxe Cellera Cartridge [ Corn ]',
+      product_code: null,
+      products: null,
+    }).label).toBe('Corn')
+
+    const unnamed = inventoryVariantFilterOption({ variant_code: 'DEL-000001' })
+    expect(unnamed.label).toBe('No variant')
+    expect(unnamed.label).not.toContain('undefined')
+    expect(unnamed.value).toBe('DEL-000001')
   })
 })

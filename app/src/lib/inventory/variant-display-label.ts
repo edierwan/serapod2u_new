@@ -116,6 +116,59 @@ export function productVariantIdentityLabel(
 }
 
 /**
+ * The shape the View Inventory "Variant" filter loads for each option: variant
+ * master data with its parent product embedded. Supabase resolves an embedded
+ * relation as either an object or a single-element array, so both are accepted.
+ */
+export interface InventoryFilterVariantRow {
+  variant_code?: string | null
+  variant_name?: string | null
+  product_code?: string | null
+  products?:
+    | { product_name?: string | null }
+    | Array<{ product_name?: string | null }>
+    | null
+}
+
+/** The parent Product Name of a filter row, whichever shape it arrived in. */
+export function inventoryVariantProductName(
+  variant?: InventoryFilterVariantRow | null,
+): string | null {
+  const products = variant?.products
+  const product = Array.isArray(products) ? products[0] : products
+  return product?.product_name ?? null
+}
+
+/**
+ * One option of the View Inventory "Variant" filter.
+ *
+ * The visible text is the agreed identity — "Cellera Hero / Banana Vanilla – BV"
+ * — rather than the generated `variant_code` and the raw bracketed master-data
+ * name ("DEL-150490 - Deluxe Cellera Cartridge [ Banana Vanilla ]"). The code is
+ * an internal key: it identifies the row for the query, it does not describe the
+ * variant to the operator reading the dropdown.
+ *
+ * The `value` is deliberately still `product_variants.variant_code`, because
+ * that is the column the inventory query filters on. This helper changes what
+ * the option says, never what it selects.
+ *
+ * Every part of the label is optional master data; `productVariantIdentityLabel`
+ * drops the missing halves rather than printing "undefined / Corn – undefined".
+ */
+export function inventoryVariantFilterOption(
+  variant: InventoryFilterVariantRow,
+): { value: string; label: string } {
+  return {
+    value: variant.variant_code ?? '',
+    label: productVariantIdentityLabel(
+      inventoryVariantProductName(variant),
+      variant.variant_name,
+      variant.product_code,
+    ),
+  }
+}
+
+/**
  * "Alternative: Banana Milk", matching the Product Management > Variants table.
  * Returns null when master data carries no alternative name, so the line is
  * omitted entirely instead of rendering an empty label.
