@@ -32,6 +32,10 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
   process.env.INTERNAL_CRON_BASE_URL = 'http://127.0.0.1:3000'
   process.env.CRON_SECRET = 'test-secret'
+  // The single-start guarantee is about registration bookkeeping, not about
+  // which features are switched on, so these cases opt the gated Serapp worker
+  // in and keep asserting against the full worker list.
+  process.env.ENABLE_SERAPP_HOLD_EXPIRY = 'true'
 })
 
 afterEach(() => {
@@ -300,4 +304,63 @@ describe('DISABLE_INTERNAL_CRON_WORKERS', () => {
             expect(mod.internalCronWorkersDisabled({ DISABLE_INTERNAL_CRON_WORKERS: value } as unknown as NodeJS.ProcessEnv)).toBe(true)
         }
     })
+})
+
+describe('Serapp hold-expiry schedule gate', () => {
+  const SERAPP = '/api/cron/serapp-hold-expiry'
+
+  it('is not scheduled when the flag is absent', async () => {
+    delete process.env.ENABLE_SERAPP_HOLD_EXPIRY
+    const mod = await import('./cron-scheduler')
+    mod.startCronScheduler()
+
+    const registered = [...mod.__getCronRegistryForTests().registeredPaths]
+    expect(registered).not.toContain(SERAPP)
+    expect(registered).toHaveLength(WORKER_COUNT - 1)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT - 1)
+  })
+
+  it('leaves every unrelated worker scheduled', async () => {
+    delete process.env.ENABLE_SERAPP_HOLD_EXPIRY
+    const mod = await import('./cron-scheduler')
+    mod.startCronScheduler()
+
+    const registered = new Set(mod.__getCronRegistryForTests().registeredPaths)
+    for (const worker of WORKERS.filter((w) => w !== SERAPP)) {
+      expect(registered.has(worker)).toBe(true)
+    }
+  })
+
+  it('never dispatches the gated worker over a tick', async () => {
+    delete process.env.ENABLE_SERAPP_HOLD_EXPIRY
+    const mod = await import('./cron-scheduler')
+    mod.startCronScheduler()
+
+    for (const call of scheduleMock.mock.calls) {
+      ;(call[1] as () => void)()
+    }
+    await flush()
+
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+    expect(urls.some((u) => u.includes(SERAPP))).toBe(false)
+  })
+
+  it('is scheduled again once the flag opts in', async () => {
+    process.env.ENABLE_SERAPP_HOLD_EXPIRY = 'true'
+    const mod = await import('./cron-scheduler')
+    mod.startCronScheduler()
+
+    expect([...mod.__getCronRegistryForTests().registeredPaths]).toContain(SERAPP)
+    expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
+  })
+
+  it('reads the usual falsey spellings as off', async () => {
+    const mod = await import('./cron-scheduler')
+    for (const off of [undefined, '', '0', 'false', 'off', 'no', 'FALSE']) {
+      expect(mod.serappHoldExpiryEnabled(off === undefined ? {} : { ENABLE_SERAPP_HOLD_EXPIRY: off })).toBe(false)
+    }
+    for (const on of ['1', 'true', 'on', 'yes', 'TRUE']) {
+      expect(mod.serappHoldExpiryEnabled({ ENABLE_SERAPP_HOLD_EXPIRY: on })).toBe(true)
+    }
+  })
 })

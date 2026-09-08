@@ -13,14 +13,52 @@ import { randomUUID } from 'node:crypto'
  * NOT on serverless (Vercel, AWS Lambda).
  */
 
-const CRON_JOBS = [
+interface CronJob {
+  path: string
+  schedule: string
+  /** Absent means "always scheduled". Evaluated once, at registration. */
+  enabled?: (env?: NodeJS.ProcessEnv) => boolean
+}
+
+const CRON_JOBS: CronJob[] = [
   { path: '/api/cron/qr-reverse-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/qr-generation-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/manufacturer-packing-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/notification-outbox-worker', schedule: '*/1 * * * *' },
-  // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release stock
-  { path: '/api/cron/serapp-hold-expiry', schedule: '*/5 * * * *' },
+  // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release
+  // stock. Opt-in: see serappHoldExpiryEnabled.
+  {
+    path: '/api/cron/serapp-hold-expiry',
+    schedule: '*/5 * * * *',
+    enabled: serappHoldExpiryEnabled,
+  },
 ]
+
+/**
+ * Opt-in gate for the Serapp hold-expiry worker.
+ *
+ * Why opt-in rather than always-on: Serapp order holds are not a released
+ * feature, and an environment that has not received the Serapp migrations has
+ * no public.serapp_order_holds for the worker to read. Scheduling it there
+ * produces nothing but a 500 every five minutes, and the moment the table does
+ * appear an unreleased worker would begin expiring live holds on its own. So
+ * the schedule stays off until an environment explicitly asks for it.
+ *
+ * This gates the SCHEDULE only. The route keeps working for anyone who calls
+ * it, so enabling the feature later is an env change, not a deploy.
+ *
+ * Mirrors the spellings accepted by internalCronWorkersDisabled, inverted:
+ * absent or a falsey spelling means not scheduled.
+ */
+export function serappHoldExpiryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.ENABLE_SERAPP_HOLD_EXPIRY
+  if (raw === undefined || raw === null) return false
+
+  const value = String(raw).trim().toLowerCase()
+  if (value === '') return false
+
+  return !['0', 'false', 'off', 'no'].includes(value)
+}
 
 function normalizeBaseUrl(rawUrl: string): string {
   const withProtocol = rawUrl.includes('://') ? rawUrl : `https://${rawUrl}`
@@ -235,6 +273,13 @@ export function startCronScheduler(): void {
   console.log(`[Cron] CRON_SECRET: ${process.env.CRON_SECRET ? 'set' : 'NOT SET'}`)
 
   for (const job of CRON_JOBS) {
+    // Checked before registration so a gated-off job registers no task at all,
+    // rather than a task that fires and then declines to do anything.
+    if (job.enabled && !job.enabled()) {
+      console.log(`[Cron] Not scheduled: ${job.path} — feature not enabled in this environment`)
+      continue
+    }
+
     if (registry.registeredPaths.has(job.path)) {
       console.warn(`[Cron] ${job.path} already registered - skipping`)
       continue
