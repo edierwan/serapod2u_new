@@ -24,6 +24,15 @@ interface CheckoutBody {
     variantId: string
     quantity: number
   }[]
+  /** Optional success-path base. Default `/store` keeps existing storefront behaviour. */
+  returnBasePath?: string
+  /** store (default) | outdoor — tags the order channel without affecting /store. */
+  salesChannel?: 'store' | 'outdoor'
+  shipping?: {
+    serviceId?: string
+    courierName?: string
+    amount?: number
+  }
   landingPageAttribution?: {
     landingPageId?: string
     landingPageSlug?: string
@@ -142,37 +151,73 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ── 2. Generate order reference ──────────────────────────────
+    // ── 2. Shipping (Outdoor may pass EasyParcel quote; /store stays free/zero) ──
+    const salesChannel = body.salesChannel === 'outdoor' ? 'outdoor' : 'store'
+    const shippingAmountRaw = Number(body.shipping?.amount ?? 0)
+    const shippingAmount =
+      salesChannel === 'outdoor' && Number.isFinite(shippingAmountRaw) && shippingAmountRaw >= 0
+        ? Math.round(shippingAmountRaw * 100) / 100
+        : 0
+    const shippingServiceId =
+      salesChannel === 'outdoor' && body.shipping?.serviceId
+        ? String(body.shipping.serviceId).slice(0, 80)
+        : null
+    const shippingCourierName =
+      salesChannel === 'outdoor' && body.shipping?.courierName
+        ? String(body.shipping.courierName).slice(0, 120)
+        : null
+    const payableTotal = orderTotal + shippingAmount
+
+    // ── 3. Generate order reference ──────────────────────────────
     const orderRef = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
 
-    // ── 3. Create order ──────────────────────────────────────────
-    const { data: order, error: orderErr } = await supabase
-      .from('storefront_orders')
-      .insert({
-        order_ref: orderRef,
-        status: 'pending_payment',
-        customer_name: body.customer.name,
-        customer_email: body.customer.email,
-        customer_phone: body.customer.phone,
-        shipping_address: {
-          line1: body.customer.addressLine1,
-          line2: body.customer.addressLine2 || '',
-          city: body.customer.city,
-          state: body.customer.state,
-          postcode: body.customer.postcode,
-        },
-        total_amount: orderTotal,
-        currency: 'MYR',
-      })
-      .select('id, order_ref')
-      .single()
+    // ── 4. Create order ──────────────────────────────────────────
+    const orderPayload: Record<string, unknown> = {
+      order_ref: orderRef,
+      status: 'pending_payment',
+      sales_channel: salesChannel,
+      customer_name: body.customer.name,
+      customer_email: body.customer.email,
+      customer_phone: body.customer.phone,
+      shipping_address: {
+        line1: body.customer.addressLine1,
+        line2: body.customer.addressLine2 || '',
+        city: body.customer.city,
+        state: body.customer.state,
+        postcode: body.customer.postcode,
+      },
+      shipping_amount: shippingAmount,
+      shipping_service_id: shippingServiceId,
+      shipping_courier_name: shippingCourierName,
+      total_amount: payableTotal,
+      currency: 'MYR',
+    }
+
+    let order: { id: string; order_ref: string } | null = null
+    let orderErr: any = null
+    {
+      const first = await supabase.from('storefront_orders').insert(orderPayload).select('id, order_ref').single()
+      order = first.data
+      orderErr = first.error
+      // Pre-migration fallback: keep /store checkout working if Outdoor columns are not applied yet.
+      if (orderErr && /sales_channel|shipping_amount|shipping_service|shipping_courier/i.test(String(orderErr.message || ''))) {
+        const legacy = { ...orderPayload }
+        delete legacy.sales_channel
+        delete legacy.shipping_amount
+        delete legacy.shipping_service_id
+        delete legacy.shipping_courier_name
+        const retry = await supabase.from('storefront_orders').insert(legacy).select('id, order_ref').single()
+        order = retry.data
+        orderErr = retry.error
+      }
+    }
 
     if (orderErr || !order) {
       console.error('Order creation failed:', orderErr)
       return NextResponse.json({ error: 'Could not create order' }, { status: 500 })
     }
 
-    // ── 4. Insert line items ─────────────────────────────────────
+    // ── 5. Insert line items ─────────────────────────────────────
     const { error: lineErr } = await supabase.from('storefront_order_items').insert(
       lineItems.map((li) => ({
         order_id: order.id,
@@ -199,7 +244,7 @@ export async function POST(request: NextRequest) {
           ...landingPageAttribution,
           order_id: order.id,
           order_ref: order.order_ref,
-          order_total: orderTotal,
+          order_total: payableTotal,
           currency: 'MYR',
         })
 
@@ -213,23 +258,32 @@ export async function POST(request: NextRequest) {
             landing_page_slug: landingPageAttribution.landing_page_slug,
             landing_page_session_id: landingPageAttribution.landing_page_session_id,
             event_type: 'order_created',
-            metadata: { orderId: order.id, orderRef: order.order_ref, orderTotal },
+            metadata: {
+              orderId: order.id,
+              orderRef: order.order_ref,
+              orderTotal: payableTotal,
+              salesChannel,
+            },
           })
       }
     }
 
-    // ── 5. Create payment intent via gateway adapter ─────────────
+    // ── 6. Create payment intent via gateway adapter ─────────────
     const origin = request.nextUrl.origin
+    const returnBase =
+      typeof body.returnBasePath === 'string' && body.returnBasePath.startsWith('/')
+        ? body.returnBasePath.replace(/\/$/, '')
+        : '/store'
     const paymentResult = await createPaymentIntent({
       orderId: order.id,
       orderRef: order.order_ref,
-      amount: orderTotal,
+      amount: payableTotal,
       currency: 'MYR',
       customerName: body.customer.name,
       customerEmail: body.customer.email,
       customerPhone: body.customer.phone,
       description: `Order ${order.order_ref}`,
-      returnUrl: `${origin}/store/orders/success?ref=${order.order_ref}`,
+      returnUrl: `${origin}${returnBase}/orders/success?ref=${order.order_ref}`,
       callbackUrl: `${origin}/api/storefront/payment/webhook`,
     })
 

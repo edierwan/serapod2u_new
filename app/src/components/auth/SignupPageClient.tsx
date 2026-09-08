@@ -87,7 +87,21 @@ export default function SignupPageClient({ branding, loginBanners }: SignupPageC
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [nextPath, setNextPath] = useState('/store')
+  const [loginHref, setLoginHref] = useState('/login')
   const router = useRouter()
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const next = params.get('next') || params.get('redirect')
+    const safe =
+      next && next.startsWith('/') && !next.startsWith('//') ? next : '/store'
+    setNextPath(safe)
+    const qs = new URLSearchParams()
+    qs.set('mode', 'store')
+    qs.set('next', safe)
+    setLoginHref(`/login?${qs.toString()}`)
+  }, [])
 
   const bannerCount = loginBanners.length
   const autoplayRef = useRef(
@@ -116,7 +130,13 @@ export default function SignupPageClient({ branding, loginBanners }: SignupPageC
       try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (user) router.push('/store')
+        if (user) {
+          const params = new URLSearchParams(window.location.search)
+          const next = params.get('next') || params.get('redirect')
+          const safe =
+            next && next.startsWith('/') && !next.startsWith('//') ? next : '/store'
+          router.push(safe)
+        }
       } catch { }
     }
     check()
@@ -160,7 +180,7 @@ export default function SignupPageClient({ branding, loginBanners }: SignupPageC
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${siteUrl}/auth/callback?next=/store`,
+          redirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`,
           queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined,
         },
       })
@@ -432,7 +452,7 @@ export default function SignupPageClient({ branding, loginBanners }: SignupPageC
 
             <div className="mt-6 text-center text-sm text-[var(--sera-muted)] login-rise login-rise-delay-4">
               Have an account?{' '}
-              <Link href="/login" className="font-semibold text-[var(--sera-ink)] hover:text-[var(--sera-orange)] transition-colors">
+              <Link href={loginHref} className="font-semibold text-[var(--sera-ink)] hover:text-[var(--sera-orange)] transition-colors">
                 Log In
               </Link>
             </div>

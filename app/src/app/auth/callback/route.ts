@@ -98,11 +98,16 @@ export async function GET(request: NextRequest) {
     if (wasCreated) {
       console.log(`[auth/callback] New user row created for ${email}, scope=${ensuredUser.account_scope}`)
 
-      // If new portal user needs phone, redirect to store with welcome flag
+      // If new store user needs phone, still honour Outdoor/Store return path when provided
       if (ensuredUser.account_scope === 'store' && !phone) {
-        return NextResponse.redirect(
-          new URL('/store?welcome=true', requestUrl.origin)
-        )
+        const nextPath = requestUrl.searchParams.get('next')
+        const welcomeBase =
+          nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
+            ? nextPath
+            : '/store'
+        const welcomeUrl = new URL(welcomeBase, requestUrl.origin)
+        welcomeUrl.searchParams.set('welcome', 'true')
+        return NextResponse.redirect(welcomeUrl)
       }
     } else {
       // Existing user — update avatar & last_login
@@ -122,8 +127,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4. Redirect based on account_scope (single path, no duplication)
-    const { redirectTo } = await getPostLoginRedirect()
+    // 4. Redirect based on account_scope (honour ?next= for Outdoor/Store return)
+    const nextPath = requestUrl.searchParams.get('next')
+    const { redirectTo } = await getPostLoginRedirect(nextPath)
     return NextResponse.redirect(new URL(redirectTo, requestUrl.origin))
   } catch (error) {
     console.error('[auth/callback] Unexpected error:', error)

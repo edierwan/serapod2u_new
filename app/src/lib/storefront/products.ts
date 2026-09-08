@@ -85,6 +85,8 @@ export interface StorefrontCategory {
 interface ListProductsParams {
   search?: string
   category?: string
+  /** Optional brand UUID — used by Outdoor when OUTDOOR_BRAND_ID is set. */
+  brandId?: string
   sort?: 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
   page?: number
   limit?: number
@@ -161,7 +163,7 @@ export function selectStorefrontProductMedia(
 // ── Functions ────────────────────────────────────────────────────
 
 export async function listProducts(params: ListProductsParams = {}) {
-  const { search, category, sort = 'newest', page = 1, limit = 12 } = params
+  const { search, category, brandId, sort = 'newest', page = 1, limit = 12 } = params
   const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
@@ -217,6 +219,10 @@ export async function listProducts(params: ListProductsParams = {}) {
   // Apply category filter
   if (category) {
     query = query.eq('category_id', category)
+  }
+
+  if (brandId) {
+    query = query.eq('brand_id', brandId)
   }
 
   // Apply sorting

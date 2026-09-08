@@ -31,7 +31,14 @@ const CART_STORAGE_KEY = 'serapod2u_cart'
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({
+  children,
+  storageKey = CART_STORAGE_KEY,
+}: {
+  children: ReactNode
+  /** Override for isolated storefronts (e.g. Outdoor). Default keeps Serapod2U Store behaviour. */
+  storageKey?: string
+}) {
   const [items, setItems] = useState<CartItem[]>([])
   const [mounted, setMounted] = useState(false)
 
@@ -39,7 +46,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMounted(true)
     try {
-      const stored = localStorage.getItem(CART_STORAGE_KEY)
+      const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed)) {
@@ -49,13 +56,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore parse errors
     }
-  }, [])
+  }, [storageKey])
 
   // Persist cart to localStorage on change
   useEffect(() => {
     if (!mounted) return
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
-  }, [items, mounted])
+    localStorage.setItem(storageKey, JSON.stringify(items))
+  }, [items, mounted, storageKey])
 
   const addItem = useCallback((item: Omit<CartItem, 'quantity'>, qty = 1) => {
     setItems(prev => {
