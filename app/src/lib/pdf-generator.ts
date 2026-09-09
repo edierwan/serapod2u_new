@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { wrapTermsLines } from '@/lib/organizations/terms'
+import { resolvePartyColumnHeading } from '@/lib/documents/counterparty'
 import {
   compressSignatureForPdf,
   formatFileSize,
@@ -24,6 +25,8 @@ interface PaymentTerms {
 
 interface PartyOrganization {
   org_name: string
+  /** `organizations.org_type_code`, e.g. 'DIST' — drives the party label. */
+  org_type_code?: string | null
   address?: string | null
   address_line2?: string | null
   city?: string | null
@@ -950,12 +953,17 @@ export class PDFGenerator {
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'bold')
 
-    // Column headers
+    // Column headers. Each party is named by its own organization type, so a
+    // distributor buyer reads as DISTRIBUTOR rather than the generic BUYER (HQ).
     let colX = startX
-    this.doc.text('BUYER (HQ)', colX + cellPaddingX, y + 5)
+    this.doc.text(resolvePartyColumnHeading(orderData.buyer_org, 'BUYER (HQ)'), colX + cellPaddingX, y + 5)
     colX += colWidths[0]
     this.doc.line(colX, y, colX, y + 7)
-    this.doc.text('SUPPLIER / MANUFACTURER', colX + cellPaddingX, y + 5)
+    this.doc.text(
+      resolvePartyColumnHeading(orderData.seller_org, 'SUPPLIER / MANUFACTURER'),
+      colX + cellPaddingX,
+      y + 5
+    )
     colX += colWidths[1]
     this.doc.line(colX, y, colX, y + 7)
     this.doc.text('SHIP TO / DELIVERY LOCATION', colX + cellPaddingX, y + 5)
