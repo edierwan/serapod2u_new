@@ -65,7 +65,7 @@ export function ShopPicker({
             if (!normalizedValue || selectedShop) return
 
             try {
-                const res = await fetch(`/api/shops/search?q=${encodeURIComponent(normalizedValue)}&limit=10`)
+                const res = await fetch(`/api/shops/search?q=${encodeURIComponent(normalizedValue)}&limit=30`)
                 const data = await res.json()
                 if (!data.success || cancelled) return
 
@@ -113,7 +113,7 @@ export function ShopPicker({
 
         setIsSearching(true)
         try {
-            const res = await fetch(`/api/shops/search?q=${encodeURIComponent(term.trim())}&limit=10`)
+            const res = await fetch(`/api/shops/search?q=${encodeURIComponent(term.trim())}&limit=30`)
             const data = await res.json()
             if (data.success) {
                 setResults(data.results || [])
@@ -226,14 +226,15 @@ export function ShopPicker({
                 </p>
             )}
 
-            {/* Dropdown results */}
+            {/* In-flow results (not absolute): iOS Safari clips nested absolute lists and often cannot scroll them. */}
             {isOpen && results.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-[240px] overflow-y-auto">
+                <div className="relative z-50 mt-1 w-full bg-white border rounded-md shadow-lg">
                     {results.map((shop) => (
                         <button
                             key={shop.org_id + (shop.branch || '')}
                             type="button"
                             className="w-full px-3 py-2.5 text-left hover:bg-accent transition-colors border-b last:border-b-0"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => handleSelect(shop)}
                         >
                             <div className="flex items-center gap-2">
@@ -272,7 +273,7 @@ export function ShopPicker({
 
             {/* No results */}
             {isOpen && !isSearching && results.length === 0 && searchTerm.trim().length >= 1 && (
-                <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-center">
+                <div className="relative z-50 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">No shops found</p>
                     <p className="text-xs text-muted-foreground/70 mt-1">Try searching with a different name</p>
                     {onCreateRequest && (
