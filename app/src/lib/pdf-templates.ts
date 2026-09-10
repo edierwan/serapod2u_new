@@ -11,6 +11,12 @@ import autoTable from 'jspdf-autotable'
 import { wrapTermsLines } from '@/lib/organizations/terms'
 import { isBuyerIssuedDocument, resolveCounterparty } from '@/lib/documents/counterparty'
 
+function pdfImageFormat(imageData: string): 'PNG' | 'JPEG' | 'WEBP' {
+  if (/^data:image\/(?:jpe?g);/i.test(imageData)) return 'JPEG'
+  if (/^data:image\/webp;/i.test(imageData)) return 'WEBP'
+  return 'PNG'
+}
+
 export type DocumentTemplateType = 'detailed' | 'classic'
 
 export interface TemplateOrderData {
@@ -25,6 +31,10 @@ export interface TemplateOrderData {
     role_name?: string
     signature_url?: string | null
   }
+  creator?: {
+    full_name: string
+    signature_url?: string | null
+  } | null
   approver_signature_image?: string | null
   buyer_org: {
     org_name: string
@@ -75,7 +85,7 @@ export interface TemplateOrderData {
   seller_logo_image?: string | null
   buyer_signature_image?: string | null
   issuer_signature_image?: string | null
-  creator_signature_image?: string | null  // User Level signature
+  creator_signature_image?: string | null
 }
 
 export interface TemplateDocumentData {
@@ -162,7 +172,7 @@ export class ClassicTemplate {
     const details = [
       { label: 'PO#:', value: documentData.display_doc_no || documentData.doc_no },
       { label: 'Date:', value: this.formatDate(documentData.created_at) },
-      { label: 'By:', value: 'User Level' },
+      { label: 'By:', value: orderData.creator?.full_name || 'Not available' },
       { label: 'Ledger:', value: 'Stock Purchased / Inventory' }
     ]
 
@@ -217,7 +227,7 @@ export class ClassicTemplate {
         // Ensure we don't go above y
         logoY = y + Math.max(0, (textBlockHeight - logoH) / 2)
 
-        this.doc.addImage(headerLogo, 'PNG', logoX, logoY, logoW, logoH)
+        this.doc.addImage(headerLogo, pdfImageFormat(headerLogo), logoX, logoY, logoW, logoH)
       } catch (e) {
         console.error('Error adding buyer logo:', e)
         this.doc.setDrawColor(200, 200, 200)
@@ -466,14 +476,14 @@ export class ClassicTemplate {
       this.drawDefaultStamp(stampX, stampY, issuerName, stampSize / 2)
     }
 
-    // Created by (Center) - Always show "User Level" as per requirement
+    // Creator name and signature come from the same orders.created_by users row.
     const centerX = this.pageWidth / 2
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
     this.doc.setTextColor(100, 100, 100)
-    this.doc.text('Created by: User Level', centerX, footerY, { align: 'center' })
+    this.doc.text(`Created by: ${orderData.creator?.full_name || 'Not available'}`, centerX, footerY, { align: 'center' })
 
-    // Creator Signature - Use CREATOR signature (User Level), NOT approver signature
+    // Creator signature from the same authoritative creator user row.
     if (orderData.creator_signature_image) {
       try {
         this.doc.addImage(orderData.creator_signature_image, 'PNG', centerX - 15, footerY + 2, 30, 12)
@@ -500,11 +510,11 @@ export class ClassicTemplate {
     this.doc.setTextColor(100, 100, 100)
     this.doc.text(this.formatDateLong(documentData.created_at), centerX, footerY + 22, { align: 'center' })
 
-    // Approved by (Right) - Use dynamic approver role
+    // Approver name and signature come from the same orders.approved_by users row.
     const footerRightX = this.pageWidth - this.margin - 25
     this.doc.setFontSize(9)
-    const approverRole = orderData.approver?.role_name || 'Manager Level'
-    this.doc.text(`Approved by: ${approverRole}`, footerRightX, footerY, { align: 'center' })
+    const approverName = orderData.approver?.full_name || 'Not available'
+    this.doc.text(`Approved by: ${approverName}`, footerRightX, footerY, { align: 'center' })
 
     // Approver Signature - Use approver signature if available  
     if (orderData.approver_signature_image) {

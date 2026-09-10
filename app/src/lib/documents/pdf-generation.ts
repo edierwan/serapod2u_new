@@ -10,6 +10,11 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Buffer } from 'buffer'
 import { resolveOrganizationTerms } from '@/lib/organizations/terms'
+import {
+  resolvePdfAuditActor,
+  resolvePdfImageSource,
+  resolvePdfOrganizationLogoSource
+} from '@/lib/documents/pdf-assets'
 
 /**
  * Extract bucket and path from a Supabase storage public URL.
@@ -29,15 +34,22 @@ function setFetchSupabaseClient(client: SupabaseClient) {
 
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   try {
+    const resolvedUrl = resolvePdfImageSource(url)
+    if (!resolvedUrl) return null
+
     // For Supabase storage URLs, use the Supabase client to download
     // (self-hosted Kong requires apikey header which raw fetch doesn't include)
-    const parsed = parseSupabaseStorageUrl(url)
+    const parsed = parseSupabaseStorageUrl(resolvedUrl)
     if (parsed && _fetchSupabaseClient) {
       const { data, error } = await _fetchSupabaseClient.storage
         .from(parsed.bucket)
         .download(parsed.path)
       if (error || !data) {
-        console.warn('Supabase storage download failed, falling back to fetch:', url, error?.message)
+        console.warn('Supabase storage image download failed; falling back to HTTP fetch', {
+          bucket: parsed.bucket,
+          path: parsed.path,
+          error: error?.message
+        })
       } else {
         const arrayBuffer = await data.arrayBuffer()
         const base64 = Buffer.from(arrayBuffer).toString('base64')
@@ -46,9 +58,9 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
       }
     }
 
-    const response = await fetch(url)
+    const response = await fetch(resolvedUrl)
     if (!response.ok) {
-      console.warn('Unable to fetch signature image:', url, response.status)
+      console.warn('Unable to fetch PDF image', { status: response.status })
       return null
     }
 
@@ -57,7 +69,7 @@ async function fetchImageAsDataUrl(url: string): Promise<string | null> {
     const contentType = response.headers.get('content-type') || 'image/png'
     return `data:${contentType};base64,${base64}`
   } catch (error) {
-    console.error('Error fetching signature image:', url, error)
+    console.error('Error fetching PDF image', error)
     return null
   }
 }
@@ -222,7 +234,8 @@ export async function generatePdfForOrderDocument(
 
   try {
     if (orderData.buyer_org?.logo_url) {
-      buyerLogoImage = await fetchImageAsDataUrl(orderData.buyer_org.logo_url)
+      const logoSource = resolvePdfOrganizationLogoSource(orderData.buyer_org.logo_url)
+      buyerLogoImage = logoSource ? await fetchImageAsDataUrl(logoSource) : null
     }
   } catch (logoErr) {
     console.warn('Could not fetch buyer logo:', logoErr)
@@ -247,7 +260,8 @@ export async function generatePdfForOrderDocument(
   let sellerLogoImage: string | null = null
   try {
     if (orderData.seller_org?.logo_url) {
-      sellerLogoImage = await fetchImageAsDataUrl(orderData.seller_org.logo_url)
+      const logoSource = resolvePdfOrganizationLogoSource(orderData.seller_org.logo_url)
+      sellerLogoImage = logoSource ? await fetchImageAsDataUrl(logoSource) : null
     }
   } catch (logoErr) {
     console.warn('Could not fetch seller logo:', logoErr)
@@ -277,21 +291,24 @@ export async function generatePdfForOrderDocument(
     console.warn('Could not fetch issuer signature:', issuerSigErr)
   }
 
-  // Fetch creator (User Level) signature - the person who created the order
+  // Fetch the authoritative order creator. Name and signature are retained as
+  // one actor so the Classic audit footer cannot mix two different users.
+  let creator: ReturnType<typeof resolvePdfAuditActor> = null
   let creatorSignatureImage: string | null = null
   if (orderData.created_by) {
     try {
-      const { data: creator } = await supabase
+      const { data: creatorRow } = await supabase
         .from('users')
-        .select('signature_url')
+        .select('full_name, signature_url')
         .eq('id', orderData.created_by)
         .single()
 
+      creator = resolvePdfAuditActor(creatorRow)
       if (creator?.signature_url) {
         creatorSignatureImage = await fetchImageAsDataUrl(creator.signature_url)
       }
     } catch (creatorErr) {
-      console.warn('Could not fetch creator signature:', creatorErr)
+      console.warn('Could not fetch order creator for PDF:', creatorErr)
     }
   }
 
@@ -300,6 +317,7 @@ export async function generatePdfForOrderDocument(
   // (approver, approval_hash, ...) that the initializer does not yet carry.
   let enrichedOrderData: Record<string, any> = {
     ...orderData,
+    creator,
     buyer_logo_image: buyerLogoImage,
     seller_logo_image: sellerLogoImage,
     buyer_signature_image: buyerSignatureImage,
@@ -315,9 +333,10 @@ export async function generatePdfForOrderDocument(
       .eq('id', orderData.approved_by)
       .single()
 
-    if (approver) {
-      const approverSignatureImage = approver.signature_url
-        ? await fetchImageAsDataUrl(approver.signature_url)
+    const resolvedApprover = resolvePdfAuditActor(approver)
+    if (resolvedApprover) {
+      const approverSignatureImage = resolvedApprover.signature_url
+        ? await fetchImageAsDataUrl(resolvedApprover.signature_url)
         : null
 
       const approvalData = `${orderData.order_no}|${orderData.approved_by}|${orderData.approved_at}`
@@ -330,9 +349,9 @@ export async function generatePdfForOrderDocument(
       enrichedOrderData = {
         ...enrichedOrderData,
         approver: {
-          full_name: approver.full_name,
-          signature_url: approver.signature_url,
-          role_name: formatRoleName((approver.roles as any)?.role_name, approver.role_code) || 'HQ POWER USER'
+          full_name: resolvedApprover.full_name,
+          signature_url: resolvedApprover.signature_url,
+          role_name: formatRoleName((approver?.roles as any)?.role_name, approver?.role_code) || 'HQ POWER USER'
         },
         approval_hash: approvalHash,
         approver_signature_image: approverSignatureImage
