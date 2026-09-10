@@ -44,7 +44,7 @@ export default function OrderDocumentsDialogEnhanced({
 }: OrderDocumentsDialogEnhancedProps) {
   type DocumentTab = 'po' | 'so' | 'do' | 'invoice' | 'payment' | 'receipt' | 'depositInvoice' | 'depositPayment' | 'balanceRequest' | 'balancePayment'
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<DocumentTab>(initialTab ?? 'po')
+  const [activeTab, setActiveTab] = useState<DocumentTab>(initialTab ?? 'po')  // normalized to the order's workflow once orderData loads
   const [documents, setDocuments] = useState<{
     po?: Document | null
     so?: Document | null
@@ -110,6 +110,45 @@ export default function OrderDocumentsDialogEnhanced({
 
   // For backwards compatibility, map to old variable name
   const is50_50Split = useSplitPayment
+
+  // Which tabs this order's workflow actually renders. D2H/S2D (distributor to
+  // HQ) run SO -> DO -> Invoice -> Payment -> Receipt and have no Purchase
+  // Order at all, so 'po' must never be the tab shown for them.
+  const availableTabs = useMemo<DocumentTab[]>(() => {
+    if (orderData?.order_type === 'D2H' || orderData?.order_type === 'S2D') {
+      return ['so', 'do', 'invoice', 'payment', 'receipt']
+    }
+    if (is50_50Split) {
+      return ['po', 'depositInvoice', 'depositPayment', 'balanceRequest', 'balancePayment', 'receipt']
+    }
+    return ['po', 'invoice', 'payment', 'receipt']
+  }, [orderData?.order_type, is50_50Split])
+
+  const defaultTab = availableTabs[0]
+
+  // Organization ids the acknowledgement rules match on. Ids only - never
+  // organization names or display text.
+  const acknowledgementOrder = useMemo(() => (
+    orderData
+      ? {
+          order_type: orderData.order_type ?? null,
+          buyer_org_id: orderData.buyer_org_id ?? null,
+          seller_org_id: orderData.seller_org_id ?? null
+        }
+      : null
+  ), [orderData])
+
+  // Keep the selected tab inside the workflow. Without this an order opened
+  // with no explicit tab (or with initialTab='po' from Track Order) lands on a
+  // 'po' tab that this workflow does not have: Radix renders the PO panel with
+  // no trigger selected, which is what showed "Purchase Order not yet created"
+  // on a D2H sales order.
+  useEffect(() => {
+    if (!orderData) return
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(defaultTab)
+    }
+  }, [orderData, availableTabs, activeTab, defaultTab])
 
   // Helper function to get pending remarks based on document type and who is responsible
   const getPendingRemarks = (doc: Document | null | undefined, docType: string): string | null => {
@@ -937,216 +976,225 @@ export default function OrderDocumentsDialogEnhanced({
               )}
 
               {/* SO Tab */}
-              <TabsContent value="so" className="space-y-4">
-                {documents.so ? (
-                  <div className="space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-blue-900 mb-2">Sales Order Details</h3>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-blue-700">Document No:</span>{' '}
-                          <span className="font-medium">{getDisplayDocNo(documents.so)}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Status:</span>{' '}
-                          <span className="font-medium capitalize">{documents.so.status}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Created:</span>{' '}
-                          <span>{formatDate(documents.so.created_at)}</span>
+              {availableTabs.includes('so') && (
+                <TabsContent value="so" className="space-y-4">
+                  {documents.so ? (
+                    <div className="space-y-4">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h3 className="font-semibold text-blue-900 mb-2">Sales Order Details</h3>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-blue-700">Document No:</span>{' '}
+                            <span className="font-medium">{getDisplayDocNo(documents.so)}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Status:</span>{' '}
+                            <span className="font-medium capitalize">{documents.so.status}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Created:</span>{' '}
+                            <span>{formatDate(documents.so.created_at)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => handleDownload(documents.so!.id, 'SO')}
-                        disabled={downloading === documents.so!.id}
-                        className="flex-1"
-                      >
-                        {downloading === documents.so!.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Downloading...
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4 mr-2" />
-                            Download SO PDF
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => handleDownload(documents.so!.id, 'SO')}
+                          disabled={downloading === documents.so!.id}
+                          className="flex-1"
+                        >
+                          {downloading === documents.so!.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Downloading...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-4 h-4 mr-2" />
+                              Download SO PDF
+                            </>
+                          )}
+                        </Button>
+                      </div>
 
-                    <AcknowledgeButton
-                      document={documents.so as Document}
-                      userProfile={userProfileWithSignature}
-                      onSuccess={loadData}
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    Sales Order not yet created
-                  </div>
-                )}
-              </TabsContent>
+                      <AcknowledgeButton
+                        document={documents.so as Document}
+                        userProfile={userProfileWithSignature}
+                        order={acknowledgementOrder}
+                        onSuccess={loadData}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      Sales Order not yet created
+                    </div>
+                  )}
+                </TabsContent>
+              )}
 
               {/* DO Tab */}
-              <TabsContent value="do" className="space-y-4">
-                {documents.do ? (
-                  <div className="space-y-4">
-                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-indigo-900 mb-2">Delivery Order Details</h3>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-indigo-700">Document No:</span>{' '}
-                          <span className="font-medium">{getDisplayDocNo(documents.do)}</span>
-                        </div>
-                        <div>
-                          <span className="text-indigo-700">Status:</span>{' '}
-                          <span className="font-medium capitalize">{documents.do.status}</span>
-                        </div>
-                        <div>
-                          <span className="text-indigo-700">Created:</span>{' '}
-                          <span>{formatDate(documents.do.created_at)}</span>
-                        </div>
-                        {documents.do.acknowledged_at && (
+              {availableTabs.includes('do') && (
+                <TabsContent value="do" className="space-y-4">
+                  {documents.do ? (
+                    <div className="space-y-4">
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                        <h3 className="font-semibold text-indigo-900 mb-2">Delivery Order Details</h3>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
                           <div>
-                            <span className="text-indigo-700">Acknowledged:</span>{' '}
-                            <span>
-                              {formatDate(documents.do.acknowledged_at)}
-                              {documents.do.acknowledged_by_user?.full_name && ` (${documents.do.acknowledged_by_user.full_name})`}
-                            </span>
+                            <span className="text-indigo-700">Document No:</span>{' '}
+                            <span className="font-medium">{getDisplayDocNo(documents.do)}</span>
                           </div>
-                        )}
+                          <div>
+                            <span className="text-indigo-700">Status:</span>{' '}
+                            <span className="font-medium capitalize">{documents.do.status}</span>
+                          </div>
+                          <div>
+                            <span className="text-indigo-700">Created:</span>{' '}
+                            <span>{formatDate(documents.do.created_at)}</span>
+                          </div>
+                          {documents.do.acknowledged_at && (
+                            <div>
+                              <span className="text-indigo-700">Acknowledged:</span>{' '}
+                              <span>
+                                {formatDate(documents.do.acknowledged_at)}
+                                {documents.do.acknowledged_by_user?.full_name && ` (${documents.do.acknowledged_by_user.full_name})`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => handleDownload(documents.do!.id, 'DO')}
-                        disabled={downloading === documents.do!.id}
-                        className="flex-1"
-                      >
-                        {downloading === documents.do!.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Downloading...
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4 mr-2" />
-                            Download DO PDF
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => handleDownload(documents.do!.id, 'DO')}
+                          disabled={downloading === documents.do!.id}
+                          className="flex-1"
+                        >
+                          {downloading === documents.do!.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Downloading...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-4 h-4 mr-2" />
+                              Download DO PDF
+                            </>
+                          )}
+                        </Button>
+                      </div>
 
-                    <AcknowledgeButton
-                      document={documents.do as Document}
-                      userProfile={userProfileWithSignature}
-                      onSuccess={loadData}
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    Delivery Order not yet created
-                  </div>
-                )}
-              </TabsContent>
+                      <AcknowledgeButton
+                        document={documents.do as Document}
+                        userProfile={userProfileWithSignature}
+                        order={acknowledgementOrder}
+                        onSuccess={loadData}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      Delivery Order not yet created
+                    </div>
+                  )}
+                </TabsContent>
+              )}
 
               {/* PO Tab */}
-              <TabsContent value="po" className="space-y-4">
-                {documents.po ? (
-                  <div className="space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-blue-900 mb-2">Purchase Order Details</h3>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-blue-700">Document No:</span>{' '}
-                          <span className="font-medium">{getDisplayDocNo(documents.po)}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Status:</span>{' '}
-                          <span className="font-medium capitalize">{documents.po.status}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Created:</span>{' '}
-                          <span>{formatDate(documents.po.created_at)}</span>
-                        </div>
-                        {documents.po.acknowledged_at && (
+              {availableTabs.includes('po') && (
+                <TabsContent value="po" className="space-y-4">
+                  {documents.po ? (
+                    <div className="space-y-4">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h3 className="font-semibold text-blue-900 mb-2">Purchase Order Details</h3>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
                           <div>
-                            <span className="text-blue-700">Acknowledged:</span>{' '}
-                            <span>
-                              {formatDate(documents.po.acknowledged_at)}
-                              {documents.po.acknowledged_by_user?.full_name && ` (${documents.po.acknowledged_by_user.full_name})`}
-                            </span>
+                            <span className="text-blue-700">Document No:</span>{' '}
+                            <span className="font-medium">{getDisplayDocNo(documents.po)}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Status:</span>{' '}
+                            <span className="font-medium capitalize">{documents.po.status}</span>
+                          </div>
+                          <div>
+                            <span className="text-blue-700">Created:</span>{' '}
+                            <span>{formatDate(documents.po.created_at)}</span>
+                          </div>
+                          {documents.po.acknowledged_at && (
+                            <div>
+                              <span className="text-blue-700">Acknowledged:</span>{' '}
+                              <span>
+                                {formatDate(documents.po.acknowledged_at)}
+                                {documents.po.acknowledged_by_user?.full_name && ` (${documents.po.acknowledged_by_user.full_name})`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {/* Pending Remarks */}
+                        {documents.po.status === 'pending' && (
+                          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                            <p className="text-sm text-amber-800">
+                              <span className="font-medium">Remarks:</span>{' '}
+                              {getPendingRemarks(documents.po, 'PO')}
+                            </p>
                           </div>
                         )}
                       </div>
-                      {/* Pending Remarks */}
-                      {documents.po.status === 'pending' && (
-                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                          <p className="text-sm text-amber-800">
-                            <span className="font-medium">Remarks:</span>{' '}
-                            {getPendingRemarks(documents.po, 'PO')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
 
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => handleDownload(documents.po!.id, 'PO')}
-                        disabled={downloading === documents.po!.id}
-                        className="flex-1"
-                      >
-                        {downloading === documents.po!.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Downloading...
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4 mr-2" />
-                            Download PO PDF
-                          </>
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => handleDownload(documents.po!.id, 'PO')}
+                          disabled={downloading === documents.po!.id}
+                          className="flex-1"
+                        >
+                          {downloading === documents.po!.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Downloading...
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-4 h-4 mr-2" />
+                              Download PO PDF
+                            </>
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Show manufacturer document upload for seller (manufacturer) before acknowledgment */}
+                      {documents.po.status === 'pending' &&
+                        documents.po.issued_to_org_id === userProfile.organization_id &&
+                        orderData?.order_type === 'H2M' && (
+                          <ManufacturerDocumentUpload
+                            documentId={documents.po.id}
+                            orderId={orderId}
+                            companyId={orderData?.company_id}
+                            onUploadComplete={setManufacturerDocUrl}
+                            existingFileUrl={manufacturerDocUrl}
+                          />
                         )}
-                      </Button>
+
+                      <AcknowledgeButton
+                        document={documents.po as Document}
+                        userProfile={userProfileWithSignature}
+                        order={acknowledgementOrder}
+                        onSuccess={async () => {
+                          // When PO is acknowledged, update order status to Unpaid (if not already)
+                          // This is handled by the backend trigger usually, but we can force a refresh
+                          await loadData()
+
+                          // Also refresh the parent view if needed
+                          // We can't easily do that here, but the user will see it when they close the dialog
+                        }}
+                      />
                     </div>
-
-                    {/* Show manufacturer document upload for seller (manufacturer) before acknowledgment */}
-                    {documents.po.status === 'pending' &&
-                      documents.po.issued_to_org_id === userProfile.organization_id &&
-                      orderData?.order_type === 'H2M' && (
-                        <ManufacturerDocumentUpload
-                          documentId={documents.po.id}
-                          orderId={orderId}
-                          companyId={orderData?.company_id}
-                          onUploadComplete={setManufacturerDocUrl}
-                          existingFileUrl={manufacturerDocUrl}
-                        />
-                      )}
-
-                    <AcknowledgeButton
-                      document={documents.po as Document}
-                      userProfile={userProfileWithSignature}
-                      onSuccess={async () => {
-                        // When PO is acknowledged, update order status to Unpaid (if not already)
-                        // This is handled by the backend trigger usually, but we can force a refresh
-                        await loadData()
-
-                        // Also refresh the parent view if needed
-                        // We can't easily do that here, but the user will see it when they close the dialog
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    Purchase Order not yet created
-                  </div>
-                )}
-              </TabsContent>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      Purchase Order not yet created
+                    </div>
+                  )}
+                </TabsContent>
+              )}
 
               {/* Invoice Tab */}
               <TabsContent value="invoice" className="space-y-4">
@@ -1270,6 +1318,7 @@ export default function OrderDocumentsDialogEnhanced({
                     <AcknowledgeButton
                       document={documents.invoice as Document}
                       userProfile={userProfileWithSignature}
+                      order={acknowledgementOrder}
                       onSuccess={loadData}
                       requiresPaymentProof={requiresPaymentProof}
                       paymentProofUrl={paymentProofUrl}
@@ -1350,6 +1399,7 @@ export default function OrderDocumentsDialogEnhanced({
                     <AcknowledgeButton
                       document={documents.payment as Document}
                       userProfile={userProfileWithSignature}
+                      order={acknowledgementOrder}
                       onSuccess={loadData}
                       paymentProofUrl={paymentProofUrl}
                       hasReviewedPaymentProof={hasReviewedPaymentProof}
@@ -1512,6 +1562,7 @@ export default function OrderDocumentsDialogEnhanced({
                     <AcknowledgeButton
                       document={documents.depositInvoice}
                       userProfile={userProfileWithSignature}
+                      order={acknowledgementOrder}
                       onSuccess={loadData}
                       requiresPaymentProof={requiresPaymentProof}
                       paymentProofUrl={paymentProofUrl}
@@ -1651,6 +1702,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <AcknowledgeButton
                         document={documents.depositPayment}
                         userProfile={userProfileWithSignature}
+                        order={acknowledgementOrder}
                         onSuccess={loadData}
                         requiresPaymentProof={requiresPaymentProof}
                         paymentProofUrl={paymentProofUrl}
@@ -1884,6 +1936,7 @@ export default function OrderDocumentsDialogEnhanced({
                       <AcknowledgeButton
                         document={documents.balancePayment}
                         userProfile={userProfileWithSignature}
+                        order={acknowledgementOrder}
                         onSuccess={loadData}
                         paymentProofUrl={balancePaymentProofUrl}
                         hasReviewedPaymentProof={hasReviewedBalanceProof}
