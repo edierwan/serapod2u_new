@@ -68,8 +68,14 @@ interface OrderData {
     role_name: string
     signature_url: string | null
   }
+  creator?: {
+    full_name: string
+    signature_url: string | null
+  } | null
   approval_hash?: string
   approver_signature_image?: string | null
+  buyer_logo_image?: string | null
+  seller_logo_image?: string | null
   warehouse_org_id?: string | null
   /**
    * The issuing organization's own Terms & Conditions
@@ -758,114 +764,52 @@ export class PDFGenerator {
     }
   }
 
-  private async addCompanyLogo(yPosition: number): Promise<number> {
+  private imageFormat(imageData: string): 'PNG' | 'JPEG' | 'WEBP' {
+    if (/^data:image\/(?:jpe?g);/i.test(imageData)) return 'JPEG'
+    if (/^data:image\/webp;/i.test(imageData)) return 'WEBP'
+    return 'PNG'
+  }
+
+  private dataUrlByteLength(imageData: string): number {
+    const base64 = imageData.includes('base64,')
+      ? imageData.slice(imageData.indexOf('base64,') + 7)
+      : imageData
+    return Buffer.from(base64, 'base64').length
+  }
+
+  private async addCompanyLogo(yPosition: number, logoImage?: string | null): Promise<number> {
     const imgWidth = 40
-    const imgHeight = 10
-    const xPos = (this.pageWidth - imgWidth) / 2
+    const imgMaxHeight = 15
 
     try {
       // Use cached compressed logo if available
       if (this.compressedLogoCache) {
-        this.doc.addImage(this.compressedLogoCache, 'PNG', xPos, yPosition, imgWidth, imgHeight)
-        return yPosition + imgHeight + 5
+        logoImage = this.compressedLogoCache
       }
 
-      // When running on the server (API route), read the logo directly from disk
-      if (typeof window === 'undefined') {
-        const fs = await import('fs/promises')
-        const path = await import('path')
+      if (logoImage) {
+        const props = this.doc.getImageProperties(logoImage)
+        const ratio = props.width / props.height
+        const renderedWidth = Math.min(imgWidth, imgMaxHeight * ratio)
+        const renderedHeight = renderedWidth / ratio
+        const xPos = (this.pageWidth - renderedWidth) / 2
+        const byteLength = this.dataUrlByteLength(logoImage)
 
-        // Try optimized logo first (8-bit, smaller file), fallback to original
-        const optimizedLogoPath = path.join(process.cwd(), 'public', 'images', 'seralogo-optimized.png')
-        const originalLogoPath = path.join(process.cwd(), 'public', 'images', 'seralogo.png')
-
-        try {
-          // Prefer optimized version (8-bit, ~29KB vs 110KB)
-          let imageBuffer: Buffer
-          let logoPath: string
-
-          try {
-            imageBuffer = await fs.readFile(optimizedLogoPath)
-            logoPath = optimizedLogoPath
-          } catch {
-            // Fallback to original if optimized doesn't exist
-            imageBuffer = await fs.readFile(originalLogoPath)
-            logoPath = originalLogoPath
-          }
-
-          const base64data = `data:image/png;base64,${imageBuffer.toString('base64')}`
-
-          // Track logo size
-          this.compressionStats.logoOriginalSize = 110078  // Original file size
-          this.compressionStats.logoCompressedSize = imageBuffer.length
-          this.compressionStats.totalSavings += Math.max(0, 110078 - imageBuffer.length)
-
-          // Cache the logo
-          this.compressedLogoCache = base64data
-
-          this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
-          return yPosition + imgHeight + 5
-        } catch (fsError) {
-          console.warn('Logo file missing or unreadable:', fsError)
-        }
-        // Fallback to text if image fails to load
-        this.doc.setFontSize(20)
-        this.doc.setFont('helvetica', 'bold')
-        this.doc.setTextColor(0, 0, 0)
-        this.doc.text('serapod', this.pageWidth / 2, yPosition, { align: 'center' })
-        return yPosition + 10
+        this.compressedLogoCache = logoImage
+        this.compressionStats.logoOriginalSize = byteLength
+        this.compressionStats.logoCompressedSize = byteLength
+        this.doc.addImage(logoImage, this.imageFormat(logoImage), xPos, yPosition, renderedWidth, renderedHeight)
+        return yPosition + renderedHeight + 5
       }
-
-      // Fallback to fetching via browser if needed (e.g., client-side rendering)
-      // Try optimized version first
-      let response = await fetch('/images/seralogo-optimized.png', { cache: 'no-store' })
-      if (!response.ok) {
-        response = await fetch('/images/seralogo.png', { cache: 'no-store' })
-      }
-
-      if (response.ok) {
-        const blob = await response.blob()
-        const reader = new FileReader()
-
-        return await new Promise((resolve, reject) => {
-          reader.onloadend = async () => {
-            try {
-              const base64data = reader.result as string
-
-              // Use optimized logo directly without runtime compression
-              // (optimized version is pre-compressed 8-bit PNG)
-              this.compressionStats.logoOriginalSize = 110078
-              this.compressionStats.logoCompressedSize = blob.size
-              this.compressionStats.totalSavings += Math.max(0, 110078 - blob.size)
-
-              // Cache the logo
-              this.compressedLogoCache = base64data
-
-              this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
-              resolve(yPosition + imgHeight + 5)
-            } catch (error) {
-              console.error('Error adding logo:', error)
-              // Fallback to original if anything fails
-              const base64data = reader.result as string
-              this.doc.addImage(base64data, 'PNG', xPos, yPosition, imgWidth, imgHeight)
-              resolve(yPosition + imgHeight + 5)
-            }
-          }
-          reader.onerror = () => reject(new Error('Failed to read logo blob'))
-          reader.readAsDataURL(blob)
-        })
-      }
-
-      console.warn('Logo fetch returned status', response.status)
     } catch (error) {
-      console.error('Error loading logo:', error)
+      console.error('Error rendering organization logo:', error)
     }
 
-    // Fallback to text if image fails to load
-    this.doc.setFontSize(20)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.setTextColor(0, 0, 0)
-    this.doc.text('serapod', this.pageWidth / 2, yPosition, { align: 'center' })
+    // Graceful fallback only when the issuer has no usable organization logo.
+    this.doc.setFontSize(8)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(150, 150, 150)
+    this.doc.text('LOGO', this.pageWidth / 2, yPosition + 5, { align: 'center' })
     return yPosition + 10
   }
 
@@ -1591,7 +1535,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.buyer_logo_image)
     y += 5
 
     // Document Title
@@ -1631,7 +1575,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.buyer_logo_image)
     y += 5
 
     // Document Title
@@ -1671,7 +1615,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.seller_logo_image)
     y += 5
 
     // Document Title
@@ -1787,7 +1731,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.buyer_logo_image)
     y += 5
 
     const paymentTerms = this.normalizePaymentTerms(orderData.payment_terms)
@@ -2002,7 +1946,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.seller_logo_image)
     y += 5
 
     // Determine payment percentage from document - now dynamic based on payment terms
@@ -2083,7 +2027,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.seller_logo_image)
     y += 5
 
     const payload = (documentData.payload || {}) as Record<string, any>
@@ -2383,7 +2327,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.seller_logo_image)
     y += 5
 
     // Document Title
@@ -2423,7 +2367,7 @@ export class PDFGenerator {
     let y = 15
 
     // Company Logo
-    y = await this.addCompanyLogo(y)
+    y = await this.addCompanyLogo(y, orderData.seller_logo_image)
     y += 5
 
     // Document Title
