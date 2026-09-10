@@ -1,14 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { CheckCircle2, Loader2 } from 'lucide-react'
-import { 
-  canAcknowledgeDocument, 
+import {
+  canAcknowledgeDocument,
   getDocumentTypeLabel,
-  type Document 
+  type AcknowledgementOrder,
+  type Document
 } from '@/lib/document-permissions'
 
 interface AcknowledgeButtonProps {
@@ -24,6 +24,12 @@ interface AcknowledgeButtonProps {
       role_level: number
     }
   }
+  /**
+   * The order the document belongs to. Lets the shared authorization helper
+   * match the buyer organization by id when the document row was loaded
+   * without its org columns.
+   */
+  order?: AcknowledgementOrder | null
   onSuccess: () => void
   requiresPaymentProof?: boolean
   paymentProofUrl?: string | null
@@ -33,6 +39,7 @@ interface AcknowledgeButtonProps {
 export default function AcknowledgeButton({
   document,
   userProfile,
+  order = null,
   onSuccess,
   requiresPaymentProof = false,
   paymentProofUrl = null,
@@ -40,14 +47,18 @@ export default function AcknowledgeButton({
 }: AcknowledgeButtonProps) {
   const [acknowledging, setAcknowledging] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
 
-  // Check if user can acknowledge this document
-  const canAcknowledge = canAcknowledgeDocument(document, {
-    organizationId: userProfile.organization_id,
-    orgTypeCode: userProfile.organizations.org_type_code,
-    roleLevel: userProfile.roles.role_level
-  })
+  // Check if user can acknowledge this document. The API route re-runs exactly
+  // this rule, so the button never offers an action the backend would reject.
+  const canAcknowledge = canAcknowledgeDocument(
+    document,
+    {
+      organizationId: userProfile.organization_id,
+      orgTypeCode: userProfile.organizations.org_type_code,
+      roleLevel: userProfile.roles.role_level
+    },
+    order
+  )
 
   const isPending = document.status === 'pending'
   const normalizedOrgType = userProfile.organizations.org_type_code?.toUpperCase() ?? ''
@@ -113,54 +124,33 @@ export default function AcknowledgeButton({
 
       setAcknowledging(true)
 
-      let result
-      let successMessage = ''
-
-      switch (document.doc_type) {
-        case 'PO':
-          result = await supabase.rpc('po_acknowledge', {
-            p_document_id: document.id
-          })
-          successMessage = 'Purchase Order acknowledged. Invoice has been automatically generated.'
-          break
-
-        case 'SO':
-          result = await supabase.rpc('so_acknowledge', {
-            p_document_id: document.id
-          })
-          successMessage = 'Sales Order acknowledged.'
-          break
-
-        case 'DO':
-          result = await supabase.rpc('do_acknowledge', {
-            p_document_id: document.id
-          })
-          successMessage = 'Delivery Order acknowledged.'
-          break
-
-        case 'INVOICE':
-          result = await supabase.rpc('invoice_acknowledge', {
-            p_document_id: document.id,
-            p_payment_proof_url: paymentProofUrl
-          })
-          successMessage = 'Invoice acknowledged. Payment document has been created.'
-          break
-
-        case 'PAYMENT':
-          result = await supabase.rpc('payment_acknowledge', {
-            p_document_id: document.id
-          })
-          successMessage = 'Payment acknowledged. Receipt has been generated and order is now closed.'
-          break
-
-        default:
-          throw new Error('Invalid document type for acknowledgment')
+      const successMessages: Record<string, string> = {
+        PO: 'Purchase Order acknowledged. Invoice has been automatically generated.',
+        SO: 'Sales Order acknowledged.',
+        DO: 'Delivery Order acknowledged.',
+        INVOICE: 'Invoice acknowledged. Payment document has been created.',
+        PAYMENT: 'Payment acknowledged. Receipt has been generated and order is now closed.'
       }
 
-      if (result.error) {
-        const { message, details, hint, code } = result.error
-        const composedMessage = message || details || hint || (code ? `Acknowledgement failed (code ${code})` : null)
-        throw new Error(composedMessage || 'Failed to acknowledge document')
+      const successMessage = successMessages[document.doc_type]
+      if (!successMessage) {
+        throw new Error('Invalid document type for acknowledgment')
+      }
+
+      // Single acknowledgement endpoint: it re-checks authorization server-side
+      // before touching the document, so the rules cannot be bypassed by
+      // calling the database directly from the browser.
+      const response = await fetch(`/api/documents/${document.id}/acknowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ paymentProofUrl: paymentProofUrl ?? null })
+      })
+
+      const payload = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to acknowledge document')
       }
 
       toast({
@@ -178,7 +168,8 @@ export default function AcknowledgeButton({
         : 'Failed to acknowledge document'
       
       // Handle authorization errors before payment proof messaging
-      if (error.message && error.message.toLowerCase().includes('for this organization')) {
+      const message = typeof error?.message === 'string' ? error.message.toLowerCase() : ''
+      if (message.includes('for this organization') || message.includes('not permitted')) {
         toast({
           title: 'Not Authorized',
           description: 'Your organization is not permitted to acknowledge this document. Please contact the assigned team for assistance.',

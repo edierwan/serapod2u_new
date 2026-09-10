@@ -3,6 +3,22 @@
  * Handles role-based access control for document acknowledgments
  */
 
+import {
+  canAcknowledgeOrderDocument,
+  type AcknowledgementOrder
+} from '@/lib/documents/acknowledge-authorization'
+
+export {
+  canAcknowledgeOrderDocument,
+  describeAcknowledgementDenial,
+  HQ_ACKNOWLEDGEMENT_ROLE_LEVELS
+} from '@/lib/documents/acknowledge-authorization'
+export type {
+  AcknowledgementActor,
+  AcknowledgementDecision,
+  AcknowledgementOrder
+} from '@/lib/documents/acknowledge-authorization'
+
 export interface Document {
   id: string
   doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST' | 'SO' | 'DO'
@@ -31,51 +47,28 @@ export interface UserPermissions {
 }
 
 /**
- * Determines if a user can acknowledge a specific document
- * 
- * Rules:
- * - PO: ONLY Seller (Manufacturer) can acknowledge - HQ cannot override
- * - INVOICE: Buyer (HQ) acknowledges
- * - PAYMENT: Seller (Manufacturer) acknowledges
- * - RECEIPT: No acknowledgment needed (terminal state)
- * - HQ Admins can acknowledge INVOICE/PAYMENT but NOT PO
+ * Determines if a user can acknowledge a specific document.
+ *
+ * Thin wrapper over the shared helper in
+ * `@/lib/documents/acknowledge-authorization` so the buttons, the dialogs and
+ * the acknowledge API route all evaluate exactly the same rules. Pass `order`
+ * when it is available so the buyer organization can be matched on orders whose
+ * document row was loaded without its org columns.
  */
 export function canAcknowledgeDocument(
   document: Document,
-  userPermissions: UserPermissions
+  userPermissions: UserPermissions,
+  order?: AcknowledgementOrder | null
 ): boolean {
-  const { organizationId, orgTypeCode, roleLevel } = userPermissions
-
-  const normalizedOrgType = orgTypeCode?.toUpperCase() ?? ''
-  const isManufacturer = ['MFG', 'MANU'].includes(normalizedOrgType)
-  const isHqAdminOverride = normalizedOrgType === 'HQ' && roleLevel <= 10
-
-  // Receipt is terminal - no acknowledgment
-  if (document.doc_type === 'RECEIPT') {
-    return false
-  }
-
-  // Document must be pending
-  if (document.status !== 'pending') {
-    return false
-  }
-
-  // Check if user's organization is the one that should acknowledge
-  const isAcknowledger = document.issued_to_org_id === organizationId
-
-  // Special case: PO can ONLY be acknowledged by the manufacturer (seller/issued_to)
-  // HQ cannot acknowledge PO even with admin privileges
-  if (document.doc_type === 'PO') {
-    // Only the manufacturer organization (issued_to) can acknowledge
-    return isAcknowledger && isManufacturer
-  }
-
-  // For other document types (INVOICE, PAYMENT, PAYMENT_REQUEST), HQ Admin can override if needed
-  if (isHqAdminOverride) {
-    return true
-  }
-
-  return isAcknowledger
+  return canAcknowledgeOrderDocument({
+    actor: {
+      organizationId: userPermissions.organizationId,
+      orgTypeCode: userPermissions.orgTypeCode,
+      roleLevel: userPermissions.roleLevel
+    },
+    document,
+    order
+  }).allowed
 }
 
 /**
@@ -86,7 +79,7 @@ export function getAcknowledger(document: Document): 'buyer' | 'seller' | 'hq' |
     case 'PO':
       return 'seller' // Seller acknowledges PO
     case 'SO':
-      return 'none' // Sales Order is internal/confirmation, usually no ack needed or maybe buyer? Let's say none for now or buyer.
+      return 'buyer' // Sales Order is issued to the buyer (distributor on D2H)
     case 'DO':
       return 'buyer' // Buyer acknowledges Delivery Order (Goods Received)
     case 'INVOICE':
