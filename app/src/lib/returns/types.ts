@@ -146,6 +146,10 @@ export interface EligibleProduct {
     barcode: string | null
     product_name: string
     variant_name: string | null
+    /** product_variants.product_code — the variant half of the shared identity. */
+    variant_product_code: string | null
+    /** product_variants.alternative_name — the distributor-facing name. */
+    alternative_name: string | null
     /** Hero / Zero / S.Box / S.Line / other, classified from the product name. */
     product_line: 'hero' | 'zero' | 'sbox' | 'sline' | 'other'
     image_url: string | null

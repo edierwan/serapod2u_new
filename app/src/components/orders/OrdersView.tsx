@@ -90,6 +90,19 @@ interface OrdersViewProps {
  */
 const ORDER_FETCH_LIMIT = 1000
 
+/**
+ * The messaging warehouse flow (Telegram submit → prepare → ready → ship) is
+ * not released yet, so the Orders page keeps it off unless an environment opts
+ * in with NEXT_PUBLIC_MESSAGING_FULFILLMENT_ENABLED=true. Until now the panel
+ * was rendered unconditionally and only self-hid on an empty queue, so it
+ * appeared wherever the optional messaging migrations happened to be installed
+ * and carried open rows — visible on developer databases, invisible in
+ * production. The gate makes that difference explicit instead of incidental.
+ * The panel, its API routes and the Serapp/Telegram wiring are untouched.
+ */
+const MESSAGING_FULFILLMENT_ENABLED =
+  process.env.NEXT_PUBLIC_MESSAGING_FULFILLMENT_ENABLED === 'true'
+
 type OrderActor = {
   id: string
   email: string
@@ -1195,7 +1208,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         }
       />
 
-      <MessagingWarehouseInboxPanel />
+      {MESSAGING_FULFILLMENT_ENABLED && <MessagingWarehouseInboxPanel />}
 
       {/* Summary Cards */}
       {summary && (

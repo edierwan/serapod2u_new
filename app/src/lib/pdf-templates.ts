@@ -9,6 +9,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { wrapTermsLines } from '@/lib/organizations/terms'
+import { isBuyerIssuedDocument, resolveCounterparty } from '@/lib/documents/counterparty'
 
 export type DocumentTemplateType = 'detailed' | 'classic'
 
@@ -27,6 +28,8 @@ export interface TemplateOrderData {
   approver_signature_image?: string | null
   buyer_org: {
     org_name: string
+    /** `organizations.org_type_code`, e.g. 'DIST' — drives the party label. */
+    org_type_code?: string | null
     address?: string | null
     address_line2?: string | null
     city?: string | null
@@ -40,6 +43,8 @@ export interface TemplateOrderData {
   }
   seller_org: {
     org_name: string
+    /** `organizations.org_type_code`, e.g. 'DIST' — drives the party label. */
+    org_type_code?: string | null
     address?: string | null
     address_line2?: string | null
     city?: string | null
@@ -172,8 +177,10 @@ export class ClassicTemplate {
     })
 
     // --- Left Column Content (Logo + Info) ---
-    // Determine Issuer (Header Party) based on document title
-    const isBuyerIssuer = ['PURCHASE ORDER', 'PURCHASE_ORDER', 'PO', 'PAYMENT ADVICE', 'PAYMENT', 'ORDER'].some(t => docTitle.toUpperCase().includes(t))
+    // Determine Issuer (Header Party) from the document kind. Shared with the
+    // counterparty block below so the letterhead and the party named beneath it
+    // are always the two opposite sides of the order.
+    const isBuyerIssuer = isBuyerIssuedDocument(docTitle)
     const headerOrg = isBuyerIssuer ? orderData.buyer_org : orderData.seller_org
     const headerLogo = isBuyerIssuer ? orderData.buyer_logo_image : orderData.seller_logo_image
 
@@ -247,8 +254,8 @@ export class ClassicTemplate {
 
     y = Math.max(currentTextY, detailsY) + 5
 
-    // 2. Supplier & Status Section
-    // Draw line above Supplier
+    // 2. Counterparty & Status Section
+    // Draw line above the counterparty block
     this.doc.setDrawColor(230, 230, 230)
     this.doc.setLineWidth(0.1)
     this.doc.line(this.margin, y, this.pageWidth - this.margin, y)
@@ -256,62 +263,32 @@ export class ClassicTemplate {
     y += 5
     const supplierY = y
 
-    // Supplier (Left) - Only show supplier name and address
+    // Counterparty (Left) — the party this document is FOR, i.e. whichever of
+    // the two organizations the letterhead above is not. Labelled from that
+    // organization's own type, so a distributor reads as "Distributor:" rather
+    // than the previous hardcoded "Supplier:" (which, on a seller-issued
+    // document such as an invoice, also repeated the letterhead org).
+    const counterparty = resolveCounterparty(orderData, docTitle)
+
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'bold')
     this.doc.setTextColor(0, 0, 0)
-    this.doc.text('Supplier:', this.margin, supplierY)
+    this.doc.text(counterparty.label, this.margin, supplierY)
 
-    this.doc.setFontSize(9)
-    this.doc.text(orderData.seller_org.org_name.toUpperCase(), this.margin, supplierY + 6)
+    let suppAddrY = supplierY + 6
+
+    if (counterparty.name) {
+      this.doc.setFontSize(9)
+      this.doc.text(counterparty.name, this.margin, suppAddrY)
+      suppAddrY += 5
+    }
 
     this.doc.setFont('helvetica', 'normal')
     this.doc.setTextColor(100, 100, 100)
-    let suppAddrY = supplierY + 11
 
-    // Helper to clean and validate address line
-    const cleanAddressLine = (line: string | null | undefined): string | null => {
-      if (!line || typeof line !== 'string') return null
-      const trimmed = line.trim()
-      if (trimmed.length === 0) return null
-      // Filter out UUID patterns (8-4-4-4-12 hex format)
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return null
-      // Filter out long hex strings
-      if (/^[0-9a-f]{16,}$/i.test(trimmed)) return null
-      return trimmed
-    }
-
-    // Build address lines - split any newlines in address fields
-    const addressLines: string[] = []
-
-    // Process main address field (may contain newlines)
-    const mainAddress = cleanAddressLine(orderData.seller_org.address)
-    if (mainAddress) {
-      // Split by newlines and add each line separately
-      mainAddress.split(/[\n\r]+/).forEach(line => {
-        const cleaned = cleanAddressLine(line)
-        if (cleaned) addressLines.push(cleaned)
-      })
-    }
-
-    // Process address_line2
-    const address2 = cleanAddressLine(orderData.seller_org.address_line2)
-    if (address2) {
-      address2.split(/[\n\r]+/).forEach(line => {
-        const cleaned = cleanAddressLine(line)
-        if (cleaned) addressLines.push(cleaned)
-      })
-    }
-
-    // Add city/postal code if available
-    const cityPostal = [orderData.seller_org.city, orderData.seller_org.postal_code].filter(Boolean).join(', ')
-    if (cityPostal) {
-      const cleaned = cleanAddressLine(cityPostal)
-      if (cleaned) addressLines.push(cleaned)
-    }
-
-    // Render address lines with proper line height
-    addressLines.forEach(line => {
+    // Address then contact lines; every entry is already non-empty, so a
+    // sparsely filled organization simply renders fewer lines.
+    counterparty.detailLines.forEach(line => {
       this.doc.text(line, this.margin, suppAddrY)
       suppAddrY += 4
     })

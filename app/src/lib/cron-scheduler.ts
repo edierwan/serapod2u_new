@@ -13,14 +13,52 @@ import { randomUUID } from 'node:crypto'
  * NOT on serverless (Vercel, AWS Lambda).
  */
 
-const CRON_JOBS = [
+interface CronJob {
+  path: string
+  schedule: string
+  /** Absent means "always scheduled". Evaluated once, at registration. */
+  enabled?: (env?: NodeJS.ProcessEnv) => boolean
+}
+
+const CRON_JOBS: CronJob[] = [
   { path: '/api/cron/qr-reverse-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/qr-generation-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/manufacturer-packing-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/notification-outbox-worker', schedule: '*/1 * * * *' },
-  // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release stock
-  { path: '/api/cron/serapp-hold-expiry', schedule: '*/5 * * * *' },
+  // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release
+  // stock. Opt-in: see serappHoldExpiryEnabled.
+  {
+    path: '/api/cron/serapp-hold-expiry',
+    schedule: '*/5 * * * *',
+    enabled: serappHoldExpiryEnabled,
+  },
 ]
+
+/**
+ * Opt-in gate for the Serapp hold-expiry worker.
+ *
+ * Why opt-in rather than always-on: Serapp order holds are not a released
+ * feature, and an environment that has not received the Serapp migrations has
+ * no public.serapp_order_holds for the worker to read. Scheduling it there
+ * produces nothing but a 500 every five minutes, and the moment the table does
+ * appear an unreleased worker would begin expiring live holds on its own. So
+ * the schedule stays off until an environment explicitly asks for it.
+ *
+ * This gates the SCHEDULE only. The route keeps working for anyone who calls
+ * it, so enabling the feature later is an env change, not a deploy.
+ *
+ * Mirrors the spellings accepted by internalCronWorkersDisabled, inverted:
+ * absent or a falsey spelling means not scheduled.
+ */
+export function serappHoldExpiryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.ENABLE_SERAPP_HOLD_EXPIRY
+  if (raw === undefined || raw === null) return false
+
+  const value = String(raw).trim().toLowerCase()
+  if (value === '') return false
+
+  return !['0', 'false', 'off', 'no'].includes(value)
+}
 
 function normalizeBaseUrl(rawUrl: string): string {
   const withProtocol = rawUrl.includes('://') ? rawUrl : `https://${rawUrl}`
@@ -125,6 +163,8 @@ interface CronSchedulerRegistry {
   registeredPaths: Set<string>
   /** path -> cron period index already dispatched (secondary guard) */
   lastDispatchPeriod: Map<string, number>
+  /** Keeps the "workers disabled" notice to one line per process. */
+  disabledNoticeLogged: boolean
 }
 
 type RegistryHolder = typeof globalThis & {
@@ -139,6 +179,7 @@ function getRegistry(): CronSchedulerRegistry {
       schedulerInstanceId: randomUUID().slice(0, 8),
       registeredPaths: new Set<string>(),
       lastDispatchPeriod: new Map<string, number>(),
+      disabledNoticeLogged: false,
     }
   }
   return holder[REGISTRY_KEY]
@@ -152,6 +193,29 @@ export function __resetCronRegistryForTests(): void {
 /** Exported for tests only. */
 export function __getCronRegistryForTests(): CronSchedulerRegistry {
   return getRegistry()
+}
+
+/**
+ * Kill switch for the internal cron workers.
+ *
+ * Why an explicit flag rather than a NODE_ENV check: a developer's localhost
+ * commonly points at a SHARED database, and these workers write to it — running
+ * `next dev` to review a UI would quietly mutate staging. But development is
+ * also exactly where someone may need the workers running on purpose, so the
+ * environment alone must never decide. Only this flag disables them, and its
+ * absence leaves staging and production behaviour untouched.
+ *
+ * Accepts the usual falsey spellings so `DISABLE_INTERNAL_CRON_WORKERS=0`
+ * means what it looks like it means.
+ */
+export function internalCronWorkersDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.DISABLE_INTERNAL_CRON_WORKERS
+  if (raw === undefined || raw === null) return false
+
+  const value = String(raw).trim().toLowerCase()
+  if (value === '') return false
+
+  return !['0', 'false', 'off', 'no'].includes(value)
 }
 
 /** A 5-field expression is minute-granular; a 6-field one carries seconds. */
@@ -182,6 +246,17 @@ export function claimDispatchSlot(path: string, expression: string, now: number)
 export function startCronScheduler(): void {
   const registry = getRegistry()
 
+  // Checked before the started flag is claimed and before any cron.schedule
+  // call, so a disabled process registers nothing at all — not a registered
+  // task that later declines to fire.
+  if (internalCronWorkersDisabled()) {
+    if (!registry.disabledNoticeLogged) {
+      registry.disabledNoticeLogged = true
+      console.log('[Cron] Internal cron workers DISABLED by DISABLE_INTERNAL_CRON_WORKERS — no workers registered')
+    }
+    return
+  }
+
   if (registry.started) {
     // Reached when the runtime evaluates this module a second time. One concise
     // line, emitted at most once per extra evaluation - not per tick.
@@ -198,6 +273,13 @@ export function startCronScheduler(): void {
   console.log(`[Cron] CRON_SECRET: ${process.env.CRON_SECRET ? 'set' : 'NOT SET'}`)
 
   for (const job of CRON_JOBS) {
+    // Checked before registration so a gated-off job registers no task at all,
+    // rather than a task that fires and then declines to do anything.
+    if (job.enabled && !job.enabled()) {
+      console.log(`[Cron] Not scheduled: ${job.path} — feature not enabled in this environment`)
+      continue
+    }
+
     if (registry.registeredPaths.has(job.path)) {
       console.warn(`[Cron] ${job.path} already registered - skipping`)
       continue

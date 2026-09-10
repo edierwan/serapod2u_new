@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
             campaignId: String(searchParams.get('campaignId') || '').trim() || null,
             accountManagerUserId: String(searchParams.get('accountManagerUserId') || '').trim() || null,
             regionStateId: String(searchParams.get('regionStateId') || '').trim() || null,
+            carryForwardOpenItems: searchParams.get('carryForward') === 'open',
         })
 
         return NextResponse.json({ success: true, data: dataset })

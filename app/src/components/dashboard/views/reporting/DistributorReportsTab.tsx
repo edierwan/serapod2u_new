@@ -1,1181 +1,1505 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, Cell, ComposedChart, Line,
+  Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  Download, TrendingUp, TrendingDown, Users, ShoppingCart,
-  Loader2, RefreshCw, DollarSign, ArrowUpRight, ArrowDownRight,
-  Building2, Target, CheckCircle2, Search, Copy, Link2,
-  PieChart as PieChartIcon, UserMinus, UserPlus, Repeat, Crown,
-  Medal, Award, ChevronRight, Package, Minus, ChevronLeft,
-  Calendar as CalendarIcon, Filter, X, Eye, MapPin, Phone,
+  AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, Building2, Calendar,
+  ChevronLeft, ChevronRight, ClipboardList, Download, FileSpreadsheet, HeartPulse,
+  Loader2, Minus, Package, PieChart as PieIcon, RefreshCw, Search, ShoppingCart,
+  Target, TrendingUp, Users, X,
 } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
-import { useTheme } from '@/components/providers/ThemeProvider'
-import RepeatRateAnalytics from './RepeatRateAnalytics'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
+import {
+  ALL_DISTRIBUTORS,
+  ALL_STATUS,
+  ACTION_LABEL,
+  HEALTH_LABEL,
+  buildReportingMonthOptions,
+  currentReportingMonthKey,
+  statusLabel,
+  type ActionKey,
+  type ComparisonRow,
+  type DistributorAnalyticsReport,
+  type DistributorRow,
+  type HealthStatus,
+  type LeaderboardRow,
+} from '@/lib/reporting/distributor-analytics'
+import type { ReportingPeriod } from '@/lib/reporting/reporting-period'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
-import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
-import type {
-  DistributorReportData,
-  KPICard,
-  DistributorLeaderboardRow,
-  ComparisonItem,
-  InsightCard as InsightCardType,
-  MonthlyTrendPoint,
-  DistributorDetail,
-} from '@/lib/reporting/distributorReports.types'
+import { REPORTING_COLORS, REPORTING_PANEL_CLASS, ReportingTabLoading } from './reportingChrome'
 
-// ============================================================
-// CONSTANTS & COLORS
-// ============================================================
-const COLORS = {
-  primary: '#e85d04',
-  success: '#059669',
-  warning: '#d97706',
-  danger: '#dc2626',
-  purple: '#7c3aed',
-  pink: '#db2777',
-  cyan: '#0891b2',
-  indigo: '#6366f1',
-}
-
-const CHART_COLORS = [
-  COLORS.primary, COLORS.success, COLORS.warning,
-  COLORS.purple, COLORS.pink, COLORS.cyan,
-]
-
-const ICON_MAP: Record<string, any> = {
-  ShoppingCart, DollarSign, Target, Building2, RefreshCw, CheckCircle2,
-  PieChart: PieChartIcon, UserMinus, UserPlus, Repeat,
-}
-
-// ============================================================
-// ANIMATED COUNTER
-// ============================================================
-function AnimatedCounter({ value, prefix = '', suffix = '', decimals = 0 }: {
-  value: number; prefix?: string; suffix?: string; decimals?: number
-}) {
-  const [display, setDisplay] = useState(0)
-  useEffect(() => {
-    let start = 0
-    const dur = 900
-    let raf: number
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / dur, 1)
-      const ease = 1 - Math.pow(1 - p, 4)
-      setDisplay(ease * value)
-      if (p < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [value])
-  return <span>{prefix}{display.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}{suffix}</span>
-}
-
-// ============================================================
-// SKELETON LOADER
-// ============================================================
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
-}
-
-function KPICardSkeleton() {
-  return (
-    <Card className="sera-sc-panel overflow-hidden">
-      <CardContent className="pt-6 space-y-3">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-8 w-32" />
-        <Skeleton className="h-4 w-20" />
-      </CardContent>
-    </Card>
-  )
-}
-
-// ============================================================
-// KPI CARD
-// ============================================================
-function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: boolean; onClick?: () => void }) {
-  if (loading) return <KPICardSkeleton />
-
-  const Icon = ICON_MAP[kpi.icon] || Target
-  const isUp = kpi.trend === 'up'
-  const isDown = kpi.trend === 'down'
-  const isClickable = !!onClick
-
-  const isLargeRM = kpi.label.includes('Amount') || kpi.label.includes('Order Value')
-
-  return (
-    <Card
-      className={`relative overflow-hidden transition-colors hover:border-[var(--sera-orange)]/35 duration-500 sera-sc-panel overflow-hidden hover:-translate-y-0.5 ${isClickable ? 'cursor-pointer ring-0 hover:ring-2 hover:border-[var(--sera-orange)]/35' : ''}`}
-      onClick={onClick}
-    >
-      <div
-        className="absolute top-0 right-0 w-28 h-28 -mr-6 -mt-6 rounded-full opacity-[0.08] group-hover:opacity-[0.15] transition-opacity duration-500"
-        style={{ backgroundColor: kpi.color }}
-      />
-      <div
-        className="absolute bottom-0 left-0 h-1 w-full opacity-80"
-        style={{ background: `linear-gradient(to right, ${kpi.color}, transparent)` }}
-      />
-      <CardContent className="pt-4 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1 min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{kpi.label}</p>
-            <ExecutiveKpiValue>
-              {typeof kpi.value === 'number' && !kpi.formattedValue.includes('%') ? (
-                <AnimatedCounter
-                  value={kpi.value}
-                  prefix={isLargeRM ? 'RM ' : ''}
-                  decimals={isLargeRM ? 2 : 0}
-                />
-              ) : (
-                kpi.formattedValue
-              )}
-            </ExecutiveKpiValue>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {kpi.delta !== null && (
-                <Badge
-                  variant="secondary"
-                  className={`text-[10px] font-medium px-1.5 py-0 ${isUp
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : isDown
-                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      : 'bg-muted text-muted-foreground'
-                    }`}
-                >
-                  {isUp && <ArrowUpRight className="w-2.5 h-2.5 mr-0.5" />}
-                  {isDown && <ArrowDownRight className="w-2.5 h-2.5 mr-0.5" />}
-                  {!isUp && !isDown && <Minus className="w-2.5 h-2.5 mr-0.5" />}
-                  {Math.abs(kpi.delta).toFixed(1)}%
-                </Badge>
-              )}
-              <span className="text-[9px] text-muted-foreground">{kpi.deltaLabel}</span>
-            </div>
-            {isClickable && (
-              <p className="text-[9px] text-[var(--sera-orange)] font-medium mt-0.5 flex items-center gap-0.5">
-                <Eye className="w-2.5 h-2.5" /> Click to view details
-              </p>
-            )}
-          </div>
-          <div className="p-2.5 rounded-xl shrink-0" style={{ backgroundColor: `${kpi.color}12` }}>
-            <Icon className="w-4 h-4" style={{ color: kpi.color }} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ============================================================
-// RANK BADGE
-// ============================================================
-function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1) return <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30"><Crown className="w-4 h-4 text-amber-600" /></div>
-  if (rank === 2) return <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800"><Medal className="w-4 h-4 text-slate-500" /></div>
-  if (rank === 3) return <div className="flex items-center justify-center w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30"><Award className="w-4 h-4 text-orange-600" /></div>
-  return <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted"><span className="text-xs font-bold text-muted-foreground">{rank}</span></div>
-}
-
-// ============================================================
-// INSIGHT CARD COMPONENT
-// ============================================================
-function InsightCardComponent({ insight }: { insight: InsightCardType }) {
-  const Icon = ICON_MAP[insight.icon] || Target
-  return (
-    <Card className="sera-sc-panel relative overflow-hidden group transition-all duration-300 hover:shadow-lg">
-      <div className="absolute top-0 left-0 h-full w-1 opacity-80" style={{ backgroundColor: insight.color }} />
-      <CardContent className="pb-4 pl-5 pt-5">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg shrink-0" style={{ backgroundColor: `${insight.color}15` }}>
-            <Icon className="w-4 h-4" style={{ color: insight.color }} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{insight.title}</p>
-            <p className="text-xl font-bold text-foreground">{insight.value}</p>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{insight.description}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ============================================================
-// DISTRIBUTOR DETAIL DRAWER
-// ============================================================
-function DistributorDetailDrawer({
-  open,
-  onClose,
-  distributorId,
-  isDark,
-}: {
-  open: boolean
-  onClose: () => void
-  distributorId: string | null
-  isDark: boolean
-}) {
-  const [detail, setDetail] = useState<DistributorDetail | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!distributorId || !open) return
-    setLoading(true)
-    fetch(`/api/reporting/distributors/${distributorId}`, { credentials: 'include' })
-      .then((r) => r.json())
-      .then((d) => setDetail(d))
-      .catch(() => setDetail(null))
-      .finally(() => setLoading(false))
-  }, [distributorId, open])
-
-  const chartGrid = isDark ? '#374151' : '#f0f0f0'
-  const chartTick = isDark ? '#9ca3af' : '#6b7280'
-  const tooltipBg = isDark ? 'rgba(31,41,55,0.95)' : 'rgba(255,255,255,0.95)'
-
-  return (
-    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto">
-        <SheetHeader className="pb-4 border-b">
-          <SheetTitle className="text-xl font-bold flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-[var(--sera-orange)]" />
-            {loading ? <Skeleton className="h-6 w-40" /> : detail?.name || 'Distributor'}
-          </SheetTitle>
-          <SheetDescription>Performance detail & order history</SheetDescription>
-        </SheetHeader>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-[var(--sera-orange)]" />
-          </div>
-        ) : detail ? (
-          <div className="space-y-6 py-4">
-            {/* Summary KPIs */}
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Total RM', value: `RM ${detail.totalRM.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`, color: COLORS.success },
-                { label: 'Orders', value: detail.totalOrders, color: COLORS.primary },
-                { label: 'AOV', value: `RM ${detail.aov.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`, color: COLORS.purple },
-                { label: 'Growth', value: detail.growthPct !== null ? `${detail.growthPct.toFixed(1)}%` : 'N/A', color: detail.growthPct && detail.growthPct > 0 ? COLORS.success : COLORS.danger },
-              ].map((item) => (
-                <div key={item.label} className="p-3 rounded-xl bg-muted/50">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</p>
-                  <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Last Order */}
-            {detail.lastOrderDate && (
-              <p className="text-xs text-muted-foreground">
-                Last order: <span className="font-medium text-foreground">{format(new Date(detail.lastOrderDate), 'dd MMM yyyy')}</span>
-              </p>
-            )}
-
-            {/* Trend Chart */}
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-1">
-                <CardTitle className="text-sm font-semibold">Monthly Trend (Last 12 months)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={detail.trend}>
-                      <defs>
-                        <linearGradient id="detailGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
-                          <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGrid} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: chartTick, fontSize: 11 }} />
-                      <YAxis tickLine={false} axisLine={false} tick={{ fill: chartTick, fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 8px 16px rgba(0,0,0,0.12)', backgroundColor: tooltipBg }}
-                        formatter={(v: number) => [`RM ${v.toLocaleString()}`, 'Amount']}
-                      />
-                      <Area type="monotone" dataKey="amount" stroke={COLORS.primary} strokeWidth={2} fill="url(#detailGrad)" dot={false} activeDot={{ r: 5, fill: COLORS.primary, stroke: '#fff', strokeWidth: 2 }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Top Products */}
-            {detail.topProducts.length > 0 && (
-              <Card className="border-0 shadow-sm">
-                <CardHeader className="pb-1">
-                  <CardTitle className="text-sm font-semibold">Top Products / SKUs</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {detail.topProducts.slice(0, 8).map((p, i) => (
-                      <div key={i} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
-                          <span className="text-sm truncate">{p.name}</span>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-xs text-muted-foreground">{p.qty} pcs</span>
-                          <span className="text-sm font-semibold">RM {p.amount.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Recent Orders */}
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-1">
-                <CardTitle className="text-sm font-semibold">Recent Orders</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {detail.recentOrders.map((o, i) => (
-                    <div key={i} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                      <div>
-                        <p className="text-sm font-medium">{o.orderNo}</p>
-                        <p className="text-xs text-muted-foreground">{format(new Date(o.date), 'dd MMM yyyy')}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold">RM {o.amount.toLocaleString()}</p>
-                        <Badge
-                          variant="secondary"
-                          className={`text-[10px] ${o.status === 'approved'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : o.status === 'submitted'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                              : 'bg-muted text-muted-foreground'
-                            }`}
-                        >
-                          {o.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                  {detail.recentOrders.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-6">No orders found</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Aging Buckets (if available) */}
-            {detail.agingBuckets && (
-              <Card className="border-0 shadow-sm">
-                <CardHeader className="pb-1">
-                  <CardTitle className="text-sm font-semibold">Payment Aging</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { label: '0-30d', value: detail.agingBuckets.current, color: COLORS.success },
-                      { label: '31-60d', value: detail.agingBuckets.days31_60, color: COLORS.warning },
-                      { label: '61-90d', value: detail.agingBuckets.days61_90, color: COLORS.danger },
-                      { label: '90+d', value: detail.agingBuckets.days90plus, color: '#dc2626' },
-                    ].map((b) => (
-                      <div key={b.label} className="text-center p-2 rounded-lg bg-muted/40">
-                        <p className="text-[10px] font-semibold text-muted-foreground">{b.label}</p>
-                        <p className="text-sm font-bold" style={{ color: b.color }}>RM {b.value.toLocaleString()}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-20 text-muted-foreground">
-            <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>Unable to load distributor details</p>
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-// ============================================================
-// MAIN — DISTRIBUTOR REPORTS TAB
-// ============================================================
 interface DistributorReportsTabProps {
   userProfile: any
+  chartGridColor?: string
+  chartTickColor?: string
+  isDark?: boolean
 }
 
-export default function DistributorReportsTab({ userProfile }: DistributorReportsTabProps) {
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
-  const chartGrid = isDark ? '#374151' : '#f0f0f0'
-  const chartTick = isDark ? '#9ca3af' : '#6b7280'
-  const tooltipBg = isDark ? 'rgba(31,41,55,0.95)' : 'rgba(255,255,255,0.95)'
-  const tooltipStyle = { borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.15)', backgroundColor: tooltipBg, color: isDark ? '#f3f4f6' : undefined }
+interface ReportResponse {
+  report: DistributorAnalyticsReport
+  meta: { source: 'rpc' | 'fallback'; degraded: boolean; notice: string | null; generatedAt: string }
+}
 
-  // ── State ──────────────────────────────────────────────────
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [data, setData] = useState<any>(null)
-  const [dateRange, setDateRange] = useState('last3Months')
-  const [seller, setSeller] = useState('all')
-  const [status, setStatus] = useState('all')
-  const [search, setSearch] = useState('')
-  const [trendMetric, setTrendMetric] = useState<'amount' | 'orders'>('amount')
-  const [comparisonMode, setComparisonMode] = useState<'absolute' | 'growth'>('absolute')
-  const [sortField, setSortField] = useState<string>('totalRM')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selectedDistId, setSelectedDistId] = useState<string | null>(null)
-  const [distributors, setDistributors] = useState<{ id: string; org_name: string }[]>([])
-  const [ordersDialogOpen, setOrdersDialogOpen] = useState(false)
-  const [distDialogOpen, setDistDialogOpen] = useState(false)
-  const [distDialogTab, setDistDialogTab] = useState<'active' | 'inactive'>('active')
-  const [orderListPage, setOrderListPage] = useState(1)
-  const [allDistributors, setAllDistributors] = useState<any[]>([])
-  const [repeatRateOpen, setRepeatRateOpen] = useState(false)
-  const ORDERS_PER_PAGE = 20
+interface FilterOptions {
+  months: ReportingPeriod[]
+  distributors: { id: string; name: string; orgCode: string | null; isActive: boolean }[]
+  statuses: { value: string; label: string }[]
+}
 
-  // ── Fetch report data ────────────────────────────────────
-  const fetchReport = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const params = new URLSearchParams()
-      params.set('dateRange', dateRange)
-      params.set('orderType', 'D2H')
-      if (seller && seller !== 'all') params.set('seller', seller)
-      if (status && status !== 'all') params.set('status', status)
-      if (search) params.set('search', search)
+const HEALTH_BADGE: Record<HealthStatus, string> = {
+  growing: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  stable: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+  declining: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  inactive_period: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+  watch: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  at_risk: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  dormant: 'bg-zinc-300 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200',
+}
 
-      // Update URL for shareability
-      const newUrl = `${window.location.pathname}?${params.toString()}`
-      window.history.replaceState(null, '', newUrl)
+const ACTION_ACCENT: Record<ActionKey, string> = {
+  grow: REPORTING_COLORS.success,
+  maintain: REPORTING_COLORS.slate,
+  re_engage: REPORTING_COLORS.warning,
+  review: REPORTING_COLORS.danger,
+}
 
-      const res = await fetch(`/api/reporting/distributors/report?${params}`, { credentials: 'include' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json?.error || `Error ${res.status}`)
-      setData(json)
-      if (json.distributors) setDistributors(json.distributors)
-      if (json.allDistributors) setAllDistributors(json.allDistributors)
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [dateRange, seller, status, search])
+const PRIORITY_BADGE: Record<string, string> = {
+  HIGH: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  MEDIUM: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  NORMAL: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+}
 
-  // ── Init from URL search params ──────────────────────────
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const sp = new URLSearchParams(window.location.search)
-    if (sp.get('dateRange')) setDateRange(sp.get('dateRange')!)
-    if (sp.get('seller')) setSeller(sp.get('seller')!)
-    if (sp.get('status')) setStatus(sp.get('status')!)
-    if (sp.get('search')) setSearch(sp.get('search')!)
-  }, [])
+// ── Formatters ─────────────────────────────────────────────────────────────
 
-  useEffect(() => { fetchReport() }, [fetchReport])
+function formatCount(value: number | null): string {
+  if (value === null) return '—'
+  return Math.round(value).toLocaleString('en-MY')
+}
 
-  // ── CSV Export ────────────────────────────────────────────
-  const handleExportCSV = useCallback(() => {
-    const params = new URLSearchParams()
-    params.set('dateRange', dateRange)
-    params.set('orderType', 'D2H')
-    if (seller && seller !== 'all') params.set('seller', seller)
-    if (status && status !== 'all') params.set('status', status)
-    if (search) params.set('search', search)
-    window.open(`/api/reporting/distributors/csv?${params}`, '_blank')
-  }, [dateRange, seller, status, search])
+function formatRM(value: number | null): string {
+  if (value === null) return '—'
+  return `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
-  // ── Copy Share Link ──────────────────────────────────────
-  const handleCopyLink = useCallback(() => {
-    navigator.clipboard.writeText(window.location.href)
-  }, [])
+/** Compact RM for chart axes and dense mobile cards: RM1.03M, RM905.6K. */
+function formatRMCompact(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) return `RM${(value / 1_000_000).toFixed(2)}M`
+  if (abs >= 1_000) return `RM${(value / 1_000).toFixed(1)}K`
+  return `RM${value.toFixed(0)}`
+}
 
-  // ── Sort leaderboard ─────────────────────────────────────
-  const sortedLeaderboard = useMemo(() => {
-    if (!data?.leaderboard) return []
-    const lb = [...data.leaderboard]
-    lb.sort((a: any, b: any) => {
-      const va = a[sortField] ?? 0
-      const vb = b[sortField] ?? 0
-      return sortDir === 'desc' ? vb - va : va - vb
-    })
-    return lb.map((row: any, idx: number) => ({ ...row, rank: idx + 1 }))
-  }, [data?.leaderboard, sortField, sortDir])
+function formatPct(value: number | null): string {
+  return value === null ? '—' : `${value.toFixed(1)}%`
+}
 
-  const toggleSort = (field: string) => {
-    if (sortField === field) setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
-    else { setSortField(field); setSortDir('desc') }
+function formatDay(value: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit', month: 'short', timeZone: 'Asia/Kuala_Lumpur',
+  }).format(date)
+}
+
+/**
+ * Growth badge. A `null` growth is a missing baseline, not zero movement, and
+ * reads "New activity" — never "Infinity%" and never a fabricated "+100%".
+ */
+function GrowthBadge({ value, suffix = '%', nullLabel = 'New activity', decimals = 1 }: {
+  value: number | null
+  suffix?: string
+  nullLabel?: string
+  /** 0 for headcount deltas — "+6 distributors", never "+6.0". */
+  decimals?: number
+}) {
+  if (value === null) {
+    return (
+      <Badge variant="secondary" className="gap-0.5 px-1.5 py-0 text-[11px] font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+        {nullLabel}
+      </Badge>
+    )
+  }
+  const up = value >= 0
+  const flat = value === 0
+  const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        'gap-0.5 px-1.5 py-0 text-[11px] font-semibold',
+        flat
+          ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
+          : up
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {Math.abs(value).toFixed(decimals)}{suffix}
+    </Badge>
+  )
+}
+
+function HealthBadge({ health }: { health: HealthStatus }) {
+  return (
+    <Badge variant="secondary" className={cn('whitespace-nowrap px-1.5 py-0 text-[11px] font-medium', HEALTH_BADGE[health])}>
+      {HEALTH_LABEL[health]}
+    </Badge>
+  )
+}
+
+// ── Layout primitives (shared with the Product Analytics chrome) ───────────
+
+function KpiCard({ label, icon: Icon, accent, value, delta, caption }: {
+  label: string
+  icon: typeof Package
+  accent: string
+  value: string
+  delta?: React.ReactNode
+  caption?: string | null
+}) {
+  return (
+    <Card className={cn(REPORTING_PANEL_CLASS, 'transition-colors hover:border-[var(--sera-orange)]/35')}>
+      <CardContent className="px-3 pb-3 pt-4 sm:px-5 sm:pt-5">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)] sm:text-xs">
+            {label}
+          </span>
+          <span className="shrink-0 rounded-xl p-1.5 shadow-sm sm:p-2" style={{ backgroundColor: `${accent}15` }}>
+            <Icon className="h-4 w-4" style={{ color: accent }} strokeWidth={1.75} />
+          </span>
+        </div>
+        <ExecutiveKpiValue>{value}</ExecutiveKpiValue>
+        {delta ? <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">{delta}</div> : null}
+        {caption ? <p className="mt-1 text-[10px] text-[var(--sera-muted)] sm:text-[11px]">{caption}</p> : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function SectionCard({ title, description, icon: Icon, action, children, className }: {
+  title: string
+  description?: string
+  icon: typeof Package
+  action?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <Card className={cn(REPORTING_PANEL_CLASS, className)}>
+      <CardHeader className="flex flex-col gap-2 space-y-0 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2 text-sm text-[var(--sera-ink)] sm:text-base">
+            <Icon className="h-4 w-4 shrink-0 text-[var(--sera-orange)]" strokeWidth={1.75} />
+            <span className="truncate">{title}</span>
+          </CardTitle>
+          {description ? <CardDescription className="mt-0.5 text-xs sm:text-sm">{description}</CardDescription> : null}
+        </div>
+        {action}
+      </CardHeader>
+      <CardContent className="px-3 sm:px-6">{children}</CardContent>
+    </Card>
+  )
+}
+
+function SummaryTile({ label, description, count, accent, active, onClick }: {
+  label: string
+  description?: string
+  count: number
+  accent: string
+  active?: boolean
+  onClick?: () => void
+}) {
+  const Wrapper: any = onClick ? 'button' : 'div'
+  return (
+    <Wrapper
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={cn(
+        'flex w-full flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all',
+        onClick && 'hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40',
+        active ? 'border-[var(--sera-orange)] ring-1 ring-[var(--sera-orange)]/30' : 'border-[var(--sera-line)]',
+      )}
+      style={{ backgroundColor: `${accent}0f` }}
+    >
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold sm:text-xs" style={{ color: accent }}>
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="text-2xl font-bold text-[var(--sera-ink)] sm:text-3xl">{formatCount(count)}</span>
+      {description ? (
+        <span className="line-clamp-2 text-[10px] leading-tight text-[var(--sera-muted)] sm:text-[11px]">{description}</span>
+      ) : null}
+    </Wrapper>
+  )
+}
+
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return <p className="py-8 text-center text-sm text-[var(--sera-muted)]">{children}</p>
+}
+
+/** One label/value line inside a mobile card, replacing a desktop table cell. */
+function MobileField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-[11px] text-[var(--sera-muted)]">{label}</span>
+      <span className="text-right text-xs font-medium text-[var(--sera-ink)]">{children}</span>
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
+
+export default function DistributorReportsTab({
+  userProfile,
+  chartGridColor,
+  chartTickColor,
+  isDark = false,
+}: DistributorReportsTabProps) {
+  const chartGrid = chartGridColor ?? (isDark ? '#374151' : '#f0f0f0')
+  const chartTick = chartTickColor ?? (isDark ? '#9ca3af' : '#6b7280')
+  const tooltipStyle = {
+    borderRadius: '12px',
+    border: 'none',
+    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.15)',
+    backgroundColor: isDark ? 'rgba(31,41,55,0.95)' : 'rgba(255,255,255,0.95)',
+    color: isDark ? '#f3f4f6' : undefined,
   }
 
-  // ── Render ────────────────────────────────────────────────
-  const kpis: KPICard[] = data?.kpis || []
-  const trend: MonthlyTrendPoint[] = data?.trend || []
-  const comparison: ComparisonItem[] = data?.comparison || []
-  const insights: InsightCardType[] = data?.insights || []
+  // Report scope — persists across sub-tab switches because it lives above the
+  // Tabs component and nothing here resets it.
+  const [month, setMonth] = useState<string>(() => currentReportingMonthKey())
+  const [distributorId, setDistributorId] = useState<string>(ALL_DISTRIBUTORS)
+  const [status, setStatus] = useState<string>(ALL_STATUS)
 
-  // ── Repeat Rate Analytics View ────────────────────────────
-  if (repeatRateOpen) {
+  const [filters, setFilters] = useState<FilterOptions>({ months: [], distributors: [], statuses: [] })
+  const [response, setResponse] = useState<ReportResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [reloading, setReloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestId = useRef(0)
+
+  const [subTab, setSubTab] = useState('overview')
+  const [leaderboardSearch, setLeaderboardSearch] = useState('')
+  const [actionFilter, setActionFilter] = useState<ActionKey | null>(null)
+  const [downloading, setDownloading] = useState(false)
+
+  const [drawerId, setDrawerId] = useState<string | null>(null)
+  const [drawerReport, setDrawerReport] = useState<DistributorAnalyticsReport | null>(null)
+  const [drawerLoading, setDrawerLoading] = useState(false)
+  const drawerRequestId = useRef(0)
+
+  // ── Filter options ───────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/reporting/distributor-analytics/filters', { cache: 'no-store' })
+        const payload = await res.json()
+        if (cancelled || !res.ok) return
+        setFilters({
+          months: (payload.months || []) as ReportingPeriod[],
+          distributors: (payload.distributors || []) as FilterOptions['distributors'],
+          statuses: (payload.statuses || []) as FilterOptions['statuses'],
+        })
+      } catch {
+        // A failed filter list is not fatal: the current month, All Distributors
+        // and All Status are always offered.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // ── Report ───────────────────────────────────────────────────────────────
+  const loadReport = useCallback(async (
+    targetMonth: string,
+    targetDistributor: string,
+    targetStatus: string,
+    isInitial: boolean,
+  ) => {
+    const id = ++requestId.current
+    if (isInitial) setLoading(true)
+    else setReloading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        month: targetMonth,
+        distributor: targetDistributor,
+        status: targetStatus,
+      })
+      const res = await fetch(`/api/reporting/distributor-analytics?${params}`, { cache: 'no-store' })
+      const payload = await res.json()
+      // A slower earlier request must never overwrite a newer scope's report.
+      if (id !== requestId.current) return
+      if (!res.ok) throw new Error(payload.error || 'Unable to load distributor analytics')
+      setResponse(payload as ReportResponse)
+    } catch (err: any) {
+      if (id !== requestId.current) return
+      setError(err?.message || 'Unable to load distributor analytics')
+    } finally {
+      if (id === requestId.current) {
+        setLoading(false)
+        setReloading(false)
+      }
+    }
+  }, [])
+
+  // Changing month, distributor or status reloads automatically — no Apply step.
+  useEffect(() => {
+    void loadReport(month, distributorId, status, response === null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, distributorId, status, loadReport])
+
+  /**
+   * Distributor-scoped URL state, so a shared link reopens the same report.
+   * The retired `dateRange` / `orderType` parameters are dropped rather than
+   * left behind saying `last3Months` under a monthly UI.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    params.set('month', month)
+    params.set('distributor', distributorId)
+    params.set('status', status)
+    params.delete('dateRange')
+    params.delete('orderType')
+    params.delete('seller')
+    params.delete('search')
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+  }, [month, distributorId, status])
+
+  // Restore scope from the URL once, before the first load settles.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const urlMonth = params.get('month')
+    const urlDistributor = params.get('distributor')
+    const urlStatus = params.get('status')
+    if (urlMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(urlMonth) && urlMonth <= currentReportingMonthKey()) {
+      setMonth(urlMonth)
+    }
+    if (urlDistributor) setDistributorId(urlDistributor)
+    if (urlStatus) setStatus(urlStatus)
+  }, [])
+
+  const monthOptions = useMemo(
+    () => buildReportingMonthOptions([...filters.months.map((period) => period.key), month]),
+    [filters.months, month],
+  )
+  const monthIndex = monthOptions.findIndex((option) => option.value === month)
+  const olderMonth = monthIndex >= 0 ? monthOptions[monthIndex + 1]?.value : undefined
+  const newerMonth = monthIndex > 0 ? monthOptions[monthIndex - 1]?.value : undefined
+
+  const report = response?.report ?? null
+  const meta = response?.meta ?? null
+  const singleDistributor = Boolean(report && !report.distributor.isAll)
+
+  /**
+   * The PDF is built from the report DTO already in state, so it always carries
+   * every section — Overview, Performance and Relationship & Risk — regardless
+   * of which sub-tab is on screen, and its numbers are the on-screen numbers.
+   */
+  const handleDownloadPdf = useCallback(async () => {
+    if (!report) return
+    setDownloading(true)
+    try {
+      const { buildDistributorAnalyticsPdf } = await import('@/lib/reporting/distributor-analytics-pdf')
+      const pdf = await buildDistributorAnalyticsPdf(report, {
+        generatedAt: meta?.generatedAt ?? null,
+        generatedBy: userProfile?.full_name || userProfile?.email || null,
+      })
+      const url = URL.createObjectURL(pdf.blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = pdf.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setError(err?.message || 'Unable to generate the PDF report')
+    } finally {
+      setDownloading(false)
+    }
+  }, [report, meta, userProfile])
+
+  const handleExportCsv = useCallback(() => {
+    const params = new URLSearchParams({ month, distributor: distributorId, status })
+    window.open(`/api/reporting/distributor-analytics/csv?${params}`, '_blank', 'noopener')
+  }, [month, distributorId, status])
+
+  /**
+   * The drawer re-reads the SAME endpoint scoped to one distributor, inheriting
+   * the selected Reporting Month and Status, so its figures are the report's
+   * figures rather than a second calculation.
+   */
+  const openDrawer = useCallback((id: string) => {
+    setDrawerId(id)
+    setDrawerReport(null)
+    setDrawerLoading(true)
+    const requestKey = ++drawerRequestId.current
+    void (async () => {
+      try {
+        const params = new URLSearchParams({ month, distributor: id, status })
+        const res = await fetch(`/api/reporting/distributor-analytics?${params}`, { cache: 'no-store' })
+        const payload = await res.json()
+        if (requestKey !== drawerRequestId.current) return
+        if (res.ok) setDrawerReport((payload as ReportResponse).report)
+      } finally {
+        if (requestKey === drawerRequestId.current) setDrawerLoading(false)
+      }
+    })()
+  }, [month, status])
+
+  const visibleLeaderboard = useMemo(() => {
+    if (!report) return []
+    const query = leaderboardSearch.trim().toLowerCase()
+    if (!query) return report.leaderboard
+    return report.leaderboard.filter((row) => row.name.toLowerCase().includes(query))
+  }, [report, leaderboardSearch])
+
+  const visibleActionRows = useMemo(() => {
+    if (!report) return []
+    if (!actionFilter) return report.actionPlan.rows
+    return report.actionPlan.rows.filter((row) => row.action === actionFilter)
+  }, [report, actionFilter])
+
+  const contributionSlices = useMemo(() => {
+    if (!report) return []
+    const palette = [REPORTING_COLORS.primary, REPORTING_COLORS.warning, REPORTING_COLORS.slate]
+    return report.contribution.bands
+      .filter((band) => band.orderValue > 0)
+      .map((band, index) => ({ name: band.label, value: band.orderValue, fill: palette[index % palette.length] }))
+  }, [report])
+
+  const distributorName = useCallback((id: string) => {
+    return filters.distributors.find((row) => row.id === id)?.name ?? 'Selected distributor'
+  }, [filters.distributors])
+
+  // ── Header ───────────────────────────────────────────────────────────────
+  const controls = (
+    <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-end">
+      <div className="space-y-1.5">
+        <label htmlFor="distributor-analytics-month" className="text-xs font-medium text-[var(--sera-muted)]">
+          Reporting Month
+        </label>
+        <div className="flex items-center gap-1.5">
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger
+              id="distributor-analytics-month"
+              className="h-10 min-w-0 flex-1 border-[var(--sera-line)] bg-white text-sm xl:h-9 xl:w-[180px] xl:flex-none"
+            >
+              <Calendar className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--sera-muted)]" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline" size="icon"
+            className="h-10 w-10 shrink-0 border-[var(--sera-line)] xl:h-9 xl:w-9"
+            onClick={() => olderMonth && setMonth(olderMonth)}
+            disabled={!olderMonth}
+            title="Previous month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline" size="icon"
+            className="h-10 w-10 shrink-0 border-[var(--sera-line)] xl:h-9 xl:w-9"
+            onClick={() => newerMonth && setMonth(newerMonth)}
+            disabled={!newerMonth}
+            title="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="distributor-analytics-distributor" className="text-xs font-medium text-[var(--sera-muted)]">
+          Distributor
+        </label>
+        <Select value={distributorId} onValueChange={setDistributorId}>
+          <SelectTrigger
+            id="distributor-analytics-distributor"
+            className="h-10 w-full border-[var(--sera-line)] bg-white text-sm xl:h-9 xl:w-[210px]"
+          >
+            <Building2 className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--sera-muted)]" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_DISTRIBUTORS}>All Distributors</SelectItem>
+            {filters.distributors.map((row) => (
+              <SelectItem key={row.id} value={row.id}>{row.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="distributor-analytics-status" className="text-xs font-medium text-[var(--sera-muted)]">
+          Status
+        </label>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger
+            id="distributor-analytics-status"
+            className="h-10 w-full border-[var(--sera-line)] bg-white text-sm xl:h-9 xl:w-[150px]"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_STATUS}>All Status</SelectItem>
+            {filters.statuses.map((row) => (
+              <SelectItem key={row.value} value={row.value}>{row.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          className="h-10 flex-1 gap-2 border-[var(--sera-line)] xl:h-9 xl:flex-none"
+          onClick={() => loadReport(month, distributorId, status, false)}
+          disabled={loading || reloading}
+        >
+          <RefreshCw className={cn('h-4 w-4', reloading && 'animate-spin')} />
+          Refresh
+        </Button>
+        <Button
+          variant="outline"
+          className="h-10 flex-1 gap-2 border-[var(--sera-line)] xl:h-9 xl:flex-none"
+          onClick={handleDownloadPdf}
+          disabled={!report || downloading || loading}
+          title={report ? 'Download the complete distributor management report' : 'Report not loaded yet'}
+        >
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <span className="whitespace-nowrap">Download PDF</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 shrink-0 border-[var(--sera-line)] xl:h-9 xl:w-9"
+          onClick={handleExportCsv}
+          disabled={loading}
+          title="Export the selected month's orders as CSV"
+        >
+          <FileSpreadsheet className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+
+  const header = (
+    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <div className="min-w-0">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--sera-ink)]">
+          <Building2 className="h-5 w-5 text-[var(--sera-orange)]" strokeWidth={1.75} />
+          Distributor Analytics
+        </h2>
+        <p className="mt-0.5 text-sm text-[var(--sera-muted)]">
+          Monthly distributor performance &amp; relationship report
+        </p>
+        {report ? (
+          <p className="mt-1.5 text-[11px] leading-tight text-[var(--sera-muted)]">
+            <span className="font-medium text-[var(--sera-ink)]">Report Period: {report.period.rangeLabel}</span>
+            {report.period.isCurrentMonth ? ' (month to date)' : ''}
+            <br />
+            <span>Comparing with: {report.period.comparisonRangeLabel}</span>
+            {report.period.comparisonClamped ? ' (clamped to the shorter previous month)' : ''}
+          </p>
+        ) : null}
+      </div>
+      {controls}
+    </div>
+  )
+
+  if (loading && !report) {
     return (
-      <RepeatRateAnalytics
-        data={data?.repeatAnalytics || null}
-        loading={loading}
-        onBack={() => setRepeatRateOpen(false)}
-        onDistributorClick={(id) => {
-          setRepeatRateOpen(false)
-          setSelectedDistId(id)
-          setDrawerOpen(true)
-        }}
-      />
+      <div className="space-y-6">
+        {header}
+        <ReportingTabLoading label="Loading distributor report" />
+      </div>
     )
   }
 
-  if (loading && !data) {
-    return <ReportingTabLoading label="Loading distributor reports" />
+  if (!report) {
+    return (
+      <div className="space-y-6">
+        {header}
+        {error ? (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        ) : null}
+      </div>
+    )
   }
 
-  const DATE_RANGE_OPTIONS = [
-    { value: 'thisMonth', label: 'This Month' },
-    { value: 'lastMonth', label: 'Last Month' },
-    { value: 'last3Months', label: 'Last 3 Months' },
-    { value: 'last6Months', label: 'Last 6 Months' },
-    { value: 'last12Months', label: 'Last 12 Months' },
-  ]
+  const { period, summary, comparison } = report
+  const findComparison = (key: string) => comparison.find((row) => row.key === key)
+  const activeChange = findComparison('activeDistributors')?.changePoints ?? null
+  const returningChange = findComparison('returningRate')?.changePoints ?? null
+
+  const comparisonCell = (row: ComparisonRow, side: 'current' | 'previous') => {
+    const value = row[side]
+    if (row.format === 'currency') return formatRM(value)
+    if (row.format === 'percent') return formatPct(value)
+    return formatCount(value)
+  }
+
+  const comparisonChange = (row: ComparisonRow) => {
+    if (row.format === 'percent') {
+      return <GrowthBadge value={row.changePoints} suffix="pp" nullLabel="No baseline" />
+    }
+    if (row.key === 'activeDistributors') {
+      return (
+        <GrowthBadge
+          value={row.changePoints === null ? null : Number(row.changePoints)}
+          suffix=""
+          decimals={0}
+          nullLabel="No baseline"
+        />
+      )
+    }
+    return <GrowthBadge value={row.changePct} />
+  }
+
+  const emptyPeriodNote = 'No distributor order activity recorded for the selected period.'
 
   return (
-    <div className="space-y-8 animate-in fade-in-50 duration-500">
-      {/* ─── HEADER / FILTERS ────────────────────────────────── */}
-      <div className="space-y-4">
-        <ReportingTabHeader
-          icon={Building2}
-          title="Distributor Reports"
-          description="Distributor performance, sell-in trends, and monthly comparison"
-          period={dateRange}
-          onPeriodChange={setDateRange}
-          periodOptions={DATE_RANGE_OPTIONS}
-          periodIcon={CalendarIcon}
-          onRefresh={fetchReport}
-          refreshing={loading}
-          actions={
-            <>
-              <Button variant="outline" size="sm" onClick={handleCopyLink} className="h-9 border-[var(--sera-line)]">
-                <Link2 className="w-4 h-4 mr-1.5" /> Share
-              </Button>
-              <Button size="sm" onClick={handleExportCSV} className="h-9 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
-                <Download className="w-4 h-4 mr-1.5" /> Export CSV
-              </Button>
-            </>
-          }
-        />
+    <div className={cn('space-y-6 transition-opacity', reloading && 'opacity-70')}>
+      {header}
 
-        {/* Filters Row */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={seller} onValueChange={setSeller}>
-            <SelectTrigger className="w-[200px] bg-white border-[var(--sera-line)] shadow-sm h-9 text-sm">
-              <Building2 className="mr-2 h-3.5 w-3.5 text-[var(--sera-muted)]" />
-              <SelectValue placeholder="All Distributors" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Distributors</SelectItem>
-              {distributors.map((d) => (
-                <SelectItem key={d.id} value={d.id}>{d.org_name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {error ? (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{error} — showing the last report that loaded successfully.</span>
+        </div>
+      ) : null}
 
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[130px] bg-card border-border shadow-sm h-9 text-sm">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="submitted">Submitted</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
-            </SelectContent>
-          </Select>
+      {meta?.degraded && meta.notice ? (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{meta.notice}</span>
+        </div>
+      ) : null}
 
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search distributor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 w-[180px] h-9 text-sm bg-card shadow-sm"
-              onKeyDown={(e) => e.key === 'Enter' && fetchReport()}
-            />
-          </div>
-
-          <Button variant="ghost" size="icon" onClick={fetchReport} className="h-9 w-9">
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-
-          {(seller !== 'all' || status !== 'all' || search) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setSeller('all'); setStatus('all'); setSearch('') }}
-              className="h-9 text-xs text-muted-foreground"
+      <Tabs value={subTab} onValueChange={setSubTab} className="space-y-5">
+        {/* Touch-friendly and horizontally scrollable below the desktop breakpoint. */}
+        <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)] p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {[
+            { value: 'overview', label: 'Overview', icon: BarChart3 },
+            { value: 'performance', label: 'Performance', icon: TrendingUp },
+            { value: 'relationship', label: 'Relationship & Risk', icon: HeartPulse },
+          ].map((tab) => (
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm text-[var(--sera-muted)] data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm sm:px-4"
             >
-              <X className="w-3 h-3 mr-1" /> Clear
-            </Button>
-          )}
-        </div>
-      </div>
+              <tab.icon className="mr-1.5 h-4 w-4" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {/* ─── ERROR BANNER ────────────────────────────────────── */}
-      {error && (
-        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
-          <CardContent className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                <X className="w-4 h-4 text-red-600" />
-              </div>
-              <div>
-                <p className="font-medium text-red-800 dark:text-red-200">Failed to load report</p>
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" onClick={fetchReport}>
-              <RefreshCw className="w-4 h-4 mr-1" /> Retry
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ─── KPI CARDS ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {loading
-          ? Array.from({ length: 6 }).map((_, i) => <KPICardSkeleton key={i} />)
-          : kpis.map((kpi) => (
-            <KPICardComponent
-              key={kpi.id}
-              kpi={kpi}
-              loading={false}
-              onClick={
-                kpi.id === 'totalOrders' ? () => { setOrderListPage(1); setOrdersDialogOpen(true) }
-                  : kpi.id === 'activeDistributors' ? () => { setDistDialogTab('active'); setDistDialogOpen(true) }
-                    : kpi.id === 'repeatRate' ? () => setRepeatRateOpen(true)
-                      : undefined
-              }
+        {/* ══ OVERVIEW ══════════════════════════════════════════════════ */}
+        <TabsContent value="overview" className="space-y-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
+            <KpiCard
+              label="Total Orders"
+              icon={ShoppingCart}
+              accent={REPORTING_COLORS.primary}
+              value={formatCount(summary.totalOrders)}
+              delta={<GrowthBadge value={findComparison('totalOrders')?.changePct ?? null} />}
+              caption={`${summary.avgOrdersPerDay.toFixed(1)} per day`}
             />
-          ))
-        }
-      </div>
-
-      {/* ─── TREND CHART ─────────────────────────────────────── */}
-      <Card className="sera-sc-panel overflow-hidden">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <CardTitle className="text-lg font-semibold">Monthly Sell-In Trend</CardTitle>
-              <CardDescription>Distributor order activity over time</CardDescription>
-            </div>
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-              <Button
-                size="sm"
-                variant={trendMetric === 'amount' ? 'default' : 'ghost'}
-                onClick={() => setTrendMetric('amount')}
-                className={`h-7 text-xs ${trendMetric === 'amount' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}`}
-              >
-                RM
-              </Button>
-              <Button
-                size="sm"
-                variant={trendMetric === 'orders' ? 'default' : 'ghost'}
-                onClick={() => setTrendMetric('orders')}
-                className={`h-7 text-xs ${trendMetric === 'orders' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}`}
-              >
-                # Orders
-              </Button>
-            </div>
+            <KpiCard
+              label="Order Value"
+              icon={Target}
+              accent={REPORTING_COLORS.success}
+              value={formatRMCompact(summary.orderValue)}
+              delta={<GrowthBadge value={findComparison('orderValue')?.changePct ?? null} />}
+              caption={`${formatRMCompact(summary.avgValuePerDay)} per day`}
+            />
+            <KpiCard
+              label="Avg Order Value"
+              icon={BarChart3}
+              accent={REPORTING_COLORS.violet}
+              value={summary.avgOrderValue === null ? '—' : formatRMCompact(summary.avgOrderValue)}
+              delta={<GrowthBadge value={findComparison('avgOrderValue')?.changePct ?? null} />}
+              caption={`Comparison ${findComparison('avgOrderValue')?.previous === null ? '—' : formatRMCompact(findComparison('avgOrderValue')!.previous!)}`}
+            />
+            <KpiCard
+              label="Active Distributors"
+              icon={Users}
+              accent={REPORTING_COLORS.warning}
+              value={formatCount(summary.activeDistributors)}
+              delta={<GrowthBadge value={activeChange} suffix="" decimals={0} nullLabel="No baseline" />}
+              caption={`${formatCount(summary.multipleOrderDistributors)} placed more than one order`}
+            />
+            <KpiCard
+              label="Returning Rate"
+              icon={RefreshCw}
+              accent={REPORTING_COLORS.cyan}
+              value={formatPct(summary.returningRatePct)}
+              delta={<GrowthBadge value={returningChange} suffix="pp" nullLabel="No baseline" />}
+              caption={`${formatCount(summary.returningDistributors)} of ${formatCount(summary.activeDistributors)} active traded before`}
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <Skeleton className="h-[350px] w-full" />
-          ) : trend.length > 0 ? (
-            <div className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={trend}>
-                  <defs>
-                    <linearGradient id="distTrendGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.25} />
-                      <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGrid} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: chartTick, fontSize: 12 }} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    domain={[0, 'auto']}
-                    tick={{ fill: chartTick, fontSize: 12 }}
-                    tickFormatter={(v) =>
-                      trendMetric === 'amount'
-                        ? v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v
-                        : v
-                    }
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(v: number) => [
-                      trendMetric === 'amount' ? `RM ${v.toLocaleString()}` : v.toLocaleString(),
-                      trendMetric === 'amount' ? 'Amount' : 'Orders',
-                    ]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey={trendMetric}
-                    stroke={COLORS.primary}
-                    strokeWidth={2.5}
-                    fill="url(#distTrendGrad)"
-                    dot={false}
-                    activeDot={{ r: 6, fill: COLORS.primary, stroke: '#fff', strokeWidth: 2 }}
-                  />
-                  <Line type="monotone" dataKey={trendMetric} stroke={COLORS.indigo} strokeWidth={1} strokeDasharray="5 5" dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-[200px] flex items-center justify-center text-muted-foreground">
-              <p>No trend data available for the selected period</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* ─── LEADERBOARD ─────────────────────────────────────── */}
-      <Card className="sera-sc-panel overflow-hidden">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg font-semibold">Top Distributor Leaderboard</CardTitle>
-              <CardDescription>{sortedLeaderboard.length} distributors ranked by performance</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
-            </div>
-          ) : sortedLeaderboard.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="text-left py-3 px-2 font-medium w-12">#</th>
-                    <th className="text-left py-3 px-2 font-medium">Distributor</th>
-                    <th className="text-right py-3 px-2 font-medium cursor-pointer hover:text-foreground" onClick={() => toggleSort('totalRM')}>
-                      Total RM {sortField === 'totalRM' && (sortDir === 'desc' ? '↓' : '↑')}
-                    </th>
-                    <th className="text-right py-3 px-2 font-medium cursor-pointer hover:text-foreground" onClick={() => toggleSort('orders')}>
-                      Orders {sortField === 'orders' && (sortDir === 'desc' ? '↓' : '↑')}
-                    </th>
-                    <th className="text-right py-3 px-2 font-medium hidden lg:table-cell cursor-pointer hover:text-foreground" onClick={() => toggleSort('aov')}>
-                      AOV {sortField === 'aov' && (sortDir === 'desc' ? '↓' : '↑')}
-                    </th>
-                    <th className="text-right py-3 px-2 font-medium hidden md:table-cell">Growth</th>
-                    <th className="text-right py-3 px-2 font-medium hidden lg:table-cell cursor-pointer hover:text-foreground" onClick={() => toggleSort('sharePct')}>
-                      Share {sortField === 'sharePct' && (sortDir === 'desc' ? '↓' : '↑')}
-                    </th>
-                    <th className="text-right py-3 px-2 font-medium hidden xl:table-cell">Last Order</th>
-                    <th className="text-right py-3 px-2 font-medium w-10"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedLeaderboard.map((row: DistributorLeaderboardRow) => (
-                    <tr
-                      key={row.id}
-                      className="border-b border-border/50 hover:bg-muted/50 cursor-pointer transition-colors group"
-                      onClick={() => { setSelectedDistId(row.id); setDrawerOpen(true) }}
-                    >
-                      <td className="py-3.5 px-2"><RankBadge rank={row.rank} /></td>
-                      <td className="py-3.5 px-2">
-                        <span className="font-medium text-foreground group-hover:text-[var(--sera-orange)] transition-colors">{row.name}</span>
-                      </td>
-                      <td className="py-3.5 px-2 text-right font-semibold tabular-nums">
-                        RM {row.totalRM.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3.5 px-2 text-right tabular-nums">{row.orders}</td>
-                      <td className="py-3.5 px-2 text-right tabular-nums hidden lg:table-cell">
-                        RM {row.aov.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3.5 px-2 text-right hidden md:table-cell">
-                        {row.growthPct !== null ? (
-                          <Badge variant="secondary" className={`text-[10px] ${row.growthPct >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            {row.growthPct >= 0 ? <ArrowUpRight className="w-3 h-3 mr-0.5" /> : <ArrowDownRight className="w-3 h-3 mr-0.5" />}
-                            {Math.abs(row.growthPct).toFixed(1)}%
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-2 text-right tabular-nums hidden lg:table-cell">
-                        {row.sharePct.toFixed(1)}%
-                      </td>
-                      <td className="py-3.5 px-2 text-right hidden xl:table-cell text-xs text-muted-foreground">
-                        {row.lastOrderDate ? format(new Date(row.lastOrderDate), 'dd MMM') : '—'}
-                      </td>
-                      <td className="py-3.5 px-2 text-right">
-                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-[var(--sera-orange)] transition-colors" />
-                      </td>
+          {report.isEmpty ? (
+            <Card className={REPORTING_PANEL_CLASS}>
+              <CardContent className="py-10">
+                <EmptyNote>{emptyPeriodNote}</EmptyNote>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <SectionCard
+            title="This Period vs Previous Period"
+            description={`${period.rangeLabel} compared with ${period.comparisonRangeLabel}`}
+            icon={TrendingUp}
+          >
+            <div className="hidden md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                      <th className="px-2 py-2 font-medium">Metric</th>
+                      <th className="px-2 py-2 text-right font-medium">Current</th>
+                      <th className="px-2 py-2 text-right font-medium">Previous</th>
+                      <th className="px-2 py-2 text-right font-medium">Change</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No distributor order activity found</p>
-              <p className="text-sm mt-1">Adjust filters or select a different date range</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ─── COMPARISON CHART ────────────────────────────────── */}
-      {comparison.length > 0 && (
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <CardTitle className="text-lg font-semibold">Period Comparison</CardTitle>
-                <CardDescription>Top 10 distributors — current vs previous period</CardDescription>
-              </div>
-              <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-                <Button
-                  size="sm"
-                  variant={comparisonMode === 'absolute' ? 'default' : 'ghost'}
-                  onClick={() => setComparisonMode('absolute')}
-                  className={`h-7 text-xs ${comparisonMode === 'absolute' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}`}
-                >
-                  Absolute RM
-                </Button>
-                <Button
-                  size="sm"
-                  variant={comparisonMode === 'growth' ? 'default' : 'ghost'}
-                  onClick={() => setComparisonMode('growth')}
-                  className={`h-7 text-xs ${comparisonMode === 'growth' ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}`}
-                >
-                  Growth %
-                </Button>
+                  </thead>
+                  <tbody>
+                    {comparison.map((row) => (
+                      <tr key={row.key} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                        <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{comparisonCell(row, 'current')}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{comparisonCell(row, 'previous')}</td>
+                        <td className="px-2 py-2.5 text-right">{comparisonChange(row)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[380px]">
-              <ResponsiveContainer width="100%" height="100%">
-                {comparisonMode === 'absolute' ? (
-                  <BarChart data={comparison} layout="vertical" margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} stroke={chartGrid} />
-                    <XAxis
-                      type="number"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fill: chartTick, fontSize: 11 }}
-                      tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                    />
-                    <YAxis
-                      dataKey="name"
-                      type="category"
-                      width={120}
-                      tick={{ fill: chartTick, fontSize: 11 }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`RM ${v.toLocaleString()}`, '']} />
-                    <Legend />
-                    <Bar dataKey="current" name="Current Period" fill={COLORS.primary} radius={[0, 6, 6, 0]} barSize={14} />
-                    <Bar dataKey="previous" name="Previous Period" fill={COLORS.primary + '40'} radius={[0, 6, 6, 0]} barSize={14} />
-                  </BarChart>
-                ) : (
-                  <BarChart data={comparison} layout="vertical" margin={{ left: 10, right: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} stroke={chartGrid} />
-                    <XAxis
-                      type="number"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fill: chartTick, fontSize: 11 }}
-                      tickFormatter={(v) => `${v.toFixed(0)}%`}
-                    />
-                    <YAxis
-                      dataKey="name"
-                      type="category"
-                      width={120}
-                      tick={{ fill: chartTick, fontSize: 11 }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v.toFixed(1)}%`, 'Growth']} />
-                    <Bar dataKey="growthPct" name="Growth %" radius={[0, 6, 6, 0]} barSize={16}>
-                      {comparison.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.growthPct >= 0 ? COLORS.success : COLORS.danger} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
+            <div className="space-y-2.5 md:hidden">
+              {comparison.map((row) => (
+                <div key={row.key} className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[var(--sera-ink)]">{row.label}</span>
+                    {comparisonChange(row)}
+                  </div>
+                  <MobileField label="Current">{comparisonCell(row, 'current')}</MobileField>
+                  <MobileField label="Previous">{comparisonCell(row, 'previous')}</MobileField>
+                </div>
+              ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </SectionCard>
 
-      {/* ─── INSIGHTS / SEGMENTATION ────────────────────────── */}
-      {insights.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-foreground">Insights & Segmentation</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {insights.map((insight) => (
-              <InsightCardComponent key={insight.type} insight={insight} />
-            ))}
-          </div>
-        </div>
-      )}
+          <SectionCard
+            title="Key Management Insights"
+            description="Relationship and concentration signals for the selected period"
+            icon={PieIcon}
+          >
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
+              {report.insights
+                // Concentration across one distributor is always 100%, so the
+                // card is dropped rather than shown saying nothing.
+                .filter((card) => !(singleDistributor && card.key === 'concentration'))
+                .map((card) => (
+                  <div key={card.key} className="rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">{card.title}</p>
+                    <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)] sm:text-3xl">{card.value}</p>
+                    <p className="mt-1 text-[10px] leading-tight text-[var(--sera-muted)] sm:text-[11px]">{card.description}</p>
+                  </div>
+                ))}
+            </div>
+          </SectionCard>
+        </TabsContent>
 
-      {/* ─── EMPTY STATE ─────────────────────────────────────── */}
-      {!loading && !error && (!data || data.totalCount === 0) && (
-        <Card className="border border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Building2 className="w-16 h-16 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-semibold text-muted-foreground">No Distributor Activity</h3>
-            <p className="text-sm text-muted-foreground mt-1">No distributor order activity found for this filter selection.</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setDateRange('last12Months'); setSeller('all'); setStatus('all'); setSearch('') }}>
-              <RefreshCw className="w-4 h-4 mr-1.5" /> Reset Filters
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+        {/* ══ PERFORMANCE ═══════════════════════════════════════════════ */}
+        <TabsContent value="performance" className="space-y-5">
+          <SectionCard
+            title="Daily Sell-In Trend"
+            description={`${period.rangeLabel}${period.isCurrentMonth ? ' — month to date, no future days' : ''}`}
+            icon={BarChart3}
+          >
+            {report.dailyTrend.length === 0 || summary.totalOrders === 0 ? (
+              <EmptyNote>{emptyPeriodNote}</EmptyNote>
+            ) : (
+              <div className="h-[260px] w-full sm:h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={report.dailyTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                    <XAxis dataKey="shortLabel" tick={{ fontSize: 11, fill: chartTick }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis yAxisId="orders" tick={{ fontSize: 11, fill: chartTick }} tickLine={false} axisLine={false} allowDecimals={false} width={34} />
+                    <YAxis
+                      yAxisId="value" orientation="right" width={62}
+                      tick={{ fontSize: 11, fill: chartTick }} tickLine={false} axisLine={false}
+                      tickFormatter={(value: number) => formatRMCompact(value)}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelFormatter={(_label, payload) => payload?.[0]?.payload?.label ?? ''}
+                      formatter={(value: any, name: any) => (
+                        name === 'Order Value' ? formatRM(Number(value)) : formatCount(Number(value))
+                      )}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar yAxisId="orders" dataKey="orders" name="Orders" fill={REPORTING_COLORS.primary} radius={[4, 4, 0, 0]} maxBarSize={26} />
+                    <Line yAxisId="value" type="monotone" dataKey="orderValue" name="Order Value" stroke={REPORTING_COLORS.success} strokeWidth={2} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </SectionCard>
 
-      {/* ─── ORDERS LIST DIALOG ────────────────────────────── */}
-      <Dialog open={ordersDialogOpen} onOpenChange={setOrdersDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-[var(--sera-orange)]" />
-              All Distributor Orders
-            </DialogTitle>
-            <DialogDescription>
-              {data?.orders?.length ?? 0} orders found for the selected period (D2H only)
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            {(() => {
-              const allOrders: any[] = data?.orders || []
-              const totalPages = Math.ceil(allOrders.length / ORDERS_PER_PAGE)
-              const pageOrders = allOrders.slice((orderListPage - 1) * ORDERS_PER_PAGE, orderListPage * ORDERS_PER_PAGE)
-              return (
-                <div className="space-y-2">
-                  {pageOrders.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                      <p>No orders found</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-muted-foreground text-xs">
-                              <th className="text-left py-2.5 px-2 font-medium">#</th>
-                              <th className="text-left py-2.5 px-2 font-medium">Order No</th>
-                              <th className="text-left py-2.5 px-2 font-medium">Distributor</th>
-                              <th className="text-right py-2.5 px-2 font-medium">Amount (RM)</th>
-                              <th className="text-center py-2.5 px-2 font-medium">Items</th>
-                              <th className="text-center py-2.5 px-2 font-medium">Status</th>
-                              <th className="text-right py-2.5 px-2 font-medium">Date</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pageOrders.map((o: any, idx: number) => (
-                              <tr key={o.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                                <td className="py-2.5 px-2 text-xs text-muted-foreground">{(orderListPage - 1) * ORDERS_PER_PAGE + idx + 1}</td>
-                                <td className="py-2.5 px-2 font-medium text-xs">{o.display_doc_no || o.order_no}</td>
-                                <td className="py-2.5 px-2 text-xs">{o.buyer_name}</td>
-                                <td className="py-2.5 px-2 text-right font-semibold tabular-nums text-xs">
-                                  RM {(o.total || 0).toLocaleString('en-MY', { minimumFractionDigits: 2 })}
-                                </td>
-                                <td className="py-2.5 px-2 text-center text-xs">{o.items_count}</td>
-                                <td className="py-2.5 px-2 text-center">
-                                  <Badge variant="secondary" className={`text-[10px] ${o.status === 'approved' || o.status === 'closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                    : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                      : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                                        : 'bg-muted text-muted-foreground'
-                                    }`}>
-                                    {o.status}
-                                  </Badge>
-                                </td>
-                                <td className="py-2.5 px-2 text-right text-xs text-muted-foreground">
-                                  {o.created_at ? format(new Date(o.created_at), 'dd MMM yyyy') : '—'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+          {/* A leaderboard and a contribution split of one distributor say
+              nothing, so the single-distributor view replaces them with the
+              account's own order history. */}
+          {singleDistributor ? (
+            <SectionCard
+              title={`Recent Orders — ${report.distributor.name}`}
+              description={period.rangeLabel}
+              icon={ClipboardList}
+            >
+              {report.recentOrders.length === 0 ? (
+                <EmptyNote>{emptyPeriodNote}</EmptyNote>
+              ) : (
+                <>
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[620px] text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                          <th className="px-2 py-2 font-medium">Order No</th>
+                          <th className="px-2 py-2 font-medium">Date</th>
+                          <th className="px-2 py-2 font-medium">Status</th>
+                          <th className="px-2 py-2 text-right font-medium">Items</th>
+                          <th className="px-2 py-2 text-right font-medium">Order Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.recentOrders.map((order) => (
+                          <tr key={order.orderId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                            <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{order.orderNo || order.orderId}</td>
+                            <td className="px-2 py-2.5">{formatDay(order.createdAt)}</td>
+                            <td className="px-2 py-2.5">{statusLabel(order.status)}</td>
+                            <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(order.itemCount)}</td>
+                            <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(order.orderValue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="space-y-2.5 md:hidden">
+                    {report.recentOrders.map((order) => (
+                      <div key={order.orderId} className="rounded-xl border border-[var(--sera-line)] p-3">
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold text-[var(--sera-ink)]">{order.orderNo || order.orderId}</span>
+                          <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[11px]">{statusLabel(order.status)}</Badge>
+                        </div>
+                        <MobileField label="Date">{formatDay(order.createdAt)}</MobileField>
+                        <MobileField label="Items">{formatCount(order.itemCount)}</MobileField>
+                        <MobileField label="Order Value">{formatRM(order.orderValue)}</MobileField>
                       </div>
-                      {/* Pagination */}
-                      {totalPages > 1 && (
-                        <div className="flex items-center justify-between pt-3 px-1">
-                          <p className="text-xs text-muted-foreground">
-                            Showing {(orderListPage - 1) * ORDERS_PER_PAGE + 1}–{Math.min(orderListPage * ORDERS_PER_PAGE, allOrders.length)} of {allOrders.length}
-                          </p>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              disabled={orderListPage <= 1}
-                              onClick={() => setOrderListPage((p) => Math.max(1, p - 1))}
+                    ))}
+                  </div>
+                </>
+              )}
+            </SectionCard>
+          ) : (
+            <>
+              <SectionCard
+                title="Distributor Leaderboard"
+                description="Ranked by Order Value — tap a row for the full account detail"
+                icon={Users}
+                action={(
+                  <div className="relative w-full sm:w-[210px]">
+                    <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--sera-muted)]" />
+                    <Input
+                      value={leaderboardSearch}
+                      onChange={(event) => setLeaderboardSearch(event.target.value)}
+                      placeholder="Search distributor..."
+                      className="h-9 pl-8 text-sm"
+                    />
+                  </div>
+                )}
+              >
+                {visibleLeaderboard.length === 0 ? (
+                  <EmptyNote>
+                    {report.leaderboard.length === 0 ? emptyPeriodNote : 'No distributor matches that search.'}
+                  </EmptyNote>
+                ) : (
+                  <>
+                    <div className="hidden overflow-x-auto md:block">
+                      <table className="w-full min-w-[820px] text-sm">
+                        <thead>
+                          <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                            <th className="px-2 py-2 font-medium">#</th>
+                            <th className="px-2 py-2 font-medium">Distributor</th>
+                            <th className="px-2 py-2 text-right font-medium">Order Value</th>
+                            <th className="px-2 py-2 text-right font-medium">Orders</th>
+                            <th className="px-2 py-2 text-right font-medium">AOV</th>
+                            <th className="px-2 py-2 text-right font-medium">Share</th>
+                            <th className="px-2 py-2 text-right font-medium">vs Previous</th>
+                            <th className="px-2 py-2 text-right font-medium">Last Order</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleLeaderboard.map((row: LeaderboardRow) => (
+                            <tr
+                              key={row.distributorId}
+                              onClick={() => openDrawer(row.distributorId)}
+                              className="cursor-pointer border-b border-[var(--sera-line)]/60 last:border-0 hover:bg-[var(--sera-mist)]/50"
                             >
-                              <ChevronLeft className="w-3 h-3 mr-0.5" /> Prev
-                            </Button>
-                            <span className="text-xs text-muted-foreground px-2">
-                              Page {orderListPage} of {totalPages}
+                              <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{row.rank}</td>
+                              <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.name}</td>
+                              <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.currentValue)}</td>
+                              <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentOrders)}</td>
+                              <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.aov)}</td>
+                              <td className="px-2 py-2.5 text-right tabular-nums">{formatPct(row.sharePct)}</td>
+                              <td className="px-2 py-2.5 text-right"><GrowthBadge value={row.growthPct} /></td>
+                              <td className="px-2 py-2.5 text-right tabular-nums">{formatDay(row.lastOrderAt)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="space-y-2.5 md:hidden">
+                      {visibleLeaderboard.map((row: LeaderboardRow) => (
+                        <button
+                          key={row.distributorId}
+                          type="button"
+                          onClick={() => openDrawer(row.distributorId)}
+                          className="w-full rounded-xl border border-[var(--sera-line)] p-3 text-left transition-colors hover:border-[var(--sera-orange)]/40"
+                        >
+                          <div className="mb-2 flex items-start justify-between gap-2">
+                            <span className="min-w-0 text-sm font-semibold text-[var(--sera-ink)]">
+                              <span className="text-[var(--sera-muted)]">#{row.rank}</span> {row.name}
                             </span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              disabled={orderListPage >= totalPages}
-                              onClick={() => setOrderListPage((p) => Math.min(totalPages, p + 1))}
-                            >
-                              Next <ChevronRight className="w-3 h-3 ml-0.5" />
-                            </Button>
+                            <GrowthBadge value={row.growthPct} />
+                          </div>
+                          <MobileField label="Order Value">{formatRM(row.currentValue)}</MobileField>
+                          <MobileField label="Orders">{formatCount(row.currentOrders)}</MobileField>
+                          <MobileField label="AOV">{formatRM(row.aov)}</MobileField>
+                          <MobileField label="Share">{formatPct(row.sharePct)}</MobileField>
+                          <MobileField label="Last Order">{formatDay(row.lastOrderAt)}</MobileField>
+                          <p className="mt-1.5 text-[10px] text-[var(--sera-orange)]">Tap for details</p>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </SectionCard>
+
+              <SectionCard
+                title="Distributor Contribution"
+                description={
+                  report.contribution.topQuintileSharePct === null
+                    ? 'Dependency and concentration risk'
+                    : `Top 20% of active distributors carry ${report.contribution.topQuintileSharePct.toFixed(0)}% of Order Value`
+                }
+                icon={PieIcon}
+              >
+                {report.contribution.distributorCount === 0 ? (
+                  <EmptyNote>{emptyPeriodNote}</EmptyNote>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="h-[220px] w-full sm:h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={contributionSlices}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius="52%"
+                            outerRadius="80%"
+                            paddingAngle={2}
+                          >
+                            {contributionSlices.map((slice) => (
+                              <Cell key={slice.name} fill={slice.fill} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={tooltipStyle} formatter={(value: any) => formatRM(Number(value))} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="space-y-2 self-center">
+                      {report.contribution.bands.map((band) => (
+                        <div key={band.label} className="rounded-xl border border-[var(--sera-line)] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-[var(--sera-ink)]">{band.label}</span>
+                            <span className="text-sm font-bold text-[var(--sera-ink)]">{formatPct(band.sharePct)}</span>
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between gap-2 text-[11px] text-[var(--sera-muted)]">
+                            <span>{formatCount(band.distributors)} distributor{band.distributors === 1 ? '' : 's'}</span>
+                            <span className="tabular-nums">{formatRM(band.orderValue)}</span>
                           </div>
                         </div>
-                      )}
-                    </>
-                  )}
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </SectionCard>
+            </>
+          )}
+
+          <SectionCard
+            title={singleDistributor ? `Top Products — ${report.distributor.name}` : 'Top Products Across Distributors'}
+            description={`Ordered by distributors during ${period.rangeLabel}`}
+            icon={Package}
+          >
+            {report.topProducts.length === 0 ? (
+              <EmptyNote>No products were ordered by distributors in the selected period.</EmptyNote>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[620px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                        <th className="px-2 py-2 font-medium">#</th>
+                        <th className="px-2 py-2 font-medium">Product / Variant</th>
+                        <th className="px-2 py-2 text-right font-medium">Units</th>
+                        <th className="px-2 py-2 text-right font-medium">Order Value</th>
+                        <th className="px-2 py-2 text-right font-medium">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.topProducts.map((row) => (
+                        <tr key={row.variantId ?? row.label} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{row.rank}</td>
+                          <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.units)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.orderValue)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatPct(row.sharePct)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )
-            })()}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── DISTRIBUTORS DIALOG ─────────────────────────────── */}
-      <Dialog open={distDialogOpen} onOpenChange={setDistDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-amber-600" />
-              Distributor Directory
-            </DialogTitle>
-            <DialogDescription>
-              {allDistributors.length} total distributors in the system
-            </DialogDescription>
-          </DialogHeader>
-          <Tabs value={distDialogTab} onValueChange={(v) => setDistDialogTab(v as 'active' | 'inactive')} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 mb-3">
-              <TabsTrigger value="active" className="text-sm">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                Active ({allDistributors.filter((d: any) => d.hasOrders).length})
-              </TabsTrigger>
-              <TabsTrigger value="inactive" className="text-sm">
-                <UserMinus className="w-3.5 h-3.5 mr-1.5" />
-                Inactive ({allDistributors.filter((d: any) => !d.hasOrders).length})
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="active" className="flex-1 overflow-y-auto mt-0">
-              <div className="space-y-2">
-                {allDistributors.filter((d: any) => d.hasOrders).length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground">
-                    <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>No active distributors in this period</p>
-                  </div>
-                ) : (
-                  allDistributors.filter((d: any) => d.hasOrders).map((d: any) => (
-                    <div
-                      key={d.id}
-                      className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer"
-                      onClick={() => { setDistDialogOpen(false); setSelectedDistId(d.id); setDrawerOpen(true) }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                          <Building2 className="w-4 h-4 text-green-600 dark:text-green-400" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{d.org_name}</p>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{d.org_type_code}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</Badge>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                      </div>
+                <div className="space-y-2.5 md:hidden">
+                  {report.topProducts.map((row) => (
+                    <div key={row.variantId ?? row.label} className="rounded-xl border border-[var(--sera-line)] p-3">
+                      <p className="mb-1.5 text-xs font-semibold text-[var(--sera-ink)]">
+                        <span className="text-[var(--sera-muted)]">#{row.rank}</span> {row.label}
+                      </p>
+                      <MobileField label="Units">{formatCount(row.units)}</MobileField>
+                      <MobileField label="Order Value">{formatRM(row.orderValue)}</MobileField>
+                      <MobileField label="Share">{formatPct(row.sharePct)}</MobileField>
                     </div>
-                  ))
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+        </TabsContent>
+
+        {/* ══ RELATIONSHIP & RISK ═══════════════════════════════════════ */}
+        <TabsContent value="relationship" className="space-y-5">
+          <SectionCard
+            title="Relationship Summary"
+            description={`${period.rangeLabel} compared with ${period.comparisonRangeLabel}`}
+            icon={Users}
+          >
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+              {report.relationship.rows.map((row) => (
+                <SummaryTile
+                  key={row.key}
+                  label={row.label}
+                  description={row.description}
+                  count={row.count}
+                  accent={
+                    row.key === 'new' ? REPORTING_COLORS.success
+                      : row.key === 'returning' ? REPORTING_COLORS.cyan
+                        : row.key === 'inactive' ? REPORTING_COLORS.warning
+                          : REPORTING_COLORS.danger
+                  }
+                />
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Distributor Health / Risk"
+            description={`At risk beyond ${report.meta.atRiskDays} days, or twice the distributor's own ordering cadence · dormant from ${report.meta.dormantDays} days`}
+            icon={HeartPulse}
+          >
+            {report.health.rows.length === 0 ? (
+              <EmptyNote>{emptyPeriodNote}</EmptyNote>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="w-full min-w-[980px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                        <th className="px-2 py-2 font-medium">Distributor</th>
+                        <th className="px-2 py-2 text-right font-medium">Current Orders</th>
+                        <th className="px-2 py-2 text-right font-medium">Previous Orders</th>
+                        <th className="px-2 py-2 text-right font-medium">Current Value</th>
+                        <th className="px-2 py-2 text-right font-medium">Previous Value</th>
+                        <th className="px-2 py-2 text-right font-medium">Change</th>
+                        <th className="px-2 py-2 text-right font-medium">Last Order</th>
+                        <th className="px-2 py-2 text-right font-medium">Days Since</th>
+                        <th className="px-2 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.health.rows.map((row: DistributorRow) => (
+                        <tr
+                          key={row.distributorId}
+                          onClick={() => openDrawer(row.distributorId)}
+                          className="cursor-pointer border-b border-[var(--sera-line)]/60 last:border-0 hover:bg-[var(--sera-mist)]/50"
+                        >
+                          <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.name}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentOrders)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{formatCount(row.previousOrders)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.currentValue)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{formatRM(row.previousValue)}</td>
+                          <td className="px-2 py-2.5 text-right"><GrowthBadge value={row.growthPct} /></td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatDay(row.lastOrderAt)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{row.daysSinceLastOrder === null ? '—' : formatCount(row.daysSinceLastOrder)}</td>
+                          <td className="px-2 py-2.5"><HealthBadge health={row.health} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-2.5 lg:hidden">
+                  {report.health.rows.map((row: DistributorRow) => (
+                    <button
+                      key={row.distributorId}
+                      type="button"
+                      onClick={() => openDrawer(row.distributorId)}
+                      className="w-full rounded-xl border border-[var(--sera-line)] p-3 text-left transition-colors hover:border-[var(--sera-orange)]/40"
+                    >
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <span className="min-w-0 text-sm font-semibold text-[var(--sera-ink)]">{row.name}</span>
+                        <HealthBadge health={row.health} />
+                      </div>
+                      <MobileField label="Current Value">{formatRM(row.currentValue)}</MobileField>
+                      <MobileField label="Previous">{formatRMCompact(row.previousValue)}</MobileField>
+                      <MobileField label="Change"><GrowthBadge value={row.growthPct} /></MobileField>
+                      <MobileField label="Orders">{formatCount(row.currentOrders)} vs {formatCount(row.previousOrders)}</MobileField>
+                      <MobileField label="Last Order">{formatDay(row.lastOrderAt)}</MobileField>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Distributor Action Plan"
+            description="Tap a card to filter the list to that action"
+            icon={ClipboardList}
+          >
+            <div className="mb-4 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+              {report.actionPlan.summary.map((card) => (
+                <SummaryTile
+                  key={card.key}
+                  label={card.label}
+                  description={card.description}
+                  count={card.count}
+                  accent={ACTION_ACCENT[card.key]}
+                  active={actionFilter === card.key}
+                  onClick={() => setActionFilter(actionFilter === card.key ? null : card.key)}
+                />
+              ))}
+            </div>
+
+            {actionFilter ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActionFilter(null)}
+                className="mb-2 h-8 text-xs text-[var(--sera-muted)]"
+              >
+                <X className="mr-1 h-3 w-3" /> Clear {ACTION_LABEL[actionFilter]} filter
+              </Button>
+            ) : null}
+
+            {visibleActionRows.length === 0 ? (
+              <EmptyNote>No management actions were raised for the selected report period.</EmptyNote>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="w-full min-w-[1000px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                        <th className="px-2 py-2 font-medium">Priority</th>
+                        <th className="px-2 py-2 font-medium">Distributor</th>
+                        <th className="px-2 py-2 text-right font-medium">Current Order Value</th>
+                        <th className="px-2 py-2 text-right font-medium">Previous Order Value</th>
+                        <th className="px-2 py-2 text-right font-medium">Change</th>
+                        <th className="px-2 py-2 text-right font-medium">Orders</th>
+                        <th className="px-2 py-2 text-right font-medium">Last Order</th>
+                        <th className="px-2 py-2 font-medium">Status</th>
+                        <th className="px-2 py-2 font-medium">Recommended Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleActionRows.map((row: DistributorRow) => (
+                        <tr
+                          key={row.distributorId}
+                          onClick={() => openDrawer(row.distributorId)}
+                          className="cursor-pointer border-b border-[var(--sera-line)]/60 last:border-0 hover:bg-[var(--sera-mist)]/50"
+                        >
+                          <td className="px-2 py-2.5">
+                            <Badge variant="secondary" className={cn('px-1.5 py-0 text-[11px] font-semibold', PRIORITY_BADGE[row.actionPriority])}>
+                              {row.actionPriority}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.name}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.currentValue)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{formatRM(row.previousValue)}</td>
+                          <td className="px-2 py-2.5 text-right"><GrowthBadge value={row.growthPct} /></td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentOrders)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatDay(row.lastOrderAt)}</td>
+                          <td className="px-2 py-2.5"><HealthBadge health={row.health} /></td>
+                          <td className="px-2 py-2.5">
+                            <span className="text-xs font-semibold uppercase" style={{ color: ACTION_ACCENT[row.action as ActionKey] }}>
+                              {ACTION_LABEL[row.action as ActionKey]}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-2.5 lg:hidden">
+                  {visibleActionRows.map((row: DistributorRow) => (
+                    <button
+                      key={row.distributorId}
+                      type="button"
+                      onClick={() => openDrawer(row.distributorId)}
+                      className="w-full rounded-xl border border-[var(--sera-line)] p-3 text-left transition-colors hover:border-[var(--sera-orange)]/40"
+                    >
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <span className="min-w-0 text-sm font-semibold text-[var(--sera-ink)]">{row.name}</span>
+                        <HealthBadge health={row.health} />
+                      </div>
+                      <MobileField label="Current Value">{formatRM(row.currentValue)}</MobileField>
+                      <MobileField label="Previous">{formatRMCompact(row.previousValue)}</MobileField>
+                      <MobileField label="Change"><GrowthBadge value={row.growthPct} /></MobileField>
+                      <MobileField label="Last Order">{formatDay(row.lastOrderAt)}</MobileField>
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-[var(--sera-line)] pt-2">
+                        <span className="text-xs font-semibold uppercase" style={{ color: ACTION_ACCENT[row.action as ActionKey] }}>
+                          {ACTION_LABEL[row.action as ActionKey]}
+                        </span>
+                        <Badge variant="secondary" className={cn('px-1.5 py-0 text-[11px] font-semibold', PRIORITY_BADGE[row.actionPriority])}>
+                          {row.actionPriority}
+                        </Badge>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Order Processing Health"
+            description="Operational status mix — not a measure of the distributor relationship"
+            icon={ClipboardList}
+          >
+            <div className="mb-4 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+              <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Orders In Period</p>
+                <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)]">{formatCount(report.orderProcessing.total)}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Approval Rate</p>
+                <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)]">{formatPct(report.orderProcessing.approvalRatePct)}</p>
+                <p className="mt-0.5 text-[10px] text-[var(--sera-muted)]">{formatCount(report.orderProcessing.approvedOrders)} approved or closed</p>
+              </div>
+              <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Completion Rate</p>
+                <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)]">{formatPct(report.orderProcessing.completionRatePct)}</p>
+                <p className="mt-0.5 text-[10px] text-[var(--sera-muted)]">{formatCount(report.orderProcessing.completedOrders)} closed</p>
+              </div>
+              <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Cancellation Rate</p>
+                <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)]">{formatPct(report.orderProcessing.cancellationRatePct)}</p>
+                <p className="mt-0.5 text-[10px] text-[var(--sera-muted)]">{formatCount(report.orderProcessing.cancelledOrders)} cancelled</p>
+              </div>
+            </div>
+
+            {report.orderProcessing.statuses.length === 0 ? (
+              <EmptyNote>No orders recorded for the selected period.</EmptyNote>
+            ) : (
+              <div className="space-y-2">
+                {report.orderProcessing.statuses.map((row) => (
+                  <div key={row.status} className="rounded-xl border border-[var(--sera-line)] p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[var(--sera-ink)]">{row.label}</span>
+                      <span className="text-sm font-bold text-[var(--sera-ink)]">{formatCount(row.orders)}</span>
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between gap-2 text-[11px] text-[var(--sera-muted)]">
+                      <span>{formatPct(row.sharePct)} of orders</span>
+                      <span className="tabular-nums">{formatRM(row.orderValue)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
+
+      {/* ─── DISTRIBUTOR DETAIL DRAWER ─────────────────────────────────── */}
+      <Sheet open={drawerId !== null} onOpenChange={(open) => { if (!open) setDrawerId(null) }}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle className="text-base">
+              {drawerReport?.distributor.name ?? (drawerId ? distributorName(drawerId) : 'Distributor')}
+            </SheetTitle>
+            <SheetDescription className="text-xs">
+              {period.label} · {period.rangeLabel}
+              {period.isCurrentMonth ? ' (month to date)' : ''} · {report.status.label}
+            </SheetDescription>
+          </SheetHeader>
+
+          {drawerLoading ? (
+            <div className="py-10">
+              <ReportingTabLoading label="Loading distributor detail" />
+            </div>
+          ) : !drawerReport ? (
+            <EmptyNote>Unable to load this distributor&apos;s detail.</EmptyNote>
+          ) : (
+            <div className="mt-5 space-y-5">
+              {/* Selected-period KPIs against the comparison period. */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Order Value</p>
+                  <p className="mt-1 text-xl font-bold text-[var(--sera-ink)]">{formatRMCompact(drawerReport.summary.orderValue)}</p>
+                  <div className="mt-1"><GrowthBadge value={drawerReport.comparison.find((row) => row.key === 'orderValue')?.changePct ?? null} /></div>
+                </div>
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Orders</p>
+                  <p className="mt-1 text-xl font-bold text-[var(--sera-ink)]">{formatCount(drawerReport.summary.totalOrders)}</p>
+                  <div className="mt-1"><GrowthBadge value={drawerReport.comparison.find((row) => row.key === 'totalOrders')?.changePct ?? null} /></div>
+                </div>
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Avg Order Value</p>
+                  <p className="mt-1 text-xl font-bold text-[var(--sera-ink)]">
+                    {drawerReport.summary.avgOrderValue === null ? '—' : formatRMCompact(drawerReport.summary.avgOrderValue)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Relationship</p>
+                  <div className="mt-2">
+                    {drawerReport.health.rows[0]
+                      ? <HealthBadge health={drawerReport.health.rows[0].health} />
+                      : <span className="text-xs text-[var(--sera-muted)]">No activity</span>}
+                  </div>
+                  {drawerReport.health.rows[0] ? (
+                    <p className="mt-1.5 text-[10px] text-[var(--sera-muted)]">
+                      Last order {formatDay(drawerReport.health.rows[0].lastOrderAt)}
+                      {drawerReport.health.rows[0].daysSinceLastOrder === null
+                        ? ''
+                        : ` · ${drawerReport.health.rows[0].daysSinceLastOrder} days ago`}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Daily trend for the SELECTED MONTH only — this report carries
+                  no twelve-month chart anywhere. */}
+              <div>
+                <p className="mb-2 text-xs font-semibold text-[var(--sera-ink)]">Daily Sell-In — {period.label}</p>
+                {drawerReport.summary.totalOrders === 0 ? (
+                  <EmptyNote>{emptyPeriodNote}</EmptyNote>
+                ) : (
+                  <div className="h-[180px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={drawerReport.dailyTrend} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
+                        <XAxis dataKey="shortLabel" tick={{ fontSize: 10, fill: chartTick }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                        <YAxis tick={{ fontSize: 10, fill: chartTick }} tickLine={false} axisLine={false} width={54} tickFormatter={(value: number) => formatRMCompact(value)} />
+                        <Tooltip
+                          contentStyle={tooltipStyle}
+                          labelFormatter={(_label, payload) => payload?.[0]?.payload?.label ?? ''}
+                          formatter={(value: any) => formatRM(Number(value))}
+                        />
+                        <Bar dataKey="orderValue" name="Order Value" fill={REPORTING_COLORS.primary} radius={[3, 3, 0, 0]} maxBarSize={18} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
                 )}
               </div>
-            </TabsContent>
-            <TabsContent value="inactive" className="flex-1 overflow-y-auto mt-0">
-              <div className="space-y-2">
-                {allDistributors.filter((d: any) => !d.hasOrders).length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground">
-                    <CheckCircle2 className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p>All distributors are active in this period</p>
-                  </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold text-[var(--sera-ink)]">Top Products</p>
+                {drawerReport.topProducts.length === 0 ? (
+                  <EmptyNote>No products ordered in this period.</EmptyNote>
                 ) : (
-                  allDistributors.filter((d: any) => !d.hasOrders).map((d: any) => (
-                    <div
-                      key={d.id}
-                      className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer"
-                      onClick={() => { setDistDialogOpen(false); setSelectedDistId(d.id); setDrawerOpen(true) }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                          <Building2 className="w-4 h-4 text-gray-400" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{d.org_name}</p>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{d.org_type_code}</p>
-                        </div>
+                  <div className="space-y-1.5">
+                    {drawerReport.topProducts.map((row) => (
+                      <div key={row.variantId ?? row.label} className="flex items-baseline justify-between gap-3 rounded-lg border border-[var(--sera-line)] px-3 py-2">
+                        <span className="min-w-0 truncate text-xs text-[var(--sera-ink)]">{row.label}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-[var(--sera-muted)]">
+                          {formatCount(row.units)} · {formatRMCompact(row.orderValue)}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-[10px] bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Inactive</Badge>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
 
-      {/* ─── DETAIL DRAWER ───────────────────────────────────── */}
-      <DistributorDetailDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        distributorId={selectedDistId}
-        isDark={isDark}
-      />
+              <div>
+                <p className="mb-2 text-xs font-semibold text-[var(--sera-ink)]">Recent Orders</p>
+                {drawerReport.recentOrders.length === 0 ? (
+                  <EmptyNote>No orders in this period.</EmptyNote>
+                ) : (
+                  <div className="space-y-1.5">
+                    {drawerReport.recentOrders.map((order) => (
+                      <div key={order.orderId} className="flex items-baseline justify-between gap-3 rounded-lg border border-[var(--sera-line)] px-3 py-2">
+                        <span className="min-w-0 truncate text-xs text-[var(--sera-ink)]">
+                          {order.orderNo || order.orderId}
+                          <span className="ml-2 text-[var(--sera-muted)]">{formatDay(order.createdAt)}</span>
+                        </span>
+                        <span className="shrink-0 text-xs tabular-nums text-[var(--sera-muted)]">
+                          {statusLabel(order.status)} · {formatRMCompact(order.orderValue)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {drawerReport.health.rows[0]?.action ? (
+                <div className="rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Recommended Action</p>
+                  <p className="mt-1 text-sm font-semibold" style={{ color: ACTION_ACCENT[drawerReport.health.rows[0].action as ActionKey] }}>
+                    {ACTION_LABEL[drawerReport.health.rows[0].action as ActionKey]}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--sera-muted)]">{drawerReport.health.rows[0].recommendation}</p>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

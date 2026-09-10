@@ -23,6 +23,8 @@
  * Pure and framework-free so the behaviour can be unit tested directly.
  */
 
+import { isLegacyConfigCode } from './canonical-stock-config'
+
 export interface InventoryConfigRow {
   id: string
   organization_id?: string | null
@@ -109,6 +111,28 @@ export interface VariantInventorySummary {
   hiddenConfigCount: number
   /** True when at least one configuration carries physical dimensions. */
   configuredVariant: boolean
+  /**
+   * Units this variant still holds under a retired legacy configuration
+   * (50NB / 50OB / UNCLASSIFIED). Counts allocated as well as on hand: a
+   * reserved legacy unit is still a unit the operator must be able to see.
+   */
+  legacyOnHand: number
+  /**
+   * True while any legacy balance is non-zero.
+   *
+   * This is the gate on the post-cutover UI simplification. The summary row's
+   * On Hand already INCLUDES the legacy balance, so collapsing the detail away
+   * while this is true would show an operator a total they cannot account for —
+   * the one outcome the cutover plan explicitly forbids. Simplify only when it
+   * is false, and until then say plainly that legacy stock is still present.
+   */
+  hasUnretiredLegacy: boolean
+  /**
+   * True when the variant has exactly one operational configuration and no
+   * legacy balance left. The configuration expander carries no information at
+   * this point and is dropped entirely.
+   */
+  operationalOnly: boolean
 }
 
 /** Resolve incoming for a warehouse + variant. Returns the variant-level total. */
@@ -128,6 +152,24 @@ const normalizeCode = (value?: string | null): string => (value || '').trim().to
  * A configuration is Legacy/Unclassified when it has no physical dimensions,
  * carries the UNCLASSIFIED code, or has no stock configuration identity at all.
  */
+/**
+ * Whether this balance sits under a configuration the legacy cutover retires.
+ *
+ * Deliberately NOT isLegacyConfigRow. That predicate answers a display
+ * question — "does this row carry physical dimensions" — and STD, the canonical
+ * configuration for every non-vape product, has neither volume nor packaging.
+ * Treating STD as legacy would flag every tumbler and camping chair as holding
+ * retired stock and would stop their rows ever collapsing.
+ *
+ * Retirement is decided by the configuration CODE, matching
+ * legacy_cutover_config_codes() in the database. A row with no configuration at
+ * all is legacy by definition: it predates the configuration model.
+ */
+export function isRetirableLegacyConfigRow(row: InventoryConfigRow): boolean {
+  if (!row.stock_config_id) return true
+  return isLegacyConfigCode(row.config_code)
+}
+
 export function isLegacyConfigRow(row: InventoryConfigRow): boolean {
   if (normalizeCode(row.config_code) === 'UNCLASSIFIED') return true
   if (!row.stock_config_id) return true
@@ -382,6 +424,17 @@ export function aggregateVariantInventory(
       ? configs
       : configs.filter((config) => !(config.isLegacy && config.onHand === 0 && config.allocated === 0 && config.incoming === 0))
 
+    // Legacy stock the cutover has not yet retired. Allocated counts too: a
+    // reserved legacy unit is still a unit the operator must be able to see.
+    const retirable = new Set(
+      rows.filter(isRetirableLegacyConfigRow).map((row) => row.id),
+    )
+    const legacyOnHand = configs
+      .filter((config) => retirable.has(config.id))
+      .reduce((sum, config) => sum + Math.max(config.onHand, 0) + Math.max(config.allocated, 0), 0)
+    const hasUnretiredLegacy = legacyOnHand > 0
+    const operationalConfigCount = configs.filter((config) => !retirable.has(config.id)).length
+
     summaries.push({
       key,
       organizationId: first.organization_id ?? null,
@@ -408,6 +461,9 @@ export function aggregateVariantInventory(
       configs: visibleConfigs,
       hiddenConfigCount: configs.length - visibleConfigs.length,
       configuredVariant,
+      legacyOnHand,
+      hasUnretiredLegacy,
+      operationalOnly: !hasUnretiredLegacy && operationalConfigCount <= 1,
     })
   }
 

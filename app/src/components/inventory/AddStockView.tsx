@@ -51,6 +51,7 @@ import {
   variantIdentityLabel,
 } from '@/lib/inventory/variant-display-label'
 import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
+import { shouldShowConfigurationColumn } from '@/lib/inventory/canonical-stock-config'
 
 interface WarehouseLocation {
   id: string
@@ -301,6 +302,14 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     [filteredRows, page],
   )
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
+
+  // Each variant now has exactly one canonical operational configuration, so a
+  // Configuration column would print the same value on every row. It reappears
+  // by itself if a second configuration is ever genuinely in play.
+  const showConfiguration = useMemo(
+    () => shouldShowConfigurationColumn(catalogRows),
+    [catalogRows],
+  )
 
   const summary = useMemo(
     () => summarizeManualStockSelection(catalogRows, selectedKeys, quantities, unitCosts),
@@ -687,15 +696,17 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 {manufacturers.map((mfg) => <SelectItem key={mfg.id} value={mfg.id}>{mfg.org_name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={configurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!selectedWarehouse}>
-              <SelectTrigger><SelectValue placeholder="Configuration" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All configurations</SelectItem>
-                {configurationOptions.map(([key, label]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {showConfiguration && (
+              <Select value={configurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!selectedWarehouse}>
+                <SelectTrigger><SelectValue placeholder="Configuration" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All configurations</SelectItem>
+                  {configurationOptions.map(([key, label]) => (
+                    <SelectItem key={key} value={key}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm">
@@ -762,7 +773,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                         />
                       </TableHead>
                       <TableHead>Product / Flavour</TableHead>
-                      <TableHead>Configuration</TableHead>
+                      {showConfiguration && <TableHead>Configuration</TableHead>}
                       <TableHead className="text-right">Current On Hand</TableHead>
                       <TableHead className="text-right">Add Quantity</TableHead>
                       <TableHead className="text-right">Unit Cost</TableHead>
@@ -798,11 +809,13 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               </div>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
-                              {withStockStrengthUnit(row.configLabel)}
-                            </Badge>
-                          </TableCell>
+                          {showConfiguration && (
+                            <TableCell>
+                              <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
+                                {withStockStrengthUnit(row.configLabel)}
+                              </Badge>
+                            </TableCell>
+                          )}
                           <TableCell className="text-right tabular-nums">{row.currentOnHand.toLocaleString()}</TableCell>
                           <TableCell className="text-right">
                             <Input
@@ -840,7 +853,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     })}
                     {pageRows.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-sm text-slate-500 py-8">
+                        <TableCell colSpan={showConfiguration ? 9 : 8} className="text-center text-sm text-slate-500 py-8">
                           No configurations match the current filters.
                         </TableCell>
                       </TableRow>
@@ -909,7 +922,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product / Flavour</TableHead>
-                    <TableHead>Configuration</TableHead>
+                    {showConfiguration && <TableHead>Configuration</TableHead>}
                     <TableHead className="text-right">Qty</TableHead>
                     <TableHead className="text-right">Current → New</TableHead>
                     <TableHead className="text-right">Unit Cost</TableHead>
@@ -925,7 +938,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                           {variantIdentityLabel(row.variantName, row.variantProductCode)}
                         </div>
                       </TableCell>
-                      <TableCell>{withStockStrengthUnit(row.configLabel)}</TableCell>
+                      {showConfiguration && <TableCell>{withStockStrengthUnit(row.configLabel)}</TableCell>}
                       <TableCell className="text-right">{item.quantity}</TableCell>
                       <TableCell className="text-right">
                         {row.currentOnHand.toLocaleString()} → {newBalance(row.currentOnHand, item.quantity).toLocaleString()}

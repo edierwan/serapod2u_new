@@ -8,6 +8,8 @@ import {
     buildShopEntries,
     isOverdueFollowUp,
     MIN_MATURED_SAMPLE_FOR_RANKING,
+    selectFollowUpQueueEntries,
+    type FollowUpResolutions,
     sortFollowUpQueue,
 } from './aggregate'
 import { attributeShopVisits, findOverlappingObservationWindows } from './attribution'
@@ -350,5 +352,133 @@ describe('follow-up queue ordering', () => {
         expect(summary.unassignedShops).toBe(1)
         expect(summary.overdue).toBe(2)
         expect(summary.dueToday).toBe(0)
+    })
+})
+
+describe('Shop Follow-Up as an as-of-month operational queue', () => {
+    // The brief's required cases A-F. Production shape: June had visits, July had
+    // none at all, August had 127, September none.
+    const JULY = { startDate: '2026-07-01', endDate: '2026-07-31' }
+    const SEPTEMBER = { startDate: '2026-09-01', endDate: '2026-09-30' }
+    const JULY_NOW = new Date('2026-07-15T01:00:00Z')
+    const SEPTEMBER_NOW = new Date('2026-09-01T01:00:00Z')
+
+    const juneUnresolved = row({
+        visit_at: '2026-06-10T02:00:00.000Z', shop_id: 'shop-june',
+        before_scans: 4, after_scans: 0, matured: true,
+    })
+    const augustNoResponse = row({
+        visit_at: '2026-08-10T02:00:00.000Z', shop_id: 'shop-open',
+        before_scans: 4, after_scans: 0, matured: true,
+    })
+    const augustHealthy = row({
+        visit_at: '2026-08-10T02:00:00.000Z', shop_id: 'shop-healthy',
+        before_scans: 2, after_scans: 9, matured: true,
+    })
+    const augustLateVisit = row({
+        visit_at: '2026-08-30T02:00:00.000Z', shop_id: 'shop-observing',
+        before_scans: 1, after_scans: 0, matured: false,
+    })
+
+    it('A · AM Performance stays empty for a month with no visits', () => {
+        // AM Performance is fed by the month-scoped dataset, so July supplies no
+        // rows at all. Carry-forward must never reach this report.
+        const july = buildAmPerformance(buildShopEntries([], JULY_NOW), [])
+        expect(july.rows).toEqual([])
+        expect(july.activeAms).toBe(0)
+        expect(july.teamShopsVisited).toBe(0)
+    })
+
+    it('B · a June shop still unresolved is in July\'s queue, though July has no visits', () => {
+        const queue = selectFollowUpQueueEntries(buildShopEntries([juneUnresolved], JULY_NOW), JULY)
+        expect(queue.map((entry) => entry.shopId)).toEqual(['shop-june'])
+        expect(queue[0].priority).toBe('high')
+        // The original visit date stays visible so management sees the age.
+        expect(queue[0].currentRow.visit_date).toBe('2026-06-10')
+    })
+
+    it('C · a 30 August visit still inside its window shows as Observing on 1 September', () => {
+        const queue = selectFollowUpQueueEntries(
+            buildShopEntries([augustLateVisit], SEPTEMBER_NOW), SEPTEMBER,
+        )
+        expect(queue.map((entry) => entry.shopId)).toEqual(['shop-observing'])
+        expect(queue[0].priority).toBe('observing')
+    })
+
+    it('D · once it matures with no response it becomes actionable and stays visible', () => {
+        const matured = row({
+            visit_at: '2026-08-30T02:00:00.000Z', shop_id: 'shop-observing',
+            before_scans: 1, after_scans: 0, matured: true,
+        })
+        const october = { startDate: '2026-10-01', endDate: '2026-10-31' }
+        const queue = selectFollowUpQueueEntries(
+            buildShopEntries([matured], new Date('2026-10-20T01:00:00Z')), october,
+        )
+        expect(queue.map((entry) => entry.shopId)).toEqual(['shop-observing'])
+        expect(queue[0].priority).toBe('high')
+        expect(isOverdueFollowUp(queue[0])).toBe(true)
+    })
+
+    it('E · an explicitly resolved shop drops out of later queues', () => {
+        const resolutions: FollowUpResolutions = new Map([
+            [augustNoResponse.visit_id, {
+                state: 'resolved' as const,
+                resolvedAt: '2026-08-28T04:00:00.000Z',
+                resolvedByName: 'Fitri',
+                note: 'Revisited, owner restocked.',
+            }],
+        ])
+        const open = selectFollowUpQueueEntries(
+            buildShopEntries([augustNoResponse], SEPTEMBER_NOW), SEPTEMBER,
+        )
+        expect(open.map((entry) => entry.shopId)).toEqual(['shop-open'])
+
+        const resolved = selectFollowUpQueueEntries(
+            buildShopEntries([augustNoResponse], SEPTEMBER_NOW, resolutions), SEPTEMBER,
+        )
+        expect(resolved).toEqual([])
+    })
+
+    it('E · a dismissed shop also drops out', () => {
+        const resolutions: FollowUpResolutions = new Map([
+            [augustNoResponse.visit_id, {
+                state: 'dismissed' as const,
+                resolvedAt: '2026-08-28T04:00:00.000Z',
+                resolvedByName: 'Fitri',
+                note: 'Shop closed permanently.',
+            }],
+        ])
+        const queue = selectFollowUpQueueEntries(
+            buildShopEntries([augustNoResponse], SEPTEMBER_NOW, resolutions), SEPTEMBER,
+        )
+        expect(queue).toEqual([])
+    })
+
+    it('F · a healthy historical shop is not carried forward for ever', () => {
+        const queue = selectFollowUpQueueEntries(
+            buildShopEntries([augustHealthy], SEPTEMBER_NOW), SEPTEMBER,
+        )
+        expect(queue).toEqual([])
+    })
+
+    it('still lists every shop visited during the selected month, whatever its priority', () => {
+        const septemberHealthy = row({
+            visit_at: '2026-09-02T02:00:00.000Z', shop_id: 'shop-september',
+            before_scans: 3, after_scans: 8, matured: true,
+        })
+        const queue = selectFollowUpQueueEntries(
+            buildShopEntries([septemberHealthy, augustHealthy, augustNoResponse],
+                new Date('2026-09-20T01:00:00Z')),
+            SEPTEMBER,
+        )
+        expect(queue.map((entry) => entry.shopId).sort()).toEqual(['shop-open', 'shop-september'])
+    })
+
+    it('carry-forward never reaches AM Performance', () => {
+        // Same rows, both reports. The queue carries August forward; the
+        // leaderboard is handed only the month's own rows and stays empty.
+        const entries = buildShopEntries([augustNoResponse], SEPTEMBER_NOW)
+        expect(selectFollowUpQueueEntries(entries, SEPTEMBER)).toHaveLength(1)
+        expect(buildAmPerformance(buildShopEntries([], SEPTEMBER_NOW), []).rows).toEqual([])
     })
 })

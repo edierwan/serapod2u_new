@@ -128,7 +128,7 @@ async function loadCategoryProducts(admin: Admin, categoryId: string): Promise<E
     // source the Product Variant screen uses — so each flavour shows its own image).
     const { data: variants, error: varErr } = await admin
         .from('product_variants')
-        .select('id, product_id, variant_name, barcode, manufacturer_sku, manual_sku, image_url, base_cost, is_active, is_default, sort_order, variant_media(type, url, is_default, sort_order)')
+        .select('id, product_id, variant_name, product_code, alternative_name, barcode, manufacturer_sku, manual_sku, image_url, base_cost, is_active, is_default, sort_order, variant_media(type, url, is_default, sort_order)')
         .in('product_id', productIds)
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
@@ -180,6 +180,8 @@ async function loadCategoryProducts(admin: Admin, categoryId: string): Promise<E
             barcode: v.barcode ?? null,
             product_name: productName,
             variant_name: v.variant_name ?? null,
+            variant_product_code: v.product_code ?? null,
+            alternative_name: v.alternative_name ?? null,
             product_line: classifyProductLine(productName),
             image_url: imageUrl,
             units_per_case: getUnitsPerCase(productName, product?.units_per_case ?? sku?.quantity_per_package),

@@ -6,6 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { resolveOrganizationLogoUrl } from '@/lib/organizations/logo'
 import { resolveOrganizationTerms } from '@/lib/organizations/terms'
 import { resolveUserSignatureUrl } from '@/lib/users/signature'
+import {
+  buildCounterpartyAddressLines,
+  buildCounterpartyContactLines,
+  resolveCounterpartyRoleLabel,
+} from '@/lib/documents/counterparty'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -508,7 +513,13 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const isSalesOrder = (orderData.display_doc_no || orderData.order_no)?.startsWith('SO') || orderData.order_type === 'SO'
   const headerOrg = isSalesOrder ? orderData.seller_org : orderData.buyer_org
   const otherOrg = isSalesOrder ? orderData.buyer_org : orderData.seller_org
-  const otherOrgLabel = isSalesOrder ? 'Customer:' : 'Supplier:'
+  // Same role classification the generated documents use, so a distributor is
+  // named as such here too. The document-specific wording stays this view's own.
+  const otherOrgLabel = `${resolveCounterpartyRoleLabel(otherOrg, isSalesOrder ? 'Customer' : 'Supplier')}:`
+  // Address and contact lines come from the linked organization master record
+  // through the same normalizers the PDFs use, so screen and PDF agree.
+  const otherOrgAddressLines = buildCounterpartyAddressLines(otherOrg)
+  const otherOrgContactLines = buildCounterpartyContactLines(otherOrg)
   const docTitle = isSalesOrder ? 'SALES ORDER' : 'PURCHASE ORDER'
   const docNoLabel = isSalesOrder ? 'SO#:' : 'PO#:'
 
@@ -694,9 +705,12 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               {headerOrg?.org_name}
             </h2>
             <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
+              {/* `organizations` stores these as contact_phone / contact_email;
+                  the previous `phone` / `email` reads did not exist on the row,
+                  so the issuer's contact details never rendered at all. */}
               <p className="whitespace-pre-line">{headerOrg?.address || 'No address provided'}</p>
-              {headerOrg?.phone && <p>Phone: {headerOrg.phone}</p>}
-              {headerOrg?.email && <p>Email: {headerOrg.email}</p>}
+              {headerOrg?.contact_phone && <p>Phone: {headerOrg.contact_phone}</p>}
+              {headerOrg?.contact_email && <p>Email: {headerOrg.contact_email}</p>}
               {headerOrg?.website && <p>Website: {headerOrg.website}</p>}
             </div>
           </div>
@@ -740,10 +754,21 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             <h3 className="font-bold text-gray-900 mb-3 text-sm">{otherOrgLabel}</h3>
             <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
               <p className="font-bold text-gray-800 uppercase mb-1">{otherOrg?.org_name}</p>
-              {/* Contact Person if available, otherwise generic */}
-              <p className="uppercase">{otherOrg?.contact_person || ''}</p>
-              <p className="whitespace-pre-line max-w-full sm:max-w-xs">{otherOrg?.address || 'No address provided'}</p>
-              <p>{otherOrg?.email}</p>
+              {/* Only lines that actually carry master data are rendered, so a
+                  sparsely filled organization shows fewer lines rather than
+                  blank ones. */}
+              {otherOrgAddressLines.length > 0 ? (
+                <div className="max-w-full sm:max-w-xs">
+                  {otherOrgAddressLines.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+              ) : (
+                <p>No address provided</p>
+              )}
+              {otherOrgContactLines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
             </div>
           </div>
 

@@ -1,74 +1,46 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  ComposedChart,
-  Line,
-  Cell,
-  PieChart,
-  Pie,
-  ScatterChart,
-  Scatter,
+  Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  RefreshCw,
-  Loader2,
-  TrendingUp,
-  TrendingDown,
-  ArrowUpRight,
-  ArrowDownRight,
-  Package,
-  Boxes,
-  AlertTriangle,
-  AlertCircle,
-  CheckCircle2,
-  Star,
-  Zap,
-  Target,
-  BarChart3,
-  ShoppingCart,
-  Layers,
-  Trophy,
-  Flame,
-  Rocket,
-  ShieldAlert,
-  Megaphone,
-  Crown,
-  Search,
-  X,
-  Eye,
+  AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, Boxes, Calendar,
+  ArrowLeft, ChevronLeft, ChevronRight, Crown, Download, Layers, Loader2,
+  Megaphone, Minus, Package, PieChart as PieIcon, RefreshCw, Rocket, Search,
+  ShieldAlert, ShoppingCart, Tag, Target, TrendingUp, Warehouse,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
 import {
-  format,
-  subDays,
-  subMonths,
-  startOfMonth,
-  endOfMonth,
-  eachMonthOfInterval,
-  differenceInDays,
-  parseISO,
-} from 'date-fns'
+  ACTION_RECOMMENDATION,
+  ALL_CATEGORIES,
+  ALL_CATEGORIES_LABEL,
+  CONCENTRATION_THRESHOLD_PCT,
+  NO_ACTION_RECOMMENDATION,
+  buildReportingMonthOptions,
+  currentReportingMonthKey,
+  type ActionKey,
+  type ContributionBandKey,
+  type AttentionRow,
+  type ProductAnalyticsReport,
+  type ProductRow,
+  type StrategyKey,
+  type TopProductRow,
+} from '@/lib/reporting/product-analytics'
+import type { ReportingCategory } from '@/lib/reporting/product-analytics-source'
+import type { ReportingPeriod } from '@/lib/reporting/reporting-period'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
-import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
+import { REPORTING_COLORS, REPORTING_PANEL_CLASS, ReportingTabLoading } from './reportingChrome'
 
-// ── Types ──────────────────────────────────────────────────────────────────
 interface ProductsTabProps {
   userProfile: any
   chartGridColor: string
@@ -76,1482 +48,1561 @@ interface ProductsTabProps {
   isDark: boolean
 }
 
-interface OrderRow {
-  id: string
-  order_type: string
-  status: string
-  created_at: string
+interface ReportResponse {
+  report: ProductAnalyticsReport
+  meta: { source: 'rpc' | 'fallback'; degraded: boolean; notice: string | null; generatedAt: string }
 }
 
-interface OrderItemRow {
-  order_id: string
-  product_id: string
-  variant_id: string
-  qty: number
-  unit_price: number
-  line_total: number
+const STRATEGY_ICON: Record<StrategyKey, typeof Rocket> = {
+  rising: Rocket,
+  at_risk: ShieldAlert,
+  promo: Megaphone,
+  top: Crown,
 }
 
-interface VariantRow {
-  id: string
-  variant_name: string
-  variant_code: string
-  manufacturer_sku: string | null
-  product_id: string
-  is_active: boolean
-  base_cost: number | null
-  suggested_retail_price: number | null
+const STRATEGY_ACCENT: Record<StrategyKey, string> = {
+  rising: REPORTING_COLORS.success,
+  at_risk: REPORTING_COLORS.danger,
+  promo: REPORTING_COLORS.warning,
+  top: REPORTING_COLORS.primary,
 }
 
-interface ProductRow {
-  id: string
-  product_name: string
-  product_code: string
-  is_active: boolean
-  category_id: string | null
-  manufacturer_id: string | null
+const ACTION_ACCENT: Record<ActionKey, string> = {
+  replenish: REPORTING_COLORS.primary,
+  maintain: REPORTING_COLORS.success,
+  promote: REPORTING_COLORS.warning,
+  review: REPORTING_COLORS.danger,
 }
 
-interface InventoryRow {
-  variant_id: string
-  organization_id: string
-  quantity_on_hand: number
-  quantity_available: number
-  quantity_allocated: number
-  reorder_point: number
-  average_cost: number
-  total_value: number
-  updated_at: string
+const STOCK_BADGE: Record<string, string> = {
+  low: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  healthy: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  excess: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  dead: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+  none: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 }
 
-interface CategoryRow {
-  id: string
-  category_name: string
+/** Performance status wording for the contribution SKU detail. */
+const DEMAND_STATUS_LABEL: Record<string, string> = {
+  growing: 'Growing',
+  stable: 'Stable',
+  declining: 'Declining',
+  new: 'New Activity',
+  none: 'No Previous Baseline',
 }
 
-type StrategyInsightKey = 'rising' | 'at_risk' | 'promo' | 'top'
-
-interface ManufacturerRow {
-  id: string
-  org_name: string
+const STOCK_LABEL: Record<string, string> = {
+  low: 'Low', healthy: 'Healthy', excess: 'Excess', dead: 'Dead', none: 'No stock',
 }
 
-interface StrategyInsightDetailRow {
-  variantId: string
-  productName: string
-  variantName: string
-  unitsOrdered: number
-  revenue: number
-  currentStock: number
-  growthPercent: number | null
-  demandTrend: string
-  lastOrderedDate: string | null
-  statusRecommendation: string
+const ATTENTION_BADGE: Record<AttentionRow['status'], string> = {
+  'No Orders': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  Declining: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  Slow: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  Watch: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────
-const COLORS = {
-  primary: '#e85d04',
-  success: '#059669',
-  warning: '#d97706',
-  danger: '#dc2626',
-  purple: '#7c3aed',
-  cyan: '#0891b2',
-  indigo: '#6366f1',
-  pink: '#db2777',
+const PRIORITY_BADGE: Record<string, string> = {
+  HIGH: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  MEDIUM: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  NORMAL: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
 }
 
-const PERIOD_OPTIONS = [
-  { value: '30', label: 'Last 30 Days' },
-  { value: '90', label: 'Last 90 Days' },
-  { value: '180', label: 'Last 6 Months' },
-  { value: 'this_month', label: 'This Month' },
-  { value: 'last_month', label: 'Last Month' },
-]
+// ── Formatting ─────────────────────────────────────────────────────────────
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function AnimatedCounter({ value, prefix = '', suffix = '', decimals = 0 }: {
-  value: number; prefix?: string; suffix?: string; decimals?: number
+function formatCount(value: number): string {
+  return Math.round(value).toLocaleString('en-MY')
+}
+
+function formatRM(value: number | null): string {
+  if (value === null) return '—'
+  return `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Compact axis / tooltip form — "RM 82.3K". */
+function formatRMCompact(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `RM ${(value / 1_000_000).toFixed(1)}M`
+  if (Math.abs(value) >= 1_000) return `RM ${(value / 1_000).toFixed(1)}K`
+  return `RM ${value.toFixed(0)}`
+}
+
+function formatDay(value: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-MY', {
+    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur',
+  }).format(date)
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-MY', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    timeZone: 'Asia/Kuala_Lumpur',
+  }).format(date)
+}
+
+/**
+ * Growth pill. A `null` movement means the comparison window had no baseline —
+ * shown as "new demand", never as a misleading 0% or an Infinity.
+ */
+function DeltaPill({ value, suffix = '%', nullLabel = 'new demand' }: {
+  value: number | null
+  suffix?: string
+  nullLabel?: string
 }) {
-  const [display, setDisplay] = useState(0)
-  useEffect(() => {
-    let raf: number
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / 900, 1)
-      const ease = 1 - Math.pow(1 - p, 4)
-      setDisplay(ease * value)
-      if (p < 1) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [value])
-  return <span>{prefix}{display.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}{suffix}</span>
-}
-
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
-}
-
-function KPICardSkeleton() {
+  if (value === null) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--sera-muted)]">
+        <Minus className="h-3 w-3" /> {nullLabel}
+      </span>
+    )
+  }
+  const up = value >= 0
+  const Icon = up ? ArrowUpRight : ArrowDownRight
   return (
-    <Card className="sera-sc-panel overflow-hidden">
-      <CardContent className="pt-6 space-y-3">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-8 w-32" />
-        <Skeleton className="h-3 w-20" />
+    <Badge
+      variant="secondary"
+      className={cn(
+        'gap-0.5 px-1.5 py-0 text-[11px] font-semibold',
+        up
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {Math.abs(value).toFixed(1)}{suffix}
+    </Badge>
+  )
+}
+
+function KpiCard({ label, icon: Icon, accent, value, delta, caption }: {
+  label: string
+  icon: typeof Package
+  accent: string
+  value: string
+  delta: React.ReactNode
+  caption?: string | null
+}) {
+  return (
+    <Card className={cn(REPORTING_PANEL_CLASS, 'transition-colors hover:border-[var(--sera-orange)]/35')}>
+      <CardContent className="px-3 pb-3 pt-4 sm:px-5 sm:pt-5">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)] sm:text-xs">
+            {label}
+          </span>
+          <span className="shrink-0 rounded-xl p-1.5 shadow-sm sm:p-2" style={{ backgroundColor: `${accent}15` }}>
+            <Icon className="h-4 w-4" style={{ color: accent }} strokeWidth={1.75} />
+          </span>
+        </div>
+        <ExecutiveKpiValue>{value}</ExecutiveKpiValue>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">{delta}</div>
+        {caption ? <p className="mt-1 text-[10px] text-[var(--sera-muted)] sm:text-[11px]">{caption}</p> : null}
       </CardContent>
     </Card>
   )
 }
 
-function ChartSkeleton({ height = 'h-64' }: { height?: string }) {
-  return <Skeleton className={`w-full ${height}`} />
+function SectionCard({ title, description, icon: Icon, action, children, className }: {
+  title: string
+  description?: string
+  icon: typeof Package
+  action?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <Card className={cn(REPORTING_PANEL_CLASS, className)}>
+      <CardHeader className="flex flex-col gap-2 space-y-0 pb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2 text-sm text-[var(--sera-ink)] sm:text-base">
+            <Icon className="h-4 w-4 shrink-0 text-[var(--sera-orange)]" strokeWidth={1.75} />
+            <span className="truncate">{title}</span>
+          </CardTitle>
+          {description ? <CardDescription className="mt-0.5 text-xs sm:text-sm">{description}</CardDescription> : null}
+        </div>
+        {action}
+      </CardHeader>
+      <CardContent className="px-3 sm:px-6">{children}</CardContent>
+    </Card>
+  )
 }
 
-function getDateRange(period: string): { start: Date; end: Date } {
-  const now = new Date()
-  switch (period) {
-    case '30':
-      return { start: subDays(now, 30), end: now }
-    case '90':
-      return { start: subDays(now, 90), end: now }
-    case '180':
-      return { start: subDays(now, 180), end: now }
-    case 'this_month':
-      return { start: startOfMonth(now), end: now }
-    case 'last_month': {
-      const lm = subMonths(now, 1)
-      return { start: startOfMonth(lm), end: endOfMonth(lm) }
-    }
-    default:
-      return { start: subDays(now, 30), end: now }
-  }
+/** Clickable summary tile used by Strategy Insights and the Action Plan. */
+function SummaryTile({ label, description, count, accent, icon: Icon, active, onClick }: {
+  label: string
+  description?: string
+  count: number
+  accent: string
+  icon: typeof Package
+  active?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all',
+        'hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40',
+        active ? 'border-[var(--sera-orange)] ring-1 ring-[var(--sera-orange)]/30' : 'border-[var(--sera-line)]',
+      )}
+      style={{ backgroundColor: `${accent}0f` }}
+    >
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold sm:text-xs" style={{ color: accent }}>
+        <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="text-2xl font-bold text-[var(--sera-ink)] sm:text-3xl">{formatCount(count)}</span>
+      {description ? (
+        <span className="line-clamp-2 text-[10px] leading-tight text-[var(--sera-muted)] sm:text-[11px]">{description}</span>
+      ) : null}
+    </button>
+  )
 }
 
-function rankBadgeColor(rank: number): string {
-  if (rank === 1) return 'bg-yellow-500 text-white'
-  if (rank === 2) return 'bg-gray-400 text-white'
-  if (rank === 3) return 'bg-amber-700 text-white'
-  return 'bg-muted text-muted-foreground'
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return <p className="py-8 text-center text-sm text-[var(--sera-muted)]">{children}</p>
 }
 
-function formatRM(val: number): string {
-  if (val >= 1_000_000) return `RM ${(val / 1_000_000).toFixed(1)}M`
-  if (val >= 1_000) return `RM ${(val / 1_000).toFixed(1)}K`
-  return `RM ${val.toFixed(2)}`
-}
+// ── Main component ─────────────────────────────────────────────────────────
 
-function formatNum(val: number): string {
-  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`
-  if (val >= 1_000) return `${(val / 1_000).toFixed(1)}K`
-  return val.toLocaleString()
-}
-
-// ── Main Component ─────────────────────────────────────────────────────────
-export default function ProductsTab({ userProfile, chartGridColor, chartTickColor, isDark }: ProductsTabProps) {
-  const supabase = useMemo(() => createClient(), [])
-
-  // State
-  const [period, setPeriod] = useState('90')
+export default function ProductsTab({ userProfile, chartGridColor, chartTickColor }: ProductsTabProps) {
+  const [month, setMonth] = useState<string>(() => currentReportingMonthKey())
+  // The report opens consolidated; the user is never made to pick a category first.
+  const [categoryId, setCategoryId] = useState<string>(ALL_CATEGORIES)
+  const [availableMonths, setAvailableMonths] = useState<string[]>([])
+  const [categories, setCategories] = useState<ReportingCategory[]>([])
+  const [response, setResponse] = useState<ReportResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  const [reloading, setReloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestId = useRef(0)
 
-  // Raw data
-  const [orders, setOrders] = useState<OrderRow[]>([])
-  const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
-  const [variants, setVariants] = useState<VariantRow[]>([])
-  const [products, setProducts] = useState<ProductRow[]>([])
-  const [inventory, setInventory] = useState<InventoryRow[]>([])
-  const [categories, setCategories] = useState<CategoryRow[]>([])
-  const [manufacturers, setManufacturers] = useState<ManufacturerRow[]>([])
-  const [showSkuModal, setShowSkuModal] = useState(false)
-  const [skuSearch, setSkuSearch] = useState('')
-  const [selectedInsightKey, setSelectedInsightKey] = useState<StrategyInsightKey | null>(null)
+  // Sub-tab selection is deliberately separate from `month`: switching between
+  // Overview / Performance / Inventory & Actions must never reset the report.
+  const [subTab, setSubTab] = useState('overview')
+  const [topSort, setTopSort] = useState<'units' | 'value'>('units')
+  const [selectedInsight, setSelectedInsight] = useState<StrategyKey | null>(null)
   const [insightSearch, setInsightSearch] = useState('')
+  const [actionFilter, setActionFilter] = useState<ActionKey | null>(null)
+  // Contribution drill-down. Held separately from the report filters so opening
+  // or closing it never disturbs the selected month, category or sub-tab.
+  const [contributionBand, setContributionBand] = useState<ContributionBandKey | null>(null)
+  const [contributionSku, setContributionSku] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState(false)
 
-  // ── Data Fetching ────────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
-    try {
-      const last12Start = subMonths(new Date(), 12).toISOString()
-
-      const [ordersRes, variantsRes, productsRes, inventoryRes, categoriesRes] = await Promise.all([
-        supabase
-          .from('orders')
-          .select('id, order_type, status, created_at')
-          .in('status', ['approved', 'closed', 'submitted'])
-          .gte('created_at', last12Start),
-        supabase
-          .from('product_variants')
-          .select('id, variant_name, variant_code, manufacturer_sku, product_id, is_active, base_cost, suggested_retail_price'),
-        supabase
-          .from('products')
-          .select('id, product_name, product_code, is_active, category_id, manufacturer_id'),
-        supabase
-          .from('product_inventory')
-          .select('variant_id, organization_id, quantity_on_hand, quantity_available, quantity_allocated, reorder_point, average_cost, total_value, updated_at'),
-        supabase
-          .from('product_categories')
-          .select('id, category_name'),
-      ])
-
-      const orderIds = (ordersRes.data || []).map((o: any) => o.id)
-
-      // Fetch order items in batches to avoid URL length limits
-      let allItems: OrderItemRow[] = []
-      const batchSize = 200
-      for (let i = 0; i < orderIds.length; i += batchSize) {
-        const batch = orderIds.slice(i, i + batchSize)
-        const itemsRes = await supabase
-          .from('order_items')
-          .select('order_id, product_id, variant_id, qty, unit_price, line_total')
-          .in('order_id', batch)
-        if (itemsRes.data) allItems = allItems.concat(itemsRes.data as OrderItemRow[])
-      }
-
-      setOrders((ordersRes.data || []) as unknown as OrderRow[])
-      setOrderItems(allItems)
-      setVariants((variantsRes.data || []) as unknown as VariantRow[])
-      setProducts((productsRes.data || []) as unknown as ProductRow[])
-      setInventory((inventoryRes.data || []) as unknown as InventoryRow[])
-      setCategories((categoriesRes.data || []) as unknown as CategoryRow[])
-
-      const manufacturerIds = [...new Set(((productsRes.data || []) as ProductRow[]).map((product) => product.manufacturer_id).filter(Boolean))]
-      if (manufacturerIds.length > 0) {
-        const { data: manufacturerRows } = await supabase
-          .from('organizations')
-          .select('id, org_name')
-          .in('id', manufacturerIds)
-        setManufacturers((manufacturerRows || []) as ManufacturerRow[])
-      } else {
-        setManufacturers([])
-      }
-    } catch (err) {
-      console.error('ProductsTab fetch error:', err)
-    }
-  }, [supabase])
-
+  // Months and categories arrive together in ONE request, discovered
+  // independently of the report so the default view starts loading immediately
+  // with no "select a month first" step.
   useEffect(() => {
-    setLoading(true)
-    fetchData().finally(() => setLoading(false))
-  }, [fetchData])
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/reporting/product-analytics/filters', { cache: 'no-store' })
+        const payload = await res.json()
+        if (cancelled || !res.ok) return
+        setAvailableMonths(((payload.months || []) as ReportingPeriod[]).map((period) => period.key))
+        setCategories((payload.categories || []) as ReportingCategory[])
+      } catch {
+        // Not fatal: the current month and All Categories are always offered.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await fetchData()
-    setRefreshing(false)
-  }
-
-  // ── Lookups ──────────────────────────────────────────────────────────────
-  const variantMap = useMemo(() => {
-    const m = new Map<string, VariantRow>()
-    variants.forEach(v => m.set(v.id, v))
-    return m
-  }, [variants])
-
-  const productMap = useMemo(() => {
-    const m = new Map<string, ProductRow>()
-    products.forEach(p => m.set(p.id, p))
-    return m
-  }, [products])
-
-  const orderDateMap = useMemo(() => {
-    const m = new Map<string, string>()
-    orders.forEach(o => m.set(o.id, o.created_at))
-    return m
-  }, [orders])
-
-  const categoryMap = useMemo(() => {
-    const m = new Map<string, string>()
-    categories.forEach((category) => m.set(category.id, category.category_name))
-    return m
-  }, [categories])
-
-  const manufacturerMap = useMemo(() => {
-    const m = new Map<string, string>()
-    manufacturers.forEach((manufacturer) => m.set(manufacturer.id, manufacturer.org_name))
-    return m
-  }, [manufacturers])
-
-  // ── Period Filtering ─────────────────────────────────────────────────────
-  const { start: periodStart, end: periodEnd } = useMemo(() => getDateRange(period), [period])
-
-  const periodOrders = useMemo(() => {
-    const s = periodStart.toISOString()
-    const e = periodEnd.toISOString()
-    return orders.filter(o => o.created_at >= s && o.created_at <= e)
-  }, [orders, periodStart, periodEnd])
-
-  const periodOrderIds = useMemo(() => new Set(periodOrders.map(o => o.id)), [periodOrders])
-
-  const periodItems = useMemo(
-    () => orderItems.filter(item => periodOrderIds.has(item.order_id)),
-    [orderItems, periodOrderIds]
-  )
-
-  const comparisonRange = useMemo(() => {
-    const dayCount = Math.max(differenceInDays(periodEnd, periodStart) + 1, 1)
-    return {
-      start: subDays(periodStart, dayCount),
-      end: subDays(periodStart, 1),
-    }
-  }, [periodEnd, periodStart])
-
-  const comparisonOrders = useMemo(() => {
-    const start = comparisonRange.start.toISOString()
-    const end = comparisonRange.end.toISOString()
-    return orders.filter((order) => order.created_at >= start && order.created_at <= end)
-  }, [comparisonRange.end, comparisonRange.start, orders])
-
-  const comparisonOrderIds = useMemo(
-    () => new Set(comparisonOrders.map((order) => order.id)),
-    [comparisonOrders]
-  )
-
-  const comparisonItems = useMemo(
-    () => orderItems.filter((item) => comparisonOrderIds.has(item.order_id)),
-    [comparisonOrderIds, orderItems]
-  )
-
-  // ── 1. KPI Metrics ──────────────────────────────────────────────────────
-  const kpis = useMemo(() => {
-    const activeSKUs = variants.filter(v => v.is_active).length
-    const totalUnits = periodItems.reduce((s, i) => s + (i.qty || 0), 0)
-    const totalRevenue = periodItems.reduce((s, i) => s + (i.line_total || 0), 0)
-    const inventoryValue = inventory.reduce((s, i) => s + (i.total_value || 0), 0)
-    const avgInventory = inventory.reduce((s, i) => s + (i.quantity_on_hand || 0), 0)
-    const turnoverRatio = avgInventory > 0 ? totalUnits / avgInventory : 0
-
-    return { activeSKUs, totalUnits, totalRevenue, inventoryValue, turnoverRatio }
-  }, [variants, periodItems, inventory])
-
-  // ── 2. Demand Trend (12 months) ──────────────────────────────────────────
-  const demandTrend = useMemo(() => {
-    const now = new Date()
-    const monthStarts = eachMonthOfInterval({ start: subMonths(now, 11), end: now })
-
-    return monthStarts.map(ms => {
-      const me = endOfMonth(ms)
-      const msISO = ms.toISOString()
-      const meISO = me.toISOString()
-
-      const monthOrderIds = new Set(
-        orders
-          .filter(o => o.created_at >= msISO && o.created_at <= meISO)
-          .map(o => o.id)
+  const loadReport = useCallback(async (targetMonth: string, targetCategory: string, isInitial: boolean) => {
+    const id = ++requestId.current
+    if (isInitial) setLoading(true)
+    else setReloading(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `/api/reporting/product-analytics?month=${targetMonth}&categoryId=${encodeURIComponent(targetCategory)}`,
+        { cache: 'no-store' },
       )
-
-      let units = 0
-      let revenue = 0
-      orderItems.forEach(item => {
-        if (monthOrderIds.has(item.order_id)) {
-          units += item.qty || 0
-          revenue += item.line_total || 0
-        }
-      })
-
-      return {
-        month: format(ms, 'MMM yy'),
-        units,
-        revenue: Math.round(revenue),
+      const payload = await res.json()
+      // A slower earlier request must never overwrite a newer month/category
+      // report — changing both quickly stays consistent.
+      if (id !== requestId.current) return
+      if (!res.ok) throw new Error(payload.error || 'Unable to load product analytics')
+      setResponse(payload as ReportResponse)
+    } catch (err: any) {
+      if (id !== requestId.current) return
+      setError(err?.message || 'Unable to load product analytics')
+    } finally {
+      if (id === requestId.current) {
+        setLoading(false)
+        setReloading(false)
       }
-    })
-  }, [orders, orderItems])
-
-  // ── 3. Top Performing SKUs ───────────────────────────────────────────────
-  const topSKUs = useMemo(() => {
-    const byVariant = new Map<string, { units: number; revenue: number }>()
-
-    periodItems.forEach(item => {
-      const key = item.variant_id
-      const cur = byVariant.get(key) || { units: 0, revenue: 0 }
-      cur.units += item.qty || 0
-      cur.revenue += item.line_total || 0
-      byVariant.set(key, cur)
-    })
-
-    const totalUnits = periodItems.reduce((s, i) => s + (i.qty || 0), 0)
-    const totalRevenue = periodItems.reduce((s, i) => s + (i.line_total || 0), 0)
-
-    const entries = Array.from(byVariant.entries()).map(([vid, data]) => {
-      const v = variantMap.get(vid)
-      const p = v ? productMap.get(v.product_id) : null
-      return {
-        variantId: vid,
-        name: v?.variant_name || 'Unknown',
-        productName: p?.product_name || '',
-        units: data.units,
-        revenue: data.revenue,
-        unitPct: totalUnits > 0 ? (data.units / totalUnits) * 100 : 0,
-        revenuePct: totalRevenue > 0 ? (data.revenue / totalRevenue) * 100 : 0,
-      }
-    })
-
-    const topByUnits = [...entries].sort((a, b) => b.units - a.units).slice(0, 10)
-    const topByRevenue = [...entries].sort((a, b) => b.revenue - a.revenue).slice(0, 10)
-
-    return { topByUnits, topByRevenue }
-  }, [periodItems, variantMap, productMap])
-
-  // ── 4. Slow Moving Products ──────────────────────────────────────────────
-  const slowMoving = useMemo(() => {
-    const now = new Date()
-    const last3Start = subMonths(now, 3).toISOString()
-    const prev3Start = subMonths(now, 6).toISOString()
-
-    const last3OrderIds = new Set(
-      orders.filter(o => o.created_at >= last3Start).map(o => o.id)
-    )
-    const prev3OrderIds = new Set(
-      orders.filter(o => o.created_at >= prev3Start && o.created_at < last3Start).map(o => o.id)
-    )
-
-    const last3Units = new Map<string, number>()
-    const prev3Units = new Map<string, number>()
-    const lastOrderDate = new Map<string, string>()
-
-    orderItems.forEach(item => {
-      const d = orderDateMap.get(item.order_id)
-      if (!d) return
-
-      // Track last order date
-      const cur = lastOrderDate.get(item.variant_id) || ''
-      if (d > cur) lastOrderDate.set(item.variant_id, d)
-
-      if (last3OrderIds.has(item.order_id)) {
-        last3Units.set(item.variant_id, (last3Units.get(item.variant_id) || 0) + (item.qty || 0))
-      }
-      if (prev3OrderIds.has(item.order_id)) {
-        prev3Units.set(item.variant_id, (prev3Units.get(item.variant_id) || 0) + (item.qty || 0))
-      }
-    })
-
-    const results: Array<{
-      variantId: string
-      name: string
-      productName: string
-      decline: number
-      lastOrdered: string
-      severity: 'red' | 'amber'
-      reason: string
-    }> = []
-
-    const allVariantIds = new Set([...last3Units.keys(), ...prev3Units.keys()])
-
-    allVariantIds.forEach(vid => {
-      const recent = last3Units.get(vid) || 0
-      const previous = prev3Units.get(vid) || 0
-      const v = variantMap.get(vid)
-      const p = v ? productMap.get(v.product_id) : null
-
-      if (recent === 0 && previous > 0) {
-        results.push({
-          variantId: vid,
-          name: v?.variant_name || 'Unknown',
-          productName: p?.product_name || '',
-          decline: -100,
-          lastOrdered: lastOrderDate.get(vid) || '',
-          severity: 'red',
-          reason: 'Zero orders in last 3 months',
-        })
-      } else if (previous > 0) {
-        const change = ((recent - previous) / previous) * 100
-        if (change <= -30) {
-          results.push({
-            variantId: vid,
-            name: v?.variant_name || 'Unknown',
-            productName: p?.product_name || '',
-            decline: Math.round(change),
-            lastOrdered: lastOrderDate.get(vid) || '',
-            severity: change <= -60 ? 'red' : 'amber',
-            reason: `${Math.abs(Math.round(change))}% decline vs prior period`,
-          })
-        }
-      }
-    })
-
-    return results.sort((a, b) => a.decline - b.decline).slice(0, 12)
-  }, [orders, orderItems, orderDateMap, variantMap, productMap])
-
-  // ── 5. Inventory Health ──────────────────────────────────────────────────
-  const inventoryHealth = useMemo(() => {
-    const now = new Date()
-    const sixMonthsAgo = subMonths(now, 6).toISOString()
-
-    // Variants with orders in the last 6 months
-    const recentOrderVariants = new Set<string>()
-    orders.forEach(o => {
-      if (o.created_at >= sixMonthsAgo) {
-        orderItems.forEach(item => {
-          if (item.order_id === o.id) recentOrderVariants.add(item.variant_id)
-        })
-      }
-    })
-
-    // Aggregate inventory per variant
-    const invByVariant = new Map<string, { available: number; reorderPoint: number; onHand: number }>()
-    inventory.forEach(inv => {
-      const cur = invByVariant.get(inv.variant_id) || { available: 0, reorderPoint: 0, onHand: 0 }
-      cur.available += inv.quantity_available || 0
-      cur.reorderPoint = Math.max(cur.reorderPoint, inv.reorder_point || 0)
-      cur.onHand += inv.quantity_on_hand || 0
-      invByVariant.set(inv.variant_id, cur)
-    })
-
-    const cats = {
-      fastMoving: { count: 0, units: 0, color: COLORS.danger },
-      normal: { count: 0, units: 0, color: COLORS.success },
-      slowMoving: { count: 0, units: 0, color: COLORS.warning },
-      deadStock: { count: 0, units: 0, color: '#6b7280' },
     }
+  }, [])
 
-    invByVariant.forEach((data, vid) => {
-      const rp = data.reorderPoint || 1
+  // Selecting a month OR a category reloads automatically — no Apply step.
+  useEffect(() => {
+    void loadReport(month, categoryId, response === null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, categoryId, loadReport])
 
-      if (!recentOrderVariants.has(vid) && data.onHand > 0) {
-        cats.deadStock.count++
-        cats.deadStock.units += data.onHand
-      } else if (data.available < rp) {
-        cats.fastMoving.count++
-        cats.fastMoving.units += data.onHand
-      } else if (data.available <= rp * 2) {
-        cats.normal.count++
-        cats.normal.units += data.onHand
-      } else if (data.available > rp * 3) {
-        cats.slowMoving.count++
-        cats.slowMoving.units += data.onHand
-      } else {
-        cats.normal.count++
-        cats.normal.units += data.onHand
-      }
-    })
+  const monthOptions = useMemo(
+    () => buildReportingMonthOptions([...availableMonths, month]),
+    [availableMonths, month],
+  )
+  const monthIndex = monthOptions.findIndex((option) => option.value === month)
+  const olderMonth = monthIndex >= 0 ? monthOptions[monthIndex + 1]?.value : undefined
+  const newerMonth = monthIndex > 0 ? monthOptions[monthIndex - 1]?.value : undefined
 
-    return cats
-  }, [orders, orderItems, inventory])
+  const report = response?.report ?? null
+  const meta = response?.meta ?? null
 
-  // ── 6. Product Performance Quadrant ──────────────────────────────────────
-  const quadrantData = useMemo(() => {
-    const byVariant = new Map<string, { units: number; revenue: number }>()
-
-    periodItems.forEach(item => {
-      const cur = byVariant.get(item.variant_id) || { units: 0, revenue: 0 }
-      cur.units += item.qty || 0
-      cur.revenue += item.line_total || 0
-      byVariant.set(item.variant_id, cur)
-    })
-
-    const points = Array.from(byVariant.entries()).map(([vid, data]) => {
-      const v = variantMap.get(vid)
-      const p = v ? productMap.get(v.product_id) : null
-      const rpu = data.units > 0 ? data.revenue / data.units : 0
-      return {
-        variantId: vid,
-        name: v?.variant_name || 'Unknown',
-        productName: p?.product_name || '',
-        units: data.units,
-        revenuePerUnit: Math.round(rpu * 100) / 100,
-        revenue: data.revenue,
-      }
-    })
-
-    if (points.length === 0) return { points: [], medianUnits: 0, medianRPU: 0 }
-
-    const sortedUnits = [...points].sort((a, b) => a.units - b.units)
-    const sortedRPU = [...points].sort((a, b) => a.revenuePerUnit - b.revenuePerUnit)
-    const medianUnits = sortedUnits[Math.floor(sortedUnits.length / 2)]?.units || 0
-    const medianRPU = sortedRPU[Math.floor(sortedRPU.length / 2)]?.revenuePerUnit || 0
-
-    const colored = points.map(pt => {
-      let quadrant: string
-      let fill: string
-      if (pt.units >= medianUnits && pt.revenuePerUnit >= medianRPU) {
-        quadrant = 'High Demand / High Value'
-        fill = COLORS.success
-      } else if (pt.units >= medianUnits && pt.revenuePerUnit < medianRPU) {
-        quadrant = 'High Demand / Low Value'
-        fill = COLORS.primary
-      } else if (pt.units < medianUnits && pt.revenuePerUnit >= medianRPU) {
-        quadrant = 'Low Demand / High Value'
-        fill = COLORS.warning
-      } else {
-        quadrant = 'Low Demand / Low Value'
-        fill = COLORS.danger
-      }
-      return { ...pt, quadrant, fill }
-    })
-
-    return { points: colored, medianUnits, medianRPU }
-  }, [periodItems, variantMap, productMap])
-
-  // ── 7. Strategy Insights ─────────────────────────────────────────────────
-  const strategyInsightDetails = useMemo<Record<StrategyInsightKey, StrategyInsightDetailRow[]>>(() => {
-    const currentMetrics = new Map<string, { units: number; revenue: number }>()
-    const previousMetrics = new Map<string, { units: number; revenue: number }>()
-    const inventoryByVariant = new Map<string, number>()
-
-    periodItems.forEach((item) => {
-      const current = currentMetrics.get(item.variant_id) || { units: 0, revenue: 0 }
-      current.units += item.qty || 0
-      current.revenue += item.line_total || 0
-      currentMetrics.set(item.variant_id, current)
-    })
-
-    comparisonItems.forEach((item) => {
-      const previous = previousMetrics.get(item.variant_id) || { units: 0, revenue: 0 }
-      previous.units += item.qty || 0
-      previous.revenue += item.line_total || 0
-      previousMetrics.set(item.variant_id, previous)
-    })
-
-    inventory.forEach((row) => {
-      inventoryByVariant.set(row.variant_id, (inventoryByVariant.get(row.variant_id) || 0) + (row.quantity_on_hand || 0))
-    })
-
-    const detailRows = new Map<string, StrategyInsightDetailRow>()
-    const allVariantIds = new Set<string>([
-      ...currentMetrics.keys(),
-      ...previousMetrics.keys(),
-      ...inventoryByVariant.keys(),
-    ])
-
-    allVariantIds.forEach((variantId) => {
-      const variant = variantMap.get(variantId)
-      if (!variant) return
-      const product = productMap.get(variant.product_id)
-      const current = currentMetrics.get(variantId) || { units: 0, revenue: 0 }
-      const previous = previousMetrics.get(variantId) || { units: 0, revenue: 0 }
-      const currentStock = inventoryByVariant.get(variantId) || 0
-      const growthPercent = previous.units > 0 ? ((current.units - previous.units) / previous.units) * 100 : null
-
-      detailRows.set(variantId, {
-        variantId,
-        productName: product?.product_name || variant.variant_name,
-        variantName: variant.variant_name || '-',
-        unitsOrdered: current.units,
-        revenue: current.revenue,
-        currentStock,
-        growthPercent,
-        demandTrend: growthPercent === null ? (current.units > 0 ? 'New' : 'No trend') : growthPercent >= 20 ? 'Rising' : growthPercent <= -20 ? 'Declining' : 'Stable',
-        lastOrderedDate: orderItems
-          .filter((item) => item.variant_id === variantId)
-          .map((item) => orderDateMap.get(item.order_id) || null)
-          .filter(Boolean)
-          .sort()
-          .at(-1) || null,
-        statusRecommendation: 'Monitor performance',
+  /**
+   * The PDF is built from the report DTO already in state, so it always carries
+   * every section — Overview, Performance and Inventory & Actions — regardless
+   * of which sub-tab is on screen, and its numbers are the on-screen numbers.
+   */
+  const handleDownloadPdf = useCallback(async () => {
+    if (!report) return
+    setDownloading(true)
+    try {
+      const { buildProductAnalyticsPdf } = await import('@/lib/reporting/product-analytics-pdf')
+      const pdf = await buildProductAnalyticsPdf(report, {
+        generatedAt: meta?.generatedAt ?? null,
+        generatedBy: userProfile?.full_name || userProfile?.email || null,
       })
-    })
-
-    const rising = Array.from(detailRows.values())
-      .filter((row) => row.growthPercent !== null && row.growthPercent > 20)
-      .map((row) => ({ ...row, statusRecommendation: 'Scale inventory and protect availability' }))
-      .sort((left, right) => (right.growthPercent || 0) - (left.growthPercent || 0))
-
-    const atRisk = Array.from(detailRows.values())
-      .filter((row) => row.growthPercent !== null && row.growthPercent < -30)
-      .map((row) => ({ ...row, statusRecommendation: 'Review sell-through and address demand drop' }))
-      .sort((left, right) => (left.growthPercent || 0) - (right.growthPercent || 0))
-
-    const promo = Array.from(detailRows.values())
-      .filter((row) => row.currentStock > 0 && row.unitsOrdered < row.currentStock * 0.1)
-      .map((row) => ({ ...row, statusRecommendation: 'Consider promotion, bundle, or markdown' }))
-      .sort((left, right) => right.currentStock - left.currentStock)
-
-    const top = Array.from(detailRows.values())
-      .filter((row) => row.unitsOrdered > 0 && row.growthPercent !== null && row.growthPercent >= -10)
-      .map((row) => ({ ...row, statusRecommendation: 'Sustain supply and prioritize replenishment' }))
-      .sort((left, right) => right.unitsOrdered - left.unitsOrdered)
-
-    return {
-      rising,
-      at_risk: atRisk,
-      promo,
-      top,
+      const url = URL.createObjectURL(pdf.blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = pdf.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setError(err?.message || 'Unable to generate the PDF report')
+    } finally {
+      setDownloading(false)
     }
-  }, [periodItems, comparisonItems, inventory, variantMap, productMap, orderItems, orderDateMap])
+  }, [report, meta, userProfile])
 
-  const insightConfig = useMemo(() => ({
-    rising: {
-      icon: <Rocket className="h-5 w-5" />,
-      title: 'Rising Stars',
-      description: 'Products with >20% growth vs the previous equivalent period',
-      color: COLORS.success,
-      bgColor: 'bg-emerald-500/10',
-      borderColor: 'border-emerald-500/30',
-    },
-    at_risk: {
-      icon: <ShieldAlert className="h-5 w-5" />,
-      title: 'At Risk',
-      description: 'Products with declining demand trend',
-      color: COLORS.danger,
-      bgColor: 'bg-red-500/10',
-      borderColor: 'border-red-500/30',
-    },
-    promo: {
-      icon: <Megaphone className="h-5 w-5" />,
-      title: 'Promotion Candidates',
-      description: 'High inventory with low recent demand',
-      color: COLORS.warning,
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'border-amber-500/30',
-    },
-    top: {
-      icon: <Crown className="h-5 w-5" />,
-      title: 'Top Performers',
-      description: 'Consistent high demand products',
-      color: COLORS.primary,
-      bgColor: 'bg-blue-500/10',
-      borderColor: 'border-blue-500/30',
-    },
-  }), [])
-
-  const strategyInsights = useMemo(() => (
-    (Object.entries(insightConfig) as Array<[StrategyInsightKey, typeof insightConfig[StrategyInsightKey]]>).map(([key, config]) => ({
-      key,
-      ...config,
-      value: strategyInsightDetails[key].length,
-    }))
-  ), [insightConfig, strategyInsightDetails])
-
-  const activeInsightRows = useMemo(
-    () => (selectedInsightKey ? strategyInsightDetails[selectedInsightKey] : []),
-    [selectedInsightKey, strategyInsightDetails]
+  const activeInsight = useMemo(
+    () => report?.strategyInsights.find((card) => card.key === selectedInsight) ?? null,
+    [report, selectedInsight],
   )
 
   const filteredInsightRows = useMemo(() => {
+    if (!activeInsight) return []
     const query = insightSearch.trim().toLowerCase()
-    if (!query) return activeInsightRows
-    return activeInsightRows.filter((row) =>
-      [row.productName, row.variantName, row.demandTrend, row.statusRecommendation]
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    )
-  }, [activeInsightRows, insightSearch])
+    if (!query) return activeInsight.rows
+    return activeInsight.rows.filter((row) =>
+      `${row.label} ${row.recommendation} ${row.demandTrend}`.toLowerCase().includes(query))
+  }, [activeInsight, insightSearch])
 
-  const periodLabel = useMemo(
-    () => PERIOD_OPTIONS.find((option) => option.value === period)?.label || 'Selected Period',
-    [period]
+  const visibleActionRows = useMemo(() => {
+    if (!report) return []
+    if (!actionFilter) return report.managementActions.rows
+    return report.managementActions.rows.filter((row) => row.action === actionFilter)
+  }, [report, actionFilter])
+
+  const topRows: TopProductRow[] = useMemo(() => {
+    if (!report) return []
+    return topSort === 'units' ? report.topProducts.byUnits : report.topProducts.byOrderValue
+  }, [report, topSort])
+
+  const activeBand = useMemo(
+    () => report?.productContribution.bands.find((band) => band.key === contributionBand) ?? null,
+    [report, contributionBand],
   )
 
-  const openInsightDialog = (key: StrategyInsightKey) => {
-    setInsightSearch('')
-    setSelectedInsightKey(key)
-  }
+  /** Rows of the open band — a slice of the report DTO, never a new request. */
+  const bandRows = useMemo(
+    () => (contributionBand
+      ? (report?.productContribution.rows ?? []).filter((row) => row.band === contributionBand)
+      : []),
+    [report, contributionBand],
+  )
 
-  // ── Render ───────────────────────────────────────────────────────────────
-  if (loading) {
-    return <ReportingTabLoading label="Loading product analytics" />
-  }
+  const activeSkuRow = useMemo(
+    () => bandRows.find((row) => row.variantId === contributionSku) ?? null,
+    [bandRows, contributionSku],
+  )
 
-  const hasData = orderItems.length > 0
+  const openContributionBand = useCallback((band: ContributionBandKey, skus: number) => {
+    // An empty band opens nothing; there is no placeholder content to show.
+    if (skus <= 0) return
+    setContributionSku(null)
+    setContributionBand(band)
+  }, [])
 
-  return (
-    <div className="space-y-6">
-      <ReportingTabHeader
-        icon={Package}
-        title="Product Analytics"
-        description="SKU performance, inventory health and demand trends"
-        period={period}
-        onPeriodChange={setPeriod}
-        periodOptions={PERIOD_OPTIONS}
-        onRefresh={handleRefresh}
-        refreshing={refreshing}
-      />
+  const contributionSlices = useMemo(() => {
+    if (!report) return []
+    const palette = [REPORTING_COLORS.primary, REPORTING_COLORS.warning, REPORTING_COLORS.slate]
+    return report.productContribution.bands
+      .filter((band) => band.orderValue > 0)
+      .map((band, index) => ({ name: band.label, value: band.orderValue, fill: palette[index % palette.length] }))
+  }, [report])
 
-      <Card className="sera-sc-panel overflow-hidden">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4 text-amber-500" />
-            Product Strategy Insights
-          </CardTitle>
-          <CardDescription>Data-driven recommendations based on product performance analysis</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {strategyInsights.map((insight) => (
-              <Card
-                key={insight.key}
-                className={`border shadow-none ${insight.bgColor} ${insight.borderColor} transition-all hover:-translate-y-0.5 hover:shadow-lg`}
-              >
-                <button
-                  type="button"
-                  onClick={() => openInsightDialog(insight.key)}
-                  className="w-full rounded-lg p-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                  style={{ ['--tw-ring-color' as never]: insight.color }}
-                >
-                  <div className="flex items-center gap-2 mb-3" style={{ color: insight.color }}>
-                    {insight.icon}
-                    <span className="text-sm font-semibold">{insight.title}</span>
-                  </div>
-                  <p className="text-3xl font-bold mb-1" style={{ color: insight.color }}>
-                    {insight.value}
-                  </p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{insight.description}</p>
-                </button>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── 1. KPI Cards ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {/* Active SKUs */}
-        <Card className="sera-sc-panel overflow-hidden cursor-pointer hover:ring-2 hover:border-[var(--sera-orange)]/35 transition-all" onClick={() => setShowSkuModal(true)}>
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Boxes className="h-4 w-4 text-[var(--sera-orange)]" />
-              <span className="text-xs font-medium uppercase tracking-wide">Active SKUs</span>
-            </div>
-            <div className="flex items-center gap-2 text-[var(--sera-orange)] dark:text-blue-400">
-              <ExecutiveKpiValue className="text-[var(--sera-orange)] dark:text-blue-400">
-                <AnimatedCounter value={kpis.activeSKUs} />
-              </ExecutiveKpiValue>
-              <Eye className="h-4 w-4 text-blue-400 opacity-60" />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">click to view SKU details</p>
-          </CardContent>
-          <div className="h-1 bg-gradient-to-r from-blue-500 to-blue-400" />
-        </Card>
-
-        {/* Total Units Ordered */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <ShoppingCart className="h-4 w-4 text-emerald-500" />
-              <span className="text-xs font-medium uppercase tracking-wide">Units Ordered</span>
-            </div>
-            <ExecutiveKpiValue>
-              <AnimatedCounter value={kpis.totalUnits} />
-            </ExecutiveKpiValue>
-            <p className="text-xs text-muted-foreground mt-1">in period</p>
-          </CardContent>
-          <div className="h-1 bg-gradient-to-r from-emerald-500 to-emerald-400" />
-        </Card>
-
-        {/* Total Revenue */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <TrendingUp className="h-4 w-4 text-purple-500" />
-              <span className="text-xs font-medium uppercase tracking-wide">Revenue</span>
-            </div>
-            <ExecutiveKpiValue>
-              <AnimatedCounter value={kpis.totalRevenue} prefix="RM " decimals={0} />
-            </ExecutiveKpiValue>
-            <p className="text-xs text-muted-foreground mt-1">line total</p>
-          </CardContent>
-          <div className="h-1 bg-gradient-to-r from-purple-500 to-purple-400" />
-        </Card>
-
-        {/* Inventory Value */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Layers className="h-4 w-4 text-amber-500" />
-              <span className="text-xs font-medium uppercase tracking-wide">Inventory Value</span>
-            </div>
-            <ExecutiveKpiValue>
-              <AnimatedCounter value={kpis.inventoryValue} prefix="RM " decimals={0} />
-            </ExecutiveKpiValue>
-            <p className="text-xs text-muted-foreground mt-1">total stock</p>
-          </CardContent>
-          <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400" />
-        </Card>
-
-        {/* Turnover Ratio */}
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Zap className="h-4 w-4 text-cyan-500" />
-              <span className="text-xs font-medium uppercase tracking-wide">Turnover Ratio</span>
-            </div>
-            <ExecutiveKpiValue>
-              <AnimatedCounter value={kpis.turnoverRatio} decimals={2} suffix="x" />
-            </ExecutiveKpiValue>
-            <p className="text-xs text-muted-foreground mt-1">units / inventory</p>
-          </CardContent>
-          <div className="h-1 bg-gradient-to-r from-cyan-500 to-cyan-400" />
-        </Card>
+  // ── Header ───────────────────────────────────────────────────────────────
+  const controls = (
+    <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-end">
+      <div className="space-y-1.5">
+        <label htmlFor="product-analytics-month" className="text-xs font-medium text-[var(--sera-muted)]">
+          Reporting Month
+        </label>
+        <div className="flex items-center gap-1.5">
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger
+              id="product-analytics-month"
+              className="h-10 min-w-0 flex-1 border-[var(--sera-line)] bg-white text-sm lg:h-9 lg:w-[190px] lg:flex-none"
+            >
+              <Calendar className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--sera-muted)]" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline" size="icon"
+            className="h-10 w-10 shrink-0 border-[var(--sera-line)] lg:h-9 lg:w-9"
+            onClick={() => olderMonth && setMonth(olderMonth)}
+            disabled={!olderMonth}
+            title="Previous month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline" size="icon"
+            className="h-10 w-10 shrink-0 border-[var(--sera-line)] lg:h-9 lg:w-9"
+            onClick={() => newerMonth && setMonth(newerMonth)}
+            disabled={!newerMonth}
+            title="Next month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        {report ? (
+          <p className="text-[11px] leading-tight text-[var(--sera-muted)]">
+            <span className="font-medium text-[var(--sera-ink)]">{report.period.rangeLabel}</span>
+            {report.period.isCurrentMonth ? ' (month to date)' : ''}
+            <br className="sm:hidden" />
+            <span className="sm:ml-1">vs {report.period.comparisonRangeLabel}</span>
+          </p>
+        ) : null}
       </div>
 
-      {!hasData ? (
-        <Card className="sera-sc-panel overflow-hidden">
-          <CardContent className="py-16 text-center">
-            <Package className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <h3 className="text-lg font-semibold mb-1">No order data yet</h3>
-            <p className="text-sm text-muted-foreground">
-              Once orders are placed, product analytics will appear here.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          {/* ── 2. Product Demand Trend ──────────────────────────────────── */}
-          <Card className="sera-sc-panel overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-[var(--sera-orange)]" />
-                Product Demand Trend
-              </CardTitle>
-              <CardDescription>Monthly units ordered and revenue over the last 12 months</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={320}>
-                <ComposedChart data={demandTrend} margin={{ top: 8, right: 24, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                  <XAxis dataKey="month" tick={{ fill: chartTickColor, fontSize: 12 }} />
-                  <YAxis yAxisId="left" tick={{ fill: chartTickColor, fontSize: 12 }} />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    tick={{ fill: chartTickColor, fontSize: 12 }}
-                    tickFormatter={(v: number) => formatRM(v)}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#1e293b' : '#fff',
-                      border: 'none',
-                      borderRadius: 12,
-                      boxShadow: '0 4px 24px rgba(0,0,0,.12)',
-                    }}
-                    formatter={(val: number, name: string) => {
-                      if (name === 'revenue') return [formatRM(val), 'Revenue']
-                      return [val.toLocaleString(), 'Units']
-                    }}
-                  />
-                  <Legend />
-                  <defs>
-                    <linearGradient id="gradUnits" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <Area
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="units"
-                    stroke={COLORS.primary}
-                    fill="url(#gradUnits)"
-                    strokeWidth={2}
-                    name="units"
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke={COLORS.success}
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    name="revenue"
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+      {/* Category is a dropdown, not another tab row: it scales as management
+          adds categories and keeps the mobile header to one column. */}
+      <div className="space-y-1.5">
+        <label htmlFor="product-analytics-category" className="text-xs font-medium text-[var(--sera-muted)]">
+          Product Category
+        </label>
+        <Select value={categoryId} onValueChange={setCategoryId}>
+          <SelectTrigger
+            id="product-analytics-category"
+            className="h-10 w-full border-[var(--sera-line)] bg-white text-sm lg:h-9 lg:w-[200px]"
+          >
+            <Tag className="mr-2 h-3.5 w-3.5 shrink-0 text-[var(--sera-muted)]" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_CATEGORIES}>{ALL_CATEGORIES_LABEL}</SelectItem>
+            {categories.map((option) => (
+              <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          className="h-10 flex-1 gap-2 border-[var(--sera-line)] lg:h-9 lg:flex-none"
+          onClick={() => loadReport(month, categoryId, false)}
+          disabled={loading || reloading}
+        >
+          <RefreshCw className={cn('h-4 w-4', reloading && 'animate-spin')} />
+          Refresh
+        </Button>
+        <Button
+          variant="outline"
+          className="h-10 flex-1 gap-2 border-[var(--sera-line)] lg:h-9 lg:flex-none"
+          onClick={handleDownloadPdf}
+          disabled={!report || downloading || loading}
+          title={report ? 'Download the complete product management report' : 'Report not loaded yet'}
+        >
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <span className="whitespace-nowrap">Download PDF</span>
+        </Button>
+      </div>
+    </div>
+  )
 
-          {/* ── 3. Top Performing SKUs ───────────────────────────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Top by Units */}
-            <Card className="sera-sc-panel overflow-hidden">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-amber-500" />
-                  Top 10 SKUs by Units
-                </CardTitle>
-                <CardDescription>Highest volume products in selected period</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {topSKUs.topByUnits.map((sku, idx) => (
-                  <div key={sku.variantId} className="flex items-center gap-3">
-                    <span className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${rankBadgeColor(idx + 1)}`}>
-                      {idx + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium truncate max-w-[180px]" title={sku.name}>
-                          {sku.name}
-                        </span>
-                        <span className="text-sm font-semibold ml-2 whitespace-nowrap">
-                          {sku.units.toLocaleString()} units
-                        </span>
-                      </div>
-                      <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
-                          style={{
-                            width: `${sku.unitPct}%`,
-                            background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.cyan})`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground w-12 text-right">{sku.unitPct.toFixed(1)}%</span>
-                  </div>
-                ))}
-                {topSKUs.topByUnits.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">No data</p>
-                )}
-              </CardContent>
-            </Card>
+  const header = (
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--sera-ink)]">
+          <Package className="h-5 w-5 text-[var(--sera-orange)]" strokeWidth={1.75} />
+          Product Analytics
+        </h2>
+        <p className="mt-0.5 text-sm text-[var(--sera-muted)]">Monthly product management report</p>
+      </div>
+      {controls}
+    </div>
+  )
 
-            {/* Top by Revenue */}
-            <Card className="sera-sc-panel overflow-hidden">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Star className="h-4 w-4 text-purple-500" />
-                  Top 10 SKUs by Revenue
-                </CardTitle>
-                <CardDescription>Highest revenue products in selected period</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {topSKUs.topByRevenue.map((sku, idx) => (
-                  <div key={sku.variantId} className="flex items-center gap-3">
-                    <span className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${rankBadgeColor(idx + 1)}`}>
-                      {idx + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium truncate max-w-[180px]" title={sku.name}>
-                          {sku.name}
-                        </span>
-                        <span className="text-sm font-semibold ml-2 whitespace-nowrap">
-                          {formatRM(sku.revenue)}
-                        </span>
-                      </div>
-                      <div className="relative h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
-                          style={{
-                            width: `${sku.revenuePct}%`,
-                            background: `linear-gradient(90deg, ${COLORS.purple}, ${COLORS.pink})`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground w-12 text-right">{sku.revenuePct.toFixed(1)}%</span>
-                  </div>
-                ))}
-                {topSKUs.topByRevenue.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">No data</p>
-                )}
-              </CardContent>
-            </Card>
+  if (loading && !report) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <ReportingTabLoading label="Loading product report" />
+      </div>
+    )
+  }
+
+  if (!report) {
+    return (
+      <div className="space-y-6">
+        {header}
+        {error ? (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
           </div>
+        ) : null}
+      </div>
+    )
+  }
 
-          {/* ── 4. Slow Moving Products ──────────────────────────────────── */}
-          {slowMoving.length > 0 && (
-            <Card className="sera-sc-panel overflow-hidden">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  Slow Moving Products
+  const { period, summary, comparison } = report
+  const skuDelta = comparison.skusOrdered.current - comparison.skusOrdered.previous
+
+  // ── Shared row renderers ─────────────────────────────────────────────────
+  /**
+   * Demand movement, never an Infinity. A null growth means the comparison
+   * window carried no baseline, which reads as "New Activity" when the SKU sold
+   * this period and "No Previous Baseline" when neither period had demand.
+   */
+  const growthCell = (row: { growthPct: number | null; currentUnits: number }) => (
+    <span className={cn(
+      'font-medium',
+      row.growthPct === null
+        ? 'text-[var(--sera-muted)]'
+        : row.growthPct >= 0 ? 'text-emerald-600' : 'text-red-600',
+    )}>
+      {row.growthPct === null
+        ? (row.currentUnits > 0 ? 'New Activity' : 'No Previous Baseline')
+        : `${row.growthPct >= 0 ? '+' : ''}${row.growthPct.toFixed(1)}%`}
+    </span>
+  )
+
+  const stockBadge = (row: { stockStatus: ProductRow['stockStatus'] }) => (
+    <Badge variant="secondary" className={cn('px-1.5 py-0 text-[11px] font-medium', STOCK_BADGE[row.stockStatus])}>
+      {STOCK_LABEL[row.stockStatus]}
+    </Badge>
+  )
+
+  return (
+    <div className={cn('space-y-6 transition-opacity', reloading && 'opacity-70')}>
+      {header}
+
+      {error ? (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{error} — showing the last report that loaded successfully.</span>
+        </div>
+      ) : null}
+
+      {meta?.degraded && meta.notice ? (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{meta.notice}</span>
+        </div>
+      ) : null}
+
+      <Tabs value={subTab} onValueChange={setSubTab} className="space-y-5">
+        {/* Touch-friendly and horizontally scrollable below the desktop breakpoint. */}
+        <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)] p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {[
+            { value: 'overview', label: 'Overview', icon: BarChart3 },
+            { value: 'performance', label: 'Performance', icon: TrendingUp },
+            { value: 'inventory', label: 'Inventory & Actions', icon: Warehouse },
+          ].map((tab) => (
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className="shrink-0 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm text-[var(--sera-muted)] data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm sm:px-4"
+            >
+              <tab.icon className="mr-1.5 h-4 w-4" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* ══ OVERVIEW ═══════════════════════════════════════════════════ */}
+        <TabsContent value="overview" className="space-y-5 animate-in fade-in-50 duration-300">
+          <Card className={REPORTING_PANEL_CLASS}>
+            <CardHeader className="flex flex-col gap-2 space-y-0 pb-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-sm text-[var(--sera-ink)] sm:text-base">
+                  <BarChart3 className="h-4 w-4 text-[var(--sera-orange)]" strokeWidth={1.75} />
+                  Monthly Summary
                 </CardTitle>
-                <CardDescription>Products with significant demand decline (last 3 months vs prior 3 months)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {slowMoving.map((item) => (
-                    <div
-                      key={item.variantId}
-                      className={`rounded-lg border p-3 ${item.severity === 'red'
-                        ? 'border-red-500/30 bg-red-500/5'
-                        : 'border-amber-500/30 bg-amber-500/5'
-                        }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate" title={item.name}>{item.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{item.productName}</p>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className={`ml-2 flex-shrink-0 text-xs ${item.severity === 'red'
-                            ? 'bg-red-500/20 text-red-600 dark:text-red-400'
-                            : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                            }`}
-                        >
-                          {item.decline === -100 ? 'No Orders' : `${item.decline}%`}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {item.severity === 'red' ? (
-                          <AlertCircle className="h-3 w-3 text-red-500" />
-                        ) : (
-                          <AlertTriangle className="h-3 w-3 text-amber-500" />
-                        )}
-                        <span>{item.reason}</span>
-                      </div>
-                      {item.lastOrdered && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Last ordered: {format(parseISO(item.lastOrdered), 'dd MMM yyyy')}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ── 5. Inventory Health ──────────────────────────────────────── */}
-          <Card className="sera-sc-panel overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Layers className="h-4 w-4 text-emerald-500" />
-                Inventory Health
-              </CardTitle>
-              <CardDescription>SKU distribution by inventory movement category</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                {[
-                  {
-                    label: 'Fast Moving',
-                    icon: <Flame className="h-4 w-4" />,
-                    ...inventoryHealth.fastMoving,
-                    desc: 'Stock below reorder point',
-                  },
-                  {
-                    label: 'Normal',
-                    icon: <CheckCircle2 className="h-4 w-4" />,
-                    ...inventoryHealth.normal,
-                    desc: 'Healthy stock levels',
-                  },
-                  {
-                    label: 'Slow Moving',
-                    icon: <AlertTriangle className="h-4 w-4" />,
-                    ...inventoryHealth.slowMoving,
-                    desc: 'Excess stock (>3x reorder)',
-                  },
-                  {
-                    label: 'Dead Stock',
-                    icon: <AlertCircle className="h-4 w-4" />,
-                    ...inventoryHealth.deadStock,
-                    desc: 'No orders in 6 months',
-                  },
-                ].map((cat) => (
-                  <div
-                    key={cat.label}
-                    className="rounded-lg border p-4 text-center"
-                    style={{ borderColor: `${cat.color}30` }}
-                  >
-                    <div className="flex items-center justify-center gap-2 mb-2" style={{ color: cat.color }}>
-                      {cat.icon}
-                      <span className="text-sm font-semibold">{cat.label}</span>
-                    </div>
-                    <p className="text-2xl font-bold" style={{ color: cat.color }}>
-                      {cat.count}
-                    </p>
-                    <p className="text-xs text-muted-foreground">SKUs</p>
-                    <p className="text-sm font-medium mt-1">{formatNum(cat.units)} units</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{cat.desc}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Stacked horizontal bar */}
-              {(() => {
-                const total =
-                  inventoryHealth.fastMoving.count +
-                  inventoryHealth.normal.count +
-                  inventoryHealth.slowMoving.count +
-                  inventoryHealth.deadStock.count
-                if (total === 0) return null
-                const segments = [
-                  { ...inventoryHealth.fastMoving, label: 'Fast' },
-                  { ...inventoryHealth.normal, label: 'Normal' },
-                  { ...inventoryHealth.slowMoving, label: 'Slow' },
-                  { ...inventoryHealth.deadStock, label: 'Dead' },
-                ]
-                return (
-                  <div className="space-y-2">
-                    <div className="flex h-6 rounded-full overflow-hidden">
-                      {segments.map((seg) => {
-                        const pct = (seg.count / total) * 100
-                        if (pct === 0) return null
-                        return (
-                          <div
-                            key={seg.label}
-                            className="flex items-center justify-center text-xs font-medium text-white transition-all duration-500"
-                            style={{ width: `${pct}%`, background: seg.color, minWidth: pct > 0 ? 20 : 0 }}
-                            title={`${seg.label}: ${seg.count} SKUs (${pct.toFixed(1)}%)`}
-                          >
-                            {pct >= 8 ? `${pct.toFixed(0)}%` : ''}
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="flex items-center justify-center gap-4 flex-wrap">
-                      {segments.map((seg) => (
-                        <div key={seg.label} className="flex items-center gap-1.5 text-xs">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: seg.color }} />
-                          <span className="text-muted-foreground">{seg.label} ({seg.count})</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })()}
-            </CardContent>
-          </Card>
-
-          {/* ── 6. Product Performance Quadrant ──────────────────────────── */}
-          {quadrantData.points.length > 0 && (
-            <Card className="sera-sc-panel overflow-hidden">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Target className="h-4 w-4 text-indigo-500" />
-                  Product Performance Quadrant
-                </CardTitle>
-                <CardDescription>
-                  Units sold vs revenue per unit — quadrant lines at median values
+                <CardDescription className="mt-0.5 text-xs sm:text-sm">
+                  {period.rangeLabel} vs {period.comparisonRangeLabel}
                 </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <ScatterChart margin={{ top: 16, right: 24, bottom: 16, left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                    <XAxis
-                      type="number"
-                      dataKey="units"
-                      name="Units Sold"
-                      tick={{ fill: chartTickColor, fontSize: 12 }}
-                      label={{ value: 'Units Sold', position: 'insideBottom', offset: -8, fill: chartTickColor, fontSize: 12 }}
-                    />
-                    <YAxis
-                      type="number"
-                      dataKey="revenuePerUnit"
-                      name="Revenue / Unit (RM)"
-                      tick={{ fill: chartTickColor, fontSize: 12 }}
-                      label={{ value: 'RM / Unit', angle: -90, position: 'insideLeft', offset: 4, fill: chartTickColor, fontSize: 12 }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: isDark ? '#1e293b' : '#fff',
-                        border: 'none',
-                        borderRadius: 12,
-                        boxShadow: '0 4px 24px rgba(0,0,0,.12)',
-                      }}
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null
-                        const d = payload[0].payload
-                        return (
-                          <div className="p-3 space-y-1">
-                            <p className="font-semibold text-sm">{d.name}</p>
-                            {d.productName && <p className="text-xs text-muted-foreground">{d.productName}</p>}
-                            <p className="text-xs">Units: <span className="font-medium">{d.units.toLocaleString()}</span></p>
-                            <p className="text-xs">RM/Unit: <span className="font-medium">RM {d.revenuePerUnit.toFixed(2)}</span></p>
-                            <p className="text-xs">Revenue: <span className="font-medium">{formatRM(d.revenue)}</span></p>
-                            <Badge className="text-[10px] mt-1" style={{ background: d.fill, color: '#fff' }}>
-                              {d.quadrant}
-                            </Badge>
-                          </div>
-                        )
-                      }}
-                    />
-                    {/* Median reference lines */}
-                    {quadrantData.medianUnits > 0 && (
-                      <svg>
-                        <line
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="0"
-                          stroke={isDark ? '#475569' : '#cbd5e1'}
-                          strokeDasharray="6 3"
-                        />
-                      </svg>
-                    )}
-                    <Scatter data={quadrantData.points} isAnimationActive>
-                      {quadrantData.points.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.fill} fillOpacity={0.8} stroke={entry.fill} strokeWidth={1} />
-                      ))}
-                    </Scatter>
-                  </ScatterChart>
-                </ResponsiveContainer>
-
-                {/* Quadrant Legend */}
-                <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
-                  {[
-                    { label: 'High Demand / High Value', color: COLORS.success },
-                    { label: 'High Demand / Low Value', color: COLORS.primary },
-                    { label: 'Low Demand / High Value', color: COLORS.warning },
-                    { label: 'Low Demand / Low Value', color: COLORS.danger },
-                  ].map(q => (
-                    <div key={q.label} className="flex items-center gap-1.5 text-xs">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: q.color }} />
-                      <span className="text-muted-foreground">{q.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-        </>
-      )}
-
-      {/* ── SKU Detail Modal ──────────────────────────────────────────── */}
-      <Dialog open={showSkuModal} onOpenChange={setShowSkuModal}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Boxes className="h-5 w-5 text-[var(--sera-orange)]" />
-              Active SKU Directory ({variants.filter(v => v.is_active).length} variants)
-            </DialogTitle>
-            <DialogDescription>Complete list of active product variants with pricing and inventory details</DialogDescription>
-          </DialogHeader>
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by SKU name, product name, or code..."
-              value={skuSearch}
-              onChange={e => setSkuSearch(e.target.value)}
-              className="pl-9"
-            />
-            {skuSearch && (
-              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => setSkuSearch('')}>
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
-          <div className="flex-1 overflow-auto min-h-0 -mx-2 px-2">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-background z-10">
-                <tr className="border-b text-muted-foreground text-xs uppercase tracking-wider">
-                  <th className="text-left py-2 pl-2">#</th>
-                  <th className="text-left py-2">Product</th>
-                  <th className="text-left py-2">Variant / SKU</th>
-                  <th className="text-left py-2">Code</th>
-                  <th className="text-right py-2">Base Cost</th>
-                  <th className="text-right py-2">Retail Price</th>
-                  <th className="text-right py-2">On Hand</th>
-                  <th className="text-right py-2 pr-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {variants
-                  .filter(v => v.is_active)
-                  .filter(v => {
-                    if (!skuSearch) return true
-                    const q = skuSearch.toLowerCase()
-                    const prod = productMap.get(v.product_id)
-                    return (
-                      (v.variant_name || '').toLowerCase().includes(q) ||
-                      (prod?.product_name || '').toLowerCase().includes(q) ||
-                      (prod?.product_code || '').toLowerCase().includes(q)
-                    )
-                  })
-                  .map((v, idx) => {
-                    const prod = productMap.get(v.product_id)
-                    const inv = inventory.find(i => i.variant_id === v.id)
-                    return (
-                      <tr key={v.id} className="border-b border-border/50 hover:bg-muted/40 transition-colors">
-                        <td className="py-2.5 pl-2 text-muted-foreground">{idx + 1}</td>
-                        <td className="py-2.5">
-                          <span className="font-medium text-foreground">{prod?.product_name || '-'}</span>
-                        </td>
-                        <td className="py-2.5">
-                          <span className="text-foreground">{v.variant_name || '-'}</span>
-                        </td>
-                        <td className="py-2.5">
-                          <Badge variant="outline" className="text-[10px] font-mono">{prod?.product_code || '-'}</Badge>
-                        </td>
-                        <td className="py-2.5 text-right font-mono">
-                          {v.base_cost != null ? `RM ${v.base_cost.toFixed(2)}` : '-'}
-                        </td>
-                        <td className="py-2.5 text-right font-mono">
-                          {v.suggested_retail_price != null ? `RM ${v.suggested_retail_price.toFixed(2)}` : '-'}
-                        </td>
-                        <td className="py-2.5 text-right font-mono">
-                          {inv ? inv.quantity_on_hand.toLocaleString() : '-'}
-                        </td>
-                        <td className="py-2.5 text-right pr-2">
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
-                            Active
-                          </Badge>
-                        </td>
-                      </tr>
-                    )
-                  })}
-              </tbody>
-            </table>
-            {variants.filter(v => v.is_active).filter(v => {
-              if (!skuSearch) return true
-              const q = skuSearch.toLowerCase()
-              const prod = productMap.get(v.product_id)
-              return (v.variant_name || '').toLowerCase().includes(q) || (prod?.product_name || '').toLowerCase().includes(q) || (prod?.product_code || '').toLowerCase().includes(q)
-            }).length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  <p>No SKUs match your search</p>
-                </div>
-              )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={selectedInsightKey !== null} onOpenChange={(open) => { if (!open) setSelectedInsightKey(null) }}>
-        <DialogContent className="max-w-6xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{selectedInsightKey ? `${insightConfig[selectedInsightKey].title} (${activeInsightRows.length})` : 'Product Insight Detail'}</DialogTitle>
-            <DialogDescription>
-              {selectedInsightKey ? `${insightConfig[selectedInsightKey].description} • ${periodLabel}` : periodLabel}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by product, variant, demand trend, or recommendation..."
-              value={insightSearch}
-              onChange={(event) => setInsightSearch(event.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          <div className="flex-1 overflow-auto min-h-0 rounded-lg border">
-            {loading || refreshing ? (
-              <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading product insight records...
               </div>
-            ) : filteredInsightRows.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                No product records match this insight category for the selected period.
+              <div className="flex items-center gap-2 text-[11px] text-[var(--sera-muted)]">
+                {reloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                <span>Data updated: {formatTimestamp(meta?.generatedAt ?? null)}</span>
               </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-background z-10 border-b">
-                  <tr className="text-xs font-semibold uppercase text-muted-foreground">
-                    <th className="px-3 py-2.5 text-left">Product Name</th>
-                    <th className="px-3 py-2.5 text-left">Variant</th>
-                    <th className="px-3 py-2.5 text-right">Units Ordered</th>
-                    <th className="px-3 py-2.5 text-right">Revenue</th>
-                    <th className="px-3 py-2.5 text-right">Current Stock</th>
-                    <th className="px-3 py-2.5 text-right">Growth %</th>
-                    <th className="px-3 py-2.5 text-left">Demand Trend</th>
-                    <th className="px-3 py-2.5 text-right">Last Ordered</th>
-                    <th className="px-3 py-2.5 text-left">Status / Recommendation</th>
+            </CardHeader>
+            <CardContent className="px-3 sm:px-6">
+              {/* 2 × 2 on mobile, one row on desktop. */}
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+                <KpiCard
+                  label="Units Ordered"
+                  icon={ShoppingCart}
+                  accent={REPORTING_COLORS.primary}
+                  value={formatCount(summary.unitsOrdered)}
+                  delta={<DeltaPill value={comparison.unitsOrdered.changePct} nullLabel="no baseline" />}
+                  caption={`avg ${formatCount(summary.avgUnitsPerDay)}/day`}
+                />
+                <KpiCard
+                  label="Order Value"
+                  icon={TrendingUp}
+                  accent={REPORTING_COLORS.success}
+                  value={formatRMCompact(summary.orderValue)}
+                  delta={<DeltaPill value={comparison.orderValue.changePct} nullLabel="no baseline" />}
+                  caption={`avg ${formatRMCompact(summary.avgValuePerDay)}/day`}
+                />
+                <KpiCard
+                  label="SKUs Ordered"
+                  icon={Layers}
+                  accent={REPORTING_COLORS.violet}
+                  value={formatCount(summary.skusOrdered)}
+                  delta={
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        'px-1.5 py-0 text-[11px] font-semibold',
+                        skuDelta >= 0
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                      )}
+                    >
+                      {skuDelta >= 0 ? '+' : ''}{skuDelta} vs comparison
+                    </Badge>
+                  }
+                  caption={`out of ${formatCount(summary.activeSkus)} active SKUs`}
+                />
+                <KpiCard
+                  label="Avg Value / Unit"
+                  icon={Target}
+                  accent={REPORTING_COLORS.cyan}
+                  value={summary.avgValuePerUnit === null ? '—' : formatRM(summary.avgValuePerUnit)}
+                  delta={<DeltaPill value={comparison.avgValuePerUnit.changePct} nullLabel="no baseline" />}
+                  caption={
+                    comparison.avgValuePerUnit.previous === null
+                      ? 'no comparison baseline'
+                      : `comparison ${formatRM(comparison.avgValuePerUnit.previous)}`
+                  }
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <SectionCard
+            icon={Rocket}
+            title="Product Strategy Insights"
+            description={`Selected period vs comparison period — tap a card for the full list`}
+          >
+            {/* 2 × 2 on mobile, one row on desktop. */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {report.strategyInsights.map((card) => (
+                <SummaryTile
+                  key={card.key}
+                  label={card.title}
+                  description={card.description}
+                  count={card.count}
+                  accent={STRATEGY_ACCENT[card.key]}
+                  icon={STRATEGY_ICON[card.key]}
+                  active={selectedInsight === card.key}
+                  onClick={() => { setInsightSearch(''); setSelectedInsight(card.key) }}
+                />
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            icon={BarChart3}
+            title="This Period vs Previous Period"
+            description={`${period.rangeLabel} vs ${period.comparisonRangeLabel}`}
+          >
+            <div className="-mx-3 overflow-x-auto sm:mx-0">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--sera-line)] text-left text-xs uppercase tracking-wide text-[var(--sera-muted)]">
+                    <th className="px-3 py-2 font-medium">Metric</th>
+                    <th className="px-3 py-2 text-right font-medium">Current</th>
+                    <th className="px-3 py-2 text-right font-medium">Previous</th>
+                    <th className="px-3 py-2 text-right font-medium">Change</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
-                  {filteredInsightRows.map((row) => (
-                    <tr key={row.variantId} className="hover:bg-muted/30">
-                      <td className="px-3 py-2.5 font-medium">{row.productName}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{row.variantName}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold">{row.unitsOrdered.toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-right">RM {row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td className="px-3 py-2.5 text-right">{row.currentStock.toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-right text-muted-foreground">{row.growthPercent === null ? 'New' : `${row.growthPercent.toFixed(1)}%`}</td>
-                      <td className="px-3 py-2.5">{row.demandTrend}</td>
-                      <td className="px-3 py-2.5 text-right text-muted-foreground">{row.lastOrderedDate ? format(parseISO(row.lastOrderedDate), 'dd MMM yyyy') : '—'}</td>
-                      <td className="px-3 py-2.5">{row.statusRecommendation}</td>
+                <tbody>
+                  {[
+                    {
+                      label: 'Units Ordered',
+                      current: formatCount(summary.unitsOrdered),
+                      previous: formatCount(comparison.unitsOrdered.previous),
+                      change: comparison.unitsOrdered.changePct,
+                      raw: null as string | null,
+                    },
+                    {
+                      label: 'Order Value',
+                      current: formatRM(summary.orderValue),
+                      previous: formatRM(comparison.orderValue.previous),
+                      change: comparison.orderValue.changePct,
+                      raw: null,
+                    },
+                    {
+                      label: 'SKUs Ordered',
+                      current: formatCount(summary.skusOrdered),
+                      previous: formatCount(comparison.skusOrdered.previous),
+                      change: null,
+                      raw: `${skuDelta >= 0 ? '+' : ''}${skuDelta}`,
+                    },
+                    {
+                      label: 'Avg Value / Unit',
+                      current: formatRM(summary.avgValuePerUnit),
+                      previous: formatRM(comparison.avgValuePerUnit.previous),
+                      change: comparison.avgValuePerUnit.changePct,
+                      raw: null,
+                    },
+                  ].map((row) => (
+                    <tr key={row.label} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                      <td className="px-3 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--sera-ink)]">{row.current}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{row.previous}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        {row.raw !== null ? (
+                          <span className={cn('font-medium', skuDelta >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                            {row.raw}
+                          </span>
+                        ) : (
+                          <DeltaPill value={row.change} nullLabel="no baseline" />
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </SectionCard>
+
+          {/* ── Category Performance — consolidated report only ──────────
+              Inside a drill-down the user is already within one category, so
+              comparing categories has nothing left to say. */}
+          {report.categoryPerformance && report.categoryPerformance.length > 0 ? (
+            <SectionCard
+              icon={Tag}
+              title="Category Performance"
+              description={`How each product category performed · ${period.rangeLabel} vs ${period.comparisonRangeLabel}`}
+            >
+              {/* Desktop table */}
+              <div className="hidden md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--sera-line)] text-left text-xs uppercase tracking-wide text-[var(--sera-muted)]">
+                      <th className="px-2 py-2 font-medium">Category</th>
+                      <th className="px-2 py-2 text-right font-medium">Units Ordered</th>
+                      <th className="px-2 py-2 text-right font-medium">Order Value</th>
+                      <th className="px-2 py-2 text-right font-medium">SKUs Ordered</th>
+                      <th className="px-2 py-2 text-right font-medium">Share</th>
+                      <th className="px-2 py-2 text-right font-medium">vs Previous Period</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.categoryPerformance.map((row) => (
+                      <tr key={row.categoryId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                        <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.categoryName}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.unitsOrdered)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.orderValue)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">
+                          {formatCount(row.skusOrdered)} of {formatCount(row.activeSkus)}
+                        </td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">
+                          {row.valueSharePct === null ? '—' : `${row.valueSharePct.toFixed(1)}%`}
+                        </td>
+                        <td className="px-2 py-2.5 text-right">
+                          <DeltaPill value={row.changePct} nullLabel="no baseline" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile stacked category cards — never a crushed wide table */}
+              <div className="space-y-2.5 md:hidden">
+                {report.categoryPerformance.map((row) => (
+                  <div key={row.categoryId} className="rounded-xl border border-[var(--sera-line)] p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--sera-ink)]">{row.categoryName}</p>
+                      <DeltaPill value={row.changePct} nullLabel="no baseline" />
+                    </div>
+                    <dl className="mt-2 space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <dt className="text-[var(--sera-muted)]">Units</dt>
+                        <dd className="tabular-nums">{formatCount(row.unitsOrdered)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-[var(--sera-muted)]">Order Value</dt>
+                        <dd className="tabular-nums">{formatRM(row.orderValue)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-[var(--sera-muted)]">SKUs</dt>
+                        <dd className="tabular-nums">{formatCount(row.skusOrdered)} of {formatCount(row.activeSkus)}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          ) : null}
+
+          {report.isEmpty ? (
+            <Card className={REPORTING_PANEL_CLASS}>
+              <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+                <Package className="h-8 w-8 text-[var(--sera-muted)]" strokeWidth={1.5} />
+                <p className="font-medium text-[var(--sera-ink)]">
+                  No {report.category.isAll ? 'product' : report.category.name} order activity recorded for {period.label}.
+                </p>
+                <p className="max-w-md text-sm text-[var(--sera-muted)]">
+                  {report.category.isAll
+                    ? 'Pick another Reporting Month above, or open Inventory & Actions — the stock snapshot is current and stays available for any month.'
+                    : `Other categories may still have activity in ${period.label}. The current ${report.category.name} inventory snapshot stays available under Inventory & Actions.`}
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+        </TabsContent>
+
+        {/* ══ PERFORMANCE ════════════════════════════════════════════════ */}
+        <TabsContent value="performance" className="space-y-5 animate-in fade-in-50 duration-300">
+          <SectionCard
+            icon={TrendingUp}
+            title={`Daily Product Demand Trend — ${period.label}`}
+            description={`Units ordered and order value per day · ${period.rangeLabel}`}
+          >
+            {report.dailyTrend.length === 0 ? (
+              <EmptyNote>No days to report for {period.label} yet.</EmptyNote>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={report.dailyTrend} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} vertical={false} />
+                  <XAxis
+                    dataKey="shortLabel"
+                    tick={{ fontSize: 11, fill: chartTickColor }}
+                    tickLine={false}
+                    axisLine={false}
+                    // Thin the labels rather than crushing them on a narrow screen.
+                    interval={report.dailyTrend.length > 14 ? 1 : 0}
+                  />
+                  <YAxis
+                    yAxisId="units"
+                    tick={{ fontSize: 11, fill: chartTickColor }}
+                    tickLine={false} axisLine={false} width={44}
+                  />
+                  <YAxis
+                    yAxisId="value" orientation="right"
+                    tick={{ fontSize: 11, fill: chartTickColor }}
+                    tickLine={false} axisLine={false} width={52}
+                    tickFormatter={(value: number) => formatRMCompact(value)}
+                  />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, fontSize: 12, border: '1px solid var(--sera-line)' }}
+                    labelFormatter={(_label, payload) => payload?.[0]?.payload?.label ?? ''}
+                    formatter={(value: any, name: any) =>
+                      name === 'Order Value' ? [formatRM(Number(value)), name] : [formatCount(Number(value)), name]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar yAxisId="units" dataKey="units" name="Units Ordered" fill={REPORTING_COLORS.primary} radius={[4, 4, 0, 0]} maxBarSize={38} />
+                  <Line yAxisId="value" type="monotone" dataKey="orderValue" name="Order Value" stroke={REPORTING_COLORS.ink} strokeWidth={2} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            icon={Crown}
+            title="Top Products / Variants"
+            description={`Top ${topRows.length} of ${report.productContribution.skuCount} SKUs ordered in ${period.rangeLabel}`}
+            action={
+              <div className="flex shrink-0 rounded-lg border border-[var(--sera-line)] p-0.5">
+                {([['units', 'By Units'], ['value', 'By Order Value']] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTopSort(key)}
+                    className={cn(
+                      'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                      topSort === key
+                        ? 'bg-[var(--sera-orange)] text-white'
+                        : 'text-[var(--sera-muted)] hover:text-[var(--sera-ink)]',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            }
+          >
+            {topRows.length === 0 ? (
+              <EmptyNote>No products were ordered in {period.label}.</EmptyNote>
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-xs uppercase tracking-wide text-[var(--sera-muted)]">
+                        <th className="px-2 py-2 font-medium">#</th>
+                        <th className="px-2 py-2 font-medium">Product / Variant</th>
+                        <th className="px-2 py-2 text-right font-medium">Units</th>
+                        <th className="px-2 py-2 text-right font-medium">Order Value</th>
+                        <th className="px-2 py-2 text-right font-medium">Share</th>
+                        <th className="px-2 py-2 text-right font-medium">vs Previous</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topRows.map((row) => (
+                        <tr key={row.variantId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className="px-2 py-2.5 font-semibold text-[var(--sera-muted)]">{row.rank}</td>
+                          <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentUnits)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.currentValue)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">
+                            {(topSort === 'units' ? row.unitsSharePct : row.valueSharePct)?.toFixed(1) ?? '—'}%
+                          </td>
+                          <td className="px-2 py-2.5 text-right">{growthCell(row)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile ranked cards — never a crushed table */}
+                <div className="space-y-2.5 md:hidden">
+                  {topRows.map((row) => (
+                    <div key={row.variantId} className="rounded-xl border border-[var(--sera-line)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold text-[var(--sera-orange)]">#{row.rank}</span>
+                          <p className="truncate text-sm font-medium text-[var(--sera-ink)]">{row.label}</p>
+                        </div>
+                        {growthCell(row)}
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <p className="text-sm font-semibold tabular-nums text-[var(--sera-ink)]">{formatCount(row.currentUnits)}</p>
+                          <p className="text-[10px] text-[var(--sera-muted)]">units</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold tabular-nums text-[var(--sera-ink)]">{formatRMCompact(row.currentValue)}</p>
+                          <p className="text-[10px] text-[var(--sera-muted)]">order value</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold tabular-nums text-[var(--sera-ink)]">
+                            {(topSort === 'units' ? row.unitsSharePct : row.valueSharePct)?.toFixed(1) ?? '—'}%
+                          </p>
+                          <p className="text-[10px] text-[var(--sera-muted)]">contribution</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            icon={PieIcon}
+            title="Product Contribution"
+            description={`How concentrated ${formatRM(report.productContribution.totalOrderValue)} of order value is across SKUs · click a band to view its SKUs`}
+          >
+            {contributionSlices.length === 0 ? (
+              <EmptyNote>No order value to attribute for {period.label}.</EmptyNote>
+            ) : (
+              <div className="grid grid-cols-1 items-center gap-4 lg:grid-cols-2">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={contributionSlices}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={54}
+                      outerRadius={84}
+                      paddingAngle={2}
+                      className="cursor-pointer focus:outline-none"
+                      onClick={(slice: any) => {
+                        const band = report.productContribution.bands.find((b) => b.label === slice?.name)
+                        if (band) openContributionBand(band.key, band.skus)
+                      }}
+                    >
+                      {contributionSlices.map((slice) => <Cell key={slice.name} fill={slice.fill} className="cursor-pointer" />)}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ borderRadius: 12, fontSize: 12 }}
+                      formatter={(value: any, name: any) => [formatRM(Number(value)), name]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-2">
+                  {report.productContribution.bands.map((band, index) => (
+                    <button
+                      key={band.key}
+                      type="button"
+                      onClick={() => openContributionBand(band.key, band.skus)}
+                      disabled={band.skus === 0}
+                      aria-label={`View the ${band.skus} SKUs in ${band.label}`}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--sera-line)] px-3 py-2 text-left transition-all',
+                        band.skus > 0
+                          ? 'cursor-pointer hover:-translate-y-0.5 hover:border-[var(--sera-orange)]/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40'
+                          : 'cursor-not-allowed opacity-60',
+                      )}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: [REPORTING_COLORS.primary, REPORTING_COLORS.warning, REPORTING_COLORS.slate][index % 3] }}
+                        />
+                        <span className="truncate text-sm text-[var(--sera-ink)]">{band.label}</span>
+                        <span className="shrink-0 text-[11px] text-[var(--sera-muted)]">({band.skus})</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-right">
+                          <span className="block text-sm font-semibold tabular-nums text-[var(--sera-ink)]">
+                            {band.sharePct === null ? '—' : `${band.sharePct.toFixed(1)}%`}
+                          </span>
+                          <span className="block text-[11px] tabular-nums text-[var(--sera-muted)]">{formatRM(band.orderValue)}</span>
+                        </span>
+                        {band.skus > 0 ? <ChevronRight className="h-4 w-4 text-[var(--sera-muted)]" /> : null}
+                      </span>
+                    </button>
+                  ))}
+                  <p className="pt-0.5 text-[11px] text-[var(--sera-muted)]">Click a band to view the SKUs inside it.</p>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </TabsContent>
+
+        {/* ══ INVENTORY & ACTIONS ════════════════════════════════════════ */}
+        <TabsContent value="inventory" className="space-y-5 animate-in fade-in-50 duration-300">
+          <SectionCard
+            icon={AlertTriangle}
+            title="Products Requiring Attention"
+            description={`Demand loss measured on ${period.rangeLabel} against ${period.comparisonRangeLabel}`}
+          >
+            {report.attentionProducts.length === 0 ? (
+              <EmptyNote>No products required attention in {period.label}.</EmptyNote>
+            ) : (
+              <>
+                <div className="hidden md:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-xs uppercase tracking-wide text-[var(--sera-muted)]">
+                        <th className="px-2 py-2 font-medium">#</th>
+                        <th className="px-2 py-2 font-medium">Product / Variant</th>
+                        <th className="px-2 py-2 text-right font-medium">Current</th>
+                        <th className="px-2 py-2 text-right font-medium">Previous</th>
+                        <th className="px-2 py-2 text-right font-medium">Change</th>
+                        <th className="px-2 py-2 text-right font-medium">Current Stock</th>
+                        <th className="px-2 py-2 font-medium">Last Order</th>
+                        <th className="px-2 py-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.attentionProducts.map((row, index) => (
+                        <tr key={row.variantId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className="px-2 py-2.5 text-[var(--sera-muted)]">{index + 1}</td>
+                          <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentUnits)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{formatCount(row.previousUnits)}</td>
+                          <td className="px-2 py-2.5 text-right">{growthCell(row)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentStock)}</td>
+                          <td className="px-2 py-2.5 text-[var(--sera-muted)]">{formatDay(row.lastOrderedAt)}</td>
+                          <td className="px-2 py-2.5">
+                            <Badge variant="secondary" className={cn('px-1.5 py-0 text-[11px]', ATTENTION_BADGE[row.status])}>
+                              {row.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile compact cards */}
+                <div className="space-y-2.5 md:hidden">
+                  {report.attentionProducts.map((row) => (
+                    <div key={row.variantId} className="rounded-xl border border-[var(--sera-line)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--sera-ink)]">{row.label}</p>
+                        <Badge variant="secondary" className={cn('shrink-0 px-1.5 py-0 text-[11px]', ATTENTION_BADGE[row.status])}>
+                          {row.status}
+                        </Badge>
+                      </div>
+                      <dl className="mt-2 space-y-1 text-xs">
+                        <div className="flex justify-between"><dt className="text-[var(--sera-muted)]">Current period</dt><dd className="tabular-nums">{formatCount(row.currentUnits)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-[var(--sera-muted)]">Previous</dt><dd className="tabular-nums">{formatCount(row.previousUnits)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-[var(--sera-muted)]">Change</dt><dd>{growthCell(row)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-[var(--sera-muted)]">Current stock</dt><dd className="tabular-nums">{formatCount(row.currentStock)}</dd></div>
+                        <div className="flex justify-between"><dt className="text-[var(--sera-muted)]">Last order</dt><dd>{formatDay(row.lastOrderedAt)}</dd></div>
+                      </dl>
+                      <p className="mt-2 border-t border-[var(--sera-line)] pt-2 text-xs text-[var(--sera-ink)]">
+                        <span className="text-[var(--sera-muted)]">Recommended: </span>{row.recommendation}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            icon={Warehouse}
+            title="Current Inventory Snapshot"
+            description={`Stock position as at ${formatTimestamp(report.inventorySnapshot.asOf ?? meta?.generatedAt ?? null)} — independent of the selected reporting month`}
+          >
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <div className="col-span-2 rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)] p-3 lg:col-span-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">Total Inventory Value</p>
+                <p className="mt-1 text-xl font-bold text-[var(--sera-ink)] sm:text-2xl">{formatRMCompact(report.inventorySnapshot.totalValue)}</p>
+                <p className="mt-1 text-[11px] text-[var(--sera-muted)]">
+                  {formatCount(report.inventorySnapshot.totalOnHand)} units · {formatCount(report.inventorySnapshot.variantCount)} stocked SKUs
+                </p>
+              </div>
+              {report.inventorySnapshot.categories.map((category) => (
+                <div key={category.key} className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="text-[10px] font-semibold uppercase leading-tight tracking-wider text-[var(--sera-muted)]">{category.label}</p>
+                  <p className="mt-1 text-xl font-bold text-[var(--sera-ink)] sm:text-2xl">{formatCount(category.skus)}</p>
+                  <p className="mt-1 text-[11px] leading-tight text-[var(--sera-muted)]">
+                    {formatCount(category.units)} units · {formatRMCompact(category.value)}
+                  </p>
+                  <p className="mt-1 line-clamp-2 text-[10px] leading-tight text-[var(--sera-muted)]">{category.description}</p>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            icon={Boxes}
+            title="Management Action Plan"
+            description="Tap an action to filter the list below"
+            action={actionFilter ? (
+              <Button variant="ghost" size="sm" className="h-8 shrink-0 text-xs" onClick={() => setActionFilter(null)}>
+                Clear filter
+              </Button>
+            ) : undefined}
+          >
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {report.managementActions.summary.map((card) => (
+                <SummaryTile
+                  key={card.key}
+                  label={card.label}
+                  count={card.count}
+                  accent={ACTION_ACCENT[card.key]}
+                  icon={card.key === 'replenish' ? Package : card.key === 'maintain' ? Target : card.key === 'promote' ? Megaphone : ShieldAlert}
+                  active={actionFilter === card.key}
+                  onClick={() => setActionFilter(actionFilter === card.key ? null : card.key)}
+                />
+              ))}
+            </div>
+
+            {visibleActionRows.length === 0 ? (
+              <EmptyNote>No management actions for this selection.</EmptyNote>
+            ) : (
+              <>
+                <div className="mt-4 hidden md:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--sera-line)] text-left text-xs uppercase tracking-wide text-[var(--sera-muted)]">
+                        <th className="px-2 py-2 font-medium">Priority</th>
+                        <th className="px-2 py-2 font-medium">Product / Variant</th>
+                        <th className="px-2 py-2 text-right font-medium">Current</th>
+                        <th className="px-2 py-2 text-right font-medium">Previous</th>
+                        <th className="px-2 py-2 text-right font-medium">Demand Change</th>
+                        <th className="px-2 py-2 text-right font-medium">Current Stock</th>
+                        <th className="px-2 py-2 font-medium">Stock Status</th>
+                        <th className="px-2 py-2 font-medium">Recommended Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleActionRows.map((row) => (
+                        <tr key={row.variantId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className="px-2 py-2.5">
+                            <Badge variant="secondary" className={cn('px-1.5 py-0 text-[10px] font-bold', PRIORITY_BADGE[row.actionPriority])}>
+                              {row.actionPriority}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentUnits)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{formatCount(row.previousUnits)}</td>
+                          <td className="px-2 py-2.5 text-right">{growthCell(row)}</td>
+                          <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentStock)}</td>
+                          <td className="px-2 py-2.5">{stockBadge(row)}</td>
+                          <td className="px-2 py-2.5">
+                            <span className="text-xs font-semibold" style={{ color: ACTION_ACCENT[row.action as ActionKey] }}>
+                              {report.managementActions.summary.find((card) => card.key === row.action)?.label.toUpperCase()}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-4 space-y-2.5 md:hidden">
+                  {visibleActionRows.map((row) => (
+                    <div key={row.variantId} className="rounded-xl border border-[var(--sera-line)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--sera-ink)]">{row.label}</p>
+                        <Badge variant="secondary" className={cn('shrink-0 px-1.5 py-0 text-[10px] font-bold', PRIORITY_BADGE[row.actionPriority])}>
+                          {row.actionPriority}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--sera-muted)]">
+                        <span className="tabular-nums">{formatCount(row.currentUnits)} units</span>
+                        <span className="tabular-nums">was {formatCount(row.previousUnits)}</span>
+                        {growthCell(row)}
+                        <span className="tabular-nums">stock {formatCount(row.currentStock)}</span>
+                        {stockBadge(row)}
+                      </div>
+                      <p className="mt-2 border-t border-[var(--sera-line)] pt-2 text-xs font-semibold" style={{ color: ACTION_ACCENT[row.action as ActionKey] }}>
+                        {report.managementActions.summary.find((card) => card.key === row.action)?.label.toUpperCase()}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-[var(--sera-muted)]">{row.recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
+
+      {/* ── Product Contribution drill-down ──────────────────────────────
+          One sheet, two levels: the band's SKU list, and an individual SKU
+          detail reached with a Back control. `w-full sm:max-w-2xl` makes it a
+          full-screen sheet on mobile and a right drawer on desktop, matching the
+          Distributor reports drawer. Closing it restores the Performance view
+          with the month, category and sub-tab untouched. */}
+      <Sheet
+        open={contributionBand !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setContributionBand(null)
+            setContributionSku(null)
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-2xl">
+          {activeSkuRow ? (
+            <>
+              <SheetHeader className="border-b border-[var(--sera-line)] px-4 py-3 text-left sm:px-6">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mb-1 -ml-2 h-8 w-fit gap-1.5 text-xs text-[var(--sera-muted)]"
+                  onClick={() => setContributionSku(null)}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back to {activeBand?.label}
+                </Button>
+                <SheetTitle className="pr-8 text-base">{activeSkuRow.label}</SheetTitle>
+                <SheetDescription className="text-xs sm:text-sm">
+                  Rank #{activeSkuRow.rank} · {period.label} · {report.category.name}
+                </SheetDescription>
+              </SheetHeader>
+
+              {/* Stacked cards — no wide tables, no horizontal overflow. */}
+              <div className="space-y-4 px-4 py-4 sm:px-6">
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">
+                    Selected Period · {period.rangeLabel}
+                  </p>
+                  <dl className="space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Units Ordered</dt>
+                      <dd className="font-semibold tabular-nums">{formatCount(activeSkuRow.currentUnits)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Order Value</dt>
+                      <dd className="font-semibold tabular-nums">{formatRM(activeSkuRow.currentValue)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Contribution</dt>
+                      <dd className="font-semibold tabular-nums">
+                        {activeSkuRow.valueSharePct === null ? '—' : `${activeSkuRow.valueSharePct.toFixed(1)}%`}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">
+                    Comparison Period · {period.comparisonRangeLabel}
+                  </p>
+                  <dl className="space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Previous Units</dt>
+                      <dd className="tabular-nums">{formatCount(activeSkuRow.previousUnits)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Previous Order Value</dt>
+                      <dd className="tabular-nums">{formatRM(activeSkuRow.previousValue)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Demand Change</dt>
+                      <dd>{growthCell(activeSkuRow)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Performance Status</dt>
+                      <dd className="font-medium">{DEMAND_STATUS_LABEL[activeSkuRow.demandTrend]}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="rounded-xl border border-[var(--sera-line)] p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">
+                    Current Inventory Snapshot
+                  </p>
+                  {/* Current stock even when a historical month is selected. */}
+                  <p className="mb-2 text-[10px] text-[var(--sera-muted)]">
+                    Stock position as at {formatTimestamp(report.inventorySnapshot.asOf ?? meta?.generatedAt ?? null)} —
+                    independent of the selected reporting month
+                  </p>
+                  <dl className="space-y-1.5 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Current Stock</dt>
+                      <dd className="tabular-nums">{formatCount(activeSkuRow.currentStock)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Quantity Available</dt>
+                      <dd className="tabular-nums">{formatCount(activeSkuRow.availableStock)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Reorder Point</dt>
+                      <dd className="tabular-nums">
+                        {activeSkuRow.reorderPoint > 0 ? formatCount(activeSkuRow.reorderPoint) : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Stock Status</dt>
+                      <dd>{stockBadge(activeSkuRow)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Stock Coverage</dt>
+                      <dd className="tabular-nums">
+                        {activeSkuRow.stockCoverDays === null ? '—' : `${Math.round(activeSkuRow.stockCoverDays)} days`}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-[var(--sera-muted)]">Last Ordered</dt>
+                      <dd>{formatDay(activeSkuRow.lastOrderedAt)}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                {/* The same classification the Management Action Plan uses. */}
+                <div
+                  className="rounded-xl border p-3"
+                  style={{
+                    borderColor: `${activeSkuRow.action ? ACTION_ACCENT[activeSkuRow.action] : REPORTING_COLORS.slate}55`,
+                    backgroundColor: `${activeSkuRow.action ? ACTION_ACCENT[activeSkuRow.action] : REPORTING_COLORS.slate}0f`,
+                  }}
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">
+                    Recommended Action
+                  </p>
+                  <p
+                    className="mt-1 text-sm font-bold"
+                    style={{ color: activeSkuRow.action ? ACTION_ACCENT[activeSkuRow.action] : undefined }}
+                  >
+                    {activeSkuRow.action
+                      ? report.managementActions.summary.find((card) => card.key === activeSkuRow.action)?.label.toUpperCase()
+                      : 'NO ACTION REQUIRED'}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]">
+                    {activeSkuRow.action ? ACTION_RECOMMENDATION[activeSkuRow.action] : NO_ACTION_RECOMMENDATION}
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <SheetHeader className="border-b border-[var(--sera-line)] px-4 py-3 text-left sm:px-6">
+                <SheetTitle className="pr-8 text-base uppercase">{activeBand?.label} Contribution</SheetTitle>
+                <SheetDescription className="text-xs sm:text-sm">
+                  {period.label} · {period.rangeLabel}
+                  {period.isCurrentMonth ? ' (month to date)' : ''} · {report.category.name}
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="px-4 py-4 sm:px-6">
+                <div className="mb-3 rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)] p-3">
+                  <p className="text-2xl font-bold text-[var(--sera-ink)]">{formatRM(activeBand?.orderValue ?? 0)}</p>
+                  <p className="text-xs text-[var(--sera-muted)]">
+                    {activeBand?.sharePct === null || activeBand === null
+                      ? 'no order value in the selected period'
+                      : `${activeBand.sharePct.toFixed(1)}% of selected report Order Value`}
+                  </p>
+                  {/* Factual by default; the concentration sentence appears only
+                      above a documented threshold. */}
+                  {activeBand ? (
+                    <p className="mt-2 border-t border-[var(--sera-line)] pt-2 text-xs text-[var(--sera-ink)]">
+                      {activeBand.sharePct === null
+                        ? `No ${activeBand.label} order value was recorded in this period.`
+                        : `${activeBand.label} contribute ${activeBand.sharePct.toFixed(1)}% of selected-period Order Value.`}
+                      {activeBand.key === 'top5' && activeBand.sharePct !== null
+                        && activeBand.sharePct >= CONCENTRATION_THRESHOLD_PCT
+                        ? ' Performance is concentrated in a small number of SKUs.'
+                        : ''}
+                    </p>
+                  ) : null}
+                </div>
+
+                {bandRows.length === 0 ? (
+                  <EmptyNote>No SKUs in this contribution band for {period.label}.</EmptyNote>
+                ) : (
+                  <>
+                    <p className="mb-2 text-[11px] text-[var(--sera-muted)]">Select a SKU for its full detail.</p>
+                    <div className="space-y-2">
+                      {bandRows.map((row) => (
+                        <button
+                          key={row.variantId}
+                          type="button"
+                          onClick={() => setContributionSku(row.variantId)}
+                          className="flex w-full items-start gap-3 rounded-xl border border-[var(--sera-line)] p-3 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--sera-orange)]/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40"
+                        >
+                          <span className="mt-0.5 shrink-0 text-xs font-bold text-[var(--sera-orange)]">#{row.rank}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-[var(--sera-ink)]">{row.label}</span>
+                            <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--sera-muted)]">
+                              <span className="tabular-nums">{formatCount(row.currentUnits)} units</span>
+                              <span className="tabular-nums">{formatRM(row.currentValue)}</span>
+                              <span className="tabular-nums">
+                                {row.valueSharePct === null ? '—' : `${row.valueSharePct.toFixed(1)}%`}
+                              </span>
+                              {growthCell(row)}
+                            </span>
+                          </span>
+                          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-[var(--sera-muted)]" />
+                        </button>
+                      ))}
+                    </div>
+                    {contributionBand === 'remaining' && report.productContribution.rowsTruncated ? (
+                      <p className="mt-3 text-[11px] text-[var(--sera-muted)]">
+                        Showing the highest-contributing SKUs of this band; the full list is longer than the report carries.
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Strategy insight detail ─────────────────────────────────────── */}
+      <Dialog open={selectedInsight !== null} onOpenChange={(open) => !open && setSelectedInsight(null)}>
+        <DialogContent className="max-h-[85vh] max-w-4xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-[var(--sera-line)] px-4 py-3 sm:px-6">
+            <DialogTitle className="text-base">{activeInsight?.title}</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {activeInsight?.description} · {period.rangeLabel} vs {period.comparisonRangeLabel}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-4 pt-3 sm:px-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sera-muted)]" />
+              <Input
+                value={insightSearch}
+                onChange={(event) => setInsightSearch(event.target.value)}
+                placeholder="Search products…"
+                className="h-9 pl-9 text-sm"
+              />
+            </div>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto px-4 pb-4 pt-3 sm:px-6">
+            {filteredInsightRows.length === 0 ? (
+              <EmptyNote>No products match this insight.</EmptyNote>
+            ) : (
+              <>
+                <table className="hidden w-full text-sm md:table">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-[var(--sera-line)] text-left text-xs uppercase tracking-wide text-[var(--sera-muted)]">
+                      <th className="px-2 py-2 font-medium">Product / Variant</th>
+                      <th className="px-2 py-2 text-right font-medium">Current</th>
+                      <th className="px-2 py-2 text-right font-medium">Previous</th>
+                      <th className="px-2 py-2 text-right font-medium">Growth</th>
+                      <th className="px-2 py-2 text-right font-medium">Order Value</th>
+                      <th className="px-2 py-2 text-right font-medium">Stock</th>
+                      <th className="px-2 py-2 font-medium">Coverage</th>
+                      <th className="px-2 py-2 font-medium">Last Ordered</th>
+                      <th className="px-2 py-2 font-medium">Recommended Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredInsightRows.map((row) => (
+                      <tr key={row.variantId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                        <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{row.label}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentUnits)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums text-[var(--sera-muted)]">{formatCount(row.previousUnits)}</td>
+                        <td className="px-2 py-2.5 text-right">{growthCell(row)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(row.currentValue)}</td>
+                        <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(row.currentStock)}</td>
+                        <td className="px-2 py-2.5">
+                          <span className="flex items-center gap-1.5">
+                            {stockBadge(row)}
+                            <span className="text-[11px] text-[var(--sera-muted)]">
+                              {row.stockCoverDays === null ? '—' : `${Math.round(row.stockCoverDays)}d`}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="px-2 py-2.5 text-[var(--sera-muted)]">{formatDay(row.lastOrderedAt)}</td>
+                        <td className="px-2 py-2.5 text-xs">{row.recommendation}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="space-y-2.5 md:hidden">
+                  {filteredInsightRows.map((row) => (
+                    <div key={row.variantId} className="rounded-xl border border-[var(--sera-line)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--sera-ink)]">{row.label}</p>
+                        {growthCell(row)}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--sera-muted)]">
+                        <span className="tabular-nums">{formatCount(row.currentUnits)} units</span>
+                        <span className="tabular-nums">was {formatCount(row.previousUnits)}</span>
+                        <span className="tabular-nums">{formatRMCompact(row.currentValue)}</span>
+                        <span className="tabular-nums">stock {formatCount(row.currentStock)}</span>
+                        {stockBadge(row)}
+                      </div>
+                      <p className="mt-2 border-t border-[var(--sera-line)] pt-2 text-[11px] text-[var(--sera-ink)]">{row.recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </DialogContent>

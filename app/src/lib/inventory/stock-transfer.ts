@@ -1,3 +1,5 @@
+import { isLegacyConfigCode } from './canonical-stock-config'
+
 /**
  * Stock Transfer workflow helpers and lifecycle documentation.
  *
@@ -87,6 +89,8 @@ export interface SourceInventoryRow {
   productCode: string
   productName: string
   variantName: string
+  variantProductCode: string
+  alternativeName: string
   flavour: string
   productLine: string
   configLabel: string
@@ -268,7 +272,11 @@ export function isTransferableConfiguration(row: {
 }): boolean {
   if (!row.stockConfigId) return false
   const code = (row.configCode || '').toUpperCase()
-  if (!code || code === 'UNCLASSIFIED' || code.includes('LEGACY')) return false
+  if (!code) return false
+  // Legacy configurations (50NB / 50OB / UNCLASSIFIED) are retired to zero by
+  // LEGACY-CONFIG-CUTOVER-2026, never transferred. Only the canonical
+  // operational configuration moves between warehouses.
+  if (isLegacyConfigCode(code)) return false
   if (row.status && row.status !== 'active') return false
   return true
 }
@@ -362,6 +370,8 @@ export function filterSourceInventoryRows(
     const haystack = [
       row.flavour,
       row.variantName,
+      row.variantProductCode,
+      row.alternativeName,
       row.productName,
       row.productCode,
       row.stockSku,

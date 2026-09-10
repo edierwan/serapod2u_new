@@ -15,6 +15,8 @@ const source: SourceInventoryRow[] = [
     productCode: 'CEL-001',
     productName: 'Cellera',
     variantName: 'Cellera [Mango]',
+    variantProductCode: 'MG',
+    alternativeName: 'Mango Sunrise',
     flavour: 'Cellera [Mango]',
     productLine: 'Cellera',
     configLabel: '20ml New Box',

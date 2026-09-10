@@ -119,6 +119,7 @@ export async function generatePdfForOrderDocument(
       *,
       buyer_org:organizations!orders_buyer_org_id_fkey(
         org_name,
+        org_type_code,
         address,
         address_line2,
         city,
@@ -132,6 +133,7 @@ export async function generatePdfForOrderDocument(
       ),
       seller_org:organizations!orders_seller_org_id_fkey(
         org_name,
+        org_type_code,
         address,
         address_line2,
         city,
@@ -293,8 +295,10 @@ export async function generatePdfForOrderDocument(
     }
   }
 
-  // Fetch approver data if order is approved
-  let enrichedOrderData = {
+  // Fetch approver data if order is approved.
+  // Annotated loosely because the blocks below progressively add keys
+  // (approver, approval_hash, ...) that the initializer does not yet carry.
+  let enrichedOrderData: Record<string, any> = {
     ...orderData,
     buyer_logo_image: buyerLogoImage,
     seller_logo_image: sellerLogoImage,
@@ -349,7 +353,8 @@ export async function generatePdfForOrderDocument(
     filename = `${orderDisplayNo}.pdf`
     compressionStats = generator.getCompressionStats()
   } else {
-    let docType: string
+    // Typed as the documents.doc_type union so the filter below type-checks.
+    let docType: 'PO' | 'SO' | 'DO' | 'INVOICE' | 'RECEIPT' | 'PAYMENT' | 'PAYMENT_REQUEST'
     switch (type) {
       case 'purchase_order':
         docType = 'PO'
@@ -428,7 +433,9 @@ export async function generatePdfForOrderDocument(
         docType === 'INVOICE' && poDocument ? poDocument :
           documentData
 
-    let enrichedDocumentData = {
+    // Loosely annotated for the same reason as enrichedOrderData: later blocks
+    // attach acknowledger, linked_invoice, requested_percent and friends.
+    let enrichedDocumentData: Record<string, any> = {
       ...documentData,
       acknowledged_at: acknowledgementSource?.acknowledged_at ?? documentData.acknowledged_at,
       acknowledged_by: acknowledgementSource?.acknowledged_by ?? documentData.acknowledged_by

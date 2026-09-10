@@ -57,6 +57,16 @@ function readFiltersFromUrl(): ReportingFilters {
     }
 }
 
+export interface MonthlyReportingOptions {
+    /**
+     * Carry shops with an open follow-up into the report alongside the selected
+     * month, back to the start of the campaigns in scope. Only Shop Follow-Up
+     * sets this — the month-scoped reports measure a single period and must stay
+     * that way.
+     */
+    carryForwardOpenItems?: boolean
+}
+
 export interface UseMonthlyReportingResult {
     month: ReportingMonth
     monthKey: string
@@ -76,7 +86,11 @@ export interface UseMonthlyReportingResult {
     reload: () => void
 }
 
-export function useMonthlyReporting(organizationId: string | null | undefined): UseMonthlyReportingResult {
+export function useMonthlyReporting(
+    organizationId: string | null | undefined,
+    options: MonthlyReportingOptions = {},
+): UseMonthlyReportingResult {
+    const carryForwardOpenItems = options.carryForwardOpenItems === true
     const [monthKey, setMonthKeyState] = useState<string>(() => normalizeMonthKey(readStoredMonth()))
     const [filters, setFiltersState] = useState<ReportingFilters>(readFiltersFromUrl)
     const [windowDays, setWindowDaysState] = useState<ImpactWindowDays>(OFFICIAL_IMPACT_WINDOW_DAYS)
@@ -144,6 +158,7 @@ export function useMonthlyReporting(organizationId: string | null | undefined): 
         if (filters.campaignId) params.set('campaignId', filters.campaignId)
         if (filters.accountManagerUserId) params.set('accountManagerUserId', filters.accountManagerUserId)
         if (filters.regionStateId) params.set('regionStateId', filters.regionStateId)
+        if (carryForwardOpenItems) params.set('carryForward', 'open')
 
         setLoading(true)
         setError(null)
@@ -167,7 +182,7 @@ export function useMonthlyReporting(organizationId: string | null | undefined): 
             })
 
         return () => { cancelled = true }
-    }, [organizationId, monthKey, windowDays, filters.campaignId, filters.accountManagerUserId, filters.regionStateId, reloadToken])
+    }, [organizationId, monthKey, windowDays, filters.campaignId, filters.accountManagerUserId, filters.regionStateId, carryForwardOpenItems, reloadToken])
 
     return {
         month,

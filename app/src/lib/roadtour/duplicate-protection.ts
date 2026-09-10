@@ -12,7 +12,7 @@ export const DUPLICATE_POLICY_LABEL: Record<RoadtourDuplicatePolicy, string> = {
     one_participant_once_per_event: 'One participant once per event',
     one_participant_once_per_campaign: 'One participant once per campaign',
     per_run: 'One shop once per event',
-    per_campaign: 'One shop once per campaign',
+    per_campaign: 'One Shop Once Per Campaign',
     per_day: 'One shop once per day',
     none: 'No duplicate restriction',
 }
@@ -24,10 +24,15 @@ export const DUPLICATE_POLICY_OPTIONS: Array<{
     recommended?: boolean
 }> = [
     {
+        value: 'per_campaign',
+        label: 'One Shop Once Per Campaign',
+        description: 'One successful reward and one official visit per shop per campaign, whichever account manager QR is scanned. The same shop becomes eligible again under a new campaign.',
+        recommended: true,
+    },
+    {
         value: 'one_participant_once_per_event',
         label: 'One participant once per event',
-        description: 'Recommended for staff rewards. Different workers from the same shop can each claim once per RoadTour Event.',
-        recommended: true,
+        description: 'Keyed on the participant phone, not the shop — several workers from one shop can each claim. Does not limit a shop to one intervention.',
     },
     {
         value: 'one_participant_once_per_campaign',
@@ -38,11 +43,6 @@ export const DUPLICATE_POLICY_OPTIONS: Array<{
         value: 'per_run',
         label: 'One shop once per event',
         description: 'Use only when the reward is intended once per shop across the whole RoadTour Event.',
-    },
-    {
-        value: 'per_campaign',
-        label: 'One shop once per campaign',
-        description: 'Same shop can be rewarded by different campaigns in the same event.',
     },
     {
         value: 'per_day',
@@ -84,7 +84,7 @@ export function getRoadtourDuplicateResponse(
     if (duplicatePolicy === 'per_campaign') {
         return {
             title: 'Shop Limit Reached',
-            message: 'This shop has already reached the claim limit for this RoadTour campaign.',
+            message: 'This shop has already claimed this RoadTour campaign. Only one reward is given per shop per campaign, whichever account manager QR is scanned.',
             scope: 'shop_campaign' as const,
         }
     }

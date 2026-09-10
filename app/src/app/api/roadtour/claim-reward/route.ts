@@ -596,6 +596,13 @@ export async function POST(request: NextRequest) {
         const explicitShopId = shop_id || null
         const resolvedScanShopId = explicitShopId || qrShopId
         const resolvedRewardShopId = resolvedScanShopId || (laneExperience.claimLane === 'shop' ? userProfile?.organization_id || null : null)
+        // A RoadTour QR belongs to an account manager, never to a shop, so
+        // `resolvedScanShopId` is null on every real scan. Persisting that on the
+        // scan event left `roadtour_scan_events.shop_id` NULL for all 199 production
+        // rows, which silently disabled every shop-scoped duplicate rule (they filter
+        // on that column) and left visit participants unresolvable. The event must
+        // record the same shop the reward is attributed to.
+        const scanEventShopId = resolvedRewardShopId
         const isMilestoneRelease = pointReleaseRule === 'product_qr_scan_target_once' && !!roadtour_run_id
         const participantPhoneNormalized = normalizeParticipantPhoneKey(userPhone)
 
@@ -735,7 +742,7 @@ export async function POST(request: NextRequest) {
             account_manager_user_id,
             scanned_by_user_id: userId || null,
             consumer_phone: normalizeRoadtourParticipantPhone(userPhone) || userPhone || null,
-            shop_id: resolvedScanShopId,
+            shop_id: scanEventShopId,
             scan_status: 'opened',
             geolocation: normalizedGeolocation || null,
             geo_label: resolvedGeoLabel,
@@ -802,7 +809,7 @@ export async function POST(request: NextRequest) {
                 qr_code_id,
                 account_manager_user_id,
                 scanned_by_user_id: userId || null,
-                scan_shop_id: resolvedScanShopId,
+                scan_shop_id: scanEventShopId,
                 reward_shop_id: resolvedRewardShopId,
             }))
             return NextResponse.json(buildScanInsertErrorPayload(scanError), { status: 500 })
@@ -1033,7 +1040,9 @@ export async function POST(request: NextRequest) {
             p_points: default_points,
             p_scan_event_id: scanEvent.id,
             p_survey_response_id: surveyResponseId,
-            p_duplicate_rule: duplicate_rule_reward || 'one_per_user_per_campaign',
+            // Both layers must enforce the same rule; passing the legacy QR value here
+            // while the pre-check above used `effectiveDuplicateRule` let them disagree.
+            p_duplicate_rule: effectiveDuplicateRule,
             p_transaction_type: reward_mode === 'survey_submit' ? 'roadtour_survey' : 'roadtour',
         })
 
@@ -1078,6 +1087,24 @@ export async function POST(request: NextRequest) {
                 message: rewardError.message || 'Reward processing failed.',
             })
             return NextResponse.json(buildRewardErrorPayload(rewardError), { status: 500 })
+        }
+
+        // The official visit is what every RoadTour report measures. It used to be
+        // inserted inside an `EXCEPTION WHEN unique_violation THEN NULL`, so a
+        // blocked visit was indistinguishable from a recorded one and the caller
+        // still saw success. The function now reports it, and a visit that was
+        // blocked for any reason other than the expected one-per-campaign rule is
+        // loud rather than silent.
+        if (rewardResult && rewardResult.official_visit_blocked) {
+            const blockedReason = String(rewardResult.official_visit_blocked_reason || 'unknown')
+            if (blockedReason !== 'duplicate_campaign_shop') {
+                console.error('[RT] official visit not recorded', JSON.stringify({
+                    scan_event_id: scanEvent.id,
+                    campaign_id,
+                    shop_id: resolvedRewardShopId,
+                    reason: blockedReason,
+                }))
+            }
         }
 
         // Check if rewardResult indicates duplicate
