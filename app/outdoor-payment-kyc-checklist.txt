@@ -1,0 +1,35 @@
+Serapod Outdoor — Payment gateway KYC checklist (for manager)
+=============================================================
+Recommended: Billplz (already integrated in Serapod2U payment adapters).
+Alternative: CHIP (if preferred commercially).
+
+A) Company documents (typical for MY payment KYC)
+-------------------------------------------------
+1. SSM / company registration (Form 9 / Section 14/15 or latest equivalent)
+2. Company profile / business nature (Outdoor ecommerce retail)
+3. Bank account statement under company name (for settlement)
+4. NRIC / passport of directors / authorised signatory
+5. Board resolution or authorisation letter for the gateway account owner (if required)
+6. Proof of business address
+7. Website / storefront URL: https://outdoor.serapod.com
+8. Privacy Policy + Refund Policy + Terms URLs (now live under /outdoor/...)
+9. Product examples / catalogue description
+10. Estimated monthly transaction volume
+
+B) Technical values we will configure after account approval
+-----------------------------------------------------------
+- Merchant / Collection ID
+- API secret / signature key (server-only env — never public)
+- Callback / webhook URL: https://<app-host>/api/storefront/payment/webhook
+- Return URL base: https://outdoor.serapod.com/orders/success
+
+C) Parallel shipping blocker
+----------------------------
+EasyParcel: API key + pickup postcode/state/address/mobile
+(see app/outdoor.env.example)
+
+D) Notes
+--------
+- Orders are marked paid only after verified webhook (already coded).
+- Legal should review Outdoor policy pages before production publish.
+- Do not share API secrets in chat/email; use secure secret store / .env.

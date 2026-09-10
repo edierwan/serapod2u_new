@@ -102,6 +102,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
 
     // Mode from URL: ?mode=store | ?mode=business (UI copy only)
     const [mode, setMode] = useState<'store' | 'business'>('store')
+    const [signupHref, setSignupHref] = useState('/signup')
     useEffect(() => {
         const params = new URLSearchParams(window.location.search)
         const m = params.get('mode')
@@ -110,6 +111,12 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
         if (params.get('reason') === 'session_replaced') {
             setError('You were signed out because your account was accessed from another device.')
         }
+        const next = params.get('next') || params.get('redirect')
+        const qs = new URLSearchParams()
+        if (next) qs.set('next', next)
+        if (m) qs.set('mode', m)
+        const q = qs.toString()
+        setSignupHref(q ? `/signup?${q}` : '/signup')
     }, [])
 
     // Track if we're navigating away (prevents state updates during navigation)
@@ -123,7 +130,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
         isNavigatingRef.current = true
         try {
             const params = new URLSearchParams(window.location.search)
-            const nextParam = params.get('next')
+            const nextParam = params.get('next') || params.get('redirect')
             const safeNext = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
                 ? nextParam
                 : null
@@ -135,10 +142,14 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
             const res = await fetch(endpoint, { signal: controller.signal })
             clearTimeout(timeout)
             const data = await res.json()
-            window.location.href = data.redirectTo || '/store'
+            window.location.href = data.redirectTo || safeNext || '/store'
         } catch {
-            // Fallback if API is unreachable or slow
-            window.location.href = '/store'
+            const params = new URLSearchParams(window.location.search)
+            const nextParam = params.get('next') || params.get('redirect')
+            window.location.href =
+                nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
+                    ? nextParam
+                    : '/store'
         }
     }
 
@@ -169,6 +180,14 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
     useEffect(() => {
         const clearStaleSession = async () => {
             try {
+                const params = new URLSearchParams(window.location.search)
+                const nextParam = params.get('next') || params.get('redirect')
+                const isStorefrontReturn =
+                    !!nextParam &&
+                    nextParam.startsWith('/') &&
+                    !nextParam.startsWith('//') &&
+                    (nextParam.startsWith('/outdoor') || nextParam.startsWith('/store') || params.get('mode') === 'store')
+
                 const supabase = createClient()
                 const { data: { user }, error } = await supabase.auth.getUser()
                 if (error) {
@@ -176,7 +195,6 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                     await supabase.auth.signOut({ scope: 'local' })
                     resetClient()
                 } else if (user) {
-                    // Check if user is a portal (business) user
                     const { data: profile } = await supabase
                         .from('users')
                         .select('account_scope, organization_id')
@@ -184,11 +202,13 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                         .single()
 
                     if (profile?.account_scope === 'portal' && profile?.organization_id) {
-                        // Portal user already logged in — redirect to dashboard
+                        // Portal user already logged in — redirect to dashboard (or next if provided)
+                        doPostLoginRedirect()
+                    } else if (isStorefrontReturn) {
+                        // Shopper already signed in and returning to Outdoor/Store checkout/account
                         doPostLoginRedirect()
                     } else {
-                        // Non-portal user (storefront/consumer) visiting login page:
-                        // Sign them out so they can enter business credentials
+                        // Business login page: clear storefront session so HQ can sign in
                         await supabase.auth.signOut({ scope: 'local' })
                         resetClient()
                     }
@@ -313,10 +333,20 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
             const supabase = createClient()
             const siteUrl = window.location.origin
 
+            const params = new URLSearchParams(window.location.search)
+            const nextParam = params.get('next') || params.get('redirect')
+            const safeNext =
+                nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
+                    ? nextParam
+                    : null
+            const callbackUrl = safeNext
+                ? `${siteUrl}/auth/callback?next=${encodeURIComponent(safeNext)}`
+                : `${siteUrl}/auth/callback`
+
             const { error } = await supabase.auth.signInWithOAuth({
                 provider,
                 options: {
-                    redirectTo: `${siteUrl}/auth/callback`,
+                    redirectTo: callbackUrl,
                     queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined,
                 },
             })
@@ -615,7 +645,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
 
                         <div className="mt-8 text-center text-sm text-[var(--sera-muted)] login-rise login-rise-delay-4">
                             New to Serapod2U?{' '}
-                            <Link href="/signup" className="font-semibold text-[var(--sera-ink)] hover:text-[var(--sera-orange)] transition-colors">
+                            <Link href={signupHref} className="font-semibold text-[var(--sera-ink)] hover:text-[var(--sera-orange)] transition-colors">
                                 Sign Up
                             </Link>
                         </div>

@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { resolvePortalHomePath } from '@/lib/serapp/access'
+import { resolveMarketingHostRewrite } from '@/lib/hosts/site-hosts'
 import {
   extractQRCodeFromPath,
   extractTokenFromQRCode,
@@ -144,6 +145,11 @@ export async function middleware(request: NextRequest) {
   const qrRedirect = await handleQRSecurityRedirect(request);
   if (qrRedirect) return qrRedirect;
 
+  // 2) Marketing hosts (serapod.com / outdoor.serapod.com) → isolated trees.
+  // Default app hosts keep `/` → `/store` behaviour unchanged.
+  const marketingRewrite = resolveMarketingHostRewrite(request)
+  if (marketingRewrite) return marketingRewrite
+
   const pathname = request.nextUrl.pathname
 
   const isPublicRoadtourScanPath =
@@ -151,7 +157,7 @@ export async function middleware(request: NextRequest) {
     /^\/rt\/\d{4}\//.test(pathname)
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/lp', '/api/landing-pages/events', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register', '/api/reference/search', '/api/shops/search', '/api/shops/locations', '/api/shops/prepare-registration', '/api/shops/contact-verification', '/api/health', '/scan', '/api/roadtour/claim-reward', '/api/roadtour/qr-image', '/api/support/whatsapp/ingest', '/api/webhooks/whatsapp/meta', '/api/webhooks/sms-gateway', '/api/telegram/webhook', '/privacy-policy', '/terms-of-service', '/data-deletion', '/help']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/lp', '/api/landing-pages/events', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register', '/api/reference/search', '/api/shops/search', '/api/shops/locations', '/api/shops/prepare-registration', '/api/shops/contact-verification', '/api/health', '/scan', '/api/roadtour/claim-reward', '/api/roadtour/qr-image', '/api/support/whatsapp/ingest', '/api/webhooks/whatsapp/meta', '/api/webhooks/sms-gateway', '/api/telegram/webhook', '/privacy-policy', '/terms-of-service', '/data-deletion', '/help', '/outdoor', '/corporate', '/forgot-password', '/login']
 
   // Check if current path is public
   const isPublicPath = isPublicRoadtourScanPath || PUBLIC_PATHS.some((path) =>

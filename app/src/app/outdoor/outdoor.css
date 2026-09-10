@@ -1,0 +1,62 @@
+/* Serapod Outdoor — same brand tokens as Serapod2U Store (orange / ink) */
+.sera-outdoor {
+  --out-ink: #141210;
+  --out-ink-soft: #2a2622;
+  --out-moss: #e85d04;
+  --out-moss-deep: #c44a00;
+  --out-ember: #e85d04;
+  --out-sand: #f3f3f4;
+  --out-mist: #e9eaed;
+  --out-line: #d8dade;
+  --out-muted: #5f6570;
+  --out-surface: #f3f3f4;
+  --font-display: var(--font-outdoor-display), 'Syne', sans-serif;
+  --font-body: var(--font-outdoor-body), 'Manrope', system-ui, sans-serif;
+  font-family: var(--font-body);
+  color: var(--out-ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 93, 4, 0.05), transparent 50%),
+    var(--out-mist);
+}
+
+.sera-outdoor .font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes outdoor-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes outdoor-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes outdoor-drift {
+  0% { transform: scale(1.04) translate3d(0, 0, 0); }
+  50% { transform: scale(1.08) translate3d(-1.2%, 0.6%, 0); }
+  100% { transform: scale(1.04) translate3d(0, 0, 0); }
+}
+
+.sera-outdoor .out-rise {
+  animation: outdoor-rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sera-outdoor .out-rise-d1 { animation-delay: 0.1s; }
+.sera-outdoor .out-rise-d2 { animation-delay: 0.2s; }
+.sera-outdoor .out-rise-d3 { animation-delay: 0.32s; }
+
+.sera-outdoor .out-fade {
+  animation: outdoor-fade 1.1s ease both;
+}
+
+.sera-outdoor .out-drift {
+  animation: outdoor-drift 22s ease-in-out infinite;
+}

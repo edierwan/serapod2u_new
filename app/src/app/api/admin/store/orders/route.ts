@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url)
         const status = searchParams.get('status')
         const search = searchParams.get('search')
+        const salesChannel = searchParams.get('salesChannel')
         const page = parseInt(searchParams.get('page') || '1', 10)
         const limit = parseInt(searchParams.get('limit') || '25', 10)
         const offset = (page - 1) * limit
@@ -52,6 +53,10 @@ export async function GET(request: NextRequest) {
         // Filter by org if the column exists (multi-tenant)
         if (admin.orgId) {
             query = query.or(`organization_id.eq.${admin.orgId},organization_id.is.null`)
+        }
+
+        if (salesChannel === 'outdoor' || salesChannel === 'store') {
+            query = query.eq('sales_channel', salesChannel)
         }
 
         // Status filter

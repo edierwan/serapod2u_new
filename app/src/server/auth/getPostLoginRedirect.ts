@@ -134,11 +134,11 @@ async function resolveRedirect(
     }
   }
 
-  // Store user → /store
+  // Store / customer user → honour Outdoor (or other) return path when safe
   if (user.account_scope === 'store') {
     return {
       ...base,
-      redirectTo: '/store',
+      redirectTo: safeNext || '/store',
       accountScope: 'store',
     }
   }
