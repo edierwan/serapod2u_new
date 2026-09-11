@@ -35,34 +35,35 @@ export default function OutdoorNewsletter({
   }
 
   return (
-    <form
-      className={`flex flex-col sm:flex-row gap-3 w-full ${onDark ? 'max-w-md' : ''}`}
-      onSubmit={submit}
-    >
-      <label className="sr-only" htmlFor="outdoor-newsletter">Email</label>
-      <input
-        id="outdoor-newsletter"
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Your email"
-        disabled={done || loading}
-        className={`flex-1 h-12 rounded-full px-4 text-sm disabled:opacity-70 ${
+    <form className={`w-full ${onDark ? 'max-w-md' : ''}`} onSubmit={submit}>
+      <div
+        className={`flex items-center rounded-full border p-1 ${
           onDark
-            ? 'border border-white/35 bg-white/95 text-[var(--out-ink)] placeholder:text-[var(--out-muted)]'
-            : 'border border-[var(--out-line)] bg-[var(--out-cream)]'
+            ? 'border-white/50 bg-white'
+            : 'border-[var(--out-ink)] bg-white'
         }`}
-      />
-      <button
-        type="submit"
-        disabled={done || loading}
-        className="h-12 rounded-full bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50 shrink-0"
       >
-        {done ? 'Registered' : loading ? 'Saving…' : 'Subscribe'}
-      </button>
+        <label className="sr-only" htmlFor="outdoor-newsletter">Email</label>
+        <input
+          id="outdoor-newsletter"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Your email"
+          disabled={done || loading}
+          className="min-w-0 flex-1 h-10 bg-transparent px-4 text-sm text-[var(--out-ink)] placeholder:text-[var(--out-muted)] outline-none disabled:opacity-70"
+        />
+        <button
+          type="submit"
+          disabled={done || loading}
+          className="h-10 shrink-0 rounded-full bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50"
+        >
+          {done ? 'Registered' : loading ? 'Saving…' : 'Subscribe'}
+        </button>
+      </div>
       {error ? (
-        <p className={`text-sm w-full ${onDark ? 'text-red-200' : 'text-red-600'}`}>{error}</p>
+        <p className={`mt-2 text-sm ${onDark ? 'text-red-200' : 'text-red-600'}`}>{error}</p>
       ) : null}
     </form>
   )

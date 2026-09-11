@@ -1,21 +1,23 @@
-/* Serapod Outdoor — same brand tokens as Serapod2U Store (orange / ink) */
+/* SeraOutdoor — official Pantone Connect palettes */
 .sera-outdoor {
-  --out-ink: #141210;
-  --out-ink-soft: #2a2622;
-  --out-moss: #e85d04;
-  --out-moss-deep: #c44a00;
-  --out-ember: #e85d04;
-  --out-sand: #f3f3f4;
-  --out-cream: #f6f3ee;
-  --out-mist: #f6f3ee;
-  --out-line: #e4e0d8;
-  --out-muted: #5f6570;
-  --out-surface: #f6f3ee;
-  --font-display: var(--font-outdoor-display), 'Syne', sans-serif;
-  --font-body: var(--font-outdoor-body), 'Manrope', system-ui, sans-serif;
+  --out-ink: #333f48;
+  --out-ink-soft: #333f48;
+  --out-moss: #dc582a;
+  --out-moss-deep: #b84720;
+  --out-ember: #dc582a;
+  --out-sand: #c1c6c8;
+  --out-cream: #f1e6b2;
+  --out-mist: #f1e6b2;
+  --out-line: #c1c6c8;
+  --out-muted: #7c878e;
+  --out-surface: #f1e6b2;
+  --out-burgundy: #76232f;
+  --out-olive: #5e6738;
+  --font-display: var(--font-outdoor-display), system-ui, sans-serif;
+  --font-body: var(--font-outdoor-body), system-ui, sans-serif;
   font-family: var(--font-body);
   color: var(--out-ink);
-  background: var(--out-cream);
+  overflow-x: hidden;
 }
 
 .sera-outdoor .font-display {

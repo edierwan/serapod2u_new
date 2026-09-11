@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
-import StoreBrandMark from '@/components/storefront/StoreBrandMark'
+import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 import OutdoorNewsletter from '@/components/outdoor/OutdoorNewsletter'
 
 const NAV = [
@@ -103,11 +103,11 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--out-cream)]">
+    <div className="min-h-screen flex flex-col bg-[var(--out-cream)] overflow-x-hidden">
       <div className="sticky top-0 z-40 bg-[var(--out-cream)]/95 backdrop-blur-md">
         <PromoBar />
         <header className="border-b border-[var(--out-line)]">
-          <div className="mx-auto max-w-6xl h-14 sm:h-16 px-4 sm:px-8 grid grid-cols-[1fr_auto_1fr] items-center md:flex md:gap-3 text-[var(--out-ink)]">
+          <div className="mx-auto max-w-6xl h-12 sm:h-16 px-3 sm:px-8 grid grid-cols-[1fr_auto_1fr] items-center md:flex md:gap-3 text-[var(--out-ink)]">
             <div className="flex items-center gap-0.5 md:contents">
               <button
                 type="button"
@@ -122,8 +122,8 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
               </Link>
             </div>
 
-            <Link href="/outdoor" className="flex items-center justify-center shrink-0" aria-label="Serapod Outdoor">
-              <StoreBrandMark className="h-6 sm:h-7 w-auto" priority />
+            <Link href="/outdoor" className="flex min-w-0 items-center justify-center px-1" aria-label="SeraOutdoor">
+              <OutdoorBrandMark className="h-5 w-auto max-w-[9.5rem] object-contain sm:h-7 sm:max-w-[13rem]" priority />
             </Link>
 
             <nav className="hidden md:flex items-center gap-1 ml-2 text-sm" aria-label="Primary">
@@ -244,9 +244,9 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
         </div>
         <div className="mx-auto max-w-6xl px-5 sm:px-8 py-14 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <StoreBrandMark className="h-8 w-auto" />
+            <OutdoorBrandMark className="h-8 w-auto" />
             <p className="mt-3 text-sm text-[var(--out-muted)] leading-relaxed max-w-xs">
-              Outdoor gear and everyday pieces from Serapod.
+              Outdoor gear from SeraOutdoor.
             </p>
             {SOCIALS.length > 0 ? (
               <ul className="mt-5 flex flex-wrap gap-3 text-sm text-[var(--out-ink)]">
@@ -301,7 +301,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
           </div>
         </div>
         <div className="border-t border-[var(--out-line)] px-5 sm:px-8 py-4 text-center text-[11px] text-[var(--out-muted)]">
-          © {new Date().getFullYear()} Serapod Outdoor
+          © {new Date().getFullYear()} SeraOutdoor
         </div>
       </footer>
     </div>

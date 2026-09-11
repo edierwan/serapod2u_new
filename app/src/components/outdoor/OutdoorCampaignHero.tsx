@@ -52,11 +52,11 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
       <img
         src={slide.src}
         alt={slide.alt}
-        className="block h-auto w-full max-h-[78vh] object-contain"
+        className="block mx-auto h-auto w-auto max-w-full max-h-[62svh] min-h-0 object-contain sm:max-h-[72vh] lg:max-h-[min(78vh,56rem)]"
       />
       <Link
         href={slide.href}
-        className="absolute bottom-5 left-1/2 z-10 -translate-x-1/2 inline-flex h-11 items-center rounded-full bg-white px-7 text-sm font-semibold text-[var(--out-ink)] hover:bg-[var(--out-moss)] hover:text-white transition sm:bottom-8"
+        className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 inline-flex h-10 items-center rounded-full bg-white px-5 text-sm font-semibold text-[var(--out-ink)] transition hover:bg-[var(--out-moss)] hover:text-white sm:bottom-6 sm:h-11 sm:px-7"
       >
         Shop now
       </Link>
@@ -67,7 +67,7 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
     return (
       <section className="px-3 sm:px-5 lg:px-8 pb-8 sm:pb-10" aria-label="Campaign">
         <div className="mx-auto max-w-6xl">
-          <div className="relative overflow-hidden rounded-[1.75rem] sm:rounded-[2rem]">
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-[2rem]">
             {slideShell(slides[0])}
           </div>
         </div>
@@ -78,7 +78,7 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
   return (
     <section className="px-3 sm:px-5 lg:px-8 pb-8 sm:pb-10" aria-roledescription="carousel" aria-label="Campaign">
       <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_5.5rem] lg:gap-3 lg:items-stretch">
-        <div className="relative overflow-hidden rounded-[1.75rem] sm:rounded-[2rem]">
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-[2rem]">
           <div ref={emblaRef} className="overflow-hidden">
             <div className="flex">
               {slides.map((slide) => slideShell(slide))}
@@ -91,7 +91,7 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
                 type="button"
                 aria-label="Previous"
                 onClick={() => emblaApi?.scrollPrev()}
-                className="absolute left-3 top-1/2 z-10 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--out-ink)] shadow-sm hover:bg-white"
+                className="absolute left-3 top-1/2 z-10 hidden -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--out-ink)] shadow-sm hover:bg-white sm:flex"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -99,7 +99,7 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
                 type="button"
                 aria-label="Next"
                 onClick={() => emblaApi?.scrollNext()}
-                className="absolute right-3 top-1/2 z-10 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--out-ink)] shadow-sm hover:bg-white"
+                className="absolute right-3 top-1/2 z-10 hidden -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--out-ink)] shadow-sm hover:bg-white sm:flex"
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
@@ -116,7 +116,7 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
                 aria-label={slide.alt}
                 aria-current={i === index}
                 onClick={() => emblaApi?.scrollTo(i)}
-                className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border-2 lg:h-auto lg:w-full lg:flex-1 ${
+                className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border-2 sm:h-16 sm:w-16 sm:rounded-2xl lg:h-auto lg:w-full lg:flex-1 ${
                   i === index ? 'border-[var(--out-ink)]' : 'border-transparent opacity-70 hover:opacity-100'
                 }`}
               >

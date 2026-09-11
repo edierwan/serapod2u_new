@@ -25,10 +25,10 @@ export default async function OutdoorShopPage({ searchParams }: { searchParams: 
   const showCategoryFilter = categories.length > 1
 
   return (
-    <div className="mx-auto max-w-6xl px-5 sm:px-8 py-12 sm:py-16">
+    <div className="mx-auto max-w-6xl px-5 sm:px-8 py-8 sm:py-16">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-4xl sm:text-5xl tracking-tight text-[var(--out-ink)]">Shop</h1>
+          <h1 className="font-display text-3xl sm:text-5xl tracking-tight text-[var(--out-ink)]">Shop</h1>
           <p className="mt-2 text-sm text-[var(--out-muted)]">
             {total} products
             {scope.matchedBy === 'none' ? ' · catalogue not linked yet' : ''}

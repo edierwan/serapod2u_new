@@ -3,7 +3,7 @@ import type { StorefrontProduct } from '@/lib/storefront/products'
 
 function formatPrice(price: number | null) {
   if (price == null || price <= 0) return 'Price on request'
-  return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(price)
+  return `RM ${price.toFixed(2)}`
 }
 
 function isGenericOutdoorLabel(name: string | null | undefined) {
@@ -15,7 +15,7 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
 
   return (
     <Link href={`/outdoor/shop/${product.id}`} className="group block h-full">
-      <div className="aspect-square rounded-[1.25rem] bg-white flex items-center justify-center p-5 overflow-hidden">
+      <div className="aspect-square rounded-[1.25rem] bg-white flex items-center justify-center p-3 sm:p-5 overflow-hidden">
         {product.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

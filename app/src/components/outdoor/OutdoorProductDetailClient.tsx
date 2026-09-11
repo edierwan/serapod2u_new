@@ -8,7 +8,7 @@ import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefron
 
 function formatPrice(price: number | null) {
   if (price == null || price <= 0) return 'Price on request'
-  return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(price)
+  return `RM ${price.toFixed(2)}`
 }
 
 export default function OutdoorProductDetailClient({ product }: { product: StorefrontProductDetail }) {
@@ -61,7 +61,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
         <div className="aspect-square rounded-2xl overflow-hidden border border-[var(--out-line)] bg-[var(--out-sand)]/30">
           {gallery[activeImage] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={gallery[activeImage]} alt={product.product_name} className="h-full w-full object-cover" />
+            <img src={gallery[activeImage]} alt={product.product_name} className="h-full w-full object-contain bg-white" />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-[var(--out-moss)]/20 to-[var(--out-sand)]" />
           )}

@@ -25,132 +25,103 @@ export default async function OutdoorHomePage() {
 
   const chair = findProduct(products, 'chair', 'moonchair')
   const tumbler = findProduct(products, 'tumbler')
-  const speaker = findProduct(products, 'speaker', 'bluetooth')
   const mat = findProduct(products, 'mat', 'mattress', 'pad')
 
-  const series = [chair, tumbler, mat, speaker].filter((p): p is StorefrontProduct => Boolean(p))
+  const collections = [
+    {
+      label: 'Moon Chair',
+      src: '/outdoor/brand/moonchair.jpg',
+      href: shopHref(chair),
+    },
+    {
+      label: 'Tumbler',
+      src: '/outdoor/brand/tumbler.jpg',
+      href: shopHref(tumbler),
+    },
+    {
+      label: 'Camp Mat',
+      src: '/outdoor/brand/mat.jpg',
+      href: shopHref(mat),
+    },
+  ]
 
   const circles = [
-    products[0]
-      ? { label: 'New in', href: '/outdoor/shop?sort=newest', image: products[0].image_url }
-      : null,
-    ...series.map((p) => ({
-      label: p.product_name,
-      href: shopHref(p),
-      image: p.image_url,
+    { label: 'New in', href: '/outdoor/shop?sort=newest', image: '/outdoor/brand/icon-1.png' },
+    ...collections.map((item) => ({
+      label: item.label,
+      href: item.href,
+      image: item.src,
     })),
-  ].filter(Boolean) as { label: string; href: string; image: string | null }[]
+  ]
 
   const slides = [
     {
-      src: '/outdoor/lifestyle-moonchair.jpg',
-      alt: 'Serapod Moonchair Highback',
+      src: '/outdoor/brand/photos/artboard-1.jpg',
+      alt: 'City is loud. Find your silence.',
+      href: '/outdoor/shop',
+      bg: '#ffffff',
+    },
+    {
+      src: '/outdoor/brand/photos/artboard-2.jpg',
+      alt: 'SeraOutdoor Moon Chair and Tumbler',
       href: shopHref(chair),
-      bg: '#f4f1ea',
+      bg: '#f1e6b2',
     },
     {
-      src: '/outdoor/lifestyle-speaker.jpg',
-      alt: 'Serapod speaker on a hiking pack',
-      href: shopHref(speaker),
-      bg: '#1a1c16',
-    },
-    {
-      src: '/outdoor/lifestyle-tumbler.jpg',
-      alt: 'Serapod tumbler at camp',
-      href: shopHref(tumbler),
-      bg: '#2a241c',
+      src: '/outdoor/brand/photos/artboard-5.jpg',
+      alt: 'SeraOutdoor Camp Mat and Tumbler',
+      href: shopHref(mat),
+      bg: '#572932',
     },
   ]
 
   return (
     <>
-      {circles.length > 0 ? (
-        <nav className="bg-[var(--out-cream)]">
-          <div className="mx-auto max-w-6xl px-5 sm:px-8 pt-4 pb-3 flex items-start justify-start sm:justify-center gap-6 sm:gap-8 overflow-x-auto">
-            {circles.map((item) => (
-              <Link
-                key={`${item.href}-${item.label}`}
-                href={item.href}
-                className="flex w-[4.75rem] sm:w-24 shrink-0 flex-col items-center text-center"
-              >
-                <span className="flex h-[4.75rem] w-[4.75rem] sm:h-24 sm:w-24 items-center justify-center overflow-hidden rounded-full bg-white p-3">
-                  {item.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.image} alt="" className="max-h-full max-w-full object-contain" />
-                  ) : (
-                    <span className="h-full w-full bg-[var(--out-sand)]" />
-                  )}
-                </span>
-                <span className="mt-2 line-clamp-2 text-[11px] sm:text-xs font-medium leading-snug text-[var(--out-ink)]">
-                  {item.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </nav>
-      ) : null}
+      <nav className="bg-[var(--out-cream)]">
+        <div className="mx-auto max-w-6xl px-4 sm:px-8 pt-3 pb-2 flex items-start justify-start sm:justify-center gap-4 sm:gap-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {circles.map((item) => (
+            <Link
+              key={`${item.href}-${item.label}`}
+              href={item.href}
+              className="flex w-[4.25rem] sm:w-24 shrink-0 flex-col items-center text-center"
+            >
+              <span className="flex h-[4.25rem] w-[4.25rem] sm:h-24 sm:w-24 items-center justify-center overflow-hidden rounded-full bg-white p-1.5 sm:p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.image} alt="" className="max-h-full max-w-full object-contain" />
+              </span>
+              <span className="mt-2 line-clamp-2 text-[11px] sm:text-xs font-medium leading-snug text-[var(--out-ink)]">
+                {item.label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </nav>
 
       <OutdoorCampaignHero slides={slides} />
 
-      {series.length > 0 ? (
-        <section className="px-3 sm:px-5 lg:px-8 pb-10 sm:pb-14">
-          <div className="mx-auto max-w-6xl">
-            <div className="flex items-end justify-between gap-4 mb-6 px-1">
-              <h2 className="font-display text-2xl sm:text-4xl tracking-tight max-w-xl">Shop</h2>
-              <Link href="/outdoor/shop" className="text-sm font-semibold text-[var(--out-moss)] hover:underline shrink-0">
-                Shop all
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-              {series.map((product) => (
-                <Link
-                  key={product.id}
-                  href={shopHref(product)}
-                  className="group rounded-[1.5rem] bg-white p-4 sm:p-6 text-center"
-                >
-                  <span className="mx-auto flex aspect-square items-center justify-center">
-                    {product.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={product.image_url}
-                        alt={product.product_name}
-                        className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-[1.04]"
-                      />
-                    ) : null}
-                  </span>
-                  <span className="mt-3 block text-sm sm:text-base font-semibold text-[var(--out-ink)]">
-                    {product.product_name}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
+      <section className="px-3 sm:px-5 lg:px-8 pb-10 sm:pb-14">
+        <div className="mx-auto max-w-6xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+          {collections.map((item) => (
+            <Link key={item.src} href={item.href} className="group relative block overflow-hidden rounded-[1.75rem] bg-[var(--out-cream)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={item.src} alt={item.label} className="block w-full h-auto" />
+              <span className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 inline-flex h-9 sm:h-11 items-center rounded-full bg-white px-4 sm:px-5 text-sm font-semibold text-[var(--out-ink)]">
+                Shop now
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <section className="px-3 sm:px-5 lg:px-8 pb-10 sm:pb-14">
-        <div className="mx-auto max-w-6xl grid md:grid-cols-2 gap-3 sm:gap-4">
-          <Link href={shopHref(speaker)} className="group relative overflow-hidden rounded-[1.75rem] aspect-[4/5] bg-[#1a1c16]">
+        <div className="mx-auto max-w-6xl">
+          <Link href="/outdoor/shop" className="relative block overflow-hidden rounded-[1.75rem] bg-[#f1e6b2]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/outdoor/lifestyle-speaker.jpg"
-              alt="Serapod speaker on a hiking pack"
-              className="absolute inset-0 h-full w-full object-cover object-center"
+              src="/outdoor/brand/photos/race-collections.jpg"
+              alt="SeraOutdoor"
+              className="block w-full h-auto"
             />
-            <span className="absolute bottom-6 left-6 inline-flex h-11 items-center rounded-full bg-white px-5 text-sm font-semibold text-[var(--out-ink)]">
-              Shop now
-            </span>
-          </Link>
-          <Link href={shopHref(tumbler)} className="group relative overflow-hidden rounded-[1.75rem] aspect-[4/5] bg-[#2a241c]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/outdoor/lifestyle-tumbler.jpg"
-              alt="Serapod tumbler at camp"
-              className="absolute inset-0 h-full w-full object-cover object-center"
-            />
-            <span className="absolute bottom-6 left-6 inline-flex h-11 items-center rounded-full bg-white px-5 text-sm font-semibold text-[var(--out-ink)]">
-              Shop now
-            </span>
           </Link>
         </div>
       </section>
@@ -158,8 +129,8 @@ export default async function OutdoorHomePage() {
       {products.length > 0 ? (
         <section className="px-3 sm:px-5 lg:px-8 pb-10 sm:pb-14">
           <div className="mx-auto max-w-6xl">
-            <div className="flex items-baseline justify-between gap-4 mb-6 px-1">
-              <h2 className="font-display text-3xl sm:text-4xl tracking-tight">Best Sellers</h2>
+            <div className="flex items-baseline justify-between gap-4 mb-5 sm:mb-6 px-1">
+              <h2 className="font-display text-2xl sm:text-4xl tracking-tight">Best Sellers</h2>
               <Link href="/outdoor/shop" className="text-sm font-semibold text-[var(--out-moss)] hover:underline">
                 Shop all
               </Link>
@@ -175,23 +146,6 @@ export default async function OutdoorHomePage() {
           </p>
         </section>
       )}
-
-      <section className="px-3 sm:px-5 lg:px-8 pb-14">
-        <div className="mx-auto max-w-6xl grid sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="rounded-[1.5rem] bg-white px-6 py-8 text-center">
-            <p className="font-display text-lg">Malaysia delivery</p>
-            <p className="mt-1 text-sm text-[var(--out-muted)]">Courier rates at checkout.</p>
-          </div>
-          <div className="rounded-[1.5rem] bg-white px-6 py-8 text-center">
-            <p className="font-display text-lg">Secure checkout</p>
-            <p className="mt-1 text-sm text-[var(--out-muted)]">Paid after the payment provider confirms.</p>
-          </div>
-          <div className="rounded-[1.5rem] bg-white px-6 py-8 text-center">
-            <p className="font-display text-lg">Track order</p>
-            <p className="mt-1 text-sm text-[var(--out-muted)]">Use your order number and email.</p>
-          </div>
-        </div>
-      </section>
     </>
   )
 }

@@ -25,23 +25,23 @@ const gsc = String(process.env.NEXT_PUBLIC_OUTDOOR_GSC_VERIFICATION || '').trim(
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: 'Serapod Outdoor',
-    template: '%s | Serapod Outdoor',
+    default: 'SeraOutdoor',
+    template: '%s | SeraOutdoor',
   },
   description:
-    'Premium outdoor lifestyle from Serapod Outdoor — gear and apparel for trails, camps, and open air. Secure checkout and Malaysia delivery.',
+    'SeraOutdoor — Moon Chair, Tumbler, and Camp Mat. Secure checkout and Malaysia delivery.',
   openGraph: {
-    title: 'Serapod Outdoor',
-    description: 'Premium outdoor lifestyle from Serapod Outdoor.',
+    title: 'SeraOutdoor',
+    description: 'SeraOutdoor — Moon Chair, Tumbler, and Camp Mat.',
     url: siteUrl,
-    siteName: 'Serapod Outdoor',
+    siteName: 'SeraOutdoor',
     type: 'website',
     locale: 'en_MY',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Serapod Outdoor',
-    description: 'Premium outdoor lifestyle from Serapod Outdoor.',
+    title: 'SeraOutdoor',
+    description: 'SeraOutdoor — Moon Chair, Tumbler, and Camp Mat.',
   },
   ...(gsc
     ? {

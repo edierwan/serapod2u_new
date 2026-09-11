@@ -12,13 +12,13 @@ export default function OutdoorProductGrid({ products }: { products: StorefrontP
     n === 1
       ? 'grid-cols-1 max-w-sm'
       : n === 2
-        ? 'grid-cols-1 sm:grid-cols-2'
+        ? 'grid-cols-2'
         : n === 3
-          ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+          ? 'grid-cols-2 lg:grid-cols-3'
           : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
 
   return (
-    <div className={`mt-10 grid w-full gap-5 ${cols}`}>
+    <div className={`mt-10 grid w-full gap-3 sm:gap-5 ${cols}`}>
       {products.map((p) => (
         <OutdoorProductCard key={p.id} product={p} />
       ))}
