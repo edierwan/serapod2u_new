@@ -106,6 +106,68 @@ export interface TemplateSignatureData {
   signature_image_data?: string | null
 }
 
+interface ClassicSignatureFooterColumn {
+  centerX: number
+  label: string
+  nameLines: string[]
+}
+
+export interface ClassicSignatureFooterLayout {
+  creator: ClassicSignatureFooterColumn
+  approver: ClassicSignatureFooterColumn
+  nameY: number
+  nameLineHeight: number
+  signatureY: number
+  signatureLineY: number
+  dateY: number
+  bottomY: number
+  nameMaxWidth: number
+}
+
+/**
+ * Keep audit names inside equal footer columns and align both signatures below
+ * the taller wrapped name block.
+ */
+export function createClassicSignatureFooterLayout(
+  pageWidth: number,
+  margin: number,
+  footerY: number,
+  creatorName: string,
+  approverName: string,
+  wrapText: (text: string, maxWidth: number) => string[]
+): ClassicSignatureFooterLayout {
+  const columnWidth = (pageWidth - margin * 2) / 3
+  const nameMaxWidth = columnWidth - 8
+  const nameY = footerY + 4.5
+  const nameLineHeight = 4
+  const creatorNameLines = wrapText(creatorName, nameMaxWidth)
+  const approverNameLines = wrapText(approverName, nameMaxWidth)
+  const nameLineCount = Math.max(creatorNameLines.length, approverNameLines.length, 1)
+  const signatureY = nameY + nameLineCount * nameLineHeight + 1
+  const signatureLineY = signatureY + 13
+  const dateY = signatureLineY + 7
+
+  return {
+    creator: {
+      centerX: margin + columnWidth * 1.5,
+      label: 'Created by:',
+      nameLines: creatorNameLines
+    },
+    approver: {
+      centerX: margin + columnWidth * 2.5,
+      label: 'Approved by:',
+      nameLines: approverNameLines
+    },
+    nameY,
+    nameLineHeight,
+    signatureY,
+    signatureLineY,
+    dateY,
+    bottomY: dateY + 18,
+    nameMaxWidth
+  }
+}
+
 
 
 
@@ -476,76 +538,92 @@ export class ClassicTemplate {
       this.drawDefaultStamp(stampX, stampY, issuerName, stampSize / 2)
     }
 
-    // Creator name and signature come from the same orders.created_by users row.
-    const centerX = this.pageWidth / 2
+    // Creator and approver names stay in separate, equal-width footer columns.
+    // Signatures share a row below whichever wrapped name is taller.
+    const creatorName = orderData.creator?.full_name || 'Not available'
+    const approverName = orderData.approver?.full_name || 'Not available'
+    const footerLayout = createClassicSignatureFooterLayout(
+      this.pageWidth,
+      this.margin,
+      footerY,
+      creatorName,
+      approverName,
+      (text, maxWidth) => this.doc.splitTextToSize(text, maxWidth) as string[]
+    )
+    const centerX = footerLayout.creator.centerX
+    const footerRightX = footerLayout.approver.centerX
+
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
     this.doc.setTextColor(100, 100, 100)
-    this.doc.text(`Created by: ${orderData.creator?.full_name || 'Not available'}`, centerX, footerY, { align: 'center' })
+    this.doc.text(footerLayout.creator.label, centerX, footerY, { align: 'center' })
+    this.doc.text(footerLayout.creator.nameLines, centerX, footerLayout.nameY, {
+      align: 'center',
+      lineHeightFactor: footerLayout.nameLineHeight / 3.175
+    })
+
+    this.doc.text(footerLayout.approver.label, footerRightX, footerY, { align: 'center' })
+    this.doc.text(footerLayout.approver.nameLines, footerRightX, footerLayout.nameY, {
+      align: 'center',
+      lineHeightFactor: footerLayout.nameLineHeight / 3.175
+    })
 
     // Creator signature from the same authoritative creator user row.
     if (orderData.creator_signature_image) {
       try {
-        this.doc.addImage(orderData.creator_signature_image, 'PNG', centerX - 15, footerY + 2, 30, 12)
+        this.doc.addImage(orderData.creator_signature_image, 'PNG', centerX - 15, footerLayout.signatureY, 30, 12)
       } catch (e) {
         console.error('Error adding creator signature:', e)
         // Draw placeholder squiggle
         this.doc.setDrawColor(0, 0, 0)
         this.doc.setLineWidth(0.5)
-        this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], centerX - 4, footerY + 10)
+        this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], centerX - 4, footerLayout.signatureY + 8)
       }
     } else {
       // Draw placeholder squiggle
       this.doc.setDrawColor(0, 0, 0)
       this.doc.setLineWidth(0.5)
-      this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], centerX - 4, footerY + 10)
+      this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], centerX - 4, footerLayout.signatureY + 8)
     }
 
     // Signature Line
     this.doc.setDrawColor(200, 200, 200)
-    this.doc.line(centerX - 15, footerY + 15, centerX + 15, footerY + 15)
+    this.doc.line(centerX - 15, footerLayout.signatureLineY, centerX + 15, footerLayout.signatureLineY)
 
     // Date
     this.doc.setFontSize(8)
     this.doc.setTextColor(100, 100, 100)
-    this.doc.text(this.formatDateLong(documentData.created_at), centerX, footerY + 22, { align: 'center' })
-
-    // Approver name and signature come from the same orders.approved_by users row.
-    const footerRightX = this.pageWidth - this.margin - 25
-    this.doc.setFontSize(9)
-    const approverName = orderData.approver?.full_name || 'Not available'
-    this.doc.text(`Approved by: ${approverName}`, footerRightX, footerY, { align: 'center' })
+    this.doc.text(this.formatDateLong(documentData.created_at), centerX, footerLayout.dateY, { align: 'center' })
 
     // Approver Signature - Use approver signature if available  
     if (orderData.approver_signature_image) {
       try {
-        this.doc.addImage(orderData.approver_signature_image, 'PNG', footerRightX - 15, footerY + 2, 30, 12)
+        this.doc.addImage(orderData.approver_signature_image, 'PNG', footerRightX - 15, footerLayout.signatureY, 30, 12)
       } catch (e) {
         console.error('Error adding approver signature:', e)
         // Draw placeholder squiggle
         this.doc.setDrawColor(0, 0, 0)
         this.doc.setLineWidth(0.5)
-        this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], footerRightX - 4, footerY + 10)
+        this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], footerRightX - 4, footerLayout.signatureY + 8)
       }
     } else {
       // Draw placeholder squiggle
       this.doc.setDrawColor(0, 0, 0)
       this.doc.setLineWidth(0.5)
-      this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], footerRightX - 4, footerY + 10)
+      this.doc.lines([[2, -1], [2, 1], [2, -1], [2, 1]], footerRightX - 4, footerLayout.signatureY + 8)
     }
 
     // Signature Line
-    this.doc.line(footerRightX - 15, footerY + 15, footerRightX + 15, footerY + 15)
+    this.doc.line(footerRightX - 15, footerLayout.signatureLineY, footerRightX + 15, footerLayout.signatureLineY)
 
     // Date
     const approvedDate = orderData.approved_at || documentData.created_at
-    this.doc.text(this.formatDateLong(approvedDate), footerRightX, footerY + 22, { align: 'center' })
+    this.doc.text(this.formatDateLong(approvedDate), footerRightX, footerLayout.dateY, { align: 'center' })
 
     // Bottom text
-    const bottomY = footerY + 40
     this.doc.setFontSize(7)
     this.doc.setTextColor(180, 180, 180)
-    this.doc.text('This is a computer generated document.', this.margin, bottomY)
+    this.doc.text('This is a computer generated document.', this.margin, footerLayout.bottomY)
 
     return this.doc.output('blob')
   }
