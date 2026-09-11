@@ -11,34 +11,30 @@ function isGenericOutdoorLabel(name: string | null | undefined) {
 }
 
 export default function OutdoorProductCard({ product }: { product: StorefrontProduct }) {
-  // Whole shop is Outdoor — don't repeat "OUTDOOR" on every card
   const showCategory = Boolean(product.category_name) && !isGenericOutdoorLabel(product.category_name)
 
   return (
-    <Link
-      href={`/outdoor/shop/${product.id}`}
-      className="group block rounded-xl border border-[var(--out-line)] bg-white overflow-hidden hover:border-[var(--out-moss)] transition-colors h-full"
-    >
-      <div className="aspect-[4/5] bg-[var(--out-sand)]/40 overflow-hidden">
+    <Link href={`/outdoor/shop/${product.id}`} className="group block h-full">
+      <div className="aspect-square rounded-[1.25rem] bg-white flex items-center justify-center p-5 overflow-hidden">
         {product.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.image_url}
             alt={product.product_name}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-[1.04]"
           />
         ) : (
-          <div className="h-full w-full bg-gradient-to-br from-[var(--out-moss)]/20 to-[var(--out-sand)]" />
+          <div className="h-full w-full rounded-xl bg-[var(--out-sand)]" />
         )}
       </div>
-      <div className="p-4">
+      <div className="pt-3 px-1">
         {showCategory ? (
           <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--out-muted)]">{product.category_name}</p>
         ) : null}
-        <h3 className={`font-display text-lg text-[var(--out-ink)] group-hover:text-[var(--out-moss)] transition-colors line-clamp-2 ${showCategory ? 'mt-1' : ''}`}>
+        <h3 className={`text-sm sm:text-base font-semibold leading-snug text-[var(--out-ink)] group-hover:text-[var(--out-moss)] transition-colors line-clamp-2 ${showCategory ? 'mt-1' : ''}`}>
           {product.product_name}
         </h3>
-        <p className="mt-2 text-sm font-semibold text-[var(--out-moss-deep)]">{formatPrice(product.starting_price)}</p>
+        <p className="mt-1.5 text-sm font-semibold text-[var(--out-ink)]">{formatPrice(product.starting_price)}</p>
       </div>
     </Link>
   )

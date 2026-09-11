@@ -36,7 +36,7 @@ export default function OutdoorNewsletter({
 
   return (
     <form
-      className={`flex flex-col sm:flex-row gap-3 w-full ${onDark ? 'max-w-md mt-0' : 'max-w-lg mt-6'}`}
+      className={`flex flex-col sm:flex-row gap-3 w-full ${onDark ? 'max-w-md' : ''}`}
       onSubmit={submit}
     >
       <label className="sr-only" htmlFor="outdoor-newsletter">Email</label>
@@ -48,16 +48,16 @@ export default function OutdoorNewsletter({
         onChange={(e) => setEmail(e.target.value)}
         placeholder="Your email"
         disabled={done || loading}
-        className={`flex-1 h-12 rounded-md px-4 text-sm disabled:opacity-70 ${
+        className={`flex-1 h-12 rounded-full px-4 text-sm disabled:opacity-70 ${
           onDark
             ? 'border border-white/35 bg-white/95 text-[var(--out-ink)] placeholder:text-[var(--out-muted)]'
-            : 'border border-[var(--out-line)] bg-white'
+            : 'border border-[var(--out-line)] bg-[var(--out-cream)]'
         }`}
       />
       <button
         type="submit"
         disabled={done || loading}
-        className="h-12 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50 shrink-0"
+        className="h-12 rounded-full bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50 shrink-0"
       >
         {done ? 'Registered' : loading ? 'Saving…' : 'Subscribe'}
       </button>

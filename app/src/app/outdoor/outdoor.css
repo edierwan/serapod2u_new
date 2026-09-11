@@ -6,17 +6,16 @@
   --out-moss-deep: #c44a00;
   --out-ember: #e85d04;
   --out-sand: #f3f3f4;
-  --out-mist: #e9eaed;
-  --out-line: #d8dade;
+  --out-cream: #f6f3ee;
+  --out-mist: #f6f3ee;
+  --out-line: #e4e0d8;
   --out-muted: #5f6570;
-  --out-surface: #f3f3f4;
+  --out-surface: #f6f3ee;
   --font-display: var(--font-outdoor-display), 'Syne', sans-serif;
   --font-body: var(--font-outdoor-body), 'Manrope', system-ui, sans-serif;
   font-family: var(--font-body);
   color: var(--out-ink);
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 93, 4, 0.05), transparent 50%),
-    var(--out-mist);
+  background: var(--out-cream);
 }
 
 .sera-outdoor .font-display {
