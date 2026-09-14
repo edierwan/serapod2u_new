@@ -55,7 +55,7 @@ export const metadata: Metadata = {
 export default function OutdoorLayout({ children }: { children: React.ReactNode }) {
   return (
     <CartProvider storageKey="serapod_outdoor_cart">
-      <div className={`sera-outdoor ${display.variable} ${body.variable} min-h-screen`}>
+      <div className={`sera-outdoor ${display.variable} ${body.variable} min-h-screen min-w-0`}>
         <OutdoorAnalytics />
         <OutdoorChrome>{children}</OutdoorChrome>
       </div>

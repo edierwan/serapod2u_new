@@ -103,7 +103,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--out-cream)] overflow-x-hidden">
+    <div className="min-h-screen min-w-0 flex flex-col bg-[var(--out-cream)] overflow-x-hidden">
       <div className="sticky top-0 z-40 bg-[var(--out-cream)]/95 backdrop-blur-md">
         <PromoBar />
         <header className="border-b border-[var(--out-line)]">
@@ -230,7 +230,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
         </div>
       ) : null}
 
-      <main className="flex-1">{children}</main>
+      <main className="min-w-0 flex-1">{children}</main>
 
       <footer className="mt-auto bg-white">
         <div className="mx-auto max-w-6xl px-5 sm:px-8 py-12 grid gap-10 lg:grid-cols-[1.2fr_1fr] items-end border-b border-[var(--out-line)]">

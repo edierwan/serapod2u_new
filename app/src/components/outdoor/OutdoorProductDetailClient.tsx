@@ -56,9 +56,9 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-5 sm:px-8 py-10 sm:py-14 grid lg:grid-cols-2 gap-10">
-      <div>
-        <div className="aspect-square rounded-2xl overflow-hidden border border-[var(--out-line)] bg-[var(--out-sand)]/30">
+    <div className="mx-auto grid w-full min-w-0 max-w-6xl grid-cols-1 gap-8 px-4 py-8 sm:px-8 sm:py-14 lg:grid-cols-2 lg:gap-10">
+      <div className="min-w-0">
+        <div className="aspect-square overflow-hidden rounded-2xl border border-[var(--out-line)] bg-[var(--out-sand)]/30">
           {gallery[activeImage] ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={gallery[activeImage]} alt={product.product_name} className="h-full w-full object-contain bg-white" />
@@ -67,45 +67,45 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           )}
         </div>
         {gallery.length > 1 ? (
-          <div className="mt-3 flex gap-2 overflow-x-auto">
+          <div className="mt-3 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {gallery.map((url, i) => (
               <button
                 key={url + i}
                 type="button"
                 onClick={() => setActiveImage(i)}
-                className={`h-16 w-16 rounded-lg overflow-hidden border ${i === activeImage ? 'border-[var(--out-moss)]' : 'border-[var(--out-line)]'}`}
+                className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border ${i === activeImage ? 'border-[var(--out-moss)]' : 'border-[var(--out-line)]'}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="" className="h-full w-full object-cover" />
+                <img src={url} alt="" className="h-full w-full object-contain bg-white" />
               </button>
             ))}
           </div>
         ) : null}
       </div>
 
-      <div>
+      <div className="min-w-0">
         <Link href="/outdoor/shop" className="text-sm text-[var(--out-muted)] hover:text-[var(--out-moss)]">
           ← Back to shop
         </Link>
         {product.category_name ? (
           <p className="mt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--out-muted)]">{product.category_name}</p>
         ) : null}
-        <h1 className="mt-2 font-display text-3xl sm:text-4xl tracking-tight text-[var(--out-ink)]">
+        <h1 className="mt-2 break-words font-display text-3xl tracking-tight text-[var(--out-ink)] sm:text-4xl">
           {product.product_name}
         </h1>
         <p className="mt-4 text-2xl font-semibold text-[var(--out-moss-deep)]">
           {formatPrice(selected?.suggested_retail_price ?? null)}
         </p>
         {(product.short_description || product.product_description) ? (
-          <p className="mt-5 text-sm text-[var(--out-muted)] leading-relaxed whitespace-pre-line">
+          <p className="mt-5 text-sm leading-relaxed text-[var(--out-muted)] break-words whitespace-pre-line">
             {product.short_description || product.product_description}
           </p>
         ) : null}
 
         {product.variants.length > 1 ? (
-          <div className="mt-8">
+          <div className="mt-8 min-w-0">
             <p className="text-sm font-medium text-[var(--out-ink)]">Option</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
               {product.variants.map((v) => (
                 <button
                   key={v.id}
@@ -115,7 +115,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                     setActiveImage(0)
                     setInCart(false)
                   }}
-                  className={`rounded-md border px-3 py-2 text-sm ${
+                  className={`w-full max-w-full rounded-md border px-3 py-2.5 text-left text-sm break-words sm:w-auto ${
                     selected?.id === v.id
                       ? 'border-[var(--out-moss)] bg-[var(--out-moss)]/10 text-[var(--out-moss-deep)]'
                       : 'border-[var(--out-line)] text-[var(--out-ink-soft)]'
@@ -128,10 +128,10 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           </div>
         ) : null}
 
-        <div className="mt-8 flex items-center gap-4">
+        <div className="mt-8 flex min-w-0 items-center gap-3">
           {!inCart ? (
             <>
-              <div className="inline-flex items-center border border-[var(--out-line)] rounded-md">
+              <div className="inline-flex shrink-0 items-center rounded-md border border-[var(--out-line)]">
                 <button type="button" className="p-3" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease">
                   <Minus className="h-4 w-4" />
                 </button>
@@ -144,14 +144,14 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                 type="button"
                 onClick={handleAdd}
                 disabled={!selected?.suggested_retail_price || selected.suggested_retail_price <= 0}
-                className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
+                className="inline-flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-md bg-[var(--out-moss)] px-4 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
               >
-                <ShoppingBag className="h-4 w-4" />
+                <ShoppingBag className="h-4 w-4 shrink-0" />
                 Add to cart
               </button>
             </>
           ) : (
-            <div className="flex flex-1 flex-col sm:flex-row gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row">
               <Link
                 href="/outdoor/checkout"
                 className="inline-flex h-12 flex-1 items-center justify-center rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)]"
