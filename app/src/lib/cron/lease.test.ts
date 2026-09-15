@@ -170,3 +170,41 @@ describe('withWorkerLease', () => {
     expect(c.store.get('w')?.owner).toBe('newer-run')
   })
 })
+
+describe('withWorkerLease remote-database guard', () => {
+  it('refuses with 409 and never touches the lease for a dev process on a remote database', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://supabase-stg-serapod.getouch.cloud')
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:3000')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const c = makeLeaseClient()
+    const body = vi.fn(async () => 'should not run')
+
+    try {
+      const outcome = await withWorkerLease(c, 'qr-generation-worker', body)
+
+      expect(outcome.status).toBe('blocked')
+      if (outcome.status !== 'blocked') throw new Error('expected blocked')
+      expect(outcome.response.status).toBe(409)
+      expect(body).not.toHaveBeenCalled()
+      expect(c.rpc).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('runs normally for the deployed runtime on the same remote database', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://supabase-stg-serapod.getouch.cloud')
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://stg.serapod2u.com')
+    const c = makeLeaseClient()
+
+    try {
+      const outcome = await withWorkerLease(c, 'qr-generation-worker', async () => 'done')
+      expect(outcome).toEqual({ status: 'ran', result: 'done' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})

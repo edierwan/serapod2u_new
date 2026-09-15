@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
+import { remoteDbWorkerBlockedResponse } from './remote-db-guard'
 
 /**
  * Database-backed distributed execution lease for internal cron workers.
@@ -110,6 +111,7 @@ export async function releaseWorkerLease(
 }
 
 export type LeaseOutcome<T> =
+  | { status: 'blocked'; response: NextResponse }
   | { status: 'skipped'; response: NextResponse }
   | { status: 'unavailable'; response: NextResponse }
   | { status: 'ran'; result: T }
@@ -120,6 +122,7 @@ export type LeaseOutcome<T> =
  * - lease taken            -> runs `fn`, then always releases in `finally`
  * - lease already held     -> 200 with LEASE_SKIPPED (a normal overlap, not an error)
  * - lease infra unusable   -> 503, and `fn` is NOT run
+ * - local process on a remote DB -> 409, and `fn` is NOT run (see remote-db-guard)
  *
  * Failing closed on infrastructure errors is deliberate: sending a customer a
  * duplicate SMS is worse than skipping a tick, and a 503 is visible to monitoring
@@ -131,6 +134,10 @@ export async function withWorkerLease<T>(
   fn: () => Promise<T>,
   ttlSeconds: number = DEFAULT_LEASE_TTL_SECONDS
 ): Promise<LeaseOutcome<T>> {
+  // Checked before touching the lease: a blocked process must not even hold it.
+  const blocked = remoteDbWorkerBlockedResponse(workerName)
+  if (blocked) return { status: 'blocked', response: blocked }
+
   const owner = newLeaseOwner(workerName)
   let acquired = false
 

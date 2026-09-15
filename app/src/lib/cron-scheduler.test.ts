@@ -368,3 +368,54 @@ describe('Serapp hold-expiry schedule gate', () => {
     }
   })
 })
+
+describe('remote database guard', () => {
+    it('registers no workers for a dev process connected to a remote database', async () => {
+        vi.stubEnv('NODE_ENV', 'development')
+        process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://supabase-stg-serapod.getouch.cloud'
+        process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'
+        delete process.env.DISABLE_INTERNAL_CRON_WORKERS
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+        try {
+            const mod = await import('./cron-scheduler')
+            mod.startCronScheduler()
+            mod.startCronScheduler()
+
+            expect(scheduleMock).not.toHaveBeenCalled()
+            expect(mod.__getCronRegistryForTests().registeredPaths.size).toBe(0)
+            expect(log.mock.calls.filter(([line]) => String(line).includes('NOT registered'))).toHaveLength(1)
+        } finally {
+            vi.unstubAllEnvs()
+            log.mockRestore()
+        }
+    })
+
+    it('registers workers when ALLOW_REMOTE_DB_WORKERS_FROM_LOCAL=true', async () => {
+        vi.stubEnv('NODE_ENV', 'development')
+        process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://supabase-stg-serapod.getouch.cloud'
+        process.env.ALLOW_REMOTE_DB_WORKERS_FROM_LOCAL = 'true'
+
+        try {
+            const mod = await import('./cron-scheduler')
+            mod.startCronScheduler()
+            expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
+        } finally {
+            vi.unstubAllEnvs()
+        }
+    })
+
+    it('registers workers for the deployed staging runtime', async () => {
+        vi.stubEnv('NODE_ENV', 'production')
+        process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://supabase-stg-serapod.getouch.cloud'
+        process.env.NEXT_PUBLIC_APP_URL = 'https://stg.serapod2u.com'
+
+        try {
+            const mod = await import('./cron-scheduler')
+            mod.startCronScheduler()
+            expect(scheduleMock).toHaveBeenCalledTimes(WORKER_COUNT)
+        } finally {
+            vi.unstubAllEnvs()
+        }
+    })
+})

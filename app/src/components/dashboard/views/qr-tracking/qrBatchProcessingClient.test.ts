@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  QR_GENERATION_WORKER_PATH,
+  QR_BATCH_PROCESS_PATH,
   QRWorkerRequestError,
   interpretQRWorkerResponse,
-  triggerQRGenerationWorker,
-} from './qrGenerationWorkerClient'
+  triggerQRBatchProcessing,
+} from './qrBatchProcessingClient'
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -12,11 +12,9 @@ function json(body: unknown, status = 200): Response {
 
 describe('interpretQRWorkerResponse', () => {
   it('throws on 401 instead of reporting a completed run', async () => {
-    const promise = interpretQRWorkerResponse(json({ error: 'Unauthorized' }, 401))
-
-    await expect(promise).rejects.toBeInstanceOf(QRWorkerRequestError)
+    await expect(interpretQRWorkerResponse(json({ error: 'Unauthorized' }, 401))).rejects.toBeInstanceOf(QRWorkerRequestError)
     await expect(interpretQRWorkerResponse(json({ error: 'Unauthorized' }, 401))).rejects.toThrow(
-      'QR worker request failed (HTTP 401): Unauthorized'
+      'QR batch processing failed (HTTP 401): Unauthorized'
     )
   })
 
@@ -25,28 +23,34 @@ describe('interpretQRWorkerResponse', () => {
 
     await expect(interpretQRWorkerResponse(res)).rejects.toMatchObject({
       status: 500,
-      message: 'QR worker request failed (HTTP 500): Worker failed: Failed to upload Excel: bucket not found',
+      message: 'QR batch processing failed (HTTP 500): Worker failed: Failed to upload Excel: bucket not found',
     })
   })
 
-  it('throws on 403 and 503 lease-unavailable responses', async () => {
+  it('throws on 403, 404, 409 remote-DB block and 503 lease-unavailable responses', async () => {
     await expect(interpretQRWorkerResponse(json({ error: 'Forbidden' }, 403))).rejects.toMatchObject({ status: 403 })
+    await expect(interpretQRWorkerResponse(json({ error: 'Batch not found' }, 404))).rejects.toMatchObject({ status: 404 })
+    await expect(
+      interpretQRWorkerResponse(
+        json({ error: 'Background worker disabled for a local process connected to a remote database', details: 'NODE_ENV=development' }, 409)
+      )
+    ).rejects.toThrow('HTTP 409): Background worker disabled')
     await expect(
       interpretQRWorkerResponse(json({ status: 'LEASE_UNAVAILABLE', message: 'Worker lease unavailable; run skipped' }, 503))
     ).rejects.toThrow('HTTP 503')
   })
 
-  it('throws on a non-JSON error page even when hasMore-like text is absent', async () => {
+  it('throws on a non-JSON error page', async () => {
     const res = new Response('<html>Bad Gateway</html>', { status: 502 })
 
-    await expect(interpretQRWorkerResponse(res)).rejects.toThrow('QR worker request failed (HTTP 502): No response details')
+    await expect(interpretQRWorkerResponse(res)).rejects.toThrow('QR batch processing failed (HTTP 502): No response details')
   })
 
   it('does not treat an unrecognised 2xx body as completion', async () => {
     await expect(interpretQRWorkerResponse(json({ ok: true }))).rejects.toThrow('unexpected response')
   })
 
-  it('maps successful worker responses to outcomes', async () => {
+  it('maps successful responses to outcomes', async () => {
     await expect(interpretQRWorkerResponse(json({ message: 'No batches to process' }))).resolves.toBe('idle')
     await expect(
       interpretQRWorkerResponse(json({ status: 'SKIPPED_ALREADY_RUNNING', worker: 'qr-generation-worker', processed: 0 }))
@@ -58,25 +62,31 @@ describe('interpretQRWorkerResponse', () => {
     await expect(
       interpretQRWorkerResponse(json({ success: true, message: 'Batch processing COMPLETED!', hasMore: false }))
     ).resolves.toBe('complete')
+    await expect(
+      interpretQRWorkerResponse(json({ success: true, message: 'Batch is already generated', status: 'generated', hasMore: false }))
+    ).resolves.toBe('complete')
   })
 })
 
-describe('triggerQRGenerationWorker', () => {
-  it('calls the worker same-origin with cookies only and no Authorization header', async () => {
-    const fetchImpl = vi.fn(async () => json({ message: 'No batches to process' }))
+describe('triggerQRBatchProcessing', () => {
+  it('posts only the batch id, same-origin, with no Authorization header and never the cron route', async () => {
+    const fetchImpl = vi.fn(async () => json({ success: true, hasMore: false }))
 
-    await expect(triggerQRGenerationWorker(fetchImpl as unknown as typeof fetch)).resolves.toBe('idle')
+    await expect(triggerQRBatchProcessing('batch-123', fetchImpl as unknown as typeof fetch)).resolves.toBe('complete')
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe(QR_GENERATION_WORKER_PATH)
+    expect(url).toBe(QR_BATCH_PROCESS_PATH)
+    expect(url).not.toContain('/api/cron/')
+    expect(init.method).toBe('POST')
     expect(init.credentials).toBe('same-origin')
+    expect(JSON.parse(String(init.body))).toEqual({ batch_id: 'batch-123' })
     expect(new Headers(init.headers).has('authorization')).toBe(false)
   })
 
-  it('rejects when the worker responds non-2xx', async () => {
+  it('rejects when the server responds non-2xx', async () => {
     const fetchImpl = vi.fn(async () => json({ error: 'Unauthorized' }, 401))
 
-    await expect(triggerQRGenerationWorker(fetchImpl as unknown as typeof fetch)).rejects.toMatchObject({ status: 401 })
+    await expect(triggerQRBatchProcessing('batch-123', fetchImpl as unknown as typeof fetch)).rejects.toMatchObject({ status: 401 })
   })
 })
