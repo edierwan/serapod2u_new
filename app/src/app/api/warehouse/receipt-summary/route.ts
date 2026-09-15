@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveCasesPerBox, resolvePcsPerCase } from '@/lib/orders/packaging'
+import { hasOrderWarehouseReceipt } from '@/lib/consumer/qr-scan-eligibility'
+import { resolveReceiptStockConfig } from '@/lib/warehouse/receipt-stock-config'
+import { receiptLineLimit } from '@/lib/warehouse/receipt-limits'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +18,9 @@ const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes
  *  - inventory received to date / remaining ordered / actual extra received
  *  - per-product rows (ordered, previously received, cumulative, balance, extra)
  *  - live worker / batch progress (master + unique codes, status, stale flag)
+ *  - consumer scan state: all generated QR (incl. buffer) become scannable
+ *    after the order's first posted receipt (lifecycle statuses unchanged)
+ *  - packaging inputs per row (cases per box, pcs per case) — quantities are cases
  *
  * "Received to date" is sourced from posted warehouse_receipt_items (the
  * decoupled inventory source of truth), NOT from the number of received QR
@@ -38,7 +45,7 @@ export async function GET(request: NextRequest) {
   // 1. Order
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, order_no, display_doc_no, seller_org_id, buyer_org_id')
+    .select('id, order_no, display_doc_no, seller_org_id, buyer_org_id, units_per_case')
     .eq('id', orderId)
     .single()
 
@@ -90,40 +97,45 @@ export async function GET(request: NextRequest) {
   // 4. Order line items (product + variant names)
   const { data: orderItems } = await supabase
     .from('order_items')
-    .select('product_id, variant_id, unit_price, products(product_name), product_variants(variant_name, product_code)')
+    .select('product_id, variant_id, qty, unit_price, units_per_case, stock_config_id, products(product_name, units_per_case), product_variants(variant_name, product_code)')
     .eq('order_id', orderId)
 
   const variantIds = Array.from(new Set((orderItems || []).map((item: any) => item.variant_id).filter(Boolean)))
   const { data: destinationConfigs } = variantIds.length
     ? await supabase.from('inventory_stock_configurations')
-      .select('id, variant_id, config_label, stock_sku, volume_ml, packaging, default_for_ord, allow_ord, status, is_variant_default')
+      .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, default_for_ord, allow_ord, status, is_variant_default, requires_repacking_before_sale')
       .in('variant_id', variantIds)
       .order('sort_order')
     : { data: [] }
-  const destinationByVariant = new Map<string, any>()
-  for (const config of destinationConfigs || []) {
-    const current = destinationByVariant.get(config.variant_id)
-    const isOrdDestination = config.default_for_ord && config.allow_ord && config.status === 'active'
-    if (!current || isOrdDestination || (!current.default_for_ord && config.is_variant_default)) {
-      destinationByVariant.set(config.variant_id, config)
-    }
-  }
 
   // 5. Previously received per variant (decoupled inventory source of truth).
   //    Degrade gracefully if the receipt tables don't exist yet.
   const receivedByVariant = new Map<string, number>()
+  const previousConfigsByVariant = new Map<string, Array<string | null>>()
+  const destinationByVariant = new Map<string, any>()
   let receiptTablesAvailable = true
   try {
     const { data: receiptItems, error: riError } = await supabase
       .from('warehouse_receipt_items')
-      .select('variant_id, received_now')
+      .select('variant_id, received_now, stock_config_id, stock_movement_id')
       .eq('order_id', orderId)
     if (riError) {
       receiptTablesAvailable = false
     } else {
+      // Destination continuity: receipt line configuration, else its movement's.
+      const movementIds = (receiptItems || []).filter((ri: any) => !ri.stock_config_id && ri.stock_movement_id).map((ri: any) => ri.stock_movement_id)
+      const { data: movements } = movementIds.length
+        ? await supabase.from('stock_movements').select('id, stock_config_id').in('id', movementIds)
+        : { data: [] }
+      const movementConfig = new Map((movements || []).map((m: any) => [m.id, m.stock_config_id]))
       for (const ri of receiptItems || []) {
         if (ri.variant_id) {
           receivedByVariant.set(ri.variant_id, (receivedByVariant.get(ri.variant_id) || 0) + (ri.received_now || 0))
+          if ((ri.received_now || 0) > 0) {
+            const list = previousConfigsByVariant.get(ri.variant_id) || []
+            list.push((ri as any).stock_config_id || movementConfig.get((ri as any).stock_movement_id) || null)
+            previousConfigsByVariant.set(ri.variant_id, list)
+          }
         }
       }
     }
@@ -148,6 +160,16 @@ export async function GET(request: NextRequest) {
       .eq('variant_id', variantId)
       .eq('is_buffer', false)
 
+    // Same destination post_warehouse_receipt will use (explicit → previous
+    // receipt → canonical); null + destination_error when it would block.
+    const destinationResolution = resolveReceiptStockConfig({
+      variantId,
+      orderItemConfigIds: (orderItems || []).filter((row: any) => row.variant_id === variantId).map((row: any) => row.stock_config_id),
+      previousReceiptConfigIds: previousConfigsByVariant.get(variantId) || [],
+      configs: (destinationConfigs || []) as any[],
+    })
+    if (destinationResolution.ok) destinationByVariant.set(variantId, destinationResolution.config)
+
     const ordered = orderedCount || 0
     const previously = receivedByVariant.get(variantId) || 0
     const balance = Math.max(0, ordered - previously)
@@ -169,15 +191,35 @@ export async function GET(request: NextRequest) {
       ordered_balance: balance,
       extra_received: extra,
       destination_stock_config: destinationByVariant.get(variantId) || null,
+      destination_source: destinationResolution.source,
+      destination_error: destinationResolution.ok ? null : destinationResolution.error,
+      // Packaging (display only; quantities above are cases). Same sources as
+      // Create Order / QR generation and the central pack-size rule.
+      cases_per_box: resolveCasesPerBox((oi as any).units_per_case, (order as any).units_per_case),
+      pcs_per_case: resolvePcsPerCase((oi.products as any)?.product_name, (oi.products as any)?.units_per_case),
+      // Maximum receivable per line — same rule and inputs post_warehouse_receipt
+      // enforces: order_items.qty + warranty buffer allowance − posted receipts.
+      receipt_limit: receiptLineLimit({
+        orderedQty: (orderItems || []).filter((row: any) => row.variant_id === variantId).reduce((sum: number, row: any) => sum + (Number(row.qty) || 0), 0),
+        previouslyReceived: previously,
+        warrantyBonusPercent,
+      }),
     })
   }
 
   // 7. Live batch / worker progress
-  const [{ count: masterTotal }, { count: masterDone }, { count: uniqueDone }, { count: bufferReceived }] = await Promise.all([
+  const [
+    { count: masterTotal }, { count: masterDone }, { count: uniqueDone }, { count: bufferReceived },
+    { count: qrPopulation }, consumerScanEnabled,
+  ] = await Promise.all([
     supabase.from('qr_master_codes').select('*', { count: 'exact', head: true }).eq('batch_id', batch.id),
     supabase.from('qr_master_codes').select('*', { count: 'exact', head: true }).eq('batch_id', batch.id).eq('status', 'received_warehouse'),
     supabase.from('qr_codes').select('*', { count: 'exact', head: true }).eq('batch_id', batch.id).eq('is_buffer', false).eq('status', 'received_warehouse'),
     supabase.from('qr_codes').select('*', { count: 'exact', head: true }).eq('batch_id', batch.id).eq('is_buffer', true).eq('status', 'received_warehouse'),
+    // Generated QR population = the QR rows that actually exist for the order's
+    // batch, unique + buffer (no buffer % assumed). Spoiled codes were replaced.
+    supabase.from('qr_codes').select('*', { count: 'exact', head: true }).eq('batch_id', batch.id).neq('status', 'spoiled'),
+    hasOrderWarehouseReceipt(supabase, orderId),
   ])
 
   // Unique-codes progress is the ORDERED (non-buffer) total, never including the
@@ -230,6 +272,8 @@ export async function GET(request: NextRequest) {
       received_unique_codes: uniqueDone || 0,
       buffer_codes: expectedBuffer,
       received_buffer_codes: bufferReceived || 0,
+      total_qr_codes: qrPopulation || 0,
+      consumer_scan_enabled: consumerScanEnabled,
     },
     summary: {
       ordered_qty: orderedTotal,

@@ -35,6 +35,8 @@ import {
   type LeaderboardRow,
 } from '@/lib/reporting/distributor-analytics'
 import type { ReportingPeriod } from '@/lib/reporting/reporting-period'
+import type { DistributorDrilldown, DrilldownMetric, OrderRef } from '@/lib/reporting/distributor-drilldown'
+import { supplyChainOrderPath } from '@/modules/supply-chain/supplyChainNav'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
 import { REPORTING_COLORS, REPORTING_PANEL_CLASS, ReportingTabLoading } from './reportingChrome'
 
@@ -161,16 +163,40 @@ function HealthBadge({ health }: { health: HealthStatus }) {
 
 // ── Layout primitives (shared with the Product Analytics chrome) ───────────
 
-function KpiCard({ label, icon: Icon, accent, value, delta, caption }: {
+/** Keyboard + pointer affordance for a card that opens a drill-down. */
+function interactiveProps(onClick: (() => void) | undefined, label: string) {
+  if (!onClick) return {}
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    'aria-haspopup': 'dialog' as const,
+    'aria-label': `View ${label} details`,
+    onClick,
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        onClick()
+      }
+    },
+  }
+}
+
+const INTERACTIVE_CARD_CLASS = 'cursor-pointer hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40'
+
+function KpiCard({ label, icon: Icon, accent, value, delta, caption, onClick }: {
   label: string
   icon: typeof Package
   accent: string
   value: string
   delta?: React.ReactNode
   caption?: string | null
+  onClick?: () => void
 }) {
   return (
-    <Card className={cn(REPORTING_PANEL_CLASS, 'transition-colors hover:border-[var(--sera-orange)]/35')}>
+    <Card
+      className={cn(REPORTING_PANEL_CLASS, 'transition-all hover:border-[var(--sera-orange)]/35', onClick && INTERACTIVE_CARD_CLASS)}
+      {...interactiveProps(onClick, label)}
+    >
       <CardContent className="px-3 pb-3 pt-4 sm:px-5 sm:pt-5">
         <div className="mb-2 flex items-start justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)] sm:text-xs">
@@ -461,6 +487,47 @@ export default function DistributorReportsTab({
     })()
   }, [month, status])
 
+  // ── Metric drill-downs ───────────────────────────────────────────────────
+  // Always requested for the dashboard's CURRENT month / distributor / status;
+  // rows are cleared on every open and a slower earlier response is dropped.
+  const [metricOpen, setMetricOpen] = useState<DrilldownMetric | null>(null)
+  const [metricData, setMetricData] = useState<DistributorDrilldown | null>(null)
+  const [metricLoading, setMetricLoading] = useState(false)
+  const [metricError, setMetricError] = useState<string | null>(null)
+  const metricRequestId = useRef(0)
+
+  const loadMetric = useCallback((metric: DrilldownMetric, scope: { month: string; distributor: string; status: string }) => {
+    const requestKey = ++metricRequestId.current
+    setMetricData(null)
+    setMetricError(null)
+    setMetricLoading(true)
+    void (async () => {
+      try {
+        const params = new URLSearchParams({ metric, ...scope })
+        const res = await fetch(`/api/reporting/distributor-analytics/drilldown?${params}`, { cache: 'no-store' })
+        const payload = await res.json()
+        if (requestKey !== metricRequestId.current) return
+        if (!res.ok) throw new Error(payload.error || 'Unable to load details')
+        setMetricData(payload.drilldown as DistributorDrilldown)
+      } catch (err: any) {
+        if (requestKey === metricRequestId.current) setMetricError(err?.message || 'Unable to load details')
+      } finally {
+        if (requestKey === metricRequestId.current) setMetricLoading(false)
+      }
+    })()
+  }, [])
+
+  const openMetric = useCallback((metric: DrilldownMetric) => {
+    setMetricOpen(metric)
+    loadMetric(metric, { month, distributor: distributorId, status })
+  }, [loadMetric, month, distributorId, status])
+
+  // A scope change while the drawer is open re-reads it for the new scope.
+  useEffect(() => {
+    if (metricOpen) loadMetric(metricOpen, { month, distributor: distributorId, status })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, distributorId, status])
+
   const visibleLeaderboard = useMemo(() => {
     if (!report) return []
     const query = leaderboardSearch.trim().toLowerCase()
@@ -729,6 +796,7 @@ export default function DistributorReportsTab({
               value={formatCount(summary.totalOrders)}
               delta={<GrowthBadge value={findComparison('totalOrders')?.changePct ?? null} />}
               caption={`${summary.avgOrdersPerDay.toFixed(1)} per day`}
+              onClick={() => openMetric('total_orders')}
             />
             <KpiCard
               label="Order Value"
@@ -753,6 +821,7 @@ export default function DistributorReportsTab({
               value={formatCount(summary.activeDistributors)}
               delta={<GrowthBadge value={activeChange} suffix="" decimals={0} nullLabel="No baseline" />}
               caption={`${formatCount(summary.multipleOrderDistributors)} placed more than one order`}
+              onClick={() => openMetric('active')}
             />
             <KpiCard
               label="Returning Rate"
@@ -825,13 +894,21 @@ export default function DistributorReportsTab({
                 // Concentration across one distributor is always 100%, so the
                 // card is dropped rather than shown saying nothing.
                 .filter((card) => !(singleDistributor && card.key === 'concentration'))
-                .map((card) => (
-                  <div key={card.key} className="rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">{card.title}</p>
-                    <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)] sm:text-3xl">{card.value}</p>
-                    <p className="mt-1 text-[10px] leading-tight text-[var(--sera-muted)] sm:text-[11px]">{card.description}</p>
-                  </div>
-                ))}
+                .map((card) => {
+                  const metric = INSIGHT_DRILLDOWN[card.key]
+                  return (
+                    <div
+                      key={card.key}
+                      data-testid={`insight-${card.key}`}
+                      className={cn('rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-3 transition-all', metric && INTERACTIVE_CARD_CLASS)}
+                      {...interactiveProps(metric ? () => openMetric(metric) : undefined, card.title)}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-muted)]">{card.title}</p>
+                      <p className="mt-1 text-2xl font-bold text-[var(--sera-ink)] sm:text-3xl">{card.value}</p>
+                      <p className="mt-1 text-[10px] leading-tight text-[var(--sera-muted)] sm:text-[11px]">{card.description}</p>
+                    </div>
+                  )
+                })}
             </div>
           </SectionCard>
         </TabsContent>
@@ -1500,6 +1577,275 @@ export default function DistributorReportsTab({
           )}
         </SheetContent>
       </Sheet>
+
+      {/* ─── METRIC DRILL-DOWN DRAWER ──────────────────────────────────── */}
+      <Sheet open={metricOpen !== null} onOpenChange={(open) => { if (!open) { setMetricOpen(null); metricRequestId.current++ } }}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
+          {metricOpen ? (
+            <MetricDrilldownPanel
+              metric={metricOpen}
+              data={metricData}
+              loading={metricLoading}
+              error={metricError}
+              periodLabel={period.label}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
+    </div>
+  )
+}
+
+const INSIGHT_DRILLDOWN: Partial<Record<string, DrilldownMetric>> = {
+  new: 'new',
+  inactive: 'inactive',
+  returning: 'returning',
+}
+
+const METRIC_TITLE: Record<DrilldownMetric, string> = {
+  total_orders: 'Total Orders',
+  active: 'Active Distributors',
+  new: 'New Distributors',
+  inactive: 'Inactive Distributors',
+  returning: 'Returning Distributors',
+}
+
+const DRILLDOWN_PAGE_SIZE = 25
+
+function OrderRefCell({ value }: { value: OrderRef | null }) {
+  if (!value) return <span className="text-[var(--sera-muted)]">—</span>
+  return (
+    <span className="whitespace-nowrap">
+      {formatDay(value.at)}
+      <span className="block text-[11px] text-[var(--sera-muted)]">{value.orderNo}</span>
+    </span>
+  )
+}
+
+function DistributorCell({ name, code }: { name: string; code: string | null }) {
+  return (
+    <span>
+      <span className="font-medium text-[var(--sera-ink)]">{name}</span>
+      {code ? <span className="block text-[11px] text-[var(--sera-muted)]">{code}</span> : null}
+    </span>
+  )
+}
+
+function MetricDrilldownPanel({ metric, data, loading, error, periodLabel }: {
+  metric: DrilldownMetric
+  data: DistributorDrilldown | null
+  loading: boolean
+  error: string | null
+  periodLabel: string
+}) {
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(0)
+  useEffect(() => { setQuery(''); setPage(0) }, [metric, data])
+
+  const isOrders = metric === 'total_orders'
+  const allRows = data ? (isOrders ? data.orders : data.distributors) : []
+  const needle = query.trim().toLowerCase()
+  const rows = needle
+    ? allRows.filter((row: any) => [row.name, row.code, row.orderNo, row.distributorName, row.distributorCode]
+      .some((field) => typeof field === 'string' && field.toLowerCase().includes(needle)))
+    : allRows
+  const pageCount = Math.max(1, Math.ceil(rows.length / DRILLDOWN_PAGE_SIZE))
+  const pageRows = rows.slice(page * DRILLDOWN_PAGE_SIZE, (page + 1) * DRILLDOWN_PAGE_SIZE)
+  const th = 'px-2 py-2 font-medium'
+  const td = 'px-2 py-2.5 align-top'
+  const num = 'px-2 py-2.5 text-right tabular-nums align-top'
+
+  return (
+    <div data-testid="metric-drilldown">
+      <SheetHeader>
+        <SheetTitle className="text-base">{METRIC_TITLE[metric]} — {data?.period.label ?? periodLabel}</SheetTitle>
+        <SheetDescription className="text-xs">
+          {data
+            ? `${data.period.rangeLabel}${data.period.isCurrentMonth ? ' (month to date)' : ''} · ${data.scope.distributorName} · ${data.scope.statusLabel}`
+            : 'Loading…'}
+        </SheetDescription>
+      </SheetHeader>
+
+      {loading ? (
+        <div className="py-10"><ReportingTabLoading label="Loading details" /></div>
+      ) : error ? (
+        <EmptyNote>{error}</EmptyNote>
+      ) : !data ? null : (
+        <div className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-2" data-testid="drilldown-summary">
+            {!isOrders ? (
+              <Badge variant="secondary" className="px-2 py-1 text-xs">{METRIC_TITLE[metric]}: {formatCount(data.headline.count)}</Badge>
+            ) : null}
+            {isOrders || metric === 'active' ? (
+              <>
+                <Badge variant="secondary" className="px-2 py-1 text-xs">Total Orders: {formatCount(data.headline.totalOrders)}</Badge>
+                <Badge variant="secondary" className="px-2 py-1 text-xs">Order Value: {formatRMCompact(data.headline.orderValue)}</Badge>
+              </>
+            ) : null}
+          </div>
+          <p className="text-xs text-[var(--sera-muted)]">{data.definition}</p>
+
+          {!data.reconciled ? (
+            <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              These {isOrders ? 'orders' : 'rows'} ({formatCount(allRows.length)}) do not reconcile with the dashboard figure ({formatCount(data.headline.count)}). Please report this.
+            </div>
+          ) : null}
+
+          {allRows.length === 0 ? (
+            <EmptyNote>{data.emptyMessage}</EmptyNote>
+          ) : (
+            <>
+              {allRows.length > 10 ? (
+                <div className="relative w-full sm:w-[260px]">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--sera-muted)]" />
+                  <Input
+                    value={query}
+                    onChange={(event) => { setQuery(event.target.value); setPage(0) }}
+                    placeholder={isOrders ? 'Search order or distributor' : 'Search distributor'}
+                    aria-label="Search drill-down rows"
+                    className="h-9 pl-8 text-sm"
+                  />
+                </div>
+              ) : null}
+
+              <div className="overflow-x-auto rounded-lg border border-[var(--sera-line)]">
+                <table className="w-full min-w-[640px] text-sm" data-testid="drilldown-table">
+                  <thead>
+                    <tr className="border-b border-[var(--sera-line)] text-left text-xs text-[var(--sera-muted)]">
+                      {isOrders ? (
+                        <>
+                          <th className={th}>Order Number</th>
+                          <th className={th}>Order Date</th>
+                          <th className={th}>Distributor</th>
+                          <th className={th}>Status</th>
+                          <th className={cn(th, 'text-right')}>Lines</th>
+                          <th className={cn(th, 'text-right')}>Order Value</th>
+                          <th className={th}>Created By</th>
+                          <th className={th}>Last Updated</th>
+                        </>
+                      ) : metric === 'active' ? (
+                        <>
+                          <th className={th}>Distributor</th>
+                          <th className={cn(th, 'text-right')}>Orders</th>
+                          <th className={cn(th, 'text-right')}>Order Value</th>
+                          <th className={cn(th, 'text-right')}>Avg Order Value</th>
+                          <th className={th}>Last Order</th>
+                          <th className={cn(th, 'text-right')}>Days Since Last Order</th>
+                          <th className={cn(th, 'text-right')}>Previous Orders</th>
+                          <th className={cn(th, 'text-right')}>Previous Value</th>
+                        </>
+                      ) : metric === 'new' ? (
+                        <>
+                          <th className={th}>Distributor</th>
+                          <th className={th}>First Eligible Order</th>
+                          <th className={cn(th, 'text-right')}>Orders</th>
+                          <th className={cn(th, 'text-right')}>Order Value</th>
+                          <th className={cn(th, 'text-right')}>Avg Order Value</th>
+                        </>
+                      ) : metric === 'inactive' ? (
+                        <>
+                          <th className={th}>Distributor</th>
+                          <th className={cn(th, 'text-right')}>Comparison Orders</th>
+                          <th className={cn(th, 'text-right')}>Comparison Value</th>
+                          <th className={th}>Last Order</th>
+                          <th className={cn(th, 'text-right')}>Days Since Last Order</th>
+                          <th className={cn(th, 'text-right')}>Current Orders</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className={th}>Distributor</th>
+                          <th className={cn(th, 'text-right')}>Orders</th>
+                          <th className={cn(th, 'text-right')}>Order Value</th>
+                          <th className={th}>Previous Last Order</th>
+                          <th className={th}>First Order This Period</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isOrders
+                      ? (pageRows as DistributorDrilldown['orders']).map((order) => {
+                        const path = supplyChainOrderPath('view-order', order.orderId)
+                        return (
+                          <tr key={order.orderId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                            <td className={cn(td, 'font-medium')}>
+                              {path
+                                ? <a href={`/supply-chain/${path}`} className="text-[var(--sera-orange-deep)] hover:underline">{order.orderNo}</a>
+                                : order.orderNo}
+                            </td>
+                            <td className={cn(td, 'whitespace-nowrap')}>{formatDay(order.createdAt)}</td>
+                            <td className={td}><DistributorCell name={order.distributorName} code={order.distributorCode} /></td>
+                            <td className={td}>{statusLabel(order.status)}</td>
+                            <td className={num}>{formatCount(order.lineCount)}</td>
+                            <td className={num}>{formatRM(order.orderValue)}</td>
+                            <td className={td}>{order.createdByName || '—'}</td>
+                            <td className={cn(td, 'whitespace-nowrap')}>{formatDay(order.updatedAt)}</td>
+                          </tr>
+                        )
+                      })
+                      : (pageRows as DistributorDrilldown['distributors']).map((row) => (
+                        <tr key={row.distributorId} className="border-b border-[var(--sera-line)]/60 last:border-0">
+                          <td className={td}><DistributorCell name={row.name} code={row.code} /></td>
+                          {metric === 'active' ? (
+                            <>
+                              <td className={num}>{formatCount(row.currentOrders)}</td>
+                              <td className={num}>{formatRM(row.currentValue)}</td>
+                              <td className={num}>{formatRM(row.aov)}</td>
+                              <td className={td}><OrderRefCell value={row.lastOrder} /></td>
+                              <td className={num}>{formatCount(row.daysSinceLastOrder)}</td>
+                              <td className={num}>{formatCount(row.previousOrders)}</td>
+                              <td className={num}>{formatRM(row.previousValue)}</td>
+                            </>
+                          ) : metric === 'new' ? (
+                            <>
+                              <td className={td}><OrderRefCell value={row.firstOrder} /></td>
+                              <td className={num}>{formatCount(row.currentOrders)}</td>
+                              <td className={num}>{formatRM(row.currentValue)}</td>
+                              <td className={num}>{formatRM(row.aov)}</td>
+                            </>
+                          ) : metric === 'inactive' ? (
+                            <>
+                              <td className={num}>{formatCount(row.previousOrders)}</td>
+                              <td className={num}>{formatRM(row.previousValue)}</td>
+                              <td className={td}><OrderRefCell value={row.lastOrder} /></td>
+                              <td className={num}>{formatCount(row.daysSinceLastOrder)}</td>
+                              <td className={num}>{formatCount(row.currentOrders)}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td className={num}>{formatCount(row.currentOrders)}</td>
+                              <td className={num}>{formatRM(row.currentValue)}</td>
+                              <td className={td}><OrderRefCell value={row.lastOrderBeforePeriod} /></td>
+                              <td className={td}><OrderRefCell value={row.currentFirstOrder} /></td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-[var(--sera-muted)]">
+                <span data-testid="drilldown-count">
+                  {needle ? `${formatCount(rows.length)} of ` : ''}{formatCount(allRows.length)} {isOrders ? 'orders' : 'distributors'}
+                </span>
+                {pageCount > 1 ? (
+                  <span className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Previous page">
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    Page {page + 1} of {pageCount}
+                    <Button variant="outline" size="sm" className="h-7 px-2" disabled={page >= pageCount - 1} onClick={() => setPage(page + 1)} aria-label="Next page">
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </span>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

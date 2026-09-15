@@ -17,6 +17,11 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { ReceiveItemLabel } from './ReceiveItemLabel'
 import { useToast } from '@/components/ui/use-toast'
+import {
+  casesToPcs, formatBoxEstimate, formatBoxSplit, formatCases, formatPackagingLine, formatPcs, packagingForTotal, summarizePackaging,
+  type PackagingLine, type PackagingTotals,
+} from '@/lib/orders/packaging'
+import { validateReceiveNow, type ReceiptLineLimit } from '@/lib/warehouse/receipt-limits'
 
 interface UserProfile {
   id: string
@@ -49,6 +54,14 @@ interface SummaryItem {
     volume_ml: number | null
     packaging: string | null
   } | null
+  /** Where post_warehouse_receipt will post this line (explicit → previous receipt → canonical). */
+  destination_source?: 'order_item' | 'previous_receipt' | 'canonical'
+  destination_error?: string | null
+  /** Packaging for display only — every quantity on this screen is in cases. */
+  cases_per_box: number
+  pcs_per_case: number | null
+  /** Maximum receivable for this line (ordered + warranty buffer allowance − received). */
+  receipt_limit?: ReceiptLineLimit
 }
 
 interface Summary {
@@ -69,6 +82,8 @@ interface Summary {
     received_unique_codes: number
     buffer_codes: number
     received_buffer_codes: number
+    total_qr_codes?: number
+    consumer_scan_enabled?: boolean
   }
   summary: {
     ordered_qty: number
@@ -256,6 +271,10 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       toast({ title: 'Nothing to receive', description: 'Enter a quantity for at least one product.', variant: 'destructive' })
       return
     }
+    if (hasInvalidLines) {
+      toast({ title: 'Check Receive Now', description: 'One or more lines exceed the maximum receivable quantity.', variant: 'destructive' })
+      return
+    }
 
     submittingRef.current = true
     setSubmitting(true)
@@ -288,7 +307,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
       const grnNo = `GRN-${summary.order.display_doc_no || summary.order.order_no}-${seqMatch ? seqMatch[1] : ''}`
       toast({
         title: r?.idempotent_replay ? 'GRN already recorded' : `${grnNo} confirmed`,
-        description: `Posted ${r?.total_received ?? 0} units to inventory.`,
+        description: `Posted ${formatCases(Number(r?.total_received ?? 0))} to inventory.`,
       })
       // If this confirm queued the QR worker (first receipt), allow the polling
       // effect to drive it. Otherwise QR is already done -> no worker.
@@ -402,6 +421,40 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
   const qrActive = b?.receiving_status === 'queued' || b?.receiving_status === 'processing'
   const canAct = !!summary && !processing && !submitting && !qrActive && !b?.is_stale && b?.receiving_status !== 'failed'
 
+  // Packaging estimates (display only). Quantities stay in cases; boxes and pcs
+  // are derived with the same rules Create Order uses (lib/orders/packaging).
+  const packagingLines = (qty: (it: SummaryItem) => number): PackagingLine[] =>
+    (summary?.items || []).map((it) => ({ cases: qty(it), casesPerBox: it.cases_per_box, pcsPerCase: it.pcs_per_case }))
+  // Order-level totals: boxes/pcs derived from the exact case figure displayed.
+  const packagingOf = (cases: number, qty: (it: SummaryItem) => number): PackagingTotals => {
+    const lines = packagingLines(qty)
+    return packagingForTotal(cases, lines, summarizePackaging(lines))
+  }
+  // Receive limit per line — validated while typing; the server enforces the same rule.
+  const lineErrors = new Map<string, string>()
+  for (const it of summary?.items || []) {
+    const check = validateReceiveNow(receiveNow[it.variant_id] || 0, it.receipt_limit)
+    if (!check.valid) lineErrors.set(it.variant_id, check.message)
+  }
+  const hasInvalidLines = lineErrors.size > 0
+  const orderLabel = summary ? (summary.order.display_doc_no || summary.order.order_no) : ''
+  // Estimates count only valid Receive Now quantities.
+  const receiveNowPackaging = summarizePackaging(packagingLines((it) => (lineErrors.has(it.variant_id) ? 0 : receiveNow[it.variant_id] || 0)))
+  const receivedPackaging = packagingOf(summary?.summary.inventory_received || 0, (it) => it.previously_received)
+  const remainingPackaging = packagingOf(summary?.summary.remaining_ordered || 0, (it) => it.ordered_balance)
+  const extraPackaging = packagingOf(summary?.summary.actual_extra_received || 0, (it) => it.extra_received)
+  const orderedPackaging = packagingOf(summary?.summary.ordered_qty || 0, (it) => it.ordered_qty)
+  const packagingRule = (() => {
+    const first = summary?.items[0]
+    if (!first) return null
+    const parts = [`${first.cases_per_box.toLocaleString()} cases = 1 box`]
+    if (first.pcs_per_case) {
+      parts.unshift(`${first.pcs_per_case} pcs = 1 case`)
+      parts.push(`${(first.cases_per_box * first.pcs_per_case).toLocaleString()} pcs = 1 box`)
+    }
+    return parts.join(' • ')
+  })()
+
   const receiptStatusBadge = () => {
     if (!s) return null
     const map: Record<string, { label: string; cls: string }> = {
@@ -450,11 +503,11 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
         <>
           {/* Top metrics */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <Metric label="Ordered Qty" value={s.ordered_qty} suffix="units" />
-            <Metric label={`Expected Buffer (${summary.warranty_bonus_percent || 0}%)`} value={s.expected_buffer} suffix="units" tone="green" />
-            <Metric label="Expected Total" value={s.expected_total} suffix="units" tone="indigo" />
-            <Metric label="Inventory Received" value={s.inventory_received} suffix="units" tone="emerald" />
-            <Metric label="Remaining Ordered" value={s.remaining_ordered} suffix="units" tone="amber" />
+            <Metric label="Ordered Qty" value={s.ordered_qty} suffix="cases" hint={formatBoxSplit(orderedPackaging.boxes)} />
+            <Metric label={`Expected Buffer (${summary.warranty_bonus_percent || 0}%)`} value={s.expected_buffer} suffix="cases" tone="green" />
+            <Metric label="Expected Total" value={s.expected_total} suffix="cases" tone="indigo" />
+            <Metric label="Inventory Received" value={s.inventory_received} suffix="cases" tone="emerald" hint={formatBoxSplit(receivedPackaging.boxes)} />
+            <Metric label="Remaining Ordered" value={s.remaining_ordered} suffix="cases" tone="amber" hint={formatBoxSplit(remainingPackaging.boxes)} />
             <div className="p-4 rounded-lg border bg-white flex flex-col">
               <p className="text-xs text-gray-500 font-medium">Receipt Status</p>
               <div className="mt-2">{receiptStatusBadge()}</div>
@@ -597,6 +650,17 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                 </div>
               </div>
 
+              {typeof b.total_qr_codes === 'number' && b.total_qr_codes > 0 && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-white px-4 py-2.5 text-sm">
+                  <span className="text-gray-500">
+                    Consumer Scan <span className="text-xs text-gray-400">— all generated QR incl. buffer, enabled by the first receipt regardless of quantity</span>
+                  </span>
+                  {b.consumer_scan_enabled
+                    ? <span className="font-semibold text-green-700">Enabled • {b.total_qr_codes.toLocaleString()} QR</span>
+                    : <span className="font-semibold text-gray-500">Not yet • {b.total_qr_codes.toLocaleString()} QR</span>}
+                </div>
+              )}
+
               {(b.is_stale || b.receiving_status === 'failed' || (qrActive && !processing)) && (
                 <div className="mt-4 flex flex-col items-center gap-3">
                   {b.is_stale && (
@@ -622,7 +686,11 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="text-base">Receive Items</CardTitle>
-                <p className="text-xs text-gray-500">Enter the actual quantity you are receiving now. Values should reflect your physical count.</p>
+                <p className="text-sm text-gray-700" data-testid="receive-items-order">Order: <span className="font-semibold">{orderLabel}</span></p>
+                <p className="text-xs text-gray-500">
+                  Enter the actual number of <b>cases</b> you are receiving now. Values should reflect your physical count.
+                  {packagingRule && <span className="block text-gray-400 mt-0.5">All quantities in cases • {packagingRule}</span>}
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -632,7 +700,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                         <th className="py-2 pr-3">Product</th>
                         <th className="py-2 px-2 text-right">Ordered</th>
                         <th className="py-2 px-2 text-right">Prev. Received</th>
-                        <th className="py-2 px-2 text-right">Receive Now</th>
+                        <th className="py-2 px-2 text-right">Receive Now (Cases)</th>
                         <th className="py-2 px-2 text-right">Cumulative</th>
                         <th className="py-2 px-2 text-right">Balance</th>
                         <th className="py-2 pl-2 text-right">Extra</th>
@@ -641,6 +709,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                     <tbody>
                       {summary.items.map((it) => {
                         const now = receiveNow[it.variant_id] || 0
+                        const lineError = lineErrors.get(it.variant_id)
                         const cumulative = it.previously_received + now
                         const balance = Math.max(0, it.ordered_qty - cumulative)
                         const extra = Math.max(0, cumulative - it.ordered_qty)
@@ -648,21 +717,39 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                           <tr key={it.variant_id} className="border-b last:border-0">
                             <td className="py-3 pr-3">
                               <ReceiveItemLabel product_name={it.product_name} variant_name={it.variant_name} product_code={it.product_code} />
+                              {it.destination_error && (
+                                <div className="text-[11px] text-red-600 mt-0.5" title={it.destination_error}>Stock configuration unresolved — receiving this line will be blocked</div>
+                              )}
                             </td>
-                            <td className="py-3 px-2 text-right">{it.ordered_qty.toLocaleString()}</td>
-                            <td className="py-3 px-2 text-right">{it.previously_received.toLocaleString()}</td>
+                            <td className="py-3 px-2 text-right whitespace-nowrap">
+                              <CaseQty value={it.ordered_qty} />
+                              <div className="text-[11px] text-gray-400">{formatBoxEstimate(it.ordered_qty, it.cases_per_box)}</div>
+                            </td>
+                            <td className="py-3 px-2 text-right whitespace-nowrap"><CaseQty value={it.previously_received} /></td>
                             <td className="py-3 px-2 text-right">
                               <Input
-                                type="number" min={0}
-                                className="w-24 ml-auto text-right"
+                                type="number" min={0} step={1}
+                                aria-label={`Receive now (cases) for ${it.product_name} ${it.variant_name}`}
+                                aria-invalid={lineError ? true : undefined}
+                                aria-describedby={lineError ? `receive-now-error-${it.variant_id}` : undefined}
+                                className={`w-24 ml-auto text-right ${lineError ? 'border-red-500 text-red-700 focus-visible:ring-red-500' : ''}`}
                                 value={now}
                                 disabled={!canAct || isCompletedReceiving}
                                 onChange={(e) => setReceiveNow((prev) => ({ ...prev, [it.variant_id]: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
                               />
+                              {lineError ? (
+                                <p id={`receive-now-error-${it.variant_id}`} role="alert" className="text-[11px] text-red-600 mt-1 ml-auto max-w-[15rem] text-right">
+                                  {lineError}
+                                </p>
+                              ) : now > 0 && (
+                                <div className="text-[11px] text-gray-400 mt-1 whitespace-nowrap">
+                                  {formatBoxEstimate(now, it.cases_per_box)}{it.pcs_per_case ? ` • ${formatPcs(casesToPcs(now, it.pcs_per_case))}` : ''}
+                                </div>
+                              )}
                             </td>
-                            <td className="py-3 px-2 text-right font-medium">{cumulative.toLocaleString()}</td>
-                            <td className={`py-3 px-2 text-right ${balance === 0 ? 'text-green-600' : 'text-amber-600'}`}>{balance.toLocaleString()}</td>
-                            <td className={`py-3 pl-2 text-right ${extra > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>{extra > 0 ? extra.toLocaleString() : '—'}</td>
+                            <td className="py-3 px-2 text-right font-medium whitespace-nowrap"><CaseQty value={cumulative} /></td>
+                            <td className={`py-3 px-2 text-right whitespace-nowrap ${balance === 0 ? 'text-green-600' : 'text-amber-600'}`}><CaseQty value={balance} /></td>
+                            <td className={`py-3 pl-2 text-right whitespace-nowrap ${extra > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>{extra > 0 ? <CaseQty value={extra} /> : '—'}</td>
                           </tr>
                         )
                       })}
@@ -673,9 +760,12 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                 <div className="mt-4 pt-4 border-t">
                   <div className="text-sm text-gray-500 mb-3">
                     Total Receive Now:{' '}
-                    <span className="font-bold text-blue-600">
-                      {summary.items.reduce((sum, it) => sum + (receiveNow[it.variant_id] || 0), 0).toLocaleString()} units
-                    </span>
+                    <span className="font-bold text-blue-600">{formatPackagingLine(receiveNowPackaging)}</span>
+                    {hasInvalidLines && (
+                      <span className="block text-xs text-red-600 mt-1">
+                        {lineErrors.size === 1 ? '1 line exceeds' : `${lineErrors.size} lines exceed`} the maximum receivable quantity — correct it to confirm (not included in the totals).
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-col md:flex-row gap-3 md:items-end">
                     <div className="flex-1">
@@ -691,7 +781,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                       />
                       <div className="text-[11px] text-gray-400 text-right">{remarks.length}/500</div>
                     </div>
-                    <Button className="bg-blue-600 hover:bg-blue-700 md:mb-5" onClick={handleConfirmReceipt} disabled={!canAct || isCompletedReceiving}>
+                    <Button className="bg-blue-600 hover:bg-blue-700 md:mb-5" onClick={handleConfirmReceipt} disabled={!canAct || isCompletedReceiving || hasInvalidLines}>
                       {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirming…</> : <><CheckCircle className="mr-2 h-4 w-4" /> Confirm Receipt</>}
                     </Button>
                   </div>
@@ -699,17 +789,35 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
               </CardContent>
             </Card>
 
+            <div className="space-y-6">
+            {/* Packaging estimate (updates with Receive Now) */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2"><Boxes className="h-4 w-4" /> Packaging Estimate</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+                  <p className="text-xs font-medium text-blue-700">Receiving Now</p>
+                  <p className="text-lg font-bold text-blue-900">{formatCases(receiveNowPackaging.cases)}</p>
+                  <p className="text-sm text-blue-800">= {formatBoxSplit(receiveNowPackaging.boxes)}</p>
+                  {receiveNowPackaging.pcs !== null && <p className="text-sm text-blue-800">= {formatPcs(receiveNowPackaging.pcs)}</p>}
+                </div>
+                {packagingRule && <p className="text-xs text-gray-400">{packagingRule}</p>}
+              </CardContent>
+            </Card>
+
             {/* Receipt summary panel */}
             <Card>
               <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" /> Receipt Summary</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
+                <Row label="Order Number" value={orderLabel} testId="receipt-summary-order" />
                 <Row label="Receipt Status" value={s.receipt_status.replace('_', ' ')} />
                 <Row label="Received By" value={userProfile.email} icon={<UserIcon className="h-3.5 w-3.5" />} />
                 <Row label="Receipt Date" value={fmtDate(new Date())} icon={<CalendarClock className="h-3.5 w-3.5" />} />
-                <div className="border-t pt-3 space-y-2">
-                  <Row label="Inventory Received" value={`${s.inventory_received.toLocaleString()} units`} />
-                  <Row label="Remaining Ordered" value={`${s.remaining_ordered.toLocaleString()} units`} valueClass="text-amber-600" />
-                  <Row label="Actual Extra Received" value={`${s.actual_extra_received.toLocaleString()} units`} valueClass={s.actual_extra_received > 0 ? 'text-blue-600' : ''} />
+                <div className="border-t pt-3 space-y-3">
+                  <PackagingRow label="Inventory Received" totals={receivedPackaging} />
+                  <PackagingRow label="Remaining Ordered" totals={remainingPackaging} valueClass="text-amber-600" />
+                  <PackagingRow label="Actual Extra Received" totals={extraPackaging} valueClass={s.actual_extra_received > 0 ? 'text-blue-600' : ''} />
                 </div>
                 {isCompletedReceiving && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 flex items-center gap-2">
@@ -718,6 +826,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                 )}
               </CardContent>
             </Card>
+            </div>
           </div>
         </>
       )}
@@ -728,8 +837,8 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
           <DialogHeader>
             <DialogTitle>Receive All (Order + Buffer)?</DialogTitle>
             <DialogDescription>
-              This posts the complete ordered quantity{summary ? ` (${summary.summary.ordered_qty.toLocaleString()} units)` : ''} plus the
-              expected warranty buffer{summary ? ` (${summary.summary.expected_buffer.toLocaleString()} units)` : ''} into inventory and marks the
+              This posts the complete ordered quantity{summary ? ` (${formatCases(summary.summary.ordered_qty)})` : ''} plus the
+              expected warranty buffer{summary ? ` (${formatCases(summary.summary.expected_buffer)})` : ''} into inventory and marks the
               receipt as fully received. No item selection or manual counting is required.
             </DialogDescription>
           </DialogHeader>
@@ -769,7 +878,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
   )
 }
 
-function Metric({ label, value, suffix, tone = 'gray' }: { label: string; value: number; suffix?: string; tone?: string }) {
+function Metric({ label, value, suffix, tone = 'gray', hint }: { label: string; value: number; suffix?: string; tone?: string; hint?: string }) {
   const tones: Record<string, string> = {
     gray: 'bg-white', green: 'bg-green-50 border-green-100', indigo: 'bg-indigo-50 border-indigo-100',
     emerald: 'bg-emerald-50 border-emerald-100', amber: 'bg-amber-50 border-amber-100',
@@ -778,15 +887,35 @@ function Metric({ label, value, suffix, tone = 'gray' }: { label: string; value:
     <div className={`p-4 rounded-lg border ${tones[tone] || 'bg-white'}`}>
       <p className="text-xs text-gray-500 font-medium">{label}</p>
       <p className="text-xl font-bold text-gray-900 mt-1"><CountUp value={value} /> {suffix && <span className="text-xs font-normal text-gray-400">{suffix}</span>}</p>
+      {hint && <p className="text-[11px] text-gray-400 mt-0.5">≈ {hint}</p>}
     </div>
   )
 }
 
-function Row({ label, value, icon, valueClass = '' }: { label: string; value: string; icon?: React.ReactNode; valueClass?: string }) {
+function Row({ label, value, icon, valueClass = '', testId }: { label: string; value: string; icon?: React.ReactNode; valueClass?: string; testId?: string }) {
   return (
-    <div className="flex justify-between items-center">
+    <div className="flex justify-between items-center" data-testid={testId}>
       <span className="text-gray-500 flex items-center gap-1.5">{icon}{label}</span>
       <span className={`font-medium text-gray-900 ${valueClass}`}>{value}</span>
+    </div>
+  )
+}
+
+/** A case quantity with a muted unit, e.g. "8,000 cases". */
+function CaseQty({ value }: { value: number }) {
+  return <>{value.toLocaleString()} <span className="text-[11px] font-normal text-gray-400">{value === 1 ? 'case' : 'cases'}</span></>
+}
+
+/** Summary row: cases as the primary value, with pcs and estimated boxes beneath. */
+function PackagingRow({ label, totals, valueClass = '' }: { label: string; totals: PackagingTotals; valueClass?: string }) {
+  return (
+    <div className="flex justify-between items-start gap-3">
+      <span className="text-gray-500">{label}</span>
+      <div className="text-right">
+        <div className={`font-medium text-gray-900 ${valueClass}`}>{formatCases(totals.cases)}</div>
+        {totals.pcs !== null && <div className="text-xs text-gray-500">{formatPcs(totals.pcs)}</div>}
+        <div className="text-xs text-gray-500">Estimated Boxes: {formatBoxSplit(totals.boxes)}</div>
+      </div>
     </div>
   )
 }
@@ -953,17 +1082,17 @@ function GoodsReceivedHistoryModal({
             {global ? (
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <HistoryCard icon={<ScrollText className="h-4 w-4" />} label="Total Receipts" value={filtered.length} suffix="Receipts" tone="blue" />
-                <HistoryCard icon={<PackageCheck className="h-4 w-4" />} label="Total Received" value={agg.totalReceived} suffix="Units" tone="green" />
+                <HistoryCard icon={<PackageCheck className="h-4 w-4" />} label="Total Received" value={agg.totalReceived} suffix="Cases" tone="green" />
                 <HistoryCard icon={<Boxes className="h-4 w-4" />} label="Orders" value={agg.orders} suffix="Orders" tone="slate" />
                 <HistoryCard icon={<PackageMinus className="h-4 w-4" />} label="Partial" value={agg.partial} suffix="Receipts" tone="purple" />
                 <HistoryCard icon={<PackagePlus className="h-4 w-4" />} label="Full" value={agg.full} suffix="Receipts" tone="amber" />
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <HistoryCard icon={<Boxes className="h-4 w-4" />} label="Ordered Qty" value={summaryData?.ordered_qty || 0} suffix="Units" tone="blue" />
-                <HistoryCard icon={<PackageCheck className="h-4 w-4" />} label="Total Received" value={summaryData?.inventory_received || 0} suffix="Units" tone="green" />
-                <HistoryCard icon={<PackageMinus className="h-4 w-4" />} label="Remaining Ordered" value={summaryData?.remaining_ordered || 0} suffix="Units" tone="amber" />
-                <HistoryCard icon={<PackagePlus className="h-4 w-4" />} label="Actual Extra Received" value={summaryData?.actual_extra_received || 0} suffix="Units" tone="purple" />
+                <HistoryCard icon={<Boxes className="h-4 w-4" />} label="Ordered Qty" value={summaryData?.ordered_qty || 0} suffix="Cases" tone="blue" />
+                <HistoryCard icon={<PackageCheck className="h-4 w-4" />} label="Total Received" value={summaryData?.inventory_received || 0} suffix="Cases" tone="green" />
+                <HistoryCard icon={<PackageMinus className="h-4 w-4" />} label="Remaining Ordered" value={summaryData?.remaining_ordered || 0} suffix="Cases" tone="amber" />
+                <HistoryCard icon={<PackagePlus className="h-4 w-4" />} label="Actual Extra Received" value={summaryData?.actual_extra_received || 0} suffix="Cases" tone="purple" />
                 <HistoryCard icon={<ScrollText className="h-4 w-4" />} label="Total Receipts" value={filtered.length} suffix="Receipts" tone="slate" />
               </div>
             )}
