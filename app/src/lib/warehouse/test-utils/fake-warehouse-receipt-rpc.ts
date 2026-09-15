@@ -13,7 +13,7 @@
  * order-item configuration required); the default reproduces migration
  * 20260915130000 via the shared TypeScript mirror.
  */
-import { RECEIPT_CONFIG_ERROR, resolveReceiptStockConfig } from '@/lib/warehouse/receipt-stock-config'
+import { RECEIPT_CONFIG_ERROR, resolveReceiptStockConfig, type ReceiptStockConfiguration } from '@/lib/warehouse/receipt-stock-config'
 import { receiptLineLimit, receiptLimitErrorCode } from '@/lib/warehouse/receipt-limits'
 import type { FakeSupabase } from './fake-supabase'
 
@@ -58,7 +58,7 @@ export function fakePostWarehouseReceipt(getDb: () => FakeSupabase, options: Fak
           variantId,
           orderItemConfigIds: orderRows.map((o) => o.stock_config_id),
           previousReceiptConfigIds: priorLines.filter((r) => r.received_now > 0).map((r) => r.stock_config_id || movementConfig.get(r.stock_movement_id) || null),
-          configs: t.inventory_stock_configurations || [],
+          configs: (t.inventory_stock_configurations || []) as ReceiptStockConfiguration[],
         })
         if (!resolution.ok) return { data: null, error: { message: resolution.error } }
         configId = resolution.stockConfigId
