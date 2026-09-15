@@ -118,7 +118,7 @@ export interface VariantLabelRecord {
 }
 
 /** Line value, preferring the generated `line_total` and falling back to qty × price. */
-function lineValue(row: OrderItemRecord): number {
+export function lineValue(row: OrderItemRecord): number {
   const total = Number(row.line_total)
   if (Number.isFinite(total) && total !== 0) return total
   const qty = Number(row.qty) || 0
@@ -318,6 +318,113 @@ export function aggregateDistributorOrders(
 
 // ── Query helpers ──────────────────────────────────────────────────────────
 
+/**
+ * The eligible-order scope every Distributor Analytics read shares — the same
+ * rules the `reporting_distributor_analytics` RPC's `eligible` CTE applies:
+ * D2H orders whose buyer is one of the scoped DIST organisations, optionally
+ * narrowed to one status. Used by the fallback aggregation, the CSV export and
+ * the dashboard drill-downs, so none of them re-states the definition.
+ */
+export function scopeEligibleDistributorOrders(query: any, distributorIds: string[], status: string = ALL_STATUS) {
+  let scoped = query
+    .eq('order_type', ELIGIBLE_ORDER_TYPE)
+    .in('buyer_org_id', distributorIds)
+  if (status !== ALL_STATUS) scoped = scoped.eq('status', status)
+  return scoped
+}
+
+/** Order value exactly as the active report source computes it. */
+export function reportOrderValue(items: OrderItemRecord[], source: 'rpc' | 'fallback'): number {
+  return items.reduce((sum, item) => {
+    if (source === 'rpc') {
+      // RPC: sum(COALESCE(line_total, qty * unit_price))
+      const total = item.line_total
+      return sum + (total === null || total === undefined ? (Number(item.qty) || 0) * (Number(item.unit_price) || 0) : Number(total) || 0)
+    }
+    return sum + lineValue(item)
+  }, 0)
+}
+
+/** One eligible order of the report window, as the Total Orders drill-down lists it. */
+export interface EligibleWindowOrder {
+  orderId: string
+  orderNo: string
+  createdAt: string
+  updatedAt: string | null
+  status: string
+  distributorId: string
+  distributorName: string
+  distributorCode: string | null
+  orderValue: number
+  lineCount: number
+  createdById: string | null
+}
+
+/**
+ * Every eligible order inside the report window [startUtc, endUtc) for the
+ * scope, newest first — the population whose count is "Total Orders".
+ */
+export async function fetchEligibleWindowOrders(
+  supabase: any,
+  input: { distributors: ReportingDistributor[]; status: string; period: DistributorReportPeriod; source: 'rpc' | 'fallback' },
+): Promise<EligibleWindowOrder[]> {
+  const { distributors, status, period, source } = input
+  if (distributors.length === 0 || period.dayCount === 0) return []
+  const byId = new Map(distributors.map((row) => [row.id, row]))
+  const orders = await readPages<any>(
+    (from, to) => scopeEligibleDistributorOrders(
+      supabase
+        .from('orders')
+        .select('id, order_no, display_doc_no, created_at, updated_at, status, buyer_org_id, created_by, order_items(qty, unit_price, line_total)'),
+      distributors.map((row) => row.id),
+      status,
+    )
+      .gte('created_at', period.startUtc)
+      .lt('created_at', period.endUtc)
+      .order('created_at', { ascending: false })
+      .range(from, to),
+    { remaining: MAX_FALLBACK_ROWS },
+    'drill-down orders',
+  )
+  return orders.map((order) => {
+    const items = (order.order_items || []) as OrderItemRecord[]
+    const distributor = byId.get(order.buyer_org_id)
+    return {
+      orderId: order.id,
+      orderNo: order.display_doc_no || order.order_no || order.id,
+      createdAt: order.created_at,
+      updatedAt: order.updated_at ?? null,
+      status: order.status || 'unknown',
+      distributorId: order.buyer_org_id,
+      distributorName: distributor?.name || 'Unknown distributor',
+      distributorCode: distributor?.orgCode ?? null,
+      orderValue: reportOrderValue(items, source),
+      lineCount: items.length,
+      createdById: order.created_by ?? null,
+    }
+  })
+}
+
+/** Narrow all-history eligible orders for a set of distributors (dates and numbers only). */
+export async function fetchEligibleOrderHistory(
+  supabase: any,
+  input: { distributorIds: string[]; status: string },
+): Promise<OrderRecord[]> {
+  if (input.distributorIds.length === 0) return []
+  return readPages<OrderRecord>(
+    (from, to) => scopeEligibleDistributorOrders(
+      supabase.from('orders').select('id, buyer_org_id, created_at, status, order_no, display_doc_no'),
+      input.distributorIds,
+      input.status,
+    )
+      .not('created_at', 'is', null)
+      .order('created_at', { ascending: true })
+      .range(from, to),
+    { remaining: MAX_FALLBACK_ROWS },
+    'drill-down order history',
+  )
+}
+
 async function readPages<T>(
   build: (from: number, to: number) => any,
   budget: { remaining: number },
@@ -454,13 +561,7 @@ export async function fetchDistributorAnalyticsAggregate(
   const distributorIds = scopedDistributors.map((row) => row.id)
   const budget = { remaining: MAX_FALLBACK_ROWS }
 
-  const withScope = (query: any) => {
-    let scoped = query
-      .eq('order_type', ELIGIBLE_ORDER_TYPE)
-      .in('buyer_org_id', distributorIds)
-    if (!isAllStatus) scoped = scoped.eq('status', status)
-    return scoped
-  }
+  const withScope = (query: any) => scopeEligibleDistributorOrders(query, distributorIds, status)
 
   const [orders, items] = await Promise.all([
     // All-history, narrow projection. "First ever order" and dormancy cannot be

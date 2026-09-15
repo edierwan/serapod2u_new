@@ -17,6 +17,7 @@ import {
   resolveStockMovementConfiguration,
   resolveStockMovementHistoryValues,
 } from '@/lib/inventory/stock-movement-history'
+import { canonicalOrderNumber, orderIdsForMovements, resolveMovementReferenceNo } from '@/lib/inventory/stock-movement-reference'
 import {
   BarChart3,
   Search,
@@ -297,6 +298,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
       // Pre-fetch variants matching the search query if present
       let matchingVariantIds: string[] = []
+      let matchingOrderIds: string[] = []
       if (searchQuery) {
         const { data: variants } = await supabase
           .from('product_variants')
@@ -306,6 +308,15 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
         if (variants) {
           matchingVariantIds = variants.map(v => v.id)
         }
+
+        // The Reference column shows the current order number (display_doc_no)
+        // while reference_no stores the legacy snapshot, so match orders too.
+        const { data: matchingOrders } = await supabase
+          .from('orders')
+          .select('id')
+          .or(`display_doc_no.ilike.%${searchQuery}%,order_no.ilike.%${searchQuery}%`)
+          .limit(100)
+        matchingOrderIds = (matchingOrders || []).map((order: any) => order.id)
       }
 
       // Try using the optimized ordered view first, fallback to base table if unavailable
@@ -333,6 +344,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
         if (matchingVariantIds.length > 0) {
           textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
+        }
+        if (matchingOrderIds.length > 0) {
+          textSearchConditions.push(`reference_id.in.(${matchingOrderIds.join(',')})`)
         }
 
         query = query.or(textSearchConditions.join(','))
@@ -409,6 +423,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           if (matchingVariantIds.length > 0) {
             textSearchConditions.push(`variant_id.in.(${matchingVariantIds.join(',')})`)
           }
+          if (matchingOrderIds.length > 0) {
+            textSearchConditions.push(`reference_id.in.(${matchingOrderIds.join(',')})`)
+          }
 
           query = query.or(textSearchConditions.join(','))
         }
@@ -454,11 +471,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       const stockConfigIds: string[] = Array.from(new Set<string>(
         data.map((item: any) => item.stock_config_id).filter((id: unknown): id is string => typeof id === 'string')
       ))
-      const orderIds: string[] = Array.from(new Set<string>(
-        data
-          .filter((item: any) => item.movement_type === 'order_fulfillment' && item.reference_id)
-          .map((item: any) => item.reference_id)
-      ))
+      // Every order-linked movement (H2M receipts, warranty bonus, D2H allocation,
+      // fulfilment, distributor receipt…) resolves its order through reference_id.
+      const orderIds: string[] = orderIdsForMovements(data)
 
       const needsVariantLookup = data.some(
         (item: any) =>
@@ -705,8 +720,8 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           stock_config_status: item.stock_config_status ?? joinedConfiguration?.status ?? null,
           unit_cost: resolvedUnitCost,
           total_cost: resolvedTotalCost,
-          reference_no: isShipment && order ? (order.display_doc_no || order.order_no) : item.reference_no,
-          distributor_order_no: order ? (order.display_doc_no || order.order_no) : null,
+          reference_no: resolveMovementReferenceNo(item, ordersMap),
+          distributor_order_no: isShipment ? canonicalOrderNumber(order) : null,
           product_variants: productVariants,
           organizations,
           manufacturers,

@@ -726,35 +726,27 @@ export function emptyAggregate(
   }
 }
 
-// ── Aggregate → report ─────────────────────────────────────────────────────
+// ── Aggregate → distributor rows ───────────────────────────────────────────
 
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+/**
+ * Which distributor rows each headline metric counts. The report's counts and
+ * the dashboard drill-down lists both filter `buildDistributorRows` with these
+ * predicates, so a card's number and the list it opens cannot disagree.
+ */
+export const DISTRIBUTOR_METRIC_PREDICATES = {
+  active: (row: DistributorRow) => row.currentOrders > 0,
+  new: (row: DistributorRow) => row.isNew,
+  returning: (row: DistributorRow) => row.isReturning,
+  inactive: (row: DistributorRow) => row.isInactiveThisPeriod,
+} as const
 
-export function buildDistributorAnalyticsReport(
+export type DistributorMetricKey = keyof typeof DISTRIBUTOR_METRIC_PREDICATES
+
+/** Classify every distributor of the aggregate for the report window. */
+export function buildDistributorRows(
   aggregate: DistributorAnalyticsAggregate,
-  now: Date = new Date(),
-): DistributorAnalyticsReport {
-  const period = resolveDistributorReportPeriod(aggregate.month, now)
-  const { dayCount } = period
-  const distributorId = aggregate.distributorId || ALL_DISTRIBUTORS
-  const isAllDistributors = distributorId === ALL_DISTRIBUTORS
-  const distributor: DistributorScope = {
-    id: distributorId,
-    name: isAllDistributors ? ALL_DISTRIBUTORS_LABEL : (aggregate.distributorName || 'Unknown distributor'),
-    isAll: isAllDistributors,
-  }
-  const statusId = aggregate.status || ALL_STATUS
-  const status: StatusScope = {
-    id: statusId,
-    label: statusId === ALL_STATUS ? ALL_STATUS_LABEL : statusLabel(statusId),
-    isAll: statusId === ALL_STATUS,
-  }
-
-  const totalOrders = aggregate.current.orders
-  const totalValue = round2(aggregate.current.orderValue)
-  const previousOrders = aggregate.previous.orders
-  const previousValue = round2(aggregate.previous.orderValue)
-
+  period: DistributorReportPeriod,
+): DistributorRow[] {
   /**
    * Recency is measured to the end of the report window, not to wall-clock
    * "now". Re-opening August in December must not turn every distributor
@@ -762,8 +754,7 @@ export function buildDistributorAnalyticsReport(
    */
   const asOf = period.asOf
 
-  // ── Rows ────────────────────────────────────────────────────────────────
-  const rows: DistributorRow[] = aggregate.distributors.map((entry) => {
+  return aggregate.distributors.map((entry) => {
     const growthPct = growthPercent(entry.currentValue, entry.previousValue)
     const orderGrowthPct = growthPercent(entry.currentOrders, entry.previousOrders)
     const cadence = cadenceDays(entry.firstOrderAt, entry.lastOrderAt, entry.lifetimeOrders)
@@ -826,11 +817,45 @@ export function buildDistributorAnalyticsReport(
     }
   })
 
-  const activeRows = rows.filter((row) => row.currentOrders > 0)
+}
+
+// ── Aggregate → report ─────────────────────────────────────────────────────
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+export function buildDistributorAnalyticsReport(
+  aggregate: DistributorAnalyticsAggregate,
+  now: Date = new Date(),
+): DistributorAnalyticsReport {
+  const period = resolveDistributorReportPeriod(aggregate.month, now)
+  const { dayCount } = period
+  const distributorId = aggregate.distributorId || ALL_DISTRIBUTORS
+  const isAllDistributors = distributorId === ALL_DISTRIBUTORS
+  const distributor: DistributorScope = {
+    id: distributorId,
+    name: isAllDistributors ? ALL_DISTRIBUTORS_LABEL : (aggregate.distributorName || 'Unknown distributor'),
+    isAll: isAllDistributors,
+  }
+  const statusId = aggregate.status || ALL_STATUS
+  const status: StatusScope = {
+    id: statusId,
+    label: statusId === ALL_STATUS ? ALL_STATUS_LABEL : statusLabel(statusId),
+    isAll: statusId === ALL_STATUS,
+  }
+
+  const totalOrders = aggregate.current.orders
+  const totalValue = round2(aggregate.current.orderValue)
+  const previousOrders = aggregate.previous.orders
+  const previousValue = round2(aggregate.previous.orderValue)
+
+  // ── Rows ────────────────────────────────────────────────────────────────
+  const rows = buildDistributorRows(aggregate, period)
+
+  const activeRows = rows.filter(DISTRIBUTOR_METRIC_PREDICATES.active)
   const activeDistributors = aggregate.current.activeDistributors || activeRows.length
-  const newDistributors = rows.filter((row) => row.isNew).length
-  const returningDistributors = rows.filter((row) => row.isReturning).length
-  const inactiveThisPeriod = rows.filter((row) => row.isInactiveThisPeriod).length
+  const newDistributors = rows.filter(DISTRIBUTOR_METRIC_PREDICATES.new).length
+  const returningDistributors = rows.filter(DISTRIBUTOR_METRIC_PREDICATES.returning).length
+  const inactiveThisPeriod = rows.filter(DISTRIBUTOR_METRIC_PREDICATES.inactive).length
   const atRisk = rows.filter((row) => row.health === 'at_risk').length
   const dormant = rows.filter((row) => row.health === 'dormant').length
   const multipleOrderDistributors = rows.filter((row) => row.currentOrders > 1).length

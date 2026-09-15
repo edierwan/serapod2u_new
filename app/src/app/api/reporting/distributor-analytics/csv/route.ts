@@ -13,7 +13,7 @@ import {
   statusLabel,
   type OrderStatus,
 } from '@/lib/reporting/distributor-analytics'
-import { mytDate } from '@/lib/reporting/distributor-analytics-source'
+import { mytDate, scopeEligibleDistributorOrders } from '@/lib/reporting/distributor-analytics-source'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,16 +88,16 @@ export async function GET(request: Request) {
     if (scoped.length > 0 && period.dayCount > 0) {
       const ids = scoped.map((row) => row.id)
       for (let from = 0; ; from += PAGE_SIZE) {
-        let query = supabase
-          .from('orders')
-          .select('id, order_no, display_doc_no, created_at, status, buyer_org_id, order_items(qty, unit_price, line_total)')
-          .eq('order_type', ELIGIBLE_ORDER_TYPE)
-          .in('buyer_org_id', ids)
+        // Same eligible-order scope as the report and its drill-downs.
+        const query = scopeEligibleDistributorOrders(
+          supabase
+            .from('orders')
+            .select('id, order_no, display_doc_no, created_at, status, buyer_org_id, order_items(qty, unit_price, line_total)'),
+          ids,
+          status as OrderStatus | typeof ALL_STATUS,
+        )
           .gte('created_at', period.startUtc)
           .lt('created_at', period.endUtc)
-        // Validated against ORDER_STATUSES above; the cast narrows it to the
-        // string-literal union the generated client expects.
-        if (status !== ALL_STATUS) query = query.eq('status', status as OrderStatus)
 
         const { data, error } = await query
           .order('created_at', { ascending: false })

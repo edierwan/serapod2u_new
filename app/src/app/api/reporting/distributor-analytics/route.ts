@@ -1,18 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import {
-  ALL_DISTRIBUTORS,
-  ALL_STATUS,
-  ORDER_STATUSES,
-  buildDistributorAnalyticsReport,
-  currentReportingMonthKey,
-  isValidMonthKey,
-} from '@/lib/reporting/distributor-analytics'
+import { buildDistributorAnalyticsReport } from '@/lib/reporting/distributor-analytics'
+import { parseDistributorReportParams } from '@/lib/reporting/distributor-report-params'
 import { fetchDistributorAnalyticsAggregate } from '@/lib/reporting/distributor-analytics-source'
 
 export const dynamic = 'force-dynamic'
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * GET /api/reporting/distributor-analytics
@@ -34,28 +26,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const currentMonth = currentReportingMonthKey()
-  const params = new URL(request.url).searchParams
-  const month = params.get('month') ?? currentMonth
-  if (!isValidMonthKey(month)) {
-    return NextResponse.json({ error: `Invalid reporting month "${month}", expected YYYY-MM` }, { status: 400 })
-  }
-  // A month beyond the running Malaysia month cannot have traded.
-  if (month > currentMonth) {
-    return NextResponse.json({ error: `Reporting month "${month}" is in the future` }, { status: 400 })
-  }
-
-  // Stable IDs only: anything that is not the `all` sentinel must be a uuid, so
-  // a distributor can never be selected by name or by free text.
-  const distributor = params.get('distributor')?.trim() || ALL_DISTRIBUTORS
-  if (distributor !== ALL_DISTRIBUTORS && !UUID.test(distributor)) {
-    return NextResponse.json({ error: `Invalid distributor "${distributor}"` }, { status: 400 })
-  }
-
-  const status = params.get('status')?.trim() || ALL_STATUS
-  if (status !== ALL_STATUS && !(ORDER_STATUSES as readonly string[]).includes(status)) {
-    return NextResponse.json({ error: `Invalid order status "${status}"` }, { status: 400 })
-  }
+  const params = parseDistributorReportParams(new URL(request.url).searchParams)
+  if (!params.ok) return NextResponse.json({ error: params.error }, { status: 400 })
+  const { month, distributor, status } = params
 
   try {
     const { aggregate, source, degraded, notice } = await fetchDistributorAnalyticsAggregate(

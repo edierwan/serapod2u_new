@@ -11,6 +11,7 @@ import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-vali
 import { getConsumerCollectScanId, getPrimaryRoadtourProgressMission, recordRoadtourProductQrMilestoneProgress } from '@/lib/roadtour/milestone'
 import { reportScanIssue } from '@/lib/server/scan-issues/logger'
 import { getCollectPointsInactiveQrMessage, isQrEligibleForCollectPoints } from '@/lib/consumer/collect-points-qr-status'
+import { resolveConsumerScanStatus } from '@/lib/consumer/qr-scan-eligibility'
 
 /**
  * POST /api/consumer/collect-points-auth
@@ -159,7 +160,10 @@ export async function POST(request: NextRequest) {
     console.log('✅ QR Code found:', qrCodeData.code)
 
     const isBufferFlag = qrCodeData.is_buffer === true
-    if (!isQrEligibleForCollectPoints({ status: qrCodeData.status, isBuffer: isBufferFlag })) {
+    // After the order's first warehouse receipt, codes still in a pre-warehouse
+    // lifecycle status (unpacked stock, buffer spares) are checked as received.
+    const scanStatus = await resolveConsumerScanStatus(supabaseAdmin, qrCodeData)
+    if (!isQrEligibleForCollectPoints({ status: scanStatus, isBuffer: isBufferFlag })) {
       console.log('❌ Invalid QR status:', qrCodeData.status, '| is_buffer:', isBufferFlag)
       const userFacingMessage = getCollectPointsInactiveQrMessage({
         isBuffer: isBufferFlag,

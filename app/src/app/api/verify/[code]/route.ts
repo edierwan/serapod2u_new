@@ -4,6 +4,7 @@ import { Database } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validateQRCodeSecurity, getBaseCode, extractQRCodeParts } from '@/lib/security/qr-hash'
 import { resolveQrProductContext } from '@/lib/qr-product-resolution'
+import { resolveConsumerScanStatus } from '@/lib/consumer/qr-scan-eligibility'
 
 type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
@@ -507,10 +508,14 @@ async function handleProductCodeVerification(
   }
 
   const status = qrCode.status as string | null
+  // After the order's first warehouse receipt, a code still in a pre-warehouse
+  // lifecycle status is checked as received_warehouse (activation trigger above
+  // still applies). The stored status is unchanged.
+  const scanStatus = await resolveConsumerScanStatus(supabaseAdmin, qrCode)
 
-  console.log('🔍 Status check:', status, 'Valid statuses:', Array.from(validStatuses))
+  console.log('🔍 Status check:', status, '→', scanStatus, 'Valid statuses:', Array.from(validStatuses))
 
-  if (!status || !validStatuses.has(status)) {
+  if (!scanStatus || !validStatuses.has(scanStatus)) {
     console.log('❌ Status not in valid set')
     return buildInvalidResponse(
       'This QR code has not been activated yet. The product is still in the manufacturing or warehouse stage.',

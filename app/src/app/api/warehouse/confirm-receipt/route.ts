@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { markWarrantyBufferReceived } from '@/lib/warehouse/qrEligibility'
+import { maxReceivableMessage, receiptLimitErrorCode, receiptLineLimit, validateReceiveNow } from '@/lib/warehouse/receipt-limits'
 
 export const dynamic = 'force-dynamic'
 
@@ -177,6 +178,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Enter a quantity greater than zero on at least one product' }, { status: 400 })
   }
 
+  // Server-side receive limit (ordered + warranty buffer allowance − posted).
+  // post_warehouse_receipt enforces the same rule atomically under its lock;
+  // this pre-check rejects a manipulated/over-limit request before anything is
+  // posted and returns a readable per-line reason. A retry of an already posted
+  // receipt (same idempotency key) skips it so the RPC can replay it.
+  const limitViolation = await findReceiptLimitViolation(supabase, {
+    orderId: order_id,
+    manufacturerOrgId,
+    idempotencyKey: idempotency_key,
+    items: cleanItems,
+  })
+  if (limitViolation) {
+    return NextResponse.json({
+      error: limitViolation.message,
+      code: limitViolation.code,
+      stage: 'validation',
+      lines: limitViolation.lines,
+      hint: 'Nothing was posted. Correct Receive Now and confirm again.',
+    }, { status: 422 })
+  }
+
   // ORCHESTRATION (decoupled & retry-safe):
   // 1. Post inventory FIRST (durable receipt + stock movements, atomic & idempotent).
   //    If this fails we have NOT started any QR work, so the user can simply retry.
@@ -261,4 +283,58 @@ export async function POST(request: NextRequest) {
     qr_already_completed: qrAlreadyDone,
     receipt: postResult,
   })
+}
+
+async function findReceiptLimitViolation(
+  supabase: any,
+  input: { orderId: string; manufacturerOrgId: string | null; idempotencyKey?: string; items: { variant_id: string; received_now: number }[] },
+): Promise<{ code: string; message: string; lines: any[] } | null> {
+  if (input.idempotencyKey) {
+    const { data: posted } = await supabase
+      .from('warehouse_receipts').select('id').eq('idempotency_key', input.idempotencyKey).maybeSingle()
+    if (posted) return null
+  }
+
+  let warrantyBonusPercent = 0
+  if (input.manufacturerOrgId) {
+    const { data: mfgOrg } = await supabase
+      .from('organizations').select('warranty_bonus').eq('id', input.manufacturerOrgId).single()
+    warrantyBonusPercent = Number((mfgOrg as any)?.warranty_bonus) || 0
+  }
+
+  const variantIds = input.items.filter((i) => i.received_now > 0).map((i) => i.variant_id)
+  if (variantIds.length === 0) return null
+  const [{ data: orderItems }, { data: receiptItems }] = await Promise.all([
+    supabase.from('order_items').select('variant_id, qty, product_variants(variant_name, product_code)').eq('order_id', input.orderId).in('variant_id', variantIds),
+    supabase.from('warehouse_receipt_items').select('variant_id, received_now').eq('order_id', input.orderId).in('variant_id', variantIds),
+  ])
+
+  const lines: any[] = []
+  for (const item of input.items) {
+    if (item.received_now <= 0) continue
+    const rows = (orderItems || []).filter((r: any) => r.variant_id === item.variant_id)
+    // Not on the order: leave the authoritative RPC error to the RPC.
+    if (rows.length === 0) continue
+    const limit = receiptLineLimit({
+      orderedQty: rows.reduce((sum: number, r: any) => sum + (Number(r.qty) || 0), 0),
+      previouslyReceived: (receiptItems || []).filter((r: any) => r.variant_id === item.variant_id).reduce((sum: number, r: any) => sum + (r.received_now || 0), 0),
+      warrantyBonusPercent,
+    })
+    if (validateReceiveNow(item.received_now, limit).valid) continue
+    const variant = (rows[0] as any).product_variants
+    lines.push({
+      variant_id: item.variant_id,
+      label: [variant?.variant_name, variant?.product_code].filter(Boolean).join(' - ') || item.variant_id,
+      received_now: item.received_now,
+      max_receive_now: limit.maxReceiveNow,
+      code: receiptLimitErrorCode(limit),
+      message: maxReceivableMessage(limit),
+    })
+  }
+  if (lines.length === 0) return null
+  return {
+    code: lines[0].code,
+    message: `Receive Now exceeds the maximum for ${lines.length === 1 ? '1 line' : `${lines.length} lines`}: ${lines.map((l) => `${l.label} — ${l.message}`).join(' ')}`,
+    lines,
+  }
 }
