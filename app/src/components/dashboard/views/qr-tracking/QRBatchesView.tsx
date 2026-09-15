@@ -26,6 +26,10 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { triggerQRGenerationWorker } from './qrGenerationWorkerClient'
+
+/** Upper bound on consecutive worker calls from one click; the cron keeps going after that. */
+const MAX_WORKER_RUNS = 120
 
 interface UserProfile {
   id: string
@@ -192,53 +196,53 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
         })
       }
 
-      let keepRunning = true
-      let runCount = 0
+      let didWork = false
 
-      while (keepRunning) {
-        runCount++
-        const response = await fetch('/api/cron/qr-generation-worker')
-        const result = await response.json()
+      for (let runCount = 1; runCount <= MAX_WORKER_RUNS; runCount++) {
+        // Throws on any non-2xx response (401/403/500/503) with the worker's message.
+        const outcome = await triggerQRGenerationWorker()
 
-        console.log(`Worker run #${runCount} result:`, result)
+        if (outcome === 'idle') {
+          if (didWork) await loadBatches(true)
+          if (showToast) {
+            toast(didWork
+              ? { title: 'Worker Run Complete', description: 'Batch processing completed.' }
+              : { title: 'Worker Idle', description: 'No queued batches found to process.' })
+          }
+          return
+        }
 
-        if (result.message === 'No batches to process') {
-          if (showToast && runCount === 1) {
+        didWork = true
+        await loadBatches(true)
+
+        if (outcome === 'complete') {
+          if (showToast) {
             toast({
-              title: 'Worker Idle',
-              description: 'No queued batches found to process.'
+              title: 'Worker Run Complete',
+              description: 'Batch processing completed.'
             })
           }
-          keepRunning = false
-        } else {
-          // If we processed something, refresh the list
-          await loadBatches(true)
-
-          // Check if we should continue
-          // The worker returns hasMore: true if it yielded
-          if (result.hasMore) {
-            // Add a small delay to prevent hammering
-            await new Promise(resolve => setTimeout(resolve, 1000))
-          } else {
-            keepRunning = false
-            if (showToast) {
-              toast({
-                title: 'Worker Run Complete',
-                description: 'Batch processing completed.'
-              })
-            }
-          }
+          return
         }
+
+        // 'progress' yielded with work left; 'busy' means another run holds the lease.
+        await new Promise(resolve => setTimeout(resolve, outcome === 'busy' ? 3000 : 1000))
+      }
+
+      if (showToast) {
+        toast({
+          title: 'Still Processing',
+          description: 'The batch is still being generated in the background. Refresh to check progress.'
+        })
       }
     } catch (error: any) {
       console.error('Worker trigger error:', error)
-      if (showToast) {
-        toast({
-          title: 'Worker Error',
-          description: 'Failed to trigger worker manually.',
-          variant: 'destructive'
-        })
-      }
+      toast({
+        title: 'Worker Error',
+        description: `${error?.message || 'Failed to run the QR worker.'} The batch stays in the queue; use Run Worker to retry.`,
+        variant: 'destructive'
+      })
+      await loadBatches(true)
     } finally {
       setWorkerRunning(false)
     }
