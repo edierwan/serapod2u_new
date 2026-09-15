@@ -86,48 +86,36 @@ export function requireCronAuth(request: NextRequest, workerName: string): NextR
   return null
 }
 
-export interface CronOrSessionAuthOptions {
-  /**
-   * When set, the session path additionally requires an active user whose
-   * organization's org_type_code is in this list. Cron callers are unaffected.
-   */
-  allowedOrgTypes?: readonly string[]
-}
-
-/** True only for a well-formed `Bearer <CRON_SECRET>` matching the configured secret. */
-function hasValidCronCredential(request: NextRequest): boolean {
-  const secret = getCronSecret()
-  const header = request.headers.get('authorization')
-  if (!secret || !header) return false
-
-  const separatorIndex = header.indexOf(' ')
-  if (separatorIndex <= 0) return false
-
-  const scheme = header.slice(0, separatorIndex)
-  const token = header.slice(separatorIndex + 1).trim()
-  return scheme.toLowerCase() === 'bearer' && token.length > 0 && safeEqual(token, secret)
-}
-
 /**
  * Dual-path guard for workers that are ALSO triggered from the authenticated UI.
  *
- * `warehouse-receiving-worker` and `qr-generation-worker` are fetched by
- * dashboard views from the browser, which cannot send CRON_SECRET (that would
- * ship the credential to the client). Requiring strict cron auth there breaks
- * those flows, so this accepts EITHER:
+ * `warehouse-receiving-worker` is fetched by the warehouse dashboard from the
+ * browser, which cannot send CRON_SECRET (that would ship the credential to the
+ * client). Requiring strict cron auth there would break the receiving flow, so
+ * this accepts EITHER:
  *   - a valid `Authorization: Bearer <CRON_SECRET>` (server/cron caller), or
- *   - a signed-in Supabase session (same-origin fetch sends the cookies),
- *     optionally restricted to `allowedOrgTypes` (403 otherwise)
+ *   - a signed-in Supabase session (same-origin fetch sends the cookies)
  *
  * Anonymous callers are still rejected.
  */
 export async function requireCronOrSessionAuth(
   request: NextRequest,
-  workerName: string,
-  options: CronOrSessionAuthOptions = {}
+  workerName: string
 ): Promise<NextResponse | null> {
+  const secret = getCronSecret()
+  const header = request.headers.get('authorization')
+
   // Path 1: a correct cron credential is sufficient on its own.
-  if (hasValidCronCredential(request)) return null
+  if (secret && header) {
+    const separatorIndex = header.indexOf(' ')
+    if (separatorIndex > 0) {
+      const scheme = header.slice(0, separatorIndex)
+      const token = header.slice(separatorIndex + 1).trim()
+      if (scheme.toLowerCase() === 'bearer' && token.length > 0 && safeEqual(token, secret)) {
+        return null
+      }
+    }
+  }
 
   // Path 2: an authenticated user session.
   try {
@@ -137,24 +125,7 @@ export async function requireCronOrSessionAuth(
       data: { user },
       error,
     } = await supabase.auth.getUser()
-
-    if (!error && user) {
-      const allowedOrgTypes = options.allowedOrgTypes
-      if (!allowedOrgTypes || allowedOrgTypes.length === 0) return null
-
-      const { data: profile, error: profileError } = await (supabase as any)
-        .from('users')
-        .select('is_active, organizations:organization_id(org_type_code)')
-        .eq('id', user.id)
-        .single()
-
-      const orgType = String(profile?.organizations?.org_type_code || '').toUpperCase()
-      const allowed = allowedOrgTypes.map((type) => type.toUpperCase())
-      if (!profileError && profile?.is_active !== false && allowed.includes(orgType)) return null
-
-      console.warn(`[CronAuth] ${workerName}: session user's organization is not permitted to run this worker`)
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    if (!error && user) return null
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.warn(`[CronAuth] ${workerName}: session check failed (${message})`)

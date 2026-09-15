@@ -26,9 +26,9 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
-import { triggerQRGenerationWorker } from './qrGenerationWorkerClient'
+import { triggerQRBatchProcessing } from './qrBatchProcessingClient'
 
-/** Upper bound on consecutive worker calls from one click; the cron keeps going after that. */
+/** Upper bound on processing calls per batch from one click; the cron keeps going after that. */
 const MAX_WORKER_RUNS = 120
 
 interface UserProfile {
@@ -184,62 +184,57 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     }
   }
 
-  const runWorker = async (showToast = true) => {
+  /**
+   * Fast path / debug fallback: process specific batches this organization
+   * owns via /api/qr-batches/process. The scheduled cron processes queued
+   * batches on its own; this only saves waiting for the next tick.
+   */
+  const runWorker = async (batchIds: string[], showToast = true) => {
     if (workerRunning) return
+
+    if (batchIds.length === 0) {
+      if (showToast) {
+        toast({ title: 'Worker Idle', description: 'No queued batches found to process.' })
+      }
+      return
+    }
 
     try {
       setWorkerRunning(true)
       if (showToast) {
         toast({
           title: 'Starting Worker',
-          description: 'Triggering background worker...'
+          description: 'Processing queued batch...'
         })
       }
 
-      let didWork = false
+      let finished = 0
+      for (const batchId of batchIds) {
+        for (let runCount = 1; runCount <= MAX_WORKER_RUNS; runCount++) {
+          // Throws on any non-2xx response (401/403/404/409/500/503) with the server's message.
+          const outcome = await triggerQRBatchProcessing(batchId)
+          await loadBatches(true)
 
-      for (let runCount = 1; runCount <= MAX_WORKER_RUNS; runCount++) {
-        // Throws on any non-2xx response (401/403/500/503) with the worker's message.
-        const outcome = await triggerQRGenerationWorker()
-
-        if (outcome === 'idle') {
-          if (didWork) await loadBatches(true)
-          if (showToast) {
-            toast(didWork
-              ? { title: 'Worker Run Complete', description: 'Batch processing completed.' }
-              : { title: 'Worker Idle', description: 'No queued batches found to process.' })
+          if (outcome === 'complete' || outcome === 'idle') {
+            finished++
+            break
           }
-          return
+
+          // 'progress' yielded with work left; 'busy' means another run (usually the cron) holds the lease.
+          await new Promise(resolve => setTimeout(resolve, outcome === 'busy' ? 3000 : 1000))
         }
-
-        didWork = true
-        await loadBatches(true)
-
-        if (outcome === 'complete') {
-          if (showToast) {
-            toast({
-              title: 'Worker Run Complete',
-              description: 'Batch processing completed.'
-            })
-          }
-          return
-        }
-
-        // 'progress' yielded with work left; 'busy' means another run holds the lease.
-        await new Promise(resolve => setTimeout(resolve, outcome === 'busy' ? 3000 : 1000))
       }
 
       if (showToast) {
-        toast({
-          title: 'Still Processing',
-          description: 'The batch is still being generated in the background. Refresh to check progress.'
-        })
+        toast(finished === batchIds.length
+          ? { title: 'Worker Run Complete', description: 'Batch processing completed.' }
+          : { title: 'Still Processing', description: 'The batch is still being generated in the background. Refresh to check progress.' })
       }
     } catch (error: any) {
       console.error('Worker trigger error:', error)
       toast({
         title: 'Worker Error',
-        description: `${error?.message || 'Failed to run the QR worker.'} The batch stays in the queue; use Run Worker to retry.`,
+        description: `${error?.message || 'Failed to process the QR batch.'} The batch stays in the queue for the scheduled worker; use Run Worker to retry.`,
         variant: 'destructive'
       })
       await loadBatches(true)
@@ -248,7 +243,8 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
     }
   }
 
-  const handleTriggerWorker = () => runWorker(true)
+  const handleTriggerWorker = () =>
+    runWorker(batches.filter(b => ['queued', 'processing'].includes(b.status)).map(b => b.id), true)
 
   const handleOrderSelect = (orderId: string) => {
     setSelectedOrderId(orderId)
@@ -288,8 +284,11 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
       await loadBatches()
       await loadApprovedOrders() // Refresh approved orders list
 
-      // Automatically start the worker
-      runWorker(true)
+      // Process this batch right away instead of waiting for the next cron tick.
+      const queuedBatchId = result.batch_id || result.batch?.id
+      if (queuedBatchId && ['queued', 'processing'].includes(result.status || result.batch?.status || 'queued')) {
+        runWorker([queuedBatchId], true)
+      }
     } catch (error: any) {
       toast({
         title: 'Error',

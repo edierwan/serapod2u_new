@@ -3,10 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const SECRET = 'qr-worker-cron-secret-value'
 
-const authGetUser = vi.fn()
-const profileSingle = vi.fn()
 const createServerClientMock = vi.fn()
 const withWorkerLeaseMock = vi.fn()
+const runQRBatchGenerationMock = vi.fn()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: createServerClientMock,
@@ -21,27 +20,20 @@ vi.mock('@/lib/cron/lease', () => ({
   withWorkerLease: withWorkerLeaseMock,
 }))
 
-vi.mock('@/lib/notifications/supplyChainEventQueue', () => ({ queueNotificationEvent: vi.fn() }))
-vi.mock('@/lib/qr-generator', () => ({ generateQRBatch: vi.fn() }))
-vi.mock('@/lib/excel-generator', () => ({ generateQRExcel: vi.fn(), generateQRExcelFilename: vi.fn() }))
+vi.mock('@/lib/qr-batch-generation', () => ({
+  runQRBatchGeneration: runQRBatchGenerationMock,
+}))
 
-function req(authorization?: string): NextRequest {
+function req(authorization?: string, cookie?: string): NextRequest {
   const headers = new Headers()
   if (authorization !== undefined) headers.set('authorization', authorization)
+  if (cookie !== undefined) headers.set('cookie', cookie)
   return new NextRequest('https://stg.serapod2u.com/api/cron/qr-generation-worker', { headers })
-}
-
-function signedInAs(orgType: string | null, isActive = true) {
-  authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
-  profileSingle.mockResolvedValue({
-    data: { is_active: isActive, organizations: orgType ? { org_type_code: orgType } : null },
-    error: null,
-  })
 }
 
 const originalEnv = { ...process.env }
 
-describe('GET /api/cron/qr-generation-worker authorization', () => {
+describe('GET /api/cron/qr-generation-worker authorization (cron-only, global queue)', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
@@ -49,18 +41,8 @@ describe('GET /api/cron/qr-generation-worker authorization', () => {
     process.env.CRON_SECRET = SECRET
     delete process.env.WORKER_SECRET
 
-    authGetUser.mockResolvedValue({ data: { user: null }, error: null })
-    createServerClientMock.mockResolvedValue({
-      auth: { getUser: authGetUser },
-      from: (table: string) => {
-        if (table !== 'users') throw new Error(`unexpected table ${table}`)
-        return { select: () => ({ eq: () => ({ single: profileSingle }) }) }
-      },
-    })
-    withWorkerLeaseMock.mockResolvedValue({
-      status: 'ran',
-      result: NextResponse.json({ message: 'No batches to process' }),
-    })
+    runQRBatchGenerationMock.mockResolvedValue(NextResponse.json({ message: 'No batches to process' }))
+    withWorkerLeaseMock.mockImplementation(async (_client, _name, fn) => ({ status: 'ran', result: await fn() }))
   })
 
   afterEach(() => {
@@ -73,13 +55,14 @@ describe('GET /api/cron/qr-generation-worker authorization', () => {
     return GET(request)
   }
 
-  it('runs for the scheduler with a valid CRON_SECRET, without consulting a session', async () => {
+  it('runs the global queue for the scheduler with a valid CRON_SECRET', async () => {
     const res = await callWorker(req(`Bearer ${SECRET}`))
 
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ message: 'No batches to process' })
-    expect(withWorkerLeaseMock).toHaveBeenCalledTimes(1)
-    expect(createServerClientMock).not.toHaveBeenCalled()
+    expect(withWorkerLeaseMock).toHaveBeenCalledWith(expect.anything(), 'qr-generation-worker', expect.any(Function))
+    expect(runQRBatchGenerationMock).toHaveBeenCalledTimes(1)
+    expect(runQRBatchGenerationMock.mock.calls[0][1]).toEqual({ notificationBaseUrl: 'https://stg.serapod2u.com' })
   })
 
   it('rejects an invalid cron credential with 401 and does not run', async () => {
@@ -88,6 +71,7 @@ describe('GET /api/cron/qr-generation-worker authorization', () => {
     expect(res.status).toBe(401)
     await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
     expect(withWorkerLeaseMock).not.toHaveBeenCalled()
+    expect(runQRBatchGenerationMock).not.toHaveBeenCalled()
   })
 
   it('rejects an anonymous request with 401 and does not run', async () => {
@@ -97,60 +81,11 @@ describe('GET /api/cron/qr-generation-worker authorization', () => {
     expect(withWorkerLeaseMock).not.toHaveBeenCalled()
   })
 
-  it('rejects anonymous requests even when no CRON_SECRET is configured', async () => {
-    delete process.env.CRON_SECRET
-    vi.stubEnv('NODE_ENV', 'development')
-
-    const res = await callWorker(req())
+  it('rejects a signed-in browser session: sessions cannot drive the global queue', async () => {
+    const res = await callWorker(req(undefined, 'sb-access-token=a-real-looking-session'))
 
     expect(res.status).toBe(401)
-    expect(withWorkerLeaseMock).not.toHaveBeenCalled()
-  })
-
-  it.each(['MFG', 'HQ', 'mfg'])('runs for a signed-in %s user session (browser trigger, no secret)', async (orgType) => {
-    signedInAs(orgType)
-
-    const res = await callWorker(req())
-
-    expect(res.status).toBe(200)
-    expect(withWorkerLeaseMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('still accepts a valid session when the browser request carries no cron header at all', async () => {
-    signedInAs('MFG')
-
-    const res = await callWorker(req('Bearer wrong-but-session-is-valid'))
-
-    expect(res.status).toBe(200)
-    expect(withWorkerLeaseMock).toHaveBeenCalledTimes(1)
-  })
-
-  it.each(['SHOP', 'DIST', 'WH', null])('forbids a signed-in user from org type %s', async (orgType) => {
-    signedInAs(orgType)
-
-    const res = await callWorker(req())
-
-    expect(res.status).toBe(403)
-    await expect(res.json()).resolves.toEqual({ error: 'Forbidden' })
-    expect(withWorkerLeaseMock).not.toHaveBeenCalled()
-  })
-
-  it('forbids an inactive manufacturer user', async () => {
-    signedInAs('MFG', false)
-
-    const res = await callWorker(req())
-
-    expect(res.status).toBe(403)
-    expect(withWorkerLeaseMock).not.toHaveBeenCalled()
-  })
-
-  it('forbids a session whose profile cannot be loaded', async () => {
-    authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
-    profileSingle.mockResolvedValue({ data: null, error: { message: 'not found' } })
-
-    const res = await callWorker(req())
-
-    expect(res.status).toBe(403)
+    expect(createServerClientMock).not.toHaveBeenCalled()
     expect(withWorkerLeaseMock).not.toHaveBeenCalled()
   })
 

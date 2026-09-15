@@ -1,5 +1,6 @@
 import cron from 'node-cron'
 import { randomUUID } from 'node:crypto'
+import { remoteDbWorkerBlockReason, REMOTE_DB_WORKER_OVERRIDE_ENV } from './cron/remote-db-guard'
 
 /**
  * Internal Cron Scheduler for Coolify / self-hosted deployments.
@@ -253,6 +254,20 @@ export function startCronScheduler(): void {
     if (!registry.disabledNoticeLogged) {
       registry.disabledNoticeLogged = true
       console.log('[Cron] Internal cron workers DISABLED by DISABLE_INTERNAL_CRON_WORKERS — no workers registered')
+    }
+    return
+  }
+
+  // Same principle for a local process pointed at a shared remote database:
+  // register nothing unless explicitly overridden. Each worker route also
+  // enforces this, so a manual call cannot bypass it.
+  const remoteDbBlock = remoteDbWorkerBlockReason()
+  if (remoteDbBlock) {
+    if (!registry.disabledNoticeLogged) {
+      registry.disabledNoticeLogged = true
+      console.log(
+        `[Cron] Internal cron workers NOT registered: ${remoteDbBlock} (set ${REMOTE_DB_WORKER_OVERRIDE_ENV}=true to override)`
+      )
     }
     return
   }
