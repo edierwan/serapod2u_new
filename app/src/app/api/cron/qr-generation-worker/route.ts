@@ -3,13 +3,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { generateQRBatch } from '@/lib/qr-generator'
 import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
-import { requireCronAuth } from '@/lib/cron/auth'
+import { requireCronOrSessionAuth } from '@/lib/cron/auth'
 import { WORKER_NAMES, withWorkerLease } from '@/lib/cron/lease'
 
 /**
  * CRON: /api/cron/qr-generation-worker
  * Background worker to process queued QR batches
- * Runs every minute via internal cron scheduler
+ * Runs every minute via internal cron scheduler, and is also triggered by
+ * QRBatchesView right after a batch is queued.
  * Uses admin client (service_role) since cron has no user session.
  */
 export const dynamic = 'force-dynamic'
@@ -17,9 +18,19 @@ export const maxDuration = 60 // Keep each run short to avoid timeouts
 
 const WORKER = WORKER_NAMES.qrGeneration
 
+/**
+ * Organizations whose signed-in users may trigger this worker from the UI.
+ * Matches who can reach QR batch generation (manufacturer scan access). The
+ * worker takes no input and only drains the existing queue under the lease.
+ */
+const QR_WORKER_SESSION_ORG_TYPES = ['HQ', 'MFG'] as const
+
 export async function GET(request: NextRequest) {
-  // Strict cron auth: a missing/!bearer/wrong credential is always 401.
-  const unauthorized = requireCronAuth(request, WORKER)
+  // Cron sends Bearer CRON_SECRET; the browser sends its session cookies.
+  // Anonymous or wrong-credential callers get 401, other org types 403.
+  const unauthorized = await requireCronOrSessionAuth(request, WORKER, {
+    allowedOrgTypes: QR_WORKER_SESSION_ORG_TYPES,
+  })
   if (unauthorized) return unauthorized
 
   const supabase = createAdminClient()

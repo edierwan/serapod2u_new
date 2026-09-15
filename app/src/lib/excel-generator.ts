@@ -16,18 +16,51 @@ import archiver, { type Archiver } from 'archiver'
 import { GeneratedMasterCode, GeneratedQRCode } from './qr-generator'
 import type { NextResponse } from 'next/server'
 
+/** Used only when the environment configures no app URL at all. */
+export const DEFAULT_TRACKING_BASE_URL = 'https://www.serapod2u.com'
+
 /**
- * Get the base URL for QR code tracking
+ * Normalise a configured app URL into an origin-style base with no trailing
+ * slash, so `${base}/track/...` never produces `//track`. Returns null for
+ * blank or unparseable values.
  */
+export function normalizeTrackingBaseUrl(rawUrl: string | undefined | null): string | null {
+  const trimmed = rawUrl?.trim()
+  if (!trimmed) return null
+
+  try {
+    const parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    const path = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.protocol}//${parsed.host}${path}`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get the base URL for QR code tracking.
+ *
+ * Environment-driven, never hardcoded per environment: local development sets
+ * NEXT_PUBLIC_APP_URL=http://localhost:3000, staging https://stg.serapod2u.com,
+ * production its own domain. The defaults reference process.env.NEXT_PUBLIC_*
+ * literally so Next.js still inlines the build-time value.
+ */
+export function resolveTrackingBaseUrl(
+  appUrl: string | undefined = process.env.NEXT_PUBLIC_APP_URL,
+  siteUrl: string | undefined = process.env.NEXT_PUBLIC_SITE_URL
+): string {
+  return normalizeTrackingBaseUrl(appUrl) ?? normalizeTrackingBaseUrl(siteUrl) ?? DEFAULT_TRACKING_BASE_URL
+}
+
 function getBaseURL(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://www.serapod2u.com'
+  return resolveTrackingBaseUrl()
 }
 
 /**
  * Generate tracking URL for a QR code
  */
-function generateTrackingURL(code: string, type: 'product' | 'master'): string {
-  const baseUrl = getBaseURL()
+export function generateTrackingURL(code: string, type: 'product' | 'master', baseUrl: string = getBaseURL()): string {
   return `${baseUrl}/track/${type}/${code}`
 }
 
