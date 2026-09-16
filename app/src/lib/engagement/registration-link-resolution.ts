@@ -77,18 +77,8 @@ export async function resolveRegistrationLinkSelection(
 
     organizationName = organization.org_name
     shopDisplayName = buildShopDisplayName(organization.org_name, organization.branch)
-    const allowedShopNames = new Set([
-      normalizeLabel(shopDisplayName),
-      normalizeLabel(organization.org_name),
-    ].filter(Boolean))
-
-    if (submittedShopName && !allowedShopNames.has(submittedShopName)) {
-      return {
-        ok: false,
-        field: 'shop',
-        error: INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
-      }
-    }
+    // Shop id is authoritative. The typed label can be truncated by the picker
+    // maxLength, so do not reject a valid SHOP organization on a name mismatch.
   } else if (pendingShopRequest) {
     const pendingShopValidation = validateShopRequestForm(pendingShopRequest)
     if (!pendingShopValidation.valid) {
