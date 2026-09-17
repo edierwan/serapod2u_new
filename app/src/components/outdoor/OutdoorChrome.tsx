@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react'
+import { LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
@@ -15,11 +15,6 @@ const NAV = [
   { href: '/outdoor/contact', label: 'Contact' },
 ]
 
-const PROMO = [
-  { href: '/outdoor/shop', label: 'Shop Outdoor' },
-  { href: '/outdoor/track', label: 'Track order' },
-]
-
 const SOCIALS = [
   { label: 'Instagram', href: process.env.NEXT_PUBLIC_OUTDOOR_INSTAGRAM },
   { label: 'Facebook', href: process.env.NEXT_PUBLIC_OUTDOOR_FACEBOOK },
@@ -28,40 +23,6 @@ const SOCIALS = [
 
 const LOGIN_HREF = `/outdoor/login?next=${encodeURIComponent('/outdoor/account')}`
 const SIGNUP_HREF = `/outdoor/register?next=${encodeURIComponent('/outdoor/account')}`
-
-function PromoBar() {
-  const [i, setI] = useState(0)
-  const item = PROMO[i]
-
-  useEffect(() => {
-    const id = window.setInterval(() => setI((n) => (n + 1) % PROMO.length), 4500)
-    return () => window.clearInterval(id)
-  }, [])
-
-  return (
-    <div className="flex h-9 items-center justify-center gap-2 text-[12px] sm:text-[13px] text-[var(--out-muted)]">
-      <button
-        type="button"
-        aria-label="Previous"
-        className="p-1 hover:text-[var(--out-ink)]"
-        onClick={() => setI((n) => (n - 1 + PROMO.length) % PROMO.length)}
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </button>
-      <Link href={item.href} className="font-medium text-[var(--out-ink)] hover:text-[var(--out-moss)]">
-        {item.label}
-      </Link>
-      <button
-        type="button"
-        aria-label="Next"
-        className="p-1 hover:text-[var(--out-ink)]"
-        onClick={() => setI((n) => (n + 1) % PROMO.length)}
-      >
-        <ChevronRight className="h-4 w-4" />
-      </button>
-    </div>
-  )
-}
 
 export default function OutdoorChrome({ children }: { children: React.ReactNode }) {
   const { totalItems } = useCart()
@@ -94,6 +55,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   }, [])
 
   const signedIn = Boolean(authEmail)
+  const hideStoreMarketing = pathname.startsWith('/outdoor/fulfilment')
 
   const signOut = async () => {
     const supabase = createClient()
@@ -104,83 +66,80 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
 
   return (
     <div className="min-h-screen min-w-0 flex flex-col bg-[var(--out-cream)] overflow-x-hidden">
-      <div className="sticky top-0 z-40 bg-[var(--out-cream)]/95 backdrop-blur-md">
-        <PromoBar />
-        <header className="border-b border-[var(--out-line)]">
-          <div className="mx-auto max-w-6xl h-12 sm:h-16 px-3 sm:px-8 grid grid-cols-[1fr_auto_1fr] items-center md:flex md:gap-3 text-[var(--out-ink)]">
-            <div className="flex items-center gap-0.5 md:contents">
-              <button
-                type="button"
-                className="md:hidden p-2 -ml-1"
-                aria-label="Open menu"
-                onClick={() => setOpen(true)}
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              <Link href="/outdoor/shop" className="p-2 md:hidden" aria-label="Search products">
-                <Search className="h-5 w-5" />
-              </Link>
-            </div>
-
-            <Link href="/outdoor" className="flex min-w-0 items-center justify-center px-1" aria-label="SeraOutdoor">
-              <OutdoorBrandMark className="h-5 w-auto max-w-[9.5rem] object-contain sm:h-7 sm:max-w-[13rem]" priority />
+      <header className="sticky top-0 z-40 bg-[var(--out-bark)] text-[var(--out-cream)]">
+        <div className="mx-auto max-w-6xl h-12 sm:h-16 px-3 sm:px-8 grid grid-cols-[1fr_auto_1fr] items-center md:flex md:gap-3">
+          <div className="flex items-center gap-0.5 md:contents">
+            <button
+              type="button"
+              className="md:hidden p-2 -ml-1"
+              aria-label="Open menu"
+              onClick={() => setOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link href="/outdoor/shop" className="p-2 md:hidden" aria-label="Search products">
+              <Search className="h-5 w-5" />
             </Link>
+          </div>
 
-            <nav className="hidden md:flex items-center gap-1 ml-2 text-sm" aria-label="Primary">
-              {NAV.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`relative px-3 py-2 font-medium transition-colors ${
-                      active ? 'text-[var(--out-ink)]' : 'text-[var(--out-muted)] hover:text-[var(--out-ink)]'
-                    }`}
-                  >
-                    {item.label}
-                    {active ? (
-                      <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-[var(--out-moss)]" />
-                    ) : null}
-                  </Link>
-                )
-              })}
-            </nav>
+          <Link href="/outdoor" className="flex min-w-0 items-center justify-center px-1" aria-label="SeraOutdoor">
+            <OutdoorBrandMark variant="onDark" className="h-5 w-auto max-w-[9.5rem] object-contain sm:h-7 sm:max-w-[13rem]" priority />
+          </Link>
 
-            <div className="flex items-center justify-end gap-0.5 sm:gap-1 md:ml-auto">
-              <Link href="/outdoor/shop" className="p-2 hidden md:inline-flex hover:text-[var(--out-moss)]" aria-label="Search products">
-                <Search className="h-5 w-5" />
-              </Link>
-              {authReady && signedIn ? (
-                <>
-                  <Link href="/outdoor/account" className="p-2 hover:text-[var(--out-moss)]" aria-label="My account">
-                    <User className="h-5 w-5" />
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => void signOut()}
-                    className="hidden sm:inline-flex p-2 hover:text-[var(--out-moss)]"
-                    aria-label="Sign out"
-                  >
-                    <LogOut className="h-5 w-5" />
-                  </button>
-                </>
-              ) : (
-                <Link href={LOGIN_HREF} className="p-2 hover:text-[var(--out-moss)]" aria-label="Sign in">
+          <nav className="hidden md:flex items-center gap-1 ml-2 text-sm" aria-label="Primary">
+            {NAV.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`relative px-3 py-2 font-medium transition-colors ${
+                    active ? 'text-[var(--out-cream)]' : 'text-[var(--out-cream)]/70 hover:text-[var(--out-cream)]'
+                  }`}
+                >
+                  {item.label}
+                  {active ? (
+                    <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-[var(--out-moss)]" />
+                  ) : null}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="flex items-center justify-end gap-0.5 sm:gap-1 md:ml-auto">
+            <Link href="/outdoor/shop" className="p-2 hidden md:inline-flex hover:text-white" aria-label="Search products">
+              <Search className="h-5 w-5" />
+            </Link>
+            {authReady && signedIn ? (
+              <>
+                <Link href="/outdoor/account" className="p-2 hover:text-white" aria-label="My account">
                   <User className="h-5 w-5" />
                 </Link>
-              )}
-              <Link href="/outdoor/cart" className="relative p-2 hover:text-[var(--out-moss)]" aria-label="Cart">
-                <ShoppingBag className="h-5 w-5" />
-                {totalItems > 0 ? (
-                  <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--out-ember)] text-white text-[10px] font-semibold flex items-center justify-center px-1">
-                    {totalItems}
-                  </span>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  className="hidden sm:inline-flex p-2 hover:text-white"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="h-5 w-5" />
+                </button>
+              </>
+            ) : (
+              <Link href={LOGIN_HREF} className="p-2 hover:text-white" aria-label="Sign in">
+                <User className="h-5 w-5" />
               </Link>
-            </div>
+            )}
+            <Link href="/outdoor/cart" className="relative p-2 hover:text-white" aria-label="Cart">
+              <ShoppingBag className="h-5 w-5" />
+              {totalItems > 0 ? (
+                <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--out-ember)] text-white text-[10px] font-semibold flex items-center justify-center px-1">
+                  {totalItems}
+                </span>
+              ) : null}
+            </Link>
           </div>
-        </header>
-      </div>
+        </div>
+      </header>
 
       {open ? (
         <div className="fixed inset-0 z-50 md:hidden">
@@ -232,24 +191,29 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
 
       <main className="min-w-0 flex-1">{children}</main>
 
-      <footer className="mt-auto bg-white">
-        <div className="mx-auto max-w-6xl px-5 sm:px-8 py-12 grid gap-10 lg:grid-cols-[1.2fr_1fr] items-end border-b border-[var(--out-line)]">
-          <div>
-            <h2 className="font-display text-2xl tracking-tight">Get updates</h2>
-            <p className="mt-2 text-sm text-[var(--out-muted)] max-w-md">
-              Leave your email for Outdoor product news.
-            </p>
+      {hideStoreMarketing ? null : (
+      <section className="px-4 sm:px-8 pb-8">
+        <div className="mx-auto max-w-xl rounded-[1.75rem] bg-[var(--out-bark)] px-6 py-8 text-center sm:px-10 sm:py-10">
+          <h2 className="font-display text-3xl tracking-tight text-[var(--out-cream)] sm:text-4xl">Get Updates</h2>
+          <p className="mt-2 text-sm text-[var(--out-cream)]/75">
+            Leave your email for Outdoor product news
+          </p>
+          <div className="mt-5">
+            <OutdoorNewsletter variant="onDark" />
           </div>
-          <OutdoorNewsletter />
         </div>
-        <div className="mx-auto max-w-6xl px-5 sm:px-8 py-14 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+      </section>
+      )}
+
+      <footer className="mt-auto bg-[var(--out-bark)] text-[var(--out-cream)]">
+        <div className="mx-auto max-w-6xl px-5 sm:px-8 py-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <OutdoorBrandMark className="h-8 w-auto" />
-            <p className="mt-3 text-sm text-[var(--out-muted)] leading-relaxed max-w-xs">
+            <OutdoorBrandMark variant="onDark" className="h-8 w-auto" />
+            <p className="mt-3 text-sm text-[var(--out-cream)]/70 leading-relaxed max-w-xs">
               Outdoor gear from SeraOutdoor.
             </p>
             {SOCIALS.length > 0 ? (
-              <ul className="mt-5 flex flex-wrap gap-3 text-sm text-[var(--out-ink)]">
+              <ul className="mt-5 flex flex-wrap gap-3 text-sm">
                 {SOCIALS.map((s) => (
                   <li key={s.label}>
                     <a href={s.href} target="_blank" rel="noreferrer" className="hover:text-[var(--out-moss)]">
@@ -261,7 +225,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             ) : null}
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-muted)] mb-4">Shop</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 mb-4">Shop</p>
             <ul className="space-y-2.5 text-sm">
               <li><Link href="/outdoor/shop" className="hover:text-[var(--out-moss)]">All products</Link></li>
               <li><Link href="/outdoor/about" className="hover:text-[var(--out-moss)]">About</Link></li>
@@ -270,7 +234,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             </ul>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-muted)] mb-4">Help</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 mb-4">Help</p>
             <ul className="space-y-2.5 text-sm">
               <li><Link href="/outdoor/shipping-returns" className="hover:text-[var(--out-moss)]">Shipping & Returns</Link></li>
               <li><Link href="/outdoor/privacy" className="hover:text-[var(--out-moss)]">Privacy</Link></li>
@@ -279,7 +243,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             </ul>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-muted)] mb-4">Account</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 mb-4">Account</p>
             <ul className="space-y-2.5 text-sm">
               <li><Link href="/outdoor/track" className="hover:text-[var(--out-moss)]">Track order</Link></li>
               {signedIn ? (
@@ -300,7 +264,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             </ul>
           </div>
         </div>
-        <div className="border-t border-[var(--out-line)] px-5 sm:px-8 py-4 text-center text-[11px] text-[var(--out-muted)]">
+        <div className="border-t border-white/10 px-5 sm:px-8 py-4 text-center text-[11px] text-[var(--out-cream)]/50">
           © {new Date().getFullYear()} SeraOutdoor
         </div>
       </footer>

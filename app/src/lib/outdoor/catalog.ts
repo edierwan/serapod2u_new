@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { outdoorFallbackSwatches, outdoorSpecLabel, outdoorStaticImage } from '@/lib/outdoor/merch'
 import {
   listProducts,
   listCategories,
@@ -16,6 +17,20 @@ export type OutdoorCatalogScope = {
 
 function isOutdoorName(name: string | null | undefined) {
   return /outdoor/i.test(String(name || '').trim())
+}
+
+function withOutdoorAppearance(product: StorefrontProduct): StorefrontProduct {
+  const specLabel = product.specLabel || outdoorSpecLabel(product.product_name)
+  const parsed = (product.colorSwatches || []).map((swatch) => ({
+    ...swatch,
+    imageUrl: outdoorStaticImage(product.product_name, swatch.hex) || swatch.imageUrl,
+  }))
+  const colorSwatches = parsed.length > 0 ? parsed : outdoorFallbackSwatches(product.product_name)
+  return {
+    ...product,
+    specLabel,
+    colorSwatches: colorSwatches.some((s) => s.imageUrl) ? colorSwatches : product.colorSwatches,
+  }
 }
 
 /**
@@ -127,7 +142,7 @@ export async function listOutdoorProducts(params: {
     } else if (params.sort === 'name_asc') {
       products.sort((a, b) => a.product_name.localeCompare(b.product_name))
     }
-    products = products.slice(0, limit)
+    products = products.slice(0, limit).map(withOutdoorAppearance)
     return { products, total: products.length, page: 1, limit, scope }
   }
 
@@ -148,7 +163,7 @@ export async function listOutdoorProducts(params: {
   })
 
   return {
-    products,
+    products: products.map(withOutdoorAppearance),
     total: products.length,
     page: result.page,
     limit: result.limit,
@@ -184,4 +199,22 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
 
   if (isOutdoorName(product.category_name) || isOutdoorName(product.brand_name)) return product
   return null
+}
+
+export function outdoorCategoryNavFromProducts(products: StorefrontProduct[]) {
+  const find = (...needles: string[]) =>
+    products.find((p) => needles.some((n) => p.product_name.toLowerCase().includes(n))) || null
+  const hrefFor = (product: StorefrontProduct | null) => (product ? `/outdoor/shop/${product.id}` : '/outdoor/shop')
+
+  return [
+    { key: 'new', label: 'New in', href: '/outdoor/shop?sort=newest', icon: 'new' as const },
+    { key: 'chair', label: 'Moon Chair', href: hrefFor(find('chair', 'moonchair')), icon: 'chair' as const },
+    { key: 'tumbler', label: 'Tumbler', href: hrefFor(find('tumbler')), icon: 'tumbler' as const },
+    { key: 'mat', label: 'Camp Mat', href: hrefFor(find('mat', 'mattress', 'pad')), icon: 'mat' as const },
+  ]
+}
+
+export async function getOutdoorCategoryNav() {
+  const { products } = await listOutdoorProducts({ sort: 'newest', limit: 24 })
+  return outdoorCategoryNavFromProducts(products)
 }

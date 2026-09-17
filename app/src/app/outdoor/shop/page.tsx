@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { listOutdoorProducts, listOutdoorCategories } from '@/lib/outdoor/catalog'
+import { listOutdoorProducts, listOutdoorCategories, getOutdoorCategoryNav } from '@/lib/outdoor/catalog'
 import OutdoorProductGrid from '@/components/outdoor/OutdoorProductGrid'
+import OutdoorCategoryNav from '@/components/outdoor/OutdoorCategoryNav'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Shop' }
@@ -16,16 +17,19 @@ export default async function OutdoorShopPage({ searchParams }: { searchParams: 
     ? sortRaw
     : 'newest') as 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
 
-  const [{ products, total, scope }, categories] = await Promise.all([
+  const [{ products, total, scope }, categories, circles] = await Promise.all([
     listOutdoorProducts({ search, category, sort, limit: 48 }),
     listOutdoorCategories(),
+    getOutdoorCategoryNav(),
   ])
 
   // One Outdoor parent category → no category dropdown (redundant)
   const showCategoryFilter = categories.length > 1
 
   return (
-    <div className="mx-auto max-w-6xl px-5 sm:px-8 py-8 sm:py-16">
+    <>
+      <OutdoorCategoryNav items={circles} />
+    <div className="mx-auto max-w-xl sm:max-w-3xl px-4 sm:px-8 py-6 sm:py-10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl sm:text-5xl tracking-tight text-[var(--out-ink)]">Shop</h1>
@@ -80,5 +84,6 @@ export default async function OutdoorShopPage({ searchParams }: { searchParams: 
         <OutdoorProductGrid products={products} />
       )}
     </div>
+    </>
   )
 }

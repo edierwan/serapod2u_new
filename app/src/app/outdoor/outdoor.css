@@ -13,6 +13,9 @@
   --out-surface: #f1e6b2;
   --out-burgundy: #76232f;
   --out-olive: #5e6738;
+  --out-bark: #3f1c1f;
+  --out-bark-deep: #2e1416;
+  --out-ivory: #f6f1d8;
   --font-display: var(--font-outdoor-display), system-ui, sans-serif;
   --font-body: var(--font-outdoor-body), system-ui, sans-serif;
   font-family: var(--font-body);

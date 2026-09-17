@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { outdoorSpecLabel, outdoorSwatchesFromVariants, type OutdoorColorSwatch } from '@/lib/outdoor/merch'
 import { formatStorefrontError } from '@/lib/storefront/error'
 import { getStorageUrl } from '@/lib/utils'
 
@@ -36,6 +37,8 @@ export interface StorefrontProduct {
   starting_price: number | null
   variant_count: number
   tags: string[]
+  colorSwatches?: OutdoorColorSwatch[]
+  specLabel?: string | null
 }
 
 export interface StorefrontProductDetail {
@@ -200,6 +203,7 @@ export async function listProducts(params: ListProductsParams = {}) {
         is_active,
         is_default,
         sort_order,
+        attributes,
         variant_media (type, url, is_default, sort_order)
       )
     `, { count: 'exact' })
@@ -268,6 +272,17 @@ export async function listProducts(params: ListProductsParams = {}) {
       else if (animUrl.match(/\.(json|lottie)($|\?)/)) mediaType = 'animation'
     }
 
+    const defaultVariant =
+      activeVariants.find((v: any) => v.is_default) || activeVariants[0] || null
+    const colorSwatches = outdoorSwatchesFromVariants(
+      activeVariants.map((v: any) => ({
+        variant_name: v.variant_name,
+        image_url: toStorefrontMediaUrl(v.image_url),
+        attributes: v.attributes,
+      })),
+      p.product_name,
+    )
+
     return {
       id: p.id,
       product_name: p.product_name,
@@ -288,6 +303,8 @@ export async function listProducts(params: ListProductsParams = {}) {
         (p.brands as any)?.brand_name,
         (p.product_categories as any)?.category_name,
       ].filter(Boolean),
+      colorSwatches,
+      specLabel: outdoorSpecLabel(p.product_name, defaultVariant?.variant_name, defaultVariant?.attributes),
     }
   })
 

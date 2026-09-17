@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import useEmblaCarousel from 'embla-carousel-react'
 import Autoplay from 'embla-carousel-autoplay'
 
@@ -11,6 +10,7 @@ export type OutdoorHeroSlide = {
   alt: string
   href: string
   bg: string
+  overlay?: 'shop-now' | 'moonchair' | null
 }
 
 export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSlide[] }) {
@@ -42,73 +42,53 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
 
   if (count === 0) return null
 
+  const active = slides[index] || slides[0]
+
   const slideShell = (slide: OutdoorHeroSlide) => (
     <div
       key={slide.src}
-      className="relative min-w-0 flex-[0_0_100%] flex items-center justify-center"
+      className="relative min-w-0 flex-[0_0_100%] overflow-hidden rounded-[1.6rem] sm:rounded-[2rem]"
       style={{ background: slide.bg }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={slide.src}
         alt={slide.alt}
-        className="block mx-auto h-auto w-auto max-w-full max-h-[62svh] min-h-0 object-contain sm:max-h-[72vh] lg:max-h-[min(78vh,56rem)]"
+        className={`block w-full ${slide.overlay === 'shop-now' ? 'aspect-[4/5] object-cover sm:aspect-[5/4]' : 'h-auto object-contain'}`}
       />
-      <Link
-        href={slide.href}
-        className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 inline-flex h-10 items-center rounded-full bg-white px-5 text-sm font-semibold text-[var(--out-ink)] transition hover:bg-[var(--out-moss)] hover:text-white sm:bottom-6 sm:h-11 sm:px-7"
-      >
-        Shop now
-      </Link>
+      {slide.overlay === 'shop-now' ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 px-5 text-left sm:bottom-8 sm:px-8">
+          <p className="font-display text-6xl leading-[0.85] tracking-tight text-white sm:text-7xl">shop</p>
+          <p className="font-display text-6xl leading-[0.85] tracking-tight text-[var(--out-moss)] sm:text-7xl">now</p>
+        </div>
+      ) : null}
+      {slide.overlay === 'moonchair' ? (
+        <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center sm:left-5">
+          <p className="font-display text-[2.6rem] leading-[0.8] tracking-tight text-[var(--out-cream)] [writing-mode:vertical-rl] rotate-180 sm:text-6xl">
+            Moonchair
+          </p>
+        </div>
+      ) : null}
     </div>
   )
 
-  if (!mounted) {
-    return (
-      <section className="px-3 sm:px-5 lg:px-8 pb-8 sm:pb-10" aria-label="Campaign">
-        <div className="mx-auto max-w-6xl">
-          <div className="relative overflow-hidden rounded-2xl sm:rounded-[2rem]">
-            {slideShell(slides[0])}
-          </div>
-        </div>
-      </section>
-    )
-  }
-
   return (
-    <section className="px-3 sm:px-5 lg:px-8 pb-8 sm:pb-10" aria-roledescription="carousel" aria-label="Campaign">
-      <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_5.5rem] lg:gap-3 lg:items-stretch">
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-[2rem]">
-          <div ref={emblaRef} className="overflow-hidden">
-            <div className="flex">
-              {slides.map((slide) => slideShell(slide))}
+    <section className="px-4 sm:px-8 pb-2" aria-roledescription="carousel" aria-label="Campaign">
+      <div className="mx-auto max-w-xl sm:max-w-3xl">
+        <div className="relative overflow-hidden">
+          {mounted ? (
+            <div ref={emblaRef} className="overflow-hidden">
+              <div className="flex">
+                {slides.map((slide) => slideShell(slide))}
+              </div>
             </div>
-          </div>
-
-          {count > 1 ? (
-            <>
-              <button
-                type="button"
-                aria-label="Previous"
-                onClick={() => emblaApi?.scrollPrev()}
-                className="absolute left-3 top-1/2 z-10 hidden -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--out-ink)] shadow-sm hover:bg-white sm:flex"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                aria-label="Next"
-                onClick={() => emblaApi?.scrollNext()}
-                className="absolute right-3 top-1/2 z-10 hidden -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-white/90 text-[var(--out-ink)] shadow-sm hover:bg-white sm:flex"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </>
-          ) : null}
+          ) : (
+            slideShell(slides[0])
+          )}
         </div>
 
         {count > 1 ? (
-          <div className="mt-3 flex justify-center gap-2 lg:mt-0 lg:flex-col">
+          <div className="mt-3 flex justify-center gap-1.5">
             {slides.map((slide, i) => (
               <button
                 key={slide.src}
@@ -116,16 +96,20 @@ export default function OutdoorCampaignHero({ slides }: { slides: OutdoorHeroSli
                 aria-label={slide.alt}
                 aria-current={i === index}
                 onClick={() => emblaApi?.scrollTo(i)}
-                className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border-2 sm:h-16 sm:w-16 sm:rounded-2xl lg:h-auto lg:w-full lg:flex-1 ${
-                  i === index ? 'border-[var(--out-ink)]' : 'border-transparent opacity-70 hover:opacity-100'
-                }`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={slide.src} alt="" className="h-full w-full object-cover object-center" />
-              </button>
+                className={`h-1.5 w-1.5 rounded-full ${i === index ? 'bg-[var(--out-moss)]' : 'bg-[var(--out-moss)]/30'}`}
+              />
             ))}
           </div>
         ) : null}
+
+        <div className="mt-4 flex justify-center">
+          <Link
+            href={active.href}
+            className="inline-flex h-11 items-center rounded-full bg-[var(--out-moss)] px-8 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)]"
+          >
+            Shop Now
+          </Link>
+        </div>
       </div>
     </section>
   )

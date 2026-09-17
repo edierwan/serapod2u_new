@@ -1,4 +1,8 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
+import { ShoppingBag } from 'lucide-react'
 import type { StorefrontProduct } from '@/lib/storefront/products'
 
 function formatPrice(price: number | null) {
@@ -6,36 +10,70 @@ function formatPrice(price: number | null) {
   return `RM ${price.toFixed(2)}`
 }
 
-function isGenericOutdoorLabel(name: string | null | undefined) {
-  return /^outdoor$/i.test(String(name || '').trim())
-}
-
 export default function OutdoorProductCard({ product }: { product: StorefrontProduct }) {
-  const showCategory = Boolean(product.category_name) && !isGenericOutdoorLabel(product.category_name)
+  const swatches = product.colorSwatches || []
+  const [active, setActive] = useState(0)
+  const image = swatches[active]?.imageUrl || product.image_url
 
   return (
-    <Link href={`/outdoor/shop/${product.id}`} className="group block h-full">
-      <div className="aspect-square rounded-[1.25rem] bg-white flex items-center justify-center p-3 sm:p-5 overflow-hidden">
-        {product.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.image_url}
-            alt={product.product_name}
-            className="max-h-full max-w-full object-contain transition duration-300 group-hover:scale-[1.04]"
-          />
-        ) : (
-          <div className="h-full w-full rounded-xl bg-[var(--out-sand)]" />
-        )}
-      </div>
-      <div className="pt-3 px-1">
-        {showCategory ? (
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--out-muted)]">{product.category_name}</p>
-        ) : null}
-        <h3 className={`text-sm sm:text-base font-semibold leading-snug text-[var(--out-ink)] group-hover:text-[var(--out-moss)] transition-colors line-clamp-2 ${showCategory ? 'mt-1' : ''}`}>
+    <article className="flex h-full flex-col">
+      <Link href={`/outdoor/shop/${product.id}`} className="block">
+        <div className="aspect-[4/5] rounded-[1.35rem] bg-white p-3 sm:p-4 overflow-hidden">
+          {image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image}
+              alt={product.product_name}
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <div className="h-full w-full rounded-xl bg-[var(--out-sand)]/40" />
+          )}
+        </div>
+      </Link>
+
+      {swatches.length > 0 ? (
+        <div className="mt-3 flex items-center gap-1.5 px-1">
+          {swatches.map((swatch, i) => (
+            <button
+              key={`${swatch.hex}-${i}`}
+              type="button"
+              aria-label={swatch.label}
+              onClick={() => setActive(i)}
+              className={`h-3.5 w-3.5 rounded-full border ${
+                i === active ? 'border-[var(--out-bark)] scale-110' : 'border-black/10'
+              }`}
+              style={{ background: swatch.hex }}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-2 flex items-start justify-between gap-2 px-1">
+        <h3 className="text-sm font-semibold leading-snug text-[var(--out-bark)]">
           {product.product_name}
         </h3>
-        <p className="mt-1.5 text-sm font-semibold text-[var(--out-ink)]">{formatPrice(product.starting_price)}</p>
+        {product.specLabel ? (
+          <p className="shrink-0 text-xs text-[var(--out-muted)]">{product.specLabel}</p>
+        ) : null}
       </div>
-    </Link>
+      <p className="mt-1 px-1 text-sm font-medium text-[var(--out-bark)]">{formatPrice(product.starting_price)}</p>
+
+      <div className="mt-3 flex items-center gap-2">
+        <Link
+          href={`/outdoor/shop/${product.id}`}
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)]"
+        >
+          Buy Now
+        </Link>
+        <Link
+          href={`/outdoor/shop/${product.id}`}
+          aria-label={`Open ${product.product_name}`}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--out-bark)]/15 text-[var(--out-bark)]"
+        >
+          <ShoppingBag className="h-4 w-4" />
+        </Link>
+      </div>
+    </article>
   )
 }
