@@ -5,7 +5,7 @@ import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 /** POST /api/shipping/easyparcel/rates — quote courier rates (server-side key only). */
 export async function POST(request: NextRequest) {
   try {
-    if (!isEasyParcelConfigured()) {
+    if (!(await isEasyParcelConfigured())) {
       return NextResponse.json({
         configured: false,
         rates: [],

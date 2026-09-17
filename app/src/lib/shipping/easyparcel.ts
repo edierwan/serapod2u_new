@@ -1,16 +1,24 @@
 /**
- * EasyParcel Malaysia API client (server-only).
- * Keys never leave the backend.
+ * EasyParcel Malaysia OpenAPI client (server-only).
+ * Individual API is deprecated; this uses OAuth 2.0 + OpenAPI 2026-06.
  *
  * Env:
- *   EASYPARCEL_API_KEY
- *   EASYPARCEL_API_BASE   default https://connect.easyparcel.my/?ac=
- *                        demo:     https://demo.connect.easyparcel.my/?ac=
- *   EASYPARCEL_PICK_CODE / PICK_STATE / PICK_COUNTRY (default MY)
- *   EASYPARCEL_PICK_NAME / PICK_COMPANY / PICK_CONTACT / PICK_MOBILE
- *   EASYPARCEL_PICK_ADDR1 / PICK_CITY
- *   EASYPARCEL_DEFAULT_WEIGHT (kg, default 1)
+ *   EASYPARCEL_CLIENT_ID / EASYPARCEL_CLIENT_SECRET
+ *   EASYPARCEL_REDIRECT_URI
+ *   EASYPARCEL_API_BASE          default https://api.easyparcel.com
+ *   EASYPARCEL_API_VERSION       default 2026-06
+ *   EASYPARCEL_PICK_*            warehouse pickup address
+ *   EASYPARCEL_DEFAULT_WEIGHT    kg, default 1
  */
+
+import { toEasyParcelSubdivisionCode } from '@/lib/shipping/malaysia-states'
+import {
+  getEasyParcelAccessToken,
+  getEasyParcelApiOrigin,
+  getEasyParcelApiVersion,
+  hasEasyParcelTokens,
+  isEasyParcelAppConfigured,
+} from '@/lib/shipping/easyparcel-oauth'
 
 export type EasyParcelRate = {
   serviceId: string
@@ -20,83 +28,59 @@ export type EasyParcelRate = {
   delivery: string | null
 }
 
-function apiKey() {
-  return String(process.env.EASYPARCEL_API_KEY || '').trim()
-}
-
-function apiBase() {
-  return String(process.env.EASYPARCEL_API_BASE || 'https://connect.easyparcel.my/?ac=').trim()
-}
-
-export function isEasyParcelConfigured() {
-  return Boolean(apiKey())
-}
-
 export function getEasyParcelPickup() {
   return {
     pick_code: String(process.env.EASYPARCEL_PICK_CODE || '').trim(),
-    pick_state: String(process.env.EASYPARCEL_PICK_STATE || '').trim().toLowerCase(),
+    pick_state: String(process.env.EASYPARCEL_PICK_STATE || '').trim(),
     pick_country: String(process.env.EASYPARCEL_PICK_COUNTRY || 'MY').trim().toUpperCase(),
     pick_name: String(process.env.EASYPARCEL_PICK_NAME || 'Serapod Outdoor').trim(),
     pick_company: String(process.env.EASYPARCEL_PICK_COMPANY || 'Serapod').trim(),
     pick_contact: String(process.env.EASYPARCEL_PICK_CONTACT || '').trim(),
     pick_mobile: String(process.env.EASYPARCEL_PICK_MOBILE || '').trim(),
+    pick_email: String(process.env.EASYPARCEL_PICK_EMAIL || '').trim(),
     pick_addr1: String(process.env.EASYPARCEL_PICK_ADDR1 || '').trim(),
     pick_city: String(process.env.EASYPARCEL_PICK_CITY || '').trim(),
   }
 }
 
-async function postAction(action: string, body: Record<string, unknown>) {
-  const key = apiKey()
-  if (!key) {
-    return { ok: false as const, error: 'EasyParcel is not configured (missing EASYPARCEL_API_KEY).' }
-  }
+export function isEasyParcelAppReady() {
+  return isEasyParcelAppConfigured()
+}
 
-  const url = `${apiBase()}${action}`
-  const res = await fetch(url, {
+export async function isEasyParcelConfigured() {
+  if (!isEasyParcelAppConfigured()) return false
+  return hasEasyParcelTokens()
+}
+
+function openApiUrl(path: string) {
+  return `${getEasyParcelApiOrigin()}/open_api/${getEasyParcelApiVersion()}${path}`
+}
+
+async function openApi(path: string, body: unknown) {
+  const token = await getEasyParcelAccessToken()
+  if (!token.ok) return token
+
+  const res = await fetch(openApiUrl(path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(
-      Object.entries({ api: key, ...flattenParams(body) }).map(([k, v]) => [k, String(v)]),
-    ),
+    headers: {
+      Authorization: `Bearer ${token.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
   })
-
-  const text = await res.text()
-  let json: any = null
-  try {
-    json = JSON.parse(text)
-  } catch {
-    return { ok: false as const, error: 'EasyParcel returned a non-JSON response.' }
-  }
-
+  const json = await res.json().catch(() => null)
   if (!res.ok) {
-    return { ok: false as const, error: `EasyParcel HTTP ${res.status}` }
+    const message = json?.message || json?.error || `EasyParcel HTTP ${res.status}`
+    return { ok: false as const, error: String(message) }
   }
-
   return { ok: true as const, data: json }
 }
 
-/** Flatten nested bulk[0][key] style for EasyParcel form posts. */
-function flattenParams(input: Record<string, unknown>, prefix = ''): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [key, value] of Object.entries(input)) {
-    const path = prefix ? `${prefix}[${key}]` : key
-    if (value == null) continue
-    if (Array.isArray(value)) {
-      value.forEach((item, index) => {
-        if (item && typeof item === 'object') {
-          Object.assign(out, flattenParams(item as Record<string, unknown>, `${path}[${index}]`))
-        } else {
-          out[`${path}[${index}]`] = String(item)
-        }
-      })
-    } else if (typeof value === 'object') {
-      Object.assign(out, flattenParams(value as Record<string, unknown>, path))
-    } else {
-      out[path] = String(value)
-    }
-  }
-  return out
+export function toMalaysiaPhone(raw: string) {
+  let digits = String(raw || '').replace(/\D/g, '')
+  if (digits.startsWith('60')) digits = digits.slice(2)
+  if (digits.startsWith('0')) digits = digits.slice(1)
+  return digits
 }
 
 export async function easyParcelRateCheck(input: {
@@ -106,48 +90,55 @@ export async function easyParcelRateCheck(input: {
   weightKg?: number
 }): Promise<{ ok: true; rates: EasyParcelRate[] } | { ok: false; error: string }> {
   const pickup = getEasyParcelPickup()
-  if (!pickup.pick_code || !pickup.pick_state) {
+  const pickIso = toEasyParcelSubdivisionCode(pickup.pick_state)
+  const sendIso = toEasyParcelSubdivisionCode(input.sendState)
+  if (!pickup.pick_code || !pickIso) {
     return { ok: false, error: 'EasyParcel pickup postcode/state is not configured.' }
+  }
+  if (!sendIso) {
+    return { ok: false, error: 'Receiver state is not a valid Malaysia state.' }
   }
 
   const weight = input.weightKg ?? Number(process.env.EASYPARCEL_DEFAULT_WEIGHT || 1)
-  const result = await postAction('EPRateCheckingBulk', {
-    bulk: [
+  const result = await openApi('/shipment/quotations', {
+    shipment: [
       {
-        pick_code: pickup.pick_code,
-        pick_state: pickup.pick_state,
-        pick_country: pickup.pick_country,
-        send_code: input.sendCode,
-        send_state: input.sendState.toLowerCase(),
-        send_country: (input.sendCountry || 'MY').toUpperCase(),
-        weight: String(weight),
-        width: '0',
-        length: '0',
-        height: '0',
+        sender: {
+          postcode: pickup.pick_code,
+          subdivision_code: pickIso,
+          country: pickup.pick_country,
+        },
+        receiver: {
+          postcode: input.sendCode,
+          subdivision_code: sendIso,
+          country: (input.sendCountry || 'MY').toUpperCase(),
+        },
+        parcel_value: 50,
+        weight,
+        width: 10,
+        length: 10,
+        height: 10,
       },
     ],
   })
-
   if (!result.ok) return result
 
   const rates: EasyParcelRate[] = []
-  const resultRows = result.data?.result || result.data?.results || []
-  const first = Array.isArray(resultRows) ? resultRows[0] : null
-  const rateList = first?.rates || first?.rate || []
-
-  for (const row of Array.isArray(rateList) ? rateList : []) {
-    const serviceId = String(row.service_id || row.serviceid || '').trim()
-    const price = Number(row.price || row.total_price || row.rate || 0)
+  const rows = result.data?.data
+  const first = Array.isArray(rows) ? rows[0] : null
+  const quotations = first?.quotations || []
+  for (const row of Array.isArray(quotations) ? quotations : []) {
+    const serviceId = String(row?.courier?.service_id || '').trim()
+    const price = Number(row?.pricing?.total_amount || row?.pricing?.shipment_price || 0)
     if (!serviceId || !(price >= 0)) continue
     rates.push({
       serviceId,
-      courierName: String(row.courier_name || row.courier || row.company || 'Courier'),
-      serviceName: String(row.service_name || row.service || row.courier_name || 'Standard'),
+      courierName: String(row?.courier?.courier_name || 'Courier'),
+      serviceName: String(row?.courier?.service_name || 'Standard'),
       price,
-      delivery: row.delivery || row.estimated_delivery || null,
+      delivery: row?.courier?.delivery_duration || null,
     })
   }
-
   rates.sort((a, b) => a.price - b.price)
   return { ok: true, rates }
 }
@@ -174,61 +165,82 @@ export async function easyParcelSubmitOrder(input: {
   | { ok: false; error: string }
 > {
   const pickup = getEasyParcelPickup()
+  const pickIso = toEasyParcelSubdivisionCode(pickup.pick_state)
+  const sendIso = toEasyParcelSubdivisionCode(input.receiver.state)
   const weight = input.weightKg ?? Number(process.env.EASYPARCEL_DEFAULT_WEIGHT || 1)
   const collectDate = new Date().toISOString().slice(0, 10)
+  const senderPhone = toMalaysiaPhone(pickup.pick_mobile || pickup.pick_contact)
+  const receiverPhone = toMalaysiaPhone(input.receiver.phone)
 
-  const result = await postAction('EPSubmitOrderBulk', {
-    bulk: [
+  if (!pickup.pick_code || !pickIso || !pickup.pick_addr1 || !pickup.pick_city || !senderPhone) {
+    return { ok: false, error: 'EasyParcel pickup address/phone is not fully configured.' }
+  }
+  if (!sendIso) {
+    return { ok: false, error: 'Receiver state is not a valid Malaysia state.' }
+  }
+
+  const result = await openApi('/shipment/submit_orders', {
+    shipment: [
       {
-        weight: String(weight),
-        width: '1',
-        length: '1',
-        height: '1',
-        content: input.content.slice(0, 35),
-        value: String(input.value),
-        service_id: input.serviceId,
-        pick_point: '',
-        pick_name: pickup.pick_name,
-        pick_company: pickup.pick_company,
-        pick_contact: pickup.pick_contact || pickup.pick_mobile,
-        pick_mobile: pickup.pick_mobile || pickup.pick_contact,
-        pick_addr1: pickup.pick_addr1,
-        pick_addr2: '',
-        pick_addr3: '',
-        pick_addr4: '',
-        pick_city: pickup.pick_city,
-        pick_state: pickup.pick_state,
-        pick_code: pickup.pick_code,
-        pick_country: pickup.pick_country,
-        send_point: '',
-        send_name: input.receiver.name,
-        send_company: '',
-        send_contact: input.receiver.phone,
-        send_mobile: input.receiver.phone,
-        send_addr1: input.receiver.addr1,
-        send_addr2: input.receiver.addr2 || '',
-        send_addr3: '',
-        send_addr4: '',
-        send_city: input.receiver.city,
-        send_state: input.receiver.state.toLowerCase(),
-        send_code: input.receiver.postcode,
-        send_country: (input.receiver.country || 'MY').toUpperCase(),
-        collect_date: collectDate,
-        sms: '0',
-        send_email: input.receiver.email,
         reference: input.reference,
+        service_id: input.serviceId,
+        collection_date: collectDate,
+        weight,
+        height: 10,
+        length: 10,
+        width: 10,
+        item: [
+          {
+            content: input.content.slice(0, 35) || 'Outdoor order',
+            weight,
+            height: 10,
+            length: 10,
+            width: 10,
+            currency_code: 'MYR',
+            value: Number(input.value) || 1,
+            quantity: 1,
+          },
+        ],
+        sender: {
+          name: pickup.pick_name,
+          company: pickup.pick_company,
+          phone_number_country_code: 'MY',
+          phone_number: senderPhone,
+          email: pickup.pick_email || undefined,
+          address_1: pickup.pick_addr1,
+          postcode: pickup.pick_code,
+          city: pickup.pick_city,
+          subdivision_code: pickIso,
+          country_code: pickup.pick_country,
+        },
+        receiver: {
+          name: input.receiver.name,
+          phone_number_country_code: 'MY',
+          phone_number: receiverPhone,
+          email: input.receiver.email,
+          address_1: input.receiver.addr1,
+          address_2: input.receiver.addr2 || undefined,
+          postcode: input.receiver.postcode,
+          city: input.receiver.city,
+          subdivision_code: sendIso,
+          country_code: (input.receiver.country || 'MY').toUpperCase(),
+        },
+        feature: {
+          sms_tracking: false,
+          email_tracking: false,
+          whatsapp_tracking: false,
+        },
       },
     ],
   })
-
   if (!result.ok) return result
 
-  const rows = result.data?.result || result.data?.results || []
-  const first = Array.isArray(rows) ? rows[0] : null
+  const first = Array.isArray(result.data?.data) ? result.data.data[0] : result.data?.data
+  const shipment = Array.isArray(first?.shipments) ? first.shipments[0] : first?.shipments
   return {
     ok: true,
-    orderNo: first?.order_number || first?.order_no || first?.orderno || null,
-    awb: first?.parcel?.[0]?.awb || first?.awb || first?.awb_no || null,
+    orderNo: first?.order_details?.order_number || shipment?.shipment_number || null,
+    awb: shipment?.awb_number || shipment?.shipment_number || null,
     raw: result.data,
   }
 }
@@ -249,25 +261,23 @@ export async function easyParcelTrackAwb(
   const awb = String(awbNo || '').trim()
   if (!awb) return { ok: false, error: 'Tracking number is required.' }
 
-  const result = await postAction('EPTrackingBulk', {
-    bulk: [{ awb_no: awb }],
-  })
+  const result = await openApi('/shipment/tracking_status', { awb_numbers: [awb] })
   if (!result.ok) return result
 
-  const rows = result.data?.result || result.data?.results || []
-  const first = Array.isArray(rows) ? rows[0] : null
-  const eventsRaw = first?.tracking || first?.events || first?.parcel_status || []
-  const events: EasyParcelTrackingEvent[] = (Array.isArray(eventsRaw) ? eventsRaw : []).map((row: any) => ({
-    status: String(row.status || row.event || row.description || '').trim() || 'Update',
-    date: row.date || row.event_date || row.datetime || null,
-    location: row.location || row.city || null,
-    remark: row.remark || row.message || null,
+  const results = result.data?.data?.results || result.data?.data || []
+  const first = Array.isArray(results) ? results[0] : results
+  const log = first?.status_log || []
+  const events: EasyParcelTrackingEvent[] = (Array.isArray(log) ? log : []).map((row: any) => ({
+    status: String(row.tracking_status || row.status || '').trim() || 'Update',
+    date: row.event_date || null,
+    location: row.location || null,
+    remark: null,
   }))
 
   return {
     ok: true,
     events,
-    latestStatus: events[0]?.status || first?.status || null,
+    latestStatus: first?.latest_tracking_status || events[0]?.status || null,
     raw: result.data,
   }
 }

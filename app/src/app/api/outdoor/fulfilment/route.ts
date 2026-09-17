@@ -1,41 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { easyParcelSubmitOrder, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import { isEasyParcelAppConfigured } from '@/lib/shipping/easyparcel-oauth'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
-
-async function requireOutdoorStaff(supabase: any) {
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser()
-  if (authErr || !user) return null
-
-  const adminClient = createAdminClient()
-  const { data: profile } = await adminClient
-    .from('users')
-    .select('id, organization_id, organizations!fk_users_organization(id, org_type_code), roles(role_level, role_code)')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile) return null
-  const orgType = (profile.organizations as any)?.org_type_code
-  const role = (profile.roles as any) || {}
-  const roleLevel = Number(role.role_level ?? 99)
-  const roleCode = String(role.role_code || '').toLowerCase()
-  const allowed =
-    orgType === 'HQ' &&
-    (roleLevel <= 30 || ['super_admin', 'admin', 'org_admin', 'warehouse', 'fulfilment'].includes(roleCode))
-
-  if (!allowed) return null
-  return { userId: user.id, orgId: profile.organization_id }
-}
 
 /** GET — Outdoor paid/processing orders for fulfilment desk. */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const staff = await requireOutdoorStaff(supabase)
+    const staff = await requireOutdoorStaff()
     if (!staff) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -72,9 +45,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to load orders' }, { status: 500 })
     }
 
+    const connected = await isEasyParcelConfigured()
     return NextResponse.json({
       orders: data || [],
-      easyParcelConfigured: isEasyParcelConfigured(),
+      easyParcelConfigured: connected,
+      easyParcelNeedsConnect: isEasyParcelAppConfigured() && !connected,
     })
   } catch (err) {
     console.error('[outdoor/fulfilment] GET', err)
@@ -85,8 +60,7 @@ export async function GET(request: NextRequest) {
 /** PUT — update status and/or create EasyParcel shipment. */
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const staff = await requireOutdoorStaff(supabase)
+    const staff = await requireOutdoorStaff()
     if (!staff) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -152,7 +126,7 @@ export async function PUT(request: NextRequest) {
       if (!serviceId) {
         return NextResponse.json({ error: 'No shipping service selected on this order' }, { status: 400 })
       }
-      if (!isEasyParcelConfigured()) {
+      if (!(await isEasyParcelConfigured())) {
         return NextResponse.json({ error: 'EasyParcel is not configured' }, { status: 503 })
       }
 

@@ -58,8 +58,10 @@ export default function OutdoorFulfilmentClient() {
   const [orders, setOrders] = useState<Order[]>([])
   const [messages, setMessages] = useState<ContactMessage[]>([])
   const [easyParcelConfigured, setEasyParcelConfigured] = useState(false)
+  const [easyParcelNeedsConnect, setEasyParcelNeedsConnect] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [trackingDraft, setTrackingDraft] = useState<Record<string, string>>({})
@@ -76,6 +78,7 @@ export default function OutdoorFulfilmentClient() {
     if (!res.ok) throw new Error(data?.error || 'Failed to load orders')
     setOrders(data.orders || [])
     setEasyParcelConfigured(Boolean(data.easyParcelConfigured))
+    setEasyParcelNeedsConnect(Boolean(data.easyParcelNeedsConnect))
   }, [search])
 
   const loadInbox = useCallback(async () => {
@@ -112,6 +115,13 @@ export default function OutdoorFulfilmentClient() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('easyparcel')
+    if (status === 'connected') setNotice('EasyParcel connected.')
+    if (status === 'error' || status === 'invalid') setError('EasyParcel connection failed. Try Connect again.')
+    if (status === 'unauthorized') setError('Log in as HQ staff, then Connect EasyParcel.')
+  }, [])
 
   const runAction = async (id: string, action: string, extra?: Record<string, string>) => {
     setBusyId(id)
@@ -194,11 +204,25 @@ export default function OutdoorFulfilmentClient() {
             className="h-11 flex-1 min-w-[220px] rounded-md border border-[var(--out-line)] bg-white px-3 text-sm"
           />
           <p className="text-xs text-[var(--out-muted)]">
-            EasyParcel: {easyParcelConfigured ? 'connected' : 'not configured (manual tracking OK)'}
+            EasyParcel:{' '}
+            {easyParcelConfigured
+              ? 'connected'
+              : easyParcelNeedsConnect
+                ? 'app ready — connect account'
+                : 'not configured (manual tracking OK)'}
           </p>
+          {easyParcelNeedsConnect ? (
+            <a
+              href="/api/shipping/easyparcel/oauth/connect"
+              className="inline-flex h-11 items-center rounded-md bg-[var(--out-moss)] px-4 text-sm font-semibold text-white"
+            >
+              Connect EasyParcel
+            </a>
+          ) : null}
         </div>
       ) : null}
 
+      {notice ? <p className="mt-4 text-sm text-[var(--out-moss)]">{notice}</p> : null}
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
       {loading ? (

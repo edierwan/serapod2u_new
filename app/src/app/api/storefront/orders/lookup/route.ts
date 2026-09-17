@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     let courierEvents: Array<{ status: string; date: string | null; location: string | null; remark: string | null }> = []
     let courierLatestStatus: string | null = null
-    if (order.shipping_tracking_no && isEasyParcelConfigured()) {
+    if (order.shipping_tracking_no && (await isEasyParcelConfigured())) {
       const tracked = await easyParcelTrackAwb(order.shipping_tracking_no)
       if (tracked.ok) {
         courierEvents = tracked.events
