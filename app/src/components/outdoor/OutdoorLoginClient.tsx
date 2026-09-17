@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient, forceCleanStorage, resetClient } from '@/lib/supabase/client'
-import StoreBrandMark from '@/components/storefront/StoreBrandMark'
+import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 
 function safeOutdoorNext(raw: string | null) {
   if (!raw) return '/outdoor/account'
@@ -58,62 +58,55 @@ export default function OutdoorLoginClient() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-5 py-16 sm:py-20">
-      <Link href="/outdoor" className="inline-flex">
-        <StoreBrandMark className="h-8 w-auto" />
-      </Link>
-      <h1 className="mt-8 font-display text-3xl tracking-tight">Sign in</h1>
-      <p className="mt-2 text-sm text-[var(--out-muted)]">
-        Sign in to checkout and view your Outdoor orders.
-      </p>
-
-      <form className="mt-8 space-y-4" onSubmit={submit}>
-        <label className="block text-sm">
-          Email
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
-          />
-        </label>
-        <label className="block text-sm">
-          Password
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
-          />
-        </label>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={loading}
-          className="h-11 w-full rounded-md bg-[var(--out-moss)] text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-
-      <p className="mt-6 text-sm text-[var(--out-muted)]">
-        New customer?{' '}
-        <Link
-          href={`/outdoor/register?next=${encodeURIComponent(nextPath)}`}
-          className="font-semibold text-[var(--out-moss)]"
-        >
-          Create an account
+    <div className="mx-auto max-w-md px-4 py-12 sm:px-6 sm:py-16">
+      <div className="out-card px-5 py-8 sm:px-8 sm:py-10">
+        <Link href="/outdoor" className="inline-flex">
+          <OutdoorBrandMark className="h-7 w-auto" />
         </Link>
-      </p>
-      <p className="mt-3 text-sm">
-        <Link href="/outdoor/shop" className="text-[var(--out-muted)] hover:text-[var(--out-moss)]">
-          Keep shopping
-        </Link>
-      </p>
+        <h1 className="mt-6 font-display text-3xl tracking-tight text-[var(--out-bark)]">Sign in</h1>
+        <p className="mt-2 text-sm text-[var(--out-muted)]">
+          Use your account to checkout and follow Outdoor orders.
+        </p>
+
+        <form className="mt-6 space-y-4" onSubmit={submit}>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Email
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="out-input"
+            />
+          </label>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Password
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="out-input"
+            />
+          </label>
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          <button type="submit" disabled={loading} className="out-btn w-full">
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        <p className="mt-6 text-sm text-[var(--out-muted)]">
+          New here?{' '}
+          <Link
+            href={`/outdoor/register?next=${encodeURIComponent(nextPath)}`}
+            className="font-semibold text-[var(--out-moss)]"
+          >
+            Create an account
+          </Link>
+        </p>
+      </div>
     </div>
   )
 }

@@ -27,7 +27,7 @@ export default function OutdoorCheckoutPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [rates, setRates] = useState<Rate[]>([])
-  const [ratesMsg, setRatesMsg] = useState('Enter postcode and state to load courier rates.')
+  const [ratesMsg, setRatesMsg] = useState('Add your postcode to see courier options.')
   const [ratesLoading, setRatesLoading] = useState(false)
   const [selectedRate, setSelectedRate] = useState<Rate | null>(null)
   const [form, setForm] = useState({
@@ -92,10 +92,14 @@ export default function OutdoorCheckoutPage() {
 
   if (items.length === 0) {
     return (
-      <div className="mx-auto max-w-3xl px-5 py-16 text-center">
-        <h1 className="font-display text-4xl">Checkout</h1>
-        <p className="mt-4 text-[var(--out-muted)]">Your cart is empty.</p>
-        <Link href="/outdoor/shop" className="mt-6 inline-block text-[var(--out-moss)] font-semibold">Go to shop</Link>
+      <div className="mx-auto max-w-md px-5 py-16 text-center">
+        <div className="out-card px-6 py-12">
+          <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">Your bag is empty</h1>
+          <p className="mt-3 text-sm text-[var(--out-muted)]">Add a chair, mat, or tumbler first.</p>
+          <Link href="/outdoor/shop" className="out-btn mt-8 w-full">
+            Shop Outdoor
+          </Link>
+        </div>
       </div>
     )
   }
@@ -149,129 +153,151 @@ export default function OutdoorCheckoutPage() {
   }
 
   const field = (key: keyof typeof form, label: string, opts?: { required?: boolean; type?: string }) => (
-    <label className="block text-sm">
-      <span className="text-[var(--out-ink-soft)]">{label}</span>
+    <label className="block text-sm font-medium text-[var(--out-bark)]">
+      {label}
       <input
         required={opts?.required !== false}
         type={opts?.type || 'text'}
         value={form[key]}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-        className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
+        className="out-input"
       />
     </label>
   )
 
   return (
-    <div className="mx-auto max-w-5xl px-5 sm:px-8 py-12 sm:py-16 grid lg:grid-cols-[1.2fr_0.8fr] gap-10">
-      <div>
-        <h1 className="font-display text-4xl tracking-tight">Checkout</h1>
-        <p className="mt-2 text-sm text-[var(--out-muted)]">
-          Enter your delivery details, pick shipping, then pay.
-        </p>
-        <form className="mt-8 space-y-4" onSubmit={submit}>
-          {field('name', 'Full name')}
-          {field('email', 'Email', { type: 'email' })}
-          {field('phone', 'Phone', { type: 'tel' })}
-          {field('addressLine1', 'Address line 1')}
-          {field('addressLine2', 'Address line 2', { required: false })}
-          <div className="grid sm:grid-cols-3 gap-4">
-            {field('city', 'City')}
-            <label className="block text-sm">
-              <span className="text-[var(--out-ink-soft)]">State</span>
-              <select
-                required
-                value={form.state}
-                onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-                className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
-              >
-                {MALAYSIA_STATES.map((s) => (
-                  <option key={s.code} value={s.label}>{s.label}</option>
-                ))}
-              </select>
-            </label>
-            {field('postcode', 'Postcode')}
+    <div className="mx-auto max-w-5xl px-4 sm:px-8 py-8 sm:py-12">
+      <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--out-bark)]/50">
+        Delivery · Shipping · Pay
+      </p>
+      <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Checkout</h1>
+      <p className="mx-auto mt-2 max-w-md text-center text-sm text-[var(--out-muted)]">
+        Where should we send your gear? Then pick a courier and pay securely.
+      </p>
+
+      <div className="mt-8 grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
+        <form className="out-card space-y-5 p-5 sm:p-7" onSubmit={submit}>
+          <div>
+            <h2 className="font-display text-xl text-[var(--out-bark)]">Your details</h2>
+            <div className="mt-4 space-y-3">
+              {field('name', 'Full name')}
+              {field('email', 'Email', { type: 'email' })}
+              {field('phone', 'Phone', { type: 'tel' })}
+            </div>
           </div>
 
-          <div className="rounded-md border border-[var(--out-line)] bg-white p-4 space-y-3">
+          <div>
+            <h2 className="font-display text-xl text-[var(--out-bark)]">Delivery address</h2>
+            <div className="mt-4 space-y-3">
+              {field('addressLine1', 'Address line 1')}
+              {field('addressLine2', 'Address line 2', { required: false })}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {field('city', 'City')}
+                <label className="block text-sm font-medium text-[var(--out-bark)]">
+                  State
+                  <select
+                    required
+                    value={form.state}
+                    onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
+                    className="out-input"
+                  >
+                    {MALAYSIA_STATES.map((s) => (
+                      <option key={s.code} value={s.label}>{s.label}</option>
+                    ))}
+                  </select>
+                </label>
+                {field('postcode', 'Postcode')}
+              </div>
+            </div>
+          </div>
+
+          <div>
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold">Shipping</p>
+              <h2 className="font-display text-xl text-[var(--out-bark)]">Shipping</h2>
               <button
                 type="button"
                 onClick={() => void loadRates()}
                 disabled={ratesLoading || !form.postcode}
-                className="text-xs font-medium text-[var(--out-moss)] disabled:opacity-40"
+                className="text-xs font-semibold text-[var(--out-moss)] disabled:opacity-40"
               >
                 {ratesLoading ? 'Loading…' : 'Refresh rates'}
               </button>
             </div>
-            {rates.length > 0 ? (
-              <ul className="space-y-2">
-                {rates.map((r) => {
+            <div className="mt-4 space-y-2">
+              {rates.length > 0 ? (
+                rates.map((r) => {
                   const active = selectedRate?.serviceId === r.serviceId
                   return (
-                    <li key={r.serviceId}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedRate(r)}
-                        className={`w-full text-left rounded-md border px-3 py-2.5 text-sm transition-colors ${
-                          active
-                            ? 'border-[var(--out-moss)] bg-[var(--out-moss)]/5'
-                            : 'border-[var(--out-line)] hover:border-[var(--out-moss)]/50'
-                        }`}
-                      >
-                        <div className="flex justify-between gap-3">
-                          <span className="font-medium">{r.courierName}</span>
-                          <span className="font-semibold">{money(r.price)}</span>
-                        </div>
-                        <p className="mt-0.5 text-xs text-[var(--out-muted)]">
-                          {r.serviceName}
-                          {r.delivery ? ` · ${r.delivery}` : ''}
-                        </p>
-                      </button>
-                    </li>
+                    <button
+                      key={r.serviceId}
+                      type="button"
+                      onClick={() => setSelectedRate(r)}
+                      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition-colors ${
+                        active
+                          ? 'border-[var(--out-bark)] bg-[var(--out-ivory)]'
+                          : 'border-[var(--out-bark)]/10 hover:border-[var(--out-bark)]/30'
+                      }`}
+                    >
+                      <div className="flex justify-between gap-3 text-[var(--out-bark)]">
+                        <span className="font-semibold">{r.courierName}</span>
+                        <span className="font-semibold">{money(r.price)}</span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-[var(--out-muted)]">
+                        {r.serviceName}
+                        {r.delivery ? ` · ${r.delivery}` : ''}
+                      </p>
+                    </button>
                   )
-                })}
-              </ul>
-            ) : (
-              <p className="text-xs text-[var(--out-muted)]">{ratesMsg}</p>
-            )}
+                })
+              ) : (
+                <p className="rounded-2xl bg-[var(--out-ivory)] px-4 py-3 text-xs text-[var(--out-muted)]">{ratesMsg}</p>
+              )}
+            </div>
           </div>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <button
-            type="submit"
-            disabled={loading}
-            className="h-12 w-full rounded-md bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50"
-          >
+          <button type="submit" disabled={loading} className="out-btn w-full">
             {loading ? 'Processing…' : `Pay ${money(total)}`}
           </button>
         </form>
+
+        <aside className="out-card p-5 sm:p-6 lg:sticky lg:top-24">
+          <h2 className="font-display text-xl text-[var(--out-bark)]">Your bag</h2>
+          <ul className="mt-4 space-y-3">
+            {items.map((i) => (
+              <li key={i.variantId} className="flex items-center gap-3">
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-[var(--out-ivory)]">
+                  {i.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={i.imageUrl} alt="" className="h-full w-full object-contain p-1" />
+                  ) : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-[var(--out-bark)]">{i.productName}</p>
+                  <p className="text-xs text-[var(--out-muted)]">× {i.quantity}</p>
+                </div>
+                <span className="text-sm font-medium text-[var(--out-bark)]">
+                  {i.price != null ? money(i.price * i.quantity) : '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-5 space-y-2 border-t border-[var(--out-bark)]/10 pt-4 text-sm text-[var(--out-bark)]">
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span>{money(subtotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Shipping</span>
+              <span>{selectedRate ? money(shippingCost) : '—'}</span>
+            </div>
+            <div className="flex justify-between pt-2 font-display text-xl">
+              <span>Total</span>
+              <span>{money(total)}</span>
+            </div>
+          </div>
+        </aside>
       </div>
-      <aside className="rounded-xl border border-[var(--out-line)] bg-white p-5 h-fit">
-        <h2 className="font-display text-xl">Order summary</h2>
-        <ul className="mt-4 space-y-3 text-sm">
-          {items.map((i) => (
-            <li key={i.variantId} className="flex justify-between gap-3">
-              <span className="text-[var(--out-muted)]">{i.productName} × {i.quantity}</span>
-              <span className="font-medium">{i.price != null ? money(i.price * i.quantity) : '—'}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-5 pt-4 border-t border-[var(--out-line)] space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span>Subtotal</span>
-            <span>{money(subtotal)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Shipping</span>
-            <span>{selectedRate ? money(shippingCost) : '—'}</span>
-          </div>
-          <div className="flex justify-between font-semibold text-base pt-2">
-            <span>Total</span>
-            <span>{money(total)}</span>
-          </div>
-        </div>
-      </aside>
     </div>
   )
 }

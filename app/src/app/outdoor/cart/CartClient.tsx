@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { Minus, Plus } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
 
@@ -40,41 +41,57 @@ export default function OutdoorCartClient() {
 
   if (items.length === 0) {
     return (
-      <div className="mx-auto max-w-3xl px-5 sm:px-8 py-16 text-center">
-        <h1 className="font-display text-4xl tracking-tight">Shopping cart</h1>
-        <p className="mt-4 text-[var(--out-muted)]">Your cart is empty.</p>
-        <Link href="/outdoor/shop" className="mt-8 inline-flex h-11 items-center rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white">
-          Continue shopping
-        </Link>
+      <div className="mx-auto max-w-md px-5 py-16 text-center">
+        <div className="out-card px-6 py-12">
+          <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">Your bag is empty</h1>
+          <p className="mt-3 text-sm text-[var(--out-muted)]">Moon Chair, tumbler, and camp mat live in the shop.</p>
+          <Link href="/outdoor/shop" className="out-btn mt-8 w-full">
+            Shop Outdoor
+          </Link>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-5 sm:px-8 py-12 sm:py-16">
-      <h1 className="font-display text-4xl tracking-tight">Shopping cart</h1>
-      <ul className="mt-8 space-y-4">
+    <div className="mx-auto max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
+      <h1 className="text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Your bag</h1>
+      <ul className="mt-8 space-y-3">
         {items.map((item) => (
-          <li key={item.variantId} className="flex gap-4 rounded-xl border border-[var(--out-line)] bg-white p-4">
-            <div className="h-24 w-24 rounded-lg overflow-hidden bg-[var(--out-sand)]/40 shrink-0">
+          <li key={item.variantId} className="out-card flex gap-4 p-4">
+            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-[var(--out-ivory)]">
               {item.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                <img src={item.imageUrl} alt="" className="h-full w-full object-contain p-1.5" />
               ) : null}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-display text-lg truncate">{item.productName}</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-display text-lg text-[var(--out-bark)]">{item.productName}</p>
               <p className="text-sm text-[var(--out-muted)]">{item.variantName}</p>
-              <p className="mt-1 text-sm font-semibold">{item.price != null ? money(item.price) : '—'}</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--out-bark)]">
+                {item.price != null ? money(item.price) : '—'}
+              </p>
               <div className="mt-3 flex items-center gap-3">
-                <input
-                  type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={(e) => updateQuantity(item.variantId, Number(e.target.value) || 1)}
-                  className="w-16 h-9 rounded-md border border-[var(--out-line)] px-2 text-sm"
-                />
-                <button type="button" onClick={() => removeItem(item.variantId)} className="text-sm text-red-600">
+                <div className="inline-flex h-10 items-center rounded-full bg-[var(--out-ivory)] px-1 text-[var(--out-bark)]">
+                  <button
+                    type="button"
+                    className="p-2"
+                    aria-label="Decrease"
+                    onClick={() => updateQuantity(item.variantId, Math.max(1, item.quantity - 1))}
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
+                  <button
+                    type="button"
+                    className="p-2"
+                    aria-label="Increase"
+                    onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <button type="button" onClick={() => removeItem(item.variantId)} className="text-sm text-[var(--out-muted)] hover:text-[var(--out-bark)]">
                   Remove
                 </button>
               </div>
@@ -83,21 +100,21 @@ export default function OutdoorCartClient() {
         ))}
       </ul>
 
-      <div className="mt-8 rounded-xl border border-[var(--out-line)] bg-white p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="out-card mt-6 flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-[var(--out-muted)]">Subtotal</p>
-          <p className="text-2xl font-semibold text-[var(--out-moss-deep)]">{money(subtotal)}</p>
+          <p className="font-display text-2xl text-[var(--out-bark)]">{money(subtotal)}</p>
           {hasItemsWithoutPrice ? (
             <p className="mt-1 text-xs text-amber-700">Some items need a valid price before checkout.</p>
           ) : !signedIn ? (
-            <p className="mt-1 text-xs text-[var(--out-muted)]">You’ll sign in to place the order.</p>
+            <p className="mt-1 text-xs text-[var(--out-muted)]">Sign in to place the order.</p>
           ) : null}
         </div>
         <button
           type="button"
           disabled={checkingOut || hasItemsWithoutPrice}
           onClick={() => void goCheckout()}
-          className="inline-flex h-12 items-center justify-center rounded-md bg-[var(--out-moss)] px-6 text-sm font-semibold text-white disabled:opacity-50"
+          className="out-btn sm:min-w-[12rem]"
         >
           {checkingOut ? 'Please wait…' : signedIn ? 'Checkout' : 'Sign in to checkout'}
         </button>

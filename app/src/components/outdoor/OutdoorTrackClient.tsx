@@ -37,6 +37,16 @@ function statusLabel(status: string) {
   return status.replace(/_/g, ' ')
 }
 
+function stepIndex(status: string) {
+  const s = status.toLowerCase()
+  if (s.includes('deliver')) return 3
+  if (s.includes('ship') || s.includes('fulfil') || s.includes('fulfill')) return 2
+  if (s.includes('paid') || s.includes('confirm') || s.includes('process')) return 1
+  return 0
+}
+
+const STEPS = ['Placed', 'Paid', 'Shipped', 'Delivered']
+
 export default function OutdoorTrackClient() {
   const [orderRef, setOrderRef] = useState('')
   const [email, setEmail] = useState('')
@@ -65,96 +75,106 @@ export default function OutdoorTrackClient() {
     }
   }
 
+  const activeStep = order ? stepIndex(order.status) : -1
+
   return (
-    <div className="mx-auto max-w-3xl px-5 sm:px-8 py-16 sm:py-20">
-      <h1 className="font-display text-4xl sm:text-5xl tracking-tight">Track Order</h1>
-      <p className="mt-4 text-[var(--out-muted)] leading-relaxed">
-        Enter your order reference and the email used at checkout.
+    <div className="mx-auto max-w-lg px-4 sm:px-6 py-10 sm:py-14">
+      <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[var(--out-bark)]/50">
+        SeraOutdoor
+      </p>
+      <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Track order</h1>
+      <p className="mt-2 text-center text-sm text-[var(--out-muted)]">
+        Use the order number from your confirmation email.
       </p>
 
-      <form className="mt-8 space-y-4" onSubmit={submit}>
-        <label className="block text-sm">
-          Order reference
+      <form className="out-card mt-8 space-y-4 p-5 sm:p-7" onSubmit={submit}>
+        <label className="block text-sm font-medium text-[var(--out-bark)]">
+          Order number
           <input
             required
             value={orderRef}
             onChange={(e) => setOrderRef(e.target.value)}
             placeholder="ORD-…"
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
+            className="out-input"
           />
         </label>
-        <label className="block text-sm">
+        <label className="block text-sm font-medium text-[var(--out-bark)]">
           Email
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
+            className="out-input"
           />
         </label>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={loading}
-          className="h-11 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {loading ? 'Searching…' : 'Track order'}
+        <button type="submit" disabled={loading} className="out-btn w-full">
+          {loading ? 'Searching…' : 'Find my order'}
         </button>
       </form>
 
       {order ? (
-        <div className="mt-10 rounded-2xl border border-[var(--out-line)] bg-white p-6 space-y-5">
+        <div className="out-card mt-5 space-y-6 p-5 sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-[var(--out-muted)]">Order</p>
-              <p className="font-mono text-lg font-semibold">{order.orderRef}</p>
+              <p className="mt-1 font-mono text-lg font-semibold text-[var(--out-bark)]">{order.orderRef}</p>
             </div>
-            <span className="rounded-full bg-[var(--out-moss)]/10 px-3 py-1 text-xs font-semibold uppercase text-[var(--out-moss-deep)]">
+            <span className="rounded-full bg-[var(--out-bark)] px-3 py-1 text-xs font-semibold uppercase text-[var(--out-cream)]">
               {statusLabel(order.status)}
             </span>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3 text-sm">
-            <p><span className="text-[var(--out-muted)]">Placed:</span> {new Date(order.createdAt).toLocaleString()}</p>
-            <p><span className="text-[var(--out-muted)]">Total:</span> {money(order.totalAmount, order.currency)}</p>
-            <p><span className="text-[var(--out-muted)]">Customer:</span> {order.customerName}</p>
-            <p><span className="text-[var(--out-muted)]">Paid at:</span> {order.paidAt ? new Date(order.paidAt).toLocaleString() : 'Pending verification'}</p>
+
+          <ol className="grid grid-cols-4 gap-2">
+            {STEPS.map((label, i) => {
+              const done = i <= activeStep
+              return (
+                <li key={label} className="text-center">
+                  <span className={`mx-auto block h-2 w-full rounded-full ${done ? 'bg-[var(--out-moss)]' : 'bg-[var(--out-bark)]/10'}`} />
+                  <span className={`mt-2 block text-[10px] font-semibold uppercase tracking-wide ${done ? 'text-[var(--out-bark)]' : 'text-[var(--out-muted)]'}`}>
+                    {label}
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
+
+          <div className="grid gap-2 text-sm text-[var(--out-bark)]">
+            <p><span className="text-[var(--out-muted)]">Placed</span> · {new Date(order.createdAt).toLocaleString()}</p>
+            <p><span className="text-[var(--out-muted)]">Total</span> · {money(order.totalAmount, order.currency)}</p>
             {order.shippingCourierName ? (
-              <p><span className="text-[var(--out-muted)]">Courier:</span> {order.shippingCourierName}</p>
+              <p><span className="text-[var(--out-muted)]">Courier</span> · {order.shippingCourierName}</p>
             ) : null}
             {order.shippingTrackingNo ? (
-              <p><span className="text-[var(--out-muted)]">Tracking:</span> <span className="font-mono font-medium">{order.shippingTrackingNo}</span></p>
+              <p><span className="text-[var(--out-muted)]">Tracking</span> · <span className="font-mono">{order.shippingTrackingNo}</span></p>
             ) : null}
             {order.courierLatestStatus ? (
-              <p className="sm:col-span-2"><span className="text-[var(--out-muted)]">Courier status:</span> {order.courierLatestStatus}</p>
+              <p><span className="text-[var(--out-muted)]">Update</span> · {order.courierLatestStatus}</p>
             ) : null}
           </div>
-          <div>
-            <p className="text-sm font-semibold mb-2">Items</p>
-            <ul className="space-y-2 text-sm">
-              {order.items.map((item, i) => (
-                <li key={`${item.productName}-${i}`} className="flex justify-between gap-3 border-t border-[var(--out-line)] pt-2">
-                  <span>{item.productName} · {item.variantName} × {item.quantity}</span>
-                  <span className="font-medium">{money(item.subtotal, order.currency)}</span>
+
+          <ul className="space-y-2 border-t border-[var(--out-bark)]/10 pt-4 text-sm">
+            {order.items.map((item, i) => (
+              <li key={`${item.productName}-${i}`} className="flex justify-between gap-3 text-[var(--out-bark)]">
+                <span>{item.productName} × {item.quantity}</span>
+                <span className="font-medium">{money(item.subtotal, order.currency)}</span>
+              </li>
+            ))}
+          </ul>
+
+          {order.courierEvents && order.courierEvents.length > 0 ? (
+            <ul className="space-y-3 border-t border-[var(--out-bark)]/10 pt-4">
+              {order.courierEvents.map((ev, i) => (
+                <li key={`${ev.status}-${i}`} className="text-sm">
+                  <p className="font-medium text-[var(--out-bark)]">{ev.status}{ev.location ? ` · ${ev.location}` : ''}</p>
+                  <p className="text-xs text-[var(--out-muted)]">{ev.date || ''}</p>
                 </li>
               ))}
             </ul>
-          </div>
-          {order.courierEvents && order.courierEvents.length > 0 ? (
-            <div>
-              <p className="text-sm font-semibold mb-2">Shipment updates</p>
-              <ul className="space-y-2 text-sm border-t border-[var(--out-line)] pt-3">
-                {order.courierEvents.map((ev, i) => (
-                  <li key={`${ev.status}-${i}`} className="flex flex-col sm:flex-row sm:justify-between gap-1">
-                    <span>{ev.status}{ev.location ? ` · ${ev.location}` : ''}</span>
-                    <span className="text-[var(--out-muted)] text-xs">{ev.date || ''}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
           ) : !order.shippingTrackingNo ? (
             <p className="text-xs text-[var(--out-muted)]">
-              Courier tracking appears here after the order is shipped.
+              Courier updates appear here after we ship.
             </p>
           ) : null}
         </div>

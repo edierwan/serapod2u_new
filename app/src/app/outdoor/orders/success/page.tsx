@@ -11,39 +11,31 @@ export default async function OutdoorOrderSuccessPage({
   const ref = typeof params.ref === 'string' ? params.ref : ''
 
   return (
-    <div className="mx-auto max-w-2xl px-5 py-16 text-center">
-      <h1 className="font-display text-4xl tracking-tight text-[var(--out-moss)]">Thanks for your order</h1>
-      <p className="mt-4 text-[var(--out-muted)] leading-relaxed">
-        We created your order. Payment shows as paid once the payment provider confirms it.
-      </p>
-      {ref ? (
-        <div className="mt-8 rounded-xl border border-[var(--out-line)] bg-white px-5 py-4 text-left">
-          <p className="text-xs text-[var(--out-muted)]">Order number</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-[var(--out-ink)] break-all">{ref}</p>
-          <p className="mt-3 text-xs text-[var(--out-muted)]">
-            Keep this number. You’ll need it with your email to track the order.
-          </p>
+    <div className="mx-auto max-w-md px-4 py-14 text-center sm:px-6">
+      <div className="out-card px-6 py-10 sm:px-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--out-bark)]/50">SeraOutdoor</p>
+        <h1 className="mt-2 font-display text-3xl tracking-tight text-[var(--out-bark)]">You’re all set</h1>
+        <p className="mt-3 text-sm text-[var(--out-muted)] leading-relaxed">
+          We received your order. Payment shows as paid after Stripe confirms it.
+        </p>
+        {ref ? (
+          <div className="mt-6 rounded-2xl bg-[var(--out-ivory)] px-4 py-4 text-left">
+            <p className="text-xs text-[var(--out-muted)]">Order number</p>
+            <p className="mt-1 break-all font-mono text-lg font-semibold text-[var(--out-bark)]">{ref}</p>
+            <p className="mt-2 text-xs text-[var(--out-muted)]">Keep this with your email to track the order.</p>
+          </div>
+        ) : null}
+        <div className="mt-8 flex flex-col gap-2">
+          <Link href="/outdoor/track" className="out-btn w-full">
+            Track order
+          </Link>
+          <Link
+            href="/outdoor/shop"
+            className="inline-flex h-12 items-center justify-center rounded-full border border-[var(--out-bark)]/15 text-sm font-semibold text-[var(--out-bark)]"
+          >
+            Keep shopping
+          </Link>
         </div>
-      ) : null}
-      <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <Link
-          href="/outdoor/track"
-          className="inline-flex h-11 items-center rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white"
-        >
-          Track order
-        </Link>
-        <Link
-          href="/outdoor/account"
-          className="inline-flex h-11 items-center rounded-md border border-[var(--out-line)] px-5 text-sm font-semibold"
-        >
-          My account
-        </Link>
-        <Link
-          href="/outdoor/shop"
-          className="inline-flex h-11 items-center rounded-md border border-[var(--out-line)] px-5 text-sm font-semibold"
-        >
-          Keep shopping
-        </Link>
       </div>
     </div>
   )

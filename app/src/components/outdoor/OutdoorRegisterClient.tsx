@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import StoreBrandMark from '@/components/storefront/StoreBrandMark'
+import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 
 function safeOutdoorNext(raw: string | null) {
   if (!raw) return '/outdoor/account'
@@ -71,69 +71,67 @@ export default function OutdoorRegisterClient() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-5 py-16 sm:py-20">
-      <Link href="/outdoor" className="inline-flex">
-        <StoreBrandMark className="h-8 w-auto" />
-      </Link>
-      <h1 className="mt-8 font-display text-3xl tracking-tight">Create account</h1>
-      <p className="mt-2 text-sm text-[var(--out-muted)]">
-        Save your details for faster Outdoor checkout.
-      </p>
-
-      <form className="mt-8 space-y-4" onSubmit={submit}>
-        <label className="block text-sm">
-          Full name
-          <input
-            required
-            autoComplete="name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
-          />
-        </label>
-        <label className="block text-sm">
-          Email
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
-          />
-        </label>
-        <label className="block text-sm">
-          Password
-          <input
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] bg-white px-3"
-          />
-        </label>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        {info ? <p className="text-sm text-[var(--out-moss-deep)]">{info}</p> : null}
-        <button
-          type="submit"
-          disabled={loading}
-          className="h-11 w-full rounded-md bg-[var(--out-moss)] text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {loading ? 'Creating…' : 'Create account'}
-        </button>
-      </form>
-
-      <p className="mt-6 text-sm text-[var(--out-muted)]">
-        Already have an account?{' '}
-        <Link
-          href={`/outdoor/login?next=${encodeURIComponent(nextPath)}`}
-          className="font-semibold text-[var(--out-moss)]"
-        >
-          Sign in
+    <div className="mx-auto max-w-md px-4 py-12 sm:px-6 sm:py-16">
+      <div className="out-card px-5 py-8 sm:px-8 sm:py-10">
+        <Link href="/outdoor" className="inline-flex">
+          <OutdoorBrandMark className="h-7 w-auto" />
         </Link>
-      </p>
+        <h1 className="mt-6 font-display text-3xl tracking-tight text-[var(--out-bark)]">Create account</h1>
+        <p className="mt-2 text-sm text-[var(--out-muted)]">
+          Save your details for faster Outdoor checkout.
+        </p>
+
+        <form className="mt-6 space-y-4" onSubmit={submit}>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Full name
+            <input
+              required
+              autoComplete="name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="out-input"
+            />
+          </label>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Email
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="out-input"
+            />
+          </label>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Password
+            <input
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="out-input"
+            />
+          </label>
+          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {info ? <p className="text-sm text-[var(--out-moss-deep)]">{info}</p> : null}
+          <button type="submit" disabled={loading} className="out-btn w-full">
+            {loading ? 'Creating…' : 'Create account'}
+          </button>
+        </form>
+
+        <p className="mt-6 text-sm text-[var(--out-muted)]">
+          Already have an account?{' '}
+          <Link
+            href={`/outdoor/login?next=${encodeURIComponent(nextPath)}`}
+            className="font-semibold text-[var(--out-moss)]"
+          >
+            Sign in
+          </Link>
+        </p>
+      </div>
     </div>
   )
 }

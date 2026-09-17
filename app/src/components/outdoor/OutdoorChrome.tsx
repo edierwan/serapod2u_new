@@ -55,7 +55,15 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   }, [])
 
   const signedIn = Boolean(authEmail)
-  const hideStoreMarketing = pathname.startsWith('/outdoor/fulfilment')
+  const isFlowPage =
+    pathname.startsWith('/outdoor/fulfilment') ||
+    pathname.startsWith('/outdoor/checkout') ||
+    pathname.startsWith('/outdoor/cart') ||
+    pathname.startsWith('/outdoor/track') ||
+    pathname.startsWith('/outdoor/login') ||
+    pathname.startsWith('/outdoor/register') ||
+    pathname.startsWith('/outdoor/orders')
+  const hideStoreMarketing = isFlowPage
 
   const signOut = async () => {
     const supabase = createClient()
@@ -86,7 +94,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             <OutdoorBrandMark variant="onDark" className="h-5 w-auto max-w-[9.5rem] object-contain sm:h-7 sm:max-w-[13rem]" priority />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1 ml-2 text-sm" aria-label="Primary">
+          <nav className={`hidden items-center gap-1 ml-2 text-sm ${isFlowPage ? 'md:hidden' : 'md:flex'}`} aria-label="Primary">
             {NAV.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
               return (

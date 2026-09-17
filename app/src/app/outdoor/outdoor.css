@@ -64,3 +64,46 @@
 .sera-outdoor .out-drift {
   animation: outdoor-drift 22s ease-in-out infinite;
 }
+
+.sera-outdoor .out-input {
+  margin-top: 0.4rem;
+  height: 3rem;
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgb(63 28 31 / 0.12);
+  background: #fff;
+  padding: 0 1rem;
+  color: var(--out-bark);
+}
+
+.sera-outdoor .out-input:focus {
+  outline: none;
+  border-color: var(--out-moss);
+  box-shadow: 0 0 0 3px rgb(220 88 42 / 0.18);
+}
+
+.sera-outdoor .out-btn {
+  display: inline-flex;
+  height: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--out-moss);
+  padding: 0 1.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.sera-outdoor .out-btn:hover {
+  background: var(--out-moss-deep);
+}
+
+.sera-outdoor .out-btn:disabled {
+  opacity: 0.45;
+}
+
+.sera-outdoor .out-card {
+  border-radius: 1.6rem;
+  background: #fff;
+}
