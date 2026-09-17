@@ -18,6 +18,17 @@ export function getEasyParcelRedirectUri() {
   ).trim()
 }
 
+/** Public site origin — Coolify request.origin is 0.0.0.0 inside the container. */
+export function getEasyParcelPublicOrigin() {
+  const env = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+  if (env && !/0\.0\.0\.0|127\.0\.0\.1/i.test(env)) return env
+  try {
+    return new URL(getEasyParcelRedirectUri()).origin
+  } catch {
+    return 'https://stg.serapod2u.com'
+  }
+}
+
 export function getEasyParcelApiOrigin() {
   return String(process.env.EASYPARCEL_API_BASE || 'https://api.easyparcel.com').replace(/\/$/, '')
 }

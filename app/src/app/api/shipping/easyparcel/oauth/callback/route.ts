@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import {
   clearOauthStateCookie,
+  getEasyParcelPublicOrigin,
   readOauthStateCookie,
   saveEasyParcelAuthorizationCode,
 } from '@/lib/shipping/easyparcel-oauth'
 
 function fulfilmentRedirect(request: NextRequest, query: string) {
-  const url = new URL('/outdoor/fulfilment', request.nextUrl.origin)
+  const url = new URL('/outdoor/fulfilment', getEasyParcelPublicOrigin())
   url.searchParams.set('easyparcel', query)
   const res = NextResponse.redirect(url)
   res.headers.append('Set-Cookie', clearOauthStateCookie())

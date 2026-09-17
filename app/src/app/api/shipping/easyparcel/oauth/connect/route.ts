@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import {
   easyParcelAuthUrl,
+  getEasyParcelPublicOrigin,
   isEasyParcelAppConfigured,
   oauthStateCookie,
 } from '@/lib/shipping/easyparcel-oauth'
@@ -11,7 +12,7 @@ import {
 export async function GET(request: NextRequest) {
   const staff = await requireOutdoorStaff()
   if (!staff) {
-    const login = new URL('/outdoor/login', request.nextUrl.origin)
+    const login = new URL('/outdoor/login', getEasyParcelPublicOrigin())
     login.searchParams.set('next', '/outdoor/fulfilment')
     return NextResponse.redirect(login)
   }
