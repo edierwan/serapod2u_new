@@ -7,6 +7,17 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
+function publicOrigin(request: NextRequest) {
+  const env = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+  if (env && !/0\.0\.0\.0|127\.0\.0\.1/i.test(env)) return env
+  const xfHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+  const xfProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https'
+  if (xfHost && !/0\.0\.0\.0|127\.0\.0\.1/i.test(xfHost)) return `${xfProto}://${xfHost}`
+  const url = new URL(request.url)
+  if (!/0\.0\.0\.0|127\.0\.0\.1/i.test(url.hostname)) return url.origin
+  return 'https://stg.serapod2u.com'
+}
+
 // ── Portal email domains ─────────────────────────────────────────
 const PORTAL_EMAIL_DOMAINS = ['serapod.com', 'serapod2u.com']
 
@@ -25,9 +36,10 @@ export async function GET(request: NextRequest) {
   const errorParam = requestUrl.searchParams.get('error')
   const errorDescription = requestUrl.searchParams.get('error_description')
   const nextPath = requestUrl.searchParams.get('next')
+  const origin = publicOrigin(request)
   const failLoginPath = nextPath?.startsWith('/outdoor') ? '/outdoor/login' : '/login'
   const failRedirect = (errorCode: string, message?: string) => {
-    const url = new URL(failLoginPath, requestUrl.origin)
+    const url = new URL(failLoginPath, origin)
     url.searchParams.set('error', errorCode)
     if (message) url.searchParams.set('message', message)
     if (nextPath?.startsWith('/outdoor')) url.searchParams.set('next', nextPath)
@@ -109,7 +121,7 @@ export async function GET(request: NextRequest) {
           nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
             ? nextPath
             : '/store'
-        const welcomeUrl = new URL(welcomeBase, requestUrl.origin)
+        const welcomeUrl = new URL(welcomeBase, origin)
         welcomeUrl.searchParams.set('welcome', 'true')
         return NextResponse.redirect(welcomeUrl)
       }
@@ -133,7 +145,7 @@ export async function GET(request: NextRequest) {
 
     // 4. Redirect based on account_scope (honour ?next= for Outdoor/Store return)
     const { redirectTo } = await getPostLoginRedirect(nextPath)
-    return NextResponse.redirect(new URL(redirectTo, requestUrl.origin))
+    return NextResponse.redirect(new URL(redirectTo, origin))
   } catch (error) {
     console.error('[auth/callback] Unexpected error:', error)
     return failRedirect('unexpected')
