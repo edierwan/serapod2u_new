@@ -5,13 +5,7 @@ import Link from 'next/link'
 import { createClient, forceCleanStorage, resetClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 import OutdoorSocialAuth from '@/components/outdoor/OutdoorSocialAuth'
-
-function safeOutdoorNext(raw: string | null) {
-  if (!raw) return '/outdoor/account'
-  if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/api/')) return '/outdoor/account'
-  if (raw.startsWith('/outdoor')) return raw
-  return '/outdoor/account'
-}
+import { resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 function oauthErrorMessage(code: string | null, message: string | null) {
   if (!code) return ''
@@ -26,11 +20,11 @@ export default function OutdoorLoginClient() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [nextPath, setNextPath] = useState('/outdoor/account')
+  const [nextPath, setNextPath] = useState('/outdoor')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const next = safeOutdoorNext(params.get('next') || params.get('redirect'))
+    const next = resolveOutdoorReturnPath(params.get('next'), params.get('redirect'))
     setNextPath(next)
     setError(oauthErrorMessage(params.get('error'), params.get('message')))
 

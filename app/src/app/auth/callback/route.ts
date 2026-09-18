@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ensureUserRow } from '@/server/auth/ensureUserRow'
 import { getPostLoginRedirect } from '@/server/auth/getPostLoginRedirect'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OUTDOOR_OAUTH_NEXT_COOKIE, sanitizeOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,9 +36,15 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code')
   const errorParam = requestUrl.searchParams.get('error')
   const errorDescription = requestUrl.searchParams.get('error_description')
-  const nextPath = requestUrl.searchParams.get('next')
+  const rawNext = requestUrl.searchParams.get('next') || request.cookies.get(OUTDOOR_OAUTH_NEXT_COOKIE)?.value || null
+  const nextPath = rawNext?.startsWith('/outdoor') ? sanitizeOutdoorReturnPath(rawNext) : rawNext
   const origin = publicOrigin(request)
   const failLoginPath = nextPath?.startsWith('/outdoor') ? '/outdoor/login' : '/login'
+  const successRedirect = (path: string) => {
+    const res = NextResponse.redirect(new URL(path, origin))
+    res.cookies.set(OUTDOOR_OAUTH_NEXT_COOKIE, '', { path: '/', maxAge: 0 })
+    return res
+  }
   const failRedirect = (errorCode: string, message?: string) => {
     const url = new URL(failLoginPath, origin)
     url.searchParams.set('error', errorCode)
@@ -123,7 +130,9 @@ export async function GET(request: NextRequest) {
             : '/store'
         const welcomeUrl = new URL(welcomeBase, origin)
         welcomeUrl.searchParams.set('welcome', 'true')
-        return NextResponse.redirect(welcomeUrl)
+        const welcomeRes = NextResponse.redirect(welcomeUrl)
+        welcomeRes.cookies.set(OUTDOOR_OAUTH_NEXT_COOKIE, '', { path: '/', maxAge: 0 })
+        return welcomeRes
       }
     } else {
       // Existing user — update avatar & last_login
@@ -145,7 +154,7 @@ export async function GET(request: NextRequest) {
 
     // 4. Redirect based on account_scope (honour ?next= for Outdoor/Store return)
     const { redirectTo } = await getPostLoginRedirect(nextPath)
-    return NextResponse.redirect(new URL(redirectTo, origin))
+    return successRedirect(redirectTo)
   } catch (error) {
     console.error('[auth/callback] Unexpected error:', error)
     return failRedirect('unexpected')

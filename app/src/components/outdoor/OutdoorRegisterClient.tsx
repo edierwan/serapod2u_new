@@ -5,13 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 import OutdoorSocialAuth from '@/components/outdoor/OutdoorSocialAuth'
-
-function safeOutdoorNext(raw: string | null) {
-  if (!raw) return '/outdoor/account'
-  if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/api/')) return '/outdoor/account'
-  if (raw.startsWith('/outdoor')) return raw
-  return '/outdoor/account'
-}
+import { outdoorPublicOrigin, resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 export default function OutdoorRegisterClient() {
   const [fullName, setFullName] = useState('')
@@ -20,11 +14,11 @@ export default function OutdoorRegisterClient() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
-  const [nextPath, setNextPath] = useState('/outdoor/account')
+  const [nextPath, setNextPath] = useState('/outdoor')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const next = safeOutdoorNext(params.get('next') || params.get('redirect'))
+    const next = resolveOutdoorReturnPath(params.get('next'), params.get('redirect'))
     setNextPath(next)
 
     const check = async () => {
@@ -55,7 +49,7 @@ export default function OutdoorRegisterClient() {
         password,
         options: {
           data: { full_name: fullName.trim() },
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+          emailRedirectTo: `${outdoorPublicOrigin()}/auth/callback?next=${encodeURIComponent(nextPath)}`,
         },
       })
       if (signError) throw new Error(signError.message)

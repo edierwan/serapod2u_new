@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { outdoorPublicOrigin, persistOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -39,7 +40,8 @@ export default function OutdoorSocialAuth({
     const label = provider === 'google' ? 'Google' : 'Facebook'
     try {
       const supabase = createClient()
-      const callback = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+      const returnTo = persistOutdoorReturnPath(nextPath)
+      const callback = `${outdoorPublicOrigin()}/auth/callback?next=${encodeURIComponent(returnTo)}`
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {

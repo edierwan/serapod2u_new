@@ -8,6 +8,7 @@ import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 import OutdoorNewsletter from '@/components/outdoor/OutdoorNewsletter'
+import { outdoorAuthHref } from '@/lib/outdoor/auth-return'
 
 const NAV = [
   { href: '/outdoor/shop', label: 'Shop' },
@@ -21,15 +22,19 @@ const SOCIALS = [
   { label: 'TikTok', href: process.env.NEXT_PUBLIC_OUTDOOR_TIKTOK },
 ].filter((s): s is { label: string; href: string } => Boolean(s.href))
 
-const LOGIN_HREF = `/outdoor/login?next=${encodeURIComponent('/outdoor/account')}`
-const SIGNUP_HREF = `/outdoor/register?next=${encodeURIComponent('/outdoor/account')}`
-
 export default function OutdoorChrome({ children }: { children: React.ReactNode }) {
   const { totalItems } = useCart()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [authEmail, setAuthEmail] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [pageSearch, setPageSearch] = useState('')
+  const loginHref = outdoorAuthHref('login', pathname, pageSearch)
+  const signupHref = outdoorAuthHref('register', pathname, pageSearch)
+
+  useEffect(() => {
+    setPageSearch(window.location.search)
+  }, [pathname])
 
   useEffect(() => {
     const supabase = createClient()
@@ -133,7 +138,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                 </button>
               </>
             ) : (
-              <Link href={LOGIN_HREF} className="p-2 hover:text-white" aria-label="Sign in">
+              <Link href={loginHref} className="p-2 hover:text-white" aria-label="Sign in">
                 <User className="h-5 w-5" />
               </Link>
             )}
@@ -184,10 +189,10 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                 </>
               ) : (
                 <>
-                  <Link href={LOGIN_HREF} onClick={() => setOpen(false)} className="py-1 font-semibold text-[var(--out-moss)]">
+                  <Link href={loginHref} onClick={() => setOpen(false)} className="py-1 font-semibold text-[var(--out-moss)]">
                     Sign in
                   </Link>
-                  <Link href={SIGNUP_HREF} onClick={() => setOpen(false)} className="py-1">
+                  <Link href={signupHref} onClick={() => setOpen(false)} className="py-1">
                     Create account
                   </Link>
                 </>
@@ -265,8 +270,8 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                 </>
               ) : (
                 <>
-                  <li><Link href={LOGIN_HREF} className="hover:text-[var(--out-moss)]">Sign in</Link></li>
-                  <li><Link href={SIGNUP_HREF} className="hover:text-[var(--out-moss)]">Create account</Link></li>
+                  <li><Link href={loginHref} className="hover:text-[var(--out-moss)]">Sign in</Link></li>
+                  <li><Link href={signupHref} className="hover:text-[var(--out-moss)]">Create account</Link></li>
                 </>
               )}
             </ul>
