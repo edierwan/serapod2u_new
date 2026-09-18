@@ -24,17 +24,24 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code')
   const errorParam = requestUrl.searchParams.get('error')
   const errorDescription = requestUrl.searchParams.get('error_description')
+  const nextPath = requestUrl.searchParams.get('next')
+  const failLoginPath = nextPath?.startsWith('/outdoor') ? '/outdoor/login' : '/login'
+  const failRedirect = (errorCode: string, message?: string) => {
+    const url = new URL(failLoginPath, requestUrl.origin)
+    url.searchParams.set('error', errorCode)
+    if (message) url.searchParams.set('message', message)
+    if (nextPath?.startsWith('/outdoor')) url.searchParams.set('next', nextPath)
+    return NextResponse.redirect(url)
+  }
 
   if (errorParam) {
     console.error('[auth/callback] OAuth error:', errorParam, errorDescription)
-    return NextResponse.redirect(
-      new URL(`/login?error=oauth_failed&message=${encodeURIComponent(errorDescription || errorParam)}`, requestUrl.origin)
-    )
+    return failRedirect('oauth_failed', errorDescription || errorParam)
   }
 
   if (!code) {
     console.error('[auth/callback] No code parameter received')
-    return NextResponse.redirect(new URL('/login?error=no_code', requestUrl.origin))
+    return failRedirect('no_code')
   }
 
   try {
@@ -64,15 +71,13 @@ export async function GET(request: NextRequest) {
 
     if (sessionError) {
       console.error('[auth/callback] Session exchange error:', sessionError.message)
-      return NextResponse.redirect(
-        new URL(`/login?error=session_failed&message=${encodeURIComponent(sessionError.message)}`, requestUrl.origin)
-      )
+      return failRedirect('session_failed', sessionError.message)
     }
 
     const user = sessionData?.user
     if (!user) {
       console.error('[auth/callback] No user after session exchange')
-      return NextResponse.redirect(new URL('/login?error=no_user', requestUrl.origin))
+      return failRedirect('no_user')
     }
 
     // 2. Determine provider info
@@ -100,7 +105,6 @@ export async function GET(request: NextRequest) {
 
       // If new store user needs phone, still honour Outdoor/Store return path when provided
       if (ensuredUser.account_scope === 'store' && !phone) {
-        const nextPath = requestUrl.searchParams.get('next')
         const welcomeBase =
           nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
             ? nextPath
@@ -128,11 +132,10 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Redirect based on account_scope (honour ?next= for Outdoor/Store return)
-    const nextPath = requestUrl.searchParams.get('next')
     const { redirectTo } = await getPostLoginRedirect(nextPath)
     return NextResponse.redirect(new URL(redirectTo, requestUrl.origin))
   } catch (error) {
     console.error('[auth/callback] Unexpected error:', error)
-    return NextResponse.redirect(new URL('/login?error=unexpected', requestUrl.origin))
+    return failRedirect('unexpected')
   }
 }

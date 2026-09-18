@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
+import OutdoorSocialAuth from '@/components/outdoor/OutdoorSocialAuth'
 
 function safeOutdoorNext(raw: string | null) {
   if (!raw) return '/outdoor/account'
@@ -27,9 +28,13 @@ export default function OutdoorRegisterClient() {
     setNextPath(next)
 
     const check = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) window.location.href = next
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) window.location.href = next
+      } catch {
+        // Broken/stale session should not block Google or Facebook.
+      }
     }
     void check()
   }, [])
@@ -81,7 +86,20 @@ export default function OutdoorRegisterClient() {
           Save your details for faster Outdoor checkout.
         </p>
 
-        <form className="mt-6 space-y-4" onSubmit={submit}>
+        <div className="mt-6">
+          <OutdoorSocialAuth nextPath={nextPath} disabled={loading} onError={setError} />
+        </div>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-[var(--out-bark)]/10" />
+          </div>
+          <div className="relative flex justify-center text-[11px] uppercase tracking-[0.16em]">
+            <span className="bg-white px-3 text-[var(--out-muted)]">or email</span>
+          </div>
+        </div>
+
+        <form className="space-y-4" onSubmit={submit}>
           <label className="block text-sm font-medium text-[var(--out-bark)]">
             Full name
             <input
