@@ -106,14 +106,18 @@ export async function sendTransactionalHtmlEmail(
                         refreshToken: secret.oauth_refresh_token, accessToken: token.access_token },
                 })
             }
-            await transporter.sendMail({
+            const mail = {
                 from: { name: fromName, address: fromEmail },
                 ...message,
                 replyTo: fromEmail,
                 messageId: transactionalMessageId(fromEmail),
-                // Align MAIL FROM with From so SPF/DMARC match. iCloud drops misaligned mail; Yahoo jails it.
-                envelope: { from: fromEmail, to: input.to },
-            })
+            }
+            // Gmail only: MAIL FROM must be the Gmail mailbox. Leave SMTP envelope to the authenticated user.
+            await transporter.sendMail(
+                provider.provider_name === 'gmail'
+                    ? { ...mail, envelope: { from: fromEmail, to: input.to } }
+                    : mail,
+            )
             return { success: true, providerName: provider.provider_name }
         }
 
