@@ -16,8 +16,13 @@
  *     never by batching order ids;
  *   - product labels are resolved in ONE `.in()` query over the ranked
  *     variants, never per line;
- *   - the only all-history read is a narrow `(id, buyer, created_at, status)`
+ *   - the only all-history read is a narrow `(id, buyer, order_date, status)`
  *     projection, which is what "first ever order" and dormancy require.
+ *
+ * Every read windows and buckets on the business date `orders.order_date`.
+ * Against a database that predates the order_date migration the column does
+ * not exist; the reads then fall back to the Malaysia date of `created_at`
+ * (exactly how the migration backfills legacy rows) and the report says so.
  *
  * The fallback is a bridge for environments where the reporting migration has
  * not been applied yet; it is bounded and reports itself as degraded.
@@ -30,6 +35,9 @@ import {
   DISTRIBUTOR_ORG_TYPE,
   ELIGIBLE_ORDER_TYPE,
   emptyAggregate,
+  LEGACY_REPORT_DATE_FIELD,
+  REPORT_DATE_FIELD,
+  reportDateWindows,
   resolveDistributorReportPeriod,
   type DistributorAggregate,
   type DistributorAnalyticsAggregate,
@@ -39,6 +47,23 @@ import {
   type StatusTotals,
 } from './distributor-analytics'
 import { reportingPeriodFromKey, REPORTING_TIME_ZONE, type ReportingPeriod } from './reporting-period'
+import {
+  businessDateStartUtc,
+  isDateKey,
+  malaysiaDateOf,
+  orderBusinessDate,
+} from '@/lib/orders/order-date'
+import {
+  filterBusinessDateRange,
+  legacyOrderDateNotice,
+  orderByBusinessDate,
+  orderDateSelect,
+  resolveOrderDateColumn,
+  type OrderDateColumn,
+} from './business-date-query'
+
+export { filterBusinessDateRange, orderByBusinessDate, orderDateSelect, resolveOrderDateColumn }
+export type { OrderDateColumn }
 
 const PAGE_SIZE = 1000
 /** Hard ceiling for the degraded fallback. Beyond this the migration is required. */
@@ -82,10 +107,12 @@ export function mytDate(timestamp: string): string {
 
 // ── Records as the fallback queries return them ────────────────────────────
 
-/** Narrow all-history order projection: no items, no joins, four columns. */
+/** Narrow all-history order projection: no items, no joins, a handful of columns. */
 export interface OrderRecord {
   id: string
   buyer_org_id: string | null
+  /** Business date; absent when read from a database without the column. */
+  order_date?: string | null
   created_at: string | null
   status: string | null
   order_no?: string | null
@@ -135,7 +162,8 @@ export function lineValue(row: OrderItemRecord): number {
  * restricted to the report's order type, buyer scope and status scope — the
  * lifetime first/last order dates that decide New and Dormant come from it.
  * `items` covers only the report window and its comparison window; which
- * window a row belongs to is decided from its order's `created_at`.
+ * window a row belongs to is decided from its order's business date
+ * (`order_date`, or the Malaysia date of `created_at` for a legacy row).
  */
 export function aggregateDistributorOrders(
   orders: OrderRecord[],
@@ -147,8 +175,9 @@ export function aggregateDistributorOrders(
   period: DistributorReportPeriod = resolveDistributorReportPeriod(month, now),
   distributorId: string = ALL_DISTRIBUTORS,
   status: string = ALL_STATUS,
+  dateField: string = REPORT_DATE_FIELD,
 ): DistributorAnalyticsAggregate {
-  const { startUtc, endUtc, comparisonStartUtc, comparisonEndUtc } = period
+  const windows = reportDateWindows(period)
 
   const valueByOrder = new Map<string, number>()
   const itemCountByOrder = new Map<string, number>()
@@ -164,8 +193,8 @@ export function aggregateDistributorOrders(
     currentValue: number
     previousOrders: number
     previousValue: number
-    firstOrderAt: string | null
-    lastOrderAt: string | null
+    firstOrderDate: string | null
+    lastOrderDate: string | null
     lifetimeOrders: number
   }
   const buckets = new Map<string, Bucket>()
@@ -174,7 +203,7 @@ export function aggregateDistributorOrders(
     if (!bucket) {
       bucket = {
         currentOrders: 0, currentValue: 0, previousOrders: 0, previousValue: 0,
-        firstOrderAt: null, lastOrderAt: null, lifetimeOrders: 0,
+        firstOrderDate: null, lastOrderDate: null, lifetimeOrders: 0,
       }
       buckets.set(id, bucket)
     }
@@ -192,20 +221,21 @@ export function aggregateDistributorOrders(
   let previousValue = 0
 
   for (const order of orders) {
-    const createdAt = order.created_at
+    // The business date decides everything below; created_at is only carried.
+    const orderDate = orderBusinessDate(order)
     const buyerId = order.buyer_org_id
-    if (!createdAt || !buyerId) continue
+    if (!orderDate || !buyerId) continue
 
     const bucket = bucketFor(buyerId)
     bucket.lifetimeOrders += 1
-    if (bucket.firstOrderAt === null || createdAt < bucket.firstOrderAt) bucket.firstOrderAt = createdAt
-    if (bucket.lastOrderAt === null || createdAt > bucket.lastOrderAt) bucket.lastOrderAt = createdAt
+    if (bucket.firstOrderDate === null || orderDate < bucket.firstOrderDate) bucket.firstOrderDate = orderDate
+    if (bucket.lastOrderDate === null || orderDate > bucket.lastOrderDate) bucket.lastOrderDate = orderDate
 
     const value = valueByOrder.get(order.id) ?? 0
-    // Half-open windows: an order stamped exactly at the next month's boundary
-    // belongs to that month, never to both.
-    const inCurrent = createdAt >= startUtc && createdAt < endUtc
-    const inPrevious = createdAt >= comparisonStartUtc && createdAt < comparisonEndUtc
+    // Half-open business-date windows: an order dated the first day of the next
+    // month belongs to that month, never to both.
+    const inCurrent = orderDate >= windows.start && orderDate < windows.end
+    const inPrevious = orderDate >= windows.comparisonStart && orderDate < windows.comparisonEnd
 
     if (inCurrent) {
       bucket.currentOrders += 1
@@ -214,7 +244,7 @@ export function aggregateDistributorOrders(
       currentValue += value
       currentOrderIds.add(order.id)
 
-      const day = mytDate(createdAt)
+      const day = orderDate
       const dayBucket = dayTotals.get(day) ?? { orders: 0, orderValue: 0 }
       dayBucket.orders += 1
       dayBucket.orderValue += value
@@ -229,7 +259,8 @@ export function aggregateDistributorOrders(
       recent.push({
         orderId: order.id,
         orderNo: order.display_doc_no || order.order_no || null,
-        createdAt,
+        orderDate,
+        createdAt: order.created_at ?? businessDateStartUtc(orderDate),
         status: statusKey,
         distributorId: buyerId,
         distributorName: (nameById.get(buyerId)?.org_name || '').trim() || 'Unknown distributor',
@@ -278,9 +309,11 @@ export function aggregateDistributorOrders(
       currentValue: bucket.currentValue,
       previousOrders: bucket.previousOrders,
       previousValue: bucket.previousValue,
-      firstOrderAt: bucket.firstOrderAt,
-      lastOrderAt: bucket.lastOrderAt,
+      firstOrderAt: bucket.firstOrderDate ? businessDateStartUtc(bucket.firstOrderDate) : null,
+      lastOrderAt: bucket.lastOrderDate ? businessDateStartUtc(bucket.lastOrderDate) : null,
       lifetimeOrders: bucket.lifetimeOrders,
+      firstOrderDate: bucket.firstOrderDate,
+      lastOrderDate: bucket.lastOrderDate,
     }
   })
 
@@ -304,6 +337,7 @@ export function aggregateDistributorOrders(
     distributorId,
     distributorName: scopeName,
     status,
+    dateField,
     current: { orders: currentOrders, orderValue: currentValue, activeDistributors },
     previous: { orders: previousOrders, orderValue: previousValue, activeDistributors: previousActive },
     dailyTrend,
@@ -311,12 +345,14 @@ export function aggregateDistributorOrders(
     statusBreakdown: [...statusTotals.values()],
     topProducts: [...productTotals.values()],
     recentOrders: recent
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .sort((a, b) => b.orderDate.localeCompare(a.orderDate)
+        || Date.parse(b.createdAt) - Date.parse(a.createdAt))
       .slice(0, 20),
   }
 }
 
 // ── Query helpers ──────────────────────────────────────────────────────────
+
 
 /**
  * The eligible-order scope every Distributor Analytics read shares — the same
@@ -349,6 +385,9 @@ export function reportOrderValue(items: OrderItemRecord[], source: 'rpc' | 'fall
 export interface EligibleWindowOrder {
   orderId: string
   orderNo: string
+  /** Business SO date (YYYY-MM-DD) — the date shown and sorted on. */
+  orderDate: string
+  /** Actual entry instant (audit). */
   createdAt: string
   updatedAt: string | null
   status: string
@@ -361,27 +400,42 @@ export interface EligibleWindowOrder {
 }
 
 /**
- * Every eligible order inside the report window [startUtc, endUtc) for the
- * scope, newest first — the population whose count is "Total Orders".
+ * Every eligible order whose business date falls inside the report window
+ * [start, end) for the scope, newest first — the population whose count is
+ * "Total Orders".
  */
 export async function fetchEligibleWindowOrders(
   supabase: any,
-  input: { distributors: ReportingDistributor[]; status: string; period: DistributorReportPeriod; source: 'rpc' | 'fallback' },
+  input: {
+    distributors: ReportingDistributor[]
+    status: string
+    period: DistributorReportPeriod
+    source: 'rpc' | 'fallback'
+    dateColumn?: OrderDateColumn
+  },
 ): Promise<EligibleWindowOrder[]> {
   const { distributors, status, period, source } = input
   if (distributors.length === 0 || period.dayCount === 0) return []
+  const dateColumn = input.dateColumn ?? await resolveOrderDateColumn(supabase)
+  const windows = reportDateWindows(period)
   const byId = new Map(distributors.map((row) => [row.id, row]))
   const orders = await readPages<any>(
-    (from, to) => scopeEligibleDistributorOrders(
-      supabase
-        .from('orders')
-        .select('id, order_no, display_doc_no, created_at, updated_at, status, buyer_org_id, created_by, order_items(qty, unit_price, line_total)'),
-      distributors.map((row) => row.id),
-      status,
+    (from, to) => orderByBusinessDate(
+      filterBusinessDateRange(
+        scopeEligibleDistributorOrders(
+          supabase
+            .from('orders')
+            .select(`id, order_no, display_doc_no, ${orderDateSelect(dateColumn)}, updated_at, status, buyer_org_id, created_by, order_items(qty, unit_price, line_total)`),
+          distributors.map((row) => row.id),
+          status,
+        ),
+        dateColumn,
+        windows.start,
+        windows.end,
+      ),
+      dateColumn,
+      false,
     )
-      .gte('created_at', period.startUtc)
-      .lt('created_at', period.endUtc)
-      .order('created_at', { ascending: false })
       .range(from, to),
     { remaining: MAX_FALLBACK_ROWS },
     'drill-down orders',
@@ -392,6 +446,7 @@ export async function fetchEligibleWindowOrders(
     return {
       orderId: order.id,
       orderNo: order.display_doc_no || order.order_no || order.id,
+      orderDate: orderBusinessDate(order) ?? '',
       createdAt: order.created_at,
       updatedAt: order.updated_at ?? null,
       status: order.status || 'unknown',
@@ -408,17 +463,21 @@ export async function fetchEligibleWindowOrders(
 /** Narrow all-history eligible orders for a set of distributors (dates and numbers only). */
 export async function fetchEligibleOrderHistory(
   supabase: any,
-  input: { distributorIds: string[]; status: string },
+  input: { distributorIds: string[]; status: string; dateColumn?: OrderDateColumn },
 ): Promise<OrderRecord[]> {
   if (input.distributorIds.length === 0) return []
+  const dateColumn = input.dateColumn ?? await resolveOrderDateColumn(supabase)
   return readPages<OrderRecord>(
-    (from, to) => scopeEligibleDistributorOrders(
-      supabase.from('orders').select('id, buyer_org_id, created_at, status, order_no, display_doc_no'),
-      input.distributorIds,
-      input.status,
+    (from, to) => orderByBusinessDate(
+      scopeEligibleDistributorOrders(
+        supabase.from('orders').select(`id, buyer_org_id, ${orderDateSelect(dateColumn)}, status, order_no, display_doc_no`),
+        input.distributorIds,
+        input.status,
+      )
+        .not(dateColumn, 'is', null),
+      dateColumn,
+      true,
     )
-      .not('created_at', 'is', null)
-      .order('created_at', { ascending: true })
       .range(from, to),
     { remaining: MAX_FALLBACK_ROWS },
     'drill-down order history',
@@ -440,7 +499,7 @@ async function readPages<T>(
     if (budget.remaining < 0) {
       throw new Error(
         `Distributor Analytics fallback exceeded its row budget while reading ${label}. Apply migration `
-        + '20260908130000_distributor_analytics_monthly_report.sql so the report is aggregated in the database.',
+        + '20260921120200_distributor_analytics_order_date.sql so the report is aggregated in the database.',
       )
     }
     if (page.length < PAGE_SIZE) break
@@ -480,19 +539,26 @@ export async function fetchDistributorOrderPeriods(supabase: any): Promise<Repor
   }
   if (!isMissingDistributorPeriodsRpc(error)) throw error
 
+  // Reporting months follow the business date, like the report itself.
+  const dateColumn = await resolveOrderDateColumn(supabase)
   const months = new Map<string, number>()
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data: page, error: pageError } = await supabase
-      .from('orders')
-      .select('created_at')
-      .eq('order_type', ELIGIBLE_ORDER_TYPE)
-      .not('created_at', 'is', null)
-      .order('created_at', { ascending: false })
+    const { data: page, error: pageError } = await orderByBusinessDate(
+      supabase
+        .from('orders')
+        .select(`id, ${orderDateSelect(dateColumn)}`)
+        .eq('order_type', ELIGIBLE_ORDER_TYPE)
+        .not(dateColumn, 'is', null),
+      dateColumn,
+      false,
+    )
       .range(from, from + PAGE_SIZE - 1)
     if (pageError) throw pageError
-    const rows = (page || []) as { created_at: string }[]
+    const rows = (page || []) as { order_date?: string | null; created_at: string | null }[]
     for (const row of rows) {
-      const key = mytDate(row.created_at).slice(0, 7)
+      const date = orderBusinessDate(row)
+      if (!date) continue
+      const key = date.slice(0, 7)
       months.set(key, (months.get(key) ?? 0) + 1)
     }
     if (rows.length < PAGE_SIZE || from > 50_000) break
@@ -523,11 +589,17 @@ export async function fetchDistributorAnalyticsAggregate(
     p_status: isAllStatus ? null : status,
   })
   if (!error) {
+    const aggregate = normalizeAggregate(data, month, period, distributorId, status)
     return {
-      aggregate: normalizeAggregate(data, month, period, distributorId, status),
+      aggregate,
       source: 'rpc',
       degraded: false,
-      notice: null,
+      // The installed function predates order_date and still buckets on
+      // created_at: say so rather than present entry dates as SO dates.
+      notice: aggregate.dateField === LEGACY_REPORT_DATE_FIELD
+        ? 'Reporting function still buckets on orders.created_at — backdated SO dates are not reflected yet. '
+          + 'Apply migrations 20260921120000_add_orders_order_date.sql and 20260921120200_distributor_analytics_order_date.sql.'
+        : null,
     }
   }
   if (!isMissingDistributorAnalyticsRpc(error)) throw error
@@ -560,6 +632,8 @@ export async function fetchDistributorAnalyticsAggregate(
 
   const distributorIds = scopedDistributors.map((row) => row.id)
   const budget = { remaining: MAX_FALLBACK_ROWS }
+  const dateColumn = await resolveOrderDateColumn(supabase)
+  const windows = reportDateWindows(period)
 
   const withScope = (query: any) => scopeEligibleDistributorOrders(query, distributorIds, status)
 
@@ -568,13 +642,16 @@ export async function fetchDistributorAnalyticsAggregate(
     // decided from the report window, so this read is unavoidable without the
     // RPC — it carries no joins and no order lines.
     readPages<OrderRecord>(
-      (from, to) => withScope(
-        supabase
-          .from('orders')
-          .select('id, buyer_org_id, created_at, status, order_no, display_doc_no'),
+      (from, to) => orderByBusinessDate(
+        withScope(
+          supabase
+            .from('orders')
+            .select(`id, buyer_org_id, ${orderDateSelect(dateColumn)}, status, order_no, display_doc_no`),
+        )
+          .not(dateColumn, 'is', null),
+        dateColumn,
+        true,
       )
-        .not('created_at', 'is', null)
-        .order('created_at', { ascending: true })
         .range(from, to),
       budget,
       'orders',
@@ -583,13 +660,17 @@ export async function fetchDistributorAnalyticsAggregate(
     // covering both is a single scan rather than two.
     readPages<OrderItemRecord>(
       (from, to) => {
-        let query = supabase
-          .from('order_items')
-          .select('order_id, variant_id, product_id, qty, unit_price, line_total, orders!inner(created_at, order_type, buyer_org_id, status)')
-          .eq('orders.order_type', ELIGIBLE_ORDER_TYPE)
-          .in('orders.buyer_org_id', distributorIds)
-          .gte('orders.created_at', period.comparisonStartUtc)
-          .lt('orders.created_at', period.endUtc)
+        let query = filterBusinessDateRange(
+          supabase
+            .from('order_items')
+            .select(`order_id, variant_id, product_id, qty, unit_price, line_total, orders!inner(${orderDateSelect(dateColumn)}, order_type, buyer_org_id, status)`)
+            .eq('orders.order_type', ELIGIBLE_ORDER_TYPE)
+            .in('orders.buyer_org_id', distributorIds),
+          dateColumn,
+          windows.comparisonStart,
+          windows.end,
+          'orders.',
+        )
         if (!isAllStatus) query = query.eq('orders.status', status)
         return query.order('id', { ascending: true }).range(from, to)
       },
@@ -608,12 +689,15 @@ export async function fetchDistributorAnalyticsAggregate(
         id: row.id, org_name: row.name, org_code: row.orgCode, is_active: row.isActive,
       })),
       variants, month, now, period, distributorId, status,
+      dateColumn === 'order_date' ? REPORT_DATE_FIELD : LEGACY_REPORT_DATE_FIELD,
     ),
     source: 'fallback',
     degraded: true,
-    notice:
+    notice: [
       'Reporting function not installed yet — figures were aggregated on the server. Apply migration '
-      + '20260908130000_distributor_analytics_monthly_report.sql to aggregate the report in the database.',
+      + '20260921120200_distributor_analytics_order_date.sql to aggregate the report in the database.',
+      legacyOrderDateNotice(dateColumn),
+    ].filter(Boolean).join(' '),
   }
 }
 
@@ -624,11 +708,13 @@ async function fetchVariantLabels(
   orders: OrderRecord[],
   period: DistributorReportPeriod,
 ): Promise<VariantLabelRecord[]> {
+  const windows = reportDateWindows(period)
   const inWindow = new Set(
     orders
-      .filter((order) => order.created_at
-        && order.created_at >= period.startUtc
-        && order.created_at < period.endUtc)
+      .filter((order) => {
+        const date = orderBusinessDate(order)
+        return date !== null && date >= windows.start && date < windows.end
+      })
       .map((order) => order.id),
   )
 
@@ -662,6 +748,24 @@ async function fetchVariantLabels(
   })
 }
 
+/** A business date from the RPC, or the Malaysia date of a legacy instant. */
+function normalizeOrderDate(dateKey: unknown, instant: unknown): string | null {
+  if (typeof dateKey === 'string' && isDateKey(dateKey.slice(0, 10))) return dateKey.slice(0, 10)
+  return typeof instant === 'string' ? malaysiaDateOf(instant) : null
+}
+
+/**
+ * The instant used for recency and window membership, in the same ISO form as
+ * the period boundaries: the MYT start of the business date when the RPC
+ * reports one, otherwise the legacy instant as sent.
+ */
+function normalizeOrderInstant(dateKey: unknown, instant: unknown): string | null {
+  if (typeof dateKey === 'string' && isDateKey(dateKey.slice(0, 10))) return businessDateStartUtc(dateKey.slice(0, 10))
+  if (typeof instant !== 'string') return null
+  const ms = Date.parse(instant)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
+}
+
 /** Coerce the RPC's JSON (bigint counts arrive as numbers, arrays may be null). */
 function normalizeAggregate(
   payload: any,
@@ -682,6 +786,8 @@ function normalizeAggregate(
     distributorName: payload?.distributorName
       || (distributorId === ALL_DISTRIBUTORS ? ALL_DISTRIBUTORS_LABEL : 'Unknown distributor'),
     status: payload?.status || status,
+    // The pre-order_date RPC does not report its date field: it bucketed on created_at.
+    dateField: payload?.dateField || LEGACY_REPORT_DATE_FIELD,
     current: totals(payload?.current),
     previous: totals(payload?.previous),
     dailyTrend: (payload?.dailyTrend || []).map((row: any) => ({
@@ -698,9 +804,11 @@ function normalizeAggregate(
       currentValue: Number(row.currentValue) || 0,
       previousOrders: Number(row.previousOrders) || 0,
       previousValue: Number(row.previousValue) || 0,
-      firstOrderAt: row.firstOrderAt ?? null,
-      lastOrderAt: row.lastOrderAt ?? null,
+      firstOrderAt: normalizeOrderInstant(row.firstOrderDate, row.firstOrderAt),
+      lastOrderAt: normalizeOrderInstant(row.lastOrderDate, row.lastOrderAt),
       lifetimeOrders: Number(row.lifetimeOrders) || 0,
+      firstOrderDate: normalizeOrderDate(row.firstOrderDate, row.firstOrderAt),
+      lastOrderDate: normalizeOrderDate(row.lastOrderDate, row.lastOrderAt),
     })),
     statusBreakdown: (payload?.statusBreakdown || []).map((row: any): StatusTotals => ({
       status: String(row.status ?? 'unknown'),
@@ -719,6 +827,7 @@ function normalizeAggregate(
     recentOrders: (payload?.recentOrders || []).map((row: any): OrderRecordTotals => ({
       orderId: String(row.orderId),
       orderNo: row.orderNo ?? null,
+      orderDate: normalizeOrderDate(row.orderDate, row.createdAt) ?? '',
       createdAt: String(row.createdAt),
       status: String(row.status ?? 'unknown'),
       distributorId: String(row.distributorId),

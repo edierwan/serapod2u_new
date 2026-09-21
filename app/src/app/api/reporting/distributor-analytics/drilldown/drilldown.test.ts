@@ -5,6 +5,7 @@ import {
   reportOrderValue,
 } from '@/lib/reporting/distributor-analytics-source'
 import { ALL_DISTRIBUTORS, ALL_STATUS, resolveDistributorReportPeriod } from '@/lib/reporting/distributor-analytics'
+import { malaysiaDateOf } from '@/lib/orders/order-date'
 
 /**
  * Distributor dashboard drill-downs through the real routes:
@@ -30,7 +31,7 @@ const D = 'aaaaaaaa-0000-4000-8000-000000000004' // returning (history in March)
 const E = 'aaaaaaaa-0000-4000-8000-000000000005' // inactive in Aug, orders again in Sep
 const HQ = 'bbbbbbbb-0000-4000-8000-000000000001'
 
-type Order = { id: string; buyer: string; at: string; status: string; type?: string; value: number; lines?: number; no: string }
+type Order = { id: string; buyer: string; at: string; orderDate?: string; status: string; type?: string; value: number; lines?: number; no: string }
 const ORDERS: Order[] = [
   { id: 'o-a-jul', buyer: A, at: '2026-07-05T02:00:00.000Z', status: 'approved', value: 1000, no: 'SO26000101' },
   { id: 'o-a-aug1', buyer: A, at: '2026-08-03T02:00:00.000Z', status: 'approved', value: 2500, lines: 2, no: 'SO26000110' },
@@ -46,7 +47,8 @@ const ORDERS: Order[] = [
   { id: 'o-a-h2m', buyer: A, at: '2026-08-06T02:00:00.000Z', status: 'approved', type: 'H2M', value: 7777, no: 'ORD26000777' },
 ]
 
-function seed() {
+function seed(extra: Order[] = []) {
+  const all = [...ORDERS, ...extra]
   const orgs = [
     { id: A, org_name: 'Alpha Distribution', org_code: 'ALPHA', org_type_code: 'DIST', is_active: true },
     { id: B, org_name: 'Beta Vape', org_code: 'BETA', org_type_code: 'DIST', is_active: true },
@@ -58,15 +60,17 @@ function seed() {
   const itemsFor = (o: Order) => Array.from({ length: o.lines ?? 1 }, (_, i) => ({
     order_id: o.id, variant_id: `v${i}`, product_id: 'p', qty: 1, unit_price: o.value / (o.lines ?? 1), line_total: o.value / (o.lines ?? 1),
   }))
-  const orders = ORDERS.map((o) => ({
-    id: o.id, order_no: `ORD-DH-${o.id}`, display_doc_no: o.no, buyer_org_id: o.buyer, created_at: o.at, updated_at: o.at,
+  const orders = all.map((o) => ({
+    id: o.id, order_no: `ORD-DH-${o.id}`, display_doc_no: o.no, buyer_org_id: o.buyer,
+    // Business date as the migration backfills it (MYT date of created_at) unless overridden.
+    order_date: o.orderDate ?? malaysiaDateOf(o.at), created_at: o.at, updated_at: o.at,
     status: o.status, order_type: o.type ?? 'D2H', created_by: 'u-sales', order_items: itemsFor(o),
   }))
   db = createFakeSupabase(
     {
       organizations: orgs,
       orders,
-      order_items: ORDERS.flatMap(itemsFor),
+      order_items: all.flatMap(itemsFor),
       users: [{ id: 'u-sales', full_name: 'Siti Sales', email: 'siti@example.com' }],
     },
     {
@@ -80,7 +84,7 @@ function seed() {
         const now = new Date()
         return {
           data: aggregateDistributorOrders(
-            eligible, ORDERS.flatMap(itemsFor).filter((i) => eligibleIds.has(i.order_id)),
+            eligible, all.flatMap(itemsFor).filter((i) => eligibleIds.has(i.order_id)),
             dist.map((o) => ({ id: o.id, org_name: o.org_name, org_code: o.org_code, is_active: o.is_active })),
             [], a.p_month, now, resolveDistributorReportPeriod(a.p_month, now), distributorId, status,
           ),
@@ -97,6 +101,12 @@ async function headline(query: Record<string, string>) {
   return (await res.json()).report
 }
 
+async function csv(query: Record<string, string>) {
+  const { GET } = await import('../csv/route')
+  const res = await GET(new Request(`http://localhost/api/reporting/distributor-analytics/csv?${new URLSearchParams(query)}`))
+  return res.text()
+}
+
 async function drill(metric: string, query: Record<string, string> = {}) {
   const { GET } = await import('./route')
   const res = await GET(new Request(`http://localhost/api/reporting/distributor-analytics/drilldown?${new URLSearchParams({ metric, ...query })}`))
@@ -106,7 +116,7 @@ async function drill(metric: string, query: Record<string, string> = {}) {
 const AUG = { month: '2026-08', distributor: 'all', status: 'all' }
 const names = (rows: any[]) => rows.map((r) => r.name).sort()
 
-beforeEach(seed)
+beforeEach(() => seed())
 
 describe('headline counts (unchanged by the drill-down work)', () => {
   it('17. August, all distributors, all status', async () => {
@@ -137,7 +147,8 @@ describe('drill-downs reconcile exactly with the headline', () => {
     expect(names(d.distributors)).toEqual(['Alpha Distribution', 'Beta Vape', 'Delta Supply'])
     expect(d.distributors[0]).toMatchObject({
       name: 'Alpha Distribution', code: 'ALPHA', currentOrders: 2, currentValue: 6500, aov: 3250, previousOrders: 1, previousValue: 1000,
-      lastOrder: { orderNo: 'SO26000120', at: '2026-08-20T02:00:00.000Z' },
+      // Labelled by business date; `at` is that date's 00:00 MYT.
+      lastOrder: { orderNo: 'SO26000120', date: '2026-08-20', at: '2026-08-19T16:00:00.000Z' },
     })
   })
 
@@ -249,5 +260,64 @@ describe('order value follows the active report source', () => {
     ]
     expect(reportOrderValue(items, 'rpc')).toBe(10)
     expect(reportOrderValue(items, 'fallback')).toBe(20)
+  })
+})
+
+describe('backdated SO: web report, drill-down and CSV agree on the business date', () => {
+  // SO dated 31 Aug 2026, keyed in on 21 Sep 2026 (11:00 MYT) for Cahaya.
+  const BACKDATED: Order = {
+    id: 'o-c-backdated', buyer: C, at: '2026-09-21T03:00:00.000Z', orderDate: '2026-08-31',
+    status: 'approved', value: 700, no: 'SO26000140',
+  }
+  const SEP = { ...AUG, month: '2026-09' }
+
+  it('13/19/20. counts in August — headline, Total Orders drill-down and CSV all include it', async () => {
+    seed([BACKDATED])
+    const report = await headline(AUG)
+    const orders = (await drill('total_orders', AUG)).body.drilldown
+    const file = await csv(AUG)
+
+    expect(report.summary.totalOrders).toBe(5)
+    expect(report.summary.orderValue).toBe(2500 + 4000 + 1500 + 600 + 700)
+    expect(orders.reconciled).toBe(true)
+    const row = orders.orders.find((o: any) => o.orderNo === 'SO26000140')
+    expect(row).toMatchObject({ orderDate: '2026-08-31', createdAt: '2026-09-21T03:00:00.000Z' })
+    // Newest business date first.
+    expect(orders.orders[0].orderNo).toBe('SO26000140')
+
+    const csvRows = file.split('\n').filter((line) => line.startsWith('"SO'))
+    expect(csvRows).toHaveLength(report.summary.totalOrders)
+    expect(file).toContain('"SO26000140","2026-08-31","Cahaya Trading","Approved","1","700.00"')
+    expect(file).toContain('Bucketed on orders.order_date (business SO date)')
+  })
+
+  it('13. is never counted in September', async () => {
+    const before = await headline(SEP)
+    const beforeFile = await csv(SEP)
+    seed([BACKDATED])
+    const after = await headline(SEP)
+    const orders = (await drill('total_orders', SEP)).body.drilldown
+    expect(after.summary.totalOrders).toBe(before.summary.totalOrders)
+    expect(after.summary.orderValue).toBe(before.summary.orderValue)
+    expect(orders.orders.map((o: any) => o.orderNo)).not.toContain('SO26000140')
+    expect(await csv(SEP)).toBe(beforeFile)
+  })
+
+  it('14/15/16/20. moves Cahaya from Inactive to Active in August, with a 31 Aug Last Order', async () => {
+    seed([BACKDATED])
+    const report = await headline(AUG)
+    const active = (await drill('active', AUG)).body.drilldown
+    const inactive = (await drill('inactive', AUG)).body.drilldown
+    expect(report.dailyTrend.find((d: any) => d.date === '2026-08-31')).toMatchObject({ orders: 1, orderValue: 700 })
+    expect(report.leaderboard.map((r: any) => r.name)).toContain('Cahaya Trading')
+    expect(names(inactive.distributors)).toEqual(['Ekor Enterprise'])
+    const cahaya = active.distributors.find((r: any) => r.name === 'Cahaya Trading')
+    expect(cahaya).toMatchObject({
+      currentOrders: 1, currentValue: 700,
+      lastOrder: { orderNo: 'SO26000140', date: '2026-08-31' },
+      currentFirstOrder: { orderNo: 'SO26000140', date: '2026-08-31' },
+    })
+    expect(active.distributors).toHaveLength(report.summary.activeDistributors)
+    expect(report.meta.dateField).toBe('orders.order_date')
   })
 })

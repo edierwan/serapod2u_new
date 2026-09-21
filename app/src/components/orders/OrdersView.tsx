@@ -43,6 +43,7 @@ import {
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
 import { MessagingWarehouseInboxPanel } from '@/components/orders/MessagingWarehouseInboxPanel'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { formatDateKey, formatDateKeyShort, orderBusinessDate } from '@/lib/orders/order-date'
 import {
   SeraModalOverlay,
   SeraModalPanel,
@@ -178,7 +179,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   const [showOrderTypeDialog, setShowOrderTypeDialog] = useState(false)
 
   // Sorting state
-  const [sortColumn, setSortColumn] = useState<string>('created_at')
+  // Date column = business/SO date (order_date), newest first.
+  const [sortColumn, setSortColumn] = useState<string>('order_date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
   // Pagination state
@@ -1382,7 +1384,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                     <tr>
                       <th
                         className="is-sortable"
-                        onClick={() => handleSort('created_at')}
+                        onClick={() => handleSort('order_date')}
                       >
                         <div className="flex items-center gap-1">
                           Date
@@ -1457,11 +1459,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       return (
                         <tr key={order.id}>
                           <td className="whitespace-nowrap">
-                            {new Date(order.created_at).toLocaleDateString('en-MY', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: '2-digit'
-                            })}
+                            {formatDateKeyShort(orderBusinessDate(order))}
                           </td>
 
                           <td className="whitespace-nowrap">
@@ -1776,7 +1774,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs text-[var(--sera-muted)]">
                         <Calendar className="w-3 h-3" />
-                        <span>Created {new Date(order.created_at).toLocaleDateString('en-MY')}</span>
+                        <span>Order Date {formatDateKey(orderBusinessDate(order))}</span>
                       </div>
                     </div>
 

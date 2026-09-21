@@ -53,6 +53,8 @@ export interface Order {
   updated_by?: string;
   approved_by?: string;
   approved_at?: string;
+  /** Business/SO date (YYYY-MM-DD). created_at stays the real creation instant. */
+  order_date?: string | null;
   created_at: string;
   updated_at: string;
 

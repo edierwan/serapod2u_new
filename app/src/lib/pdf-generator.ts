@@ -2,6 +2,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { wrapTermsLines } from '@/lib/organizations/terms'
 import { resolvePartyColumnHeading } from '@/lib/documents/counterparty'
+import { formatDateKeyLong, isDateKey } from '@/lib/orders/order-date'
 import {
   compressSignatureForPdf,
   formatFileSize,
@@ -57,6 +58,8 @@ interface OrderData {
   order_type: string
   status: string
   created_at: string
+  /** Business/SO date (orders.order_date, YYYY-MM-DD). Absent before the order_date migration. */
+  order_date?: string | null
   approved_by?: string
   approved_at?: string
   payment_terms?: PaymentTerms | string | null
@@ -182,6 +185,17 @@ export class PDFGenerator {
     const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
     if (isNaN(numAmount)) return 'RM 0.00'
     return `RM ${numAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  /**
+   * The order's business date for an order/SO header: orders.order_date as a
+   * calendar date (never shifted through a UTC instant), falling back to the
+   * legacy timestamp for rows read before the order_date migration.
+   */
+  private formatOrderBusinessDate(orderDate: string | null | undefined, legacyTimestamp: string): string {
+    return orderDate && isDateKey(orderDate.slice(0, 10))
+      ? formatDateKeyLong(orderDate)
+      : this.formatDate(legacyTimestamp)
   }
 
   private formatDate(dateString: string): string {
@@ -1545,7 +1559,7 @@ export class PDFGenerator {
     // PO Information Table
     const poInfo = [
       { label: 'PO Number:', value: orderData.order_no },
-      { label: 'PO Date:', value: this.formatDate(orderData.created_at) },
+      { label: 'PO Date:', value: this.formatOrderBusinessDate(orderData.order_date, orderData.created_at) },
       { label: 'Status:', value: orderData.status.toUpperCase() },
       { label: 'Estimated ETA:', value: orderData.estimated_eta || 'TBD' },
       { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },
@@ -2337,7 +2351,8 @@ export class PDFGenerator {
     // SO Information Table
     const soInfo = [
       { label: 'SO Number:', value: documentData.display_doc_no || documentData.doc_no },
-      { label: 'SO Date:', value: this.formatDate(documentData.created_at) },
+      // SO Date is the order's business date, not the SO document's creation time.
+      { label: 'SO Date:', value: this.formatOrderBusinessDate(orderData.order_date, documentData.created_at) },
       { label: 'Status:', value: documentData.status.toUpperCase() },
       { label: 'Estimated ETA:', value: documentData.estimated_eta || '30 Oct 2025' },
       { label: 'Payment Terms:', value: this.formatPaymentTermsLabel(orderData.payment_terms) },

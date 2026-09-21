@@ -25,6 +25,9 @@ import {
 } from './distributor-analytics'
 import {
   aggregateDistributorOrders,
+  fetchDistributorAnalyticsAggregate,
+  filterBusinessDateRange,
+  resolveOrderDateColumn,
   type OrderItemRecord,
   type OrderRecord,
 } from './distributor-analytics-source'
@@ -446,8 +449,12 @@ describe('server-side aggregation folds orders into the report aggregate', () =>
 
   it('derives first-ever and last-ever order dates from the whole history', () => {
     const infy = built.distributors.find((row) => row.distributorId === INFY)!
-    expect(infy.firstOrderAt).toBe('2025-03-01T02:00:00.000Z')
-    expect(infy.lastOrderAt).toBe('2026-09-04T02:00:00.000Z')
+    // Business dates (legacy rows: the MYT date of created_at), carried as the
+    // instant each Malaysia day starts so recency compares like with like.
+    expect(infy.firstOrderDate).toBe('2025-03-01')
+    expect(infy.lastOrderDate).toBe('2026-09-04')
+    expect(infy.firstOrderAt).toBe('2025-02-28T16:00:00.000Z')
+    expect(infy.lastOrderAt).toBe('2026-09-03T16:00:00.000Z')
     expect(infy.lifetimeOrders).toBe(4)
   })
 
@@ -523,6 +530,173 @@ describe('server-side aggregation folds orders into the report aggregate', () =>
   })
 })
 
+// ═══ F2. Business date: orders.order_date, not orders.created_at ══════════
+
+describe('reporting buckets on the business SO date (orders.order_date)', () => {
+  /** 5 October 2026: August and September are both closed months. */
+  const OCT = new Date('2026-10-05T10:00:00+08:00')
+  // SO dated 31 Aug 2026, keyed into the system on 21 Sep 2026.
+  const backdated = order({
+    id: 'o-backdated', buyer_org_id: NEWCO, order_date: '2026-08-31', created_at: '2026-09-21T03:00:00.000Z', display_doc_no: 'SO26000300',
+  })
+  const history: OrderRecord[] = [
+    order({ id: 'o-infy-jul', buyer_org_id: INFY, order_date: '2026-07-10', created_at: '2026-07-10T02:00:00.000Z' }),
+    order({ id: 'o-infy-aug', buyer_org_id: INFY, order_date: '2026-08-12', created_at: '2026-08-12T02:00:00.000Z' }),
+    order({ id: 'o-infy-sep', buyer_org_id: INFY, order_date: '2026-09-09', created_at: '2026-09-09T02:00:00.000Z' }),
+    backdated,
+  ]
+  const lines: OrderItemRecord[] = [
+    item('o-infy-jul', 100), item('o-infy-aug', 200), item('o-infy-sep', 300), item('o-backdated', 500, 5),
+  ]
+  const variants = [{ id: 'v1', product_id: 'p1', variant_name: 'Deluxe Cellera Cartridge [ Banana Vanilla ]', product_code: 'BV', productName: 'Cellera Hero' }]
+  const build = (month: string, orders = history, now = OCT) => {
+    const aggregate = aggregateDistributorOrders(orders, lines, ORGS, variants, month, now)
+    return { aggregate, report: buildDistributorAnalyticsReport(aggregate, now) }
+  }
+  const aug = build('2026-08')
+  const sep = build('2026-09')
+
+  it('13. counts an SO dated 31 Aug but created 21 Sep in August, never in September', () => {
+    expect(aug.report.summary.totalOrders).toBe(2)
+    expect(aug.report.summary.orderValue).toBe(700)
+    expect(sep.report.summary.totalOrders).toBe(1)
+    expect(sep.report.summary.orderValue).toBe(300)
+    expect(sep.aggregate.recentOrders.map((row) => row.orderId)).not.toContain('o-backdated')
+  })
+
+  it('14. places it on 31 Aug in the Daily Sell-In Trend', () => {
+    expect(aug.report.dailyTrend.find((row) => row.date === '2026-08-31')).toMatchObject({ orders: 1, orderValue: 500 })
+    expect(sep.report.dailyTrend.find((row) => row.date === '2026-09-21')).toMatchObject({ orders: 0, orderValue: 0 })
+  })
+
+  it('15. includes it in the August leaderboard, with its AOV and share', () => {
+    const newco = aug.report.leaderboard.find((row) => row.distributorId === NEWCO)!
+    expect(newco).toMatchObject({ currentOrders: 1, currentValue: 500, aov: 500 })
+    expect(newco.sharePct).toBeCloseTo((500 / 700) * 100, 1)
+    expect(sep.report.leaderboard.find((row) => row.distributorId === NEWCO)).toBeUndefined()
+  })
+
+  it('16. Last Order is the SO date, not the entry time', () => {
+    const newco = aug.aggregate.distributors.find((row) => row.distributorId === NEWCO)!
+    expect(newco.lastOrderDate).toBe('2026-08-31')
+    expect(newco.lastOrderAt).toBe('2026-08-30T16:00:00.000Z')
+  })
+
+  it('first order / New Distributor follows the SO date', () => {
+    expect(aug.report.relationship.newDistributors).toBe(1)
+    const newco = sep.report.health.rows.find((row) => row.distributorId === NEWCO)!
+    // In September it traded in the comparison window only: a lost month, not new.
+    expect(newco).toMatchObject({ currentOrders: 0, previousOrders: 1, stage: 'inactive' })
+  })
+
+  it('17. the previous-period comparison uses the SO date', () => {
+    expect(sep.aggregate.previous).toMatchObject({ orders: 2, orderValue: 700, activeDistributors: 2 })
+    expect(sep.report.comparison.find((row) => row.key === 'orderValue')).toMatchObject({ current: 300, previous: 700 })
+  })
+
+  it('23. keeps the real entry timestamp as the audit value on the order record', () => {
+    const row = aug.aggregate.recentOrders.find((entry) => entry.orderId === 'o-backdated')!
+    expect(row.orderDate).toBe('2026-08-31')
+    expect(row.createdAt).toBe('2026-09-21T03:00:00.000Z')
+  })
+
+  it('the running month is still month-to-date with no future days', () => {
+    const mtd = build('2026-09', history, new Date('2026-09-21T10:00:00+08:00'))
+    expect(mtd.report.dailyTrend).toHaveLength(21)
+    expect(mtd.report.period.comparisonDayCount).toBe(21)
+    // Comparison is 1–21 Aug: the 31 Aug SO is outside it, the 12 Aug one inside.
+    expect(mtd.aggregate.previous).toMatchObject({ orders: 1, orderValue: 200 })
+  })
+
+  it('22. an SO dated 31 Aug stays in August even when entered at 00:30 MYT on 1 Sep', () => {
+    const edge = aggregateDistributorOrders(
+      [order({ id: 'o-edge', buyer_org_id: INFY, order_date: '2026-08-31', created_at: '2026-08-31T16:30:00.000Z' })],
+      [item('o-edge', 10)], ORGS, variants, '2026-08', OCT,
+    )
+    expect(edge.current.orders).toBe(1)
+    expect(edge.dailyTrend.find((row) => row.date === '2026-08-31')?.orders).toBe(1)
+  })
+
+  it('21. a legacy row without order_date still buckets on its MYT created_at date', () => {
+    const legacy = aggregateDistributorOrders(
+      [order({ id: 'o-legacy', buyer_org_id: INFY, created_at: '2026-08-31T16:30:00.000Z' })],
+      [item('o-legacy', 10)], ORGS, variants, '2026-09', OCT,
+    )
+    expect(legacy.dailyTrend.find((row) => row.date === '2026-09-01')?.orders).toBe(1)
+  })
+
+  it('18. the PDF renders the same DTO and shows the SO date for recent orders', () => {
+    const pdf = readFileSync(new URL('./distributor-analytics-pdf.ts', import.meta.url), 'utf8')
+    expect(pdf).toContain('formatDay(row.orderDate || row.createdAt)')
+    expect(pdf).not.toContain('formatDay(row.createdAt)')
+  })
+})
+
+describe('RPC payload normalisation', () => {
+  const OCT = new Date('2026-10-05T10:00:00+08:00')
+  const rpcClient = (payload: any) => ({ rpc: async () => ({ data: payload, error: null }) })
+  const payload = (extra: Record<string, unknown>) => ({
+    month: '2026-08', distributorId: 'all', distributorName: 'All Distributors', status: 'all',
+    current: { orders: 1, orderValue: 500, activeDistributors: 1 },
+    previous: { orders: 0, orderValue: 0, activeDistributors: 0 },
+    dailyTrend: [], statusBreakdown: [], topProducts: [],
+    ...extra,
+  })
+
+  it('reads business dates from the order_date RPC and compares instants like with like', async () => {
+    const { aggregate, notice } = await fetchDistributorAnalyticsAggregate(rpcClient(payload({
+      dateField: 'orders.order_date',
+      distributors: [{
+        distributorId: NEWCO, name: 'Newco Supply', currentOrders: 1, currentValue: 500, previousOrders: 0, previousValue: 0,
+        firstOrderDate: '2026-08-01', lastOrderDate: '2026-08-31',
+        // PostgREST serialises timestamptz as +00:00, the period model as Z.
+        firstOrderAt: '2026-07-31T16:00:00+00:00', lastOrderAt: '2026-08-30T16:00:00+00:00', lifetimeOrders: 1,
+      }],
+      recentOrders: [{ orderId: 'o1', orderNo: 'SO26000300', orderDate: '2026-08-31', createdAt: '2026-09-21T03:00:00+00:00', status: 'approved', distributorId: NEWCO, distributorName: 'Newco Supply', orderValue: 500, itemCount: 1 }],
+    })), '2026-08', ALL_DISTRIBUTORS, ALL_STATUS, OCT)
+    expect(notice).toBeNull()
+    expect(aggregate.distributors[0]).toMatchObject({
+      firstOrderDate: '2026-08-01', lastOrderDate: '2026-08-31',
+      firstOrderAt: '2026-07-31T16:00:00.000Z', lastOrderAt: '2026-08-30T16:00:00.000Z',
+    })
+    expect(aggregate.recentOrders[0].orderDate).toBe('2026-08-31')
+    const report = buildDistributorAnalyticsReport(aggregate, OCT)
+    // First order exactly on the window's first day is New (the +00:00 vs Z trap).
+    expect(report.relationship.newDistributors).toBe(1)
+    expect(report.meta.dateField).toBe('orders.order_date')
+  })
+
+  it('says so when the installed RPC still buckets on created_at', async () => {
+    const { aggregate, notice } = await fetchDistributorAnalyticsAggregate(rpcClient(payload({
+      distributors: [], recentOrders: [{ orderId: 'o1', createdAt: '2026-08-31T16:30:00+00:00', status: 'approved', distributorId: NEWCO, orderValue: 1, itemCount: 1 }],
+    })), '2026-08', ALL_DISTRIBUTORS, ALL_STATUS, OCT)
+    expect(aggregate.dateField).toBe('orders.created_at')
+    expect(notice).toMatch(/still buckets on orders\.created_at/)
+    // Legacy recent orders still get a Malaysia business date.
+    expect(aggregate.recentOrders[0].orderDate).toBe('2026-09-01')
+    expect(buildDistributorAnalyticsReport(aggregate, OCT).meta.dateField).toBe('orders.created_at')
+  })
+})
+
+describe('application ahead of the order_date migration', () => {
+  const client = (error: any) => ({ from: () => ({ select: () => ({ limit: async () => ({ data: [], error }) }) }) })
+
+  it('detects the missing column and falls back to created_at windows at MYT midnight', async () => {
+    expect(await resolveOrderDateColumn(client(null))).toBe('order_date')
+    expect(await resolveOrderDateColumn(client({ code: '42703', message: 'column orders.order_date does not exist' }))).toBe('created_at')
+    await expect(resolveOrderDateColumn(client({ code: '42501', message: 'permission denied' }))).rejects.toMatchObject({ code: '42501' })
+
+    const calls: string[] = []
+    const query: any = { gte: (c: string, v: string) => (calls.push(`gte ${c} ${v}`), query), lt: (c: string, v: string) => (calls.push(`lt ${c} ${v}`), query) }
+    filterBusinessDateRange(query, 'order_date', '2026-08-01', '2026-09-01')
+    filterBusinessDateRange(query, 'created_at', '2026-08-01', '2026-09-01', 'orders.')
+    expect(calls).toEqual([
+      'gte order_date 2026-08-01', 'lt order_date 2026-09-01',
+      'gte orders.created_at 2026-07-31T16:00:00.000Z', 'lt orders.created_at 2026-08-31T16:00:00.000Z',
+    ])
+  })
+})
+
 // ═══ G. Empty state, scope and inclusion semantics ═════════════════════════
 
 describe('empty state', () => {
@@ -548,7 +722,8 @@ describe('documented order inclusion semantics', () => {
 
   it('publishes the exact rules in the report meta', () => {
     const report = buildDistributorAnalyticsReport(aggregate(), NOW)
-    expect(report.meta.dateField).toBe('orders.created_at')
+    // Business SO date, not the entry timestamp.
+    expect(report.meta.dateField).toBe('orders.order_date')
     expect(report.meta.orderValueField).toBe('sum(order_items.line_total)')
     // All Status includes every status, which is what makes Order Processing
     // Health measurable and is unchanged from the previous report.

@@ -11,6 +11,7 @@ import autoTable from 'jspdf-autotable'
 import { wrapTermsLines } from '@/lib/organizations/terms'
 import { isBuyerIssuedDocument, resolveCounterparty } from '@/lib/documents/counterparty'
 import { formatExpectedDelivery, resolveOrderCasesPerBox } from '@/lib/orders/packaging'
+import { formatDateKey, isDateKey } from '@/lib/orders/order-date'
 import {
   salesOrderLineDescription,
   sortSalesOrderLinesForDisplay,
@@ -29,6 +30,8 @@ export interface TemplateOrderData {
   order_type: string
   status: string
   created_at: string
+  /** Business/SO date (orders.order_date, YYYY-MM-DD). Absent before the order_date migration. */
+  order_date?: string | null
   approved_at?: string
   payment_terms?: any
   approver?: {
@@ -291,7 +294,11 @@ export class ClassicTemplate {
 
     const details = [
       { label: 'PO#:', value: documentData.display_doc_no || documentData.doc_no },
-      { label: 'Date:', value: this.formatDate(documentData.created_at) },
+      // A Sales Order is dated with the order's business SO date (order_date);
+      // every other document keeps its own issue date.
+      { label: 'Date:', value: isSalesOrderDoc && orderData.order_date && isDateKey(orderData.order_date.slice(0, 10))
+        ? formatDateKey(orderData.order_date)
+        : this.formatDate(documentData.created_at) },
       { label: 'By:', value: orderData.creator?.full_name || 'Not available' },
       { label: 'Ledger:', value: 'Stock Purchased / Inventory' }
     ]

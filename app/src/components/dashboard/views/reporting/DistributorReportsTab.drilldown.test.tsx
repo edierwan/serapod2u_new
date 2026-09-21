@@ -52,7 +52,7 @@ for (const [month, set] of Object.entries(DATA)) {
     for (let i = 0; i < row.currentOrders; i++) {
       set.orders.push({
         orderId: `${month}-${row.distributorId}-${i}`, orderNo: `SO${month.replace('-', '')}${row.distributorId}${i}`,
-        createdAt: `${month}-0${i + 1}T02:00:00.000Z`, updatedAt: null, status: 'approved',
+        orderDate: `${month}-0${i + 1}`, createdAt: `${month}-0${i + 1}T02:00:00.000Z`, updatedAt: null, status: 'approved',
         distributorId: row.distributorId, distributorName: row.name, distributorCode: row.orgCode,
         orderValue: row.currentValue / row.currentOrders, lineCount: 1, createdById: null,
       })

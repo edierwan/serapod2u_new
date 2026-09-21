@@ -74,9 +74,15 @@ function formatDateTime(value: string | null): string {
   })
 }
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 /** "04 Sep" — the compact last-order form used across the report tables. */
 function formatDay(value: string | null): string {
   if (!value) return '—'
+  // A business date (YYYY-MM-DD) is a calendar day: format it as-is, never
+  // through a UTC-midnight instant. Same rule as the web report.
+  const dateKey = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (dateKey) return `${dateKey[3]} ${MONTH_SHORT[Number(dateKey[2]) - 1] ?? ''}`.trim()
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return new Intl.DateTimeFormat('en-GB', {
@@ -463,7 +469,7 @@ export async function buildDistributorAnalyticsPdf(
         head: [['Order No', 'Date', 'Status', 'Items', 'Order Value']],
         body: report.recentOrders.map((row) => [
           row.orderNo || row.orderId,
-          formatDay(row.createdAt),
+          formatDay(row.orderDate || row.createdAt),
           statusLabel(row.status),
           formatCount(row.itemCount),
           formatRM(row.orderValue),
