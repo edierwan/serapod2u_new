@@ -904,7 +904,15 @@ function ReturnCaseEditor({
             const res = await fetch(`/api/returns/${id}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
-            toast({ title: 'Status updated', description: RETURN_STATUS_LABELS[json.status as ReturnStatus] })
+            const inventoryNotice = json.inventoryPosting?.historically_excluded
+                ? (json.inventoryPosting?.notice
+                    || 'Status updated. Inventory was not changed because this return was excluded by a posted Opening Balance.')
+                : null
+            toast({
+                title: 'Status updated',
+                description: inventoryNotice
+                    || RETURN_STATUS_LABELS[json.status as ReturnStatus],
+            })
             onSaved()
             onBack()
         } catch (e: any) {

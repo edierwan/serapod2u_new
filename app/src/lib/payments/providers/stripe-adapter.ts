@@ -15,6 +15,14 @@ export const stripe: PaymentProviderAdapter = {
 
     const params = new URLSearchParams()
     params.append('mode', 'payment')
+    params.append('ui_mode', 'hosted_page')
+    params.append('billing_address_collection', 'auto')
+    params.append('phone_number_collection[enabled]', 'false')
+    params.append('automatic_tax[enabled]', 'false')
+    params.append('allow_promotion_codes', 'false')
+    params.append('submit_type', 'auto')
+    params.append('integration_identifier', 'hosted_web_0001')
+    params.append('origin_context', 'web')
     params.append('success_url', `${input.returnUrl}?session_id={CHECKOUT_SESSION_ID}`)
     params.append('cancel_url', `${input.returnUrl}?cancelled=true`)
     params.append('client_reference_id', input.orderRef)
@@ -25,6 +33,8 @@ export const stripe: PaymentProviderAdapter = {
     params.append('line_items[0][quantity]', '1')
     params.append('metadata[order_ref]', input.orderRef)
     params.append('metadata[order_id]', input.orderId)
+    params.append('payment_intent_data[metadata][order_ref]', input.orderRef)
+    params.append('payment_intent_data[metadata][order_id]', input.orderId)
 
     try {
       const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {

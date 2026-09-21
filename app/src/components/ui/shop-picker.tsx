@@ -36,7 +36,7 @@ export function ShopPicker({
     disabled = false,
     placeholder = 'Search shop by name...',
     className,
-    maxLength = 50,
+    maxLength = 120,
     inputRef: externalInputRef,
 }: ShopPickerProps) {
     const [searchTerm, setSearchTerm] = useState(value || '')
@@ -129,6 +129,15 @@ export function ShopPicker({
 
     const handleInputChange = (val: string) => {
         if (val.length > maxLength) return
+        // HTML maxLength can clip a long selected label; keep the linked shop.
+        if (
+            selectedShop &&
+            val.length >= maxLength &&
+            selectedShop.display_label.toLowerCase().startsWith(val.toLowerCase())
+        ) {
+            setSearchTerm(selectedShop.display_label)
+            return
+        }
         setSearchTerm(val)
         setShowSelectionHint(Boolean(val.trim()))
         if (selectedShop) {

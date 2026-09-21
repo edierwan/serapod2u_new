@@ -300,15 +300,15 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
 
   const header = (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div>
+                <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--sera-ink)]">
           <Scan className="h-5 w-5 text-[var(--sera-orange)]" strokeWidth={1.75} />
           Consumer Analytics
         </h2>
         <p className="mt-0.5 text-sm text-[var(--sera-muted)]">Monthly consumer engagement report</p>
-      </div>
+                    </div>
       {controls}
-    </div>
+                </div>
   )
 
   if (loading && !report) {
@@ -316,7 +316,7 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
       <div className="space-y-6">
         {header}
         <ReportingTabLoading label="Loading consumer analytics" />
-      </div>
+                </div>
     )
   }
 
@@ -332,8 +332,8 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
             <Button variant="outline" onClick={() => loadReport(month, true)} className="gap-2">
               <RefreshCw className="h-4 w-4" /> Retry
             </Button>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
       </div>
     )
   }
@@ -477,7 +477,7 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
               title={`${period.label} vs ${period.previousMonthLabel}`}
               description="Key comparison"
             >
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {([
                   { label: 'Total Scans', delta: comparison.totalScans },
                   { label: 'Identified Consumers', delta: comparison.identifiedConsumers },
@@ -489,26 +489,26 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-sm font-medium text-[var(--sera-ink)]">{label}</span>
                         <DeltaPill value={delta.changePct} unit="%" comparisonLabel={comparisonShort} />
-                      </div>
+                  </div>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--sera-mist)]">
                             <div className="h-full rounded-full" style={{ width: `${(delta.current / scale) * 100}%`, backgroundColor: SERIES.scans }} />
-                          </div>
+                </div>
                           <span className="w-16 shrink-0 text-right text-xs font-semibold tabular-nums text-[var(--sera-ink)]">
                             {formatCount(delta.current)}
                           </span>
-                        </div>
+              </div>
                         <div className="flex items-center gap-2">
                           <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--sera-mist)]">
                             <div className="h-full rounded-full" style={{ width: `${(delta.previous / scale) * 100}%`, backgroundColor: `${SERIES.scans}55` }} />
-                          </div>
+                  </div>
                           <span className="w-16 shrink-0 text-right text-xs tabular-nums text-[var(--sera-muted)]">
                             {formatCount(delta.previous)}
                           </span>
-                        </div>
-                      </div>
-                    </div>
+                </div>
+              </div>
+            </div>
                   )
                 })}
                 <div className="flex items-center gap-4 border-t border-[var(--sera-line)] pt-3 text-[11px] text-[var(--sera-muted)]">
@@ -521,7 +521,7 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                 </div>
               </div>
             </SectionCard>
-          </div>
+      </div>
 
           {/* ── Sections 5 & 6 · New vs returning + 12-month trend ──────── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
@@ -533,7 +533,7 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
             >
               <div className="flex flex-col items-center gap-4 sm:flex-row">
                 <div className="relative h-[190px] w-[190px] shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={newVsReturningSlices}
@@ -548,13 +548,13 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                       </Pie>
                       <Tooltip formatter={(value: any, name: any) => [formatCount(Number(value)), name]} />
                     </PieChart>
-                  </ResponsiveContainer>
+            </ResponsiveContainer>
                   <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-xl font-semibold text-[var(--sera-ink)]">
                       {formatCount(newVsReturning.identifiedConsumers)}
                     </span>
                     <span className="text-[11px] text-[var(--sera-muted)]">Consumers</span>
-                  </div>
+          </div>
                 </div>
                 <div className="w-full space-y-3">
                   <div>
@@ -613,15 +613,15 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
               title="Activity Heatmap"
               description={`Scan activity by day-of-week and hour (${period.label})`}
             >
-              <div className="overflow-x-auto">
+            <div className="overflow-x-auto">
                 <div className="min-w-[520px]">
                   <div className="mb-1 flex pl-9">
                     {Array.from({ length: 24 }, (_, hour) => (
                       <div key={hour} className="flex-1 text-center text-[9px] text-[var(--sera-muted)]">
                         {HEATMAP_HOUR_TICKS.includes(hour) ? `${String(hour).padStart(2, '0')}:00` : ''}
                       </div>
-                    ))}
-                  </div>
+                  ))}
+                </div>
                   {heatmapGrid.map((row, day) => (
                     <div key={day} className="mb-0.5 flex items-center">
                       <span className="w-9 shrink-0 text-[10px] text-[var(--sera-muted)]">{DAY_NAMES[day]}</span>
@@ -638,8 +638,8 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                           title={`${DAY_NAMES[day]} ${String(hour).padStart(2, '0')}:00 — ${formatCount(count)} scans`}
                         />
                       ))}
-                    </div>
-                  ))}
+                  </div>
+                ))}
                   <div className="mt-2 flex items-center justify-end gap-1.5 text-[10px] text-[var(--sera-muted)]">
                     <span>Less</span>
                     {[0, 0.25, 0.5, 0.75, 1].map((step) => (
@@ -653,9 +653,9 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                       />
                     ))}
                     <span>More</span>
-                  </div>
                 </div>
               </div>
+            </div>
             </SectionCard>
 
             <SectionCard
@@ -663,7 +663,7 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
               title="Monthly Retention Cohort"
               description="% of a month's identified consumers who scanned again the following month"
             >
-              <div className="space-y-3">
+            <div className="space-y-3">
                 {report.retentionCohort.map((row) => (
                   <div key={row.month} className="flex items-center gap-3">
                     <span className="w-20 shrink-0 text-xs text-[var(--sera-ink)]">{row.label}</span>
@@ -681,16 +681,16 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                         : row.retentionRate === null
                           ? 'no cohort'
                           : `${formatRate(row.retentionRate, 0)} (${formatCount(row.retained ?? 0)}/${formatCount(row.consumers)})`}
-                    </span>
-                  </div>
-                ))}
+                      </span>
+                </div>
+              ))}
                 <p className="border-t border-[var(--sera-line)] pt-2 text-[11px] text-[var(--sera-muted)]">
                   {period.label} is the current cohort — its retention can only be measured once {period.label} closes and the
                   following month has recorded activity.
                 </p>
-              </div>
+            </div>
             </SectionCard>
-          </div>
+      </div>
 
           {/* ── Sections 9 & 10 · Top consumers + top products ──────────── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -703,32 +703,32 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                 <p className="py-8 text-center text-sm text-[var(--sera-muted)]">
                   No identified consumer scans in {period.label}.
                 </p>
-              ) : (
-                <div className="overflow-x-auto">
+          ) : (
+            <div className="overflow-x-auto">
                   <table className="w-full min-w-[460px] text-sm">
-                    <thead>
+                <thead>
                       <tr className="border-b border-[var(--sera-line)] text-left text-[11px] uppercase tracking-wider text-[var(--sera-muted)]">
                         <th className="py-2 pr-2 font-medium">#</th>
                         <th className="py-2 pr-2 font-medium">Consumer</th>
                         <th className="py-2 pr-2 text-right font-medium">Total Scans</th>
                         <th className="py-2 pr-2 text-right font-medium">Last Scan</th>
                         <th className="py-2 text-right font-medium">Frequency</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  </tr>
+                </thead>
+                <tbody>
                       {report.topConsumers.map((consumer) => (
                         <tr key={consumer.consumerId} className="border-b border-[var(--sera-line)]/60 last:border-0">
                           <td className="py-2 pr-2 text-[var(--sera-muted)]">{consumer.rank}</td>
                           <td className="py-2 pr-2">
                             <p className="truncate font-medium text-[var(--sera-ink)]">{consumer.name}</p>
                             <p className="truncate text-[11px] text-[var(--sera-muted)]">{consumer.phone}</p>
-                          </td>
+                      </td>
                           <td className="py-2 pr-2 text-right font-semibold tabular-nums text-[var(--sera-ink)]">
                             {formatCount(consumer.scans)}
-                          </td>
+                      </td>
                           <td className="py-2 pr-2 text-right text-[11px] tabular-nums text-[var(--sera-muted)]">
                             {formatDateOnly(consumer.lastScan)}
-                          </td>
+                      </td>
                           <td className="py-2 text-right">
                             <Badge
                               variant="secondary"
@@ -741,13 +741,13 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                             >
                               {consumer.frequency}
                             </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
             </SectionCard>
 
             <SectionCard
@@ -768,8 +768,8 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                         <th className="py-2 pr-2 font-medium">Product / Variant</th>
                         <th className="py-2 pr-2 text-right font-medium">Scans</th>
                         <th className="py-2 font-medium">% of Total</th>
-                      </tr>
-                    </thead>
+                  </tr>
+                </thead>
                     <tbody>
                       {report.topProducts.map((product) => (
                         <tr key={`${product.productId}:${product.variantId}`} className="border-b border-[var(--sera-line)]/60 last:border-0">
@@ -779,7 +779,7 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                             {product.variantName ? (
                               <p className="truncate text-[11px] text-[var(--sera-muted)]">[ {product.variantName} ]</p>
                             ) : null}
-                          </td>
+                      </td>
                           <td className="py-2 pr-2 text-right font-semibold tabular-nums text-[var(--sera-ink)]">
                             {formatCount(product.scans)}
                           </td>
@@ -795,13 +795,13 @@ export default function ConsumerAnalyticsTab({ chartGridColor, chartTickColor }:
                                 {formatRate(product.sharePct)}
                               </span>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
                 </div>
-              )}
+            )}
             </SectionCard>
           </div>
         </>

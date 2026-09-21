@@ -37,26 +37,34 @@ function createAdminMock({
 }
 
 describe('resolveRegistrationLinkSelection', () => {
-  it('rejects a shop selection when the text no longer matches the selected shop id', async () => {
+  it('accepts a truncated shop label when the shop organization id is valid', async () => {
     const result = await resolveRegistrationLinkSelection(createAdminMock({
       organization: {
         id: 'shop-1',
-        org_name: 'Kedai Maju',
-        branch: 'HQ',
+        org_name: '24 Street Vaperz TRJ',
+        branch: 'Taman Ria Jaya Sungai Petani',
         org_type_code: 'SHOP',
+        is_active: true,
+      },
+      referenceUser: {
+        id: 'ref-1',
+        phone: '+601123084416',
+        full_name: 'Yusri',
+        call_name: 'Yusri',
+        can_be_reference: true,
         is_active: true,
       },
     }), {
       organizationId: 'shop-1',
-      shopName: 'Kedai Lain',
+      shopName: '24 Street Vaperz TRJ ( Taman Ria Jaya Sun',
       referenceUserId: 'ref-1',
+      referralPhone: '+601123084416',
     })
 
-    expect(result).toEqual({
-      ok: false,
-      field: 'shop',
-      error: 'Please select a valid shop from the list.',
-    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.organizationId).toBe('shop-1')
+    expect(result.shopDisplayName).toBe('24 Street Vaperz TRJ (Taman Ria Jaya Sungai Petani)')
   })
 
   it('rejects a reference selection when the submitted phone does not match the selected reference id', async () => {
@@ -64,7 +72,7 @@ describe('resolveRegistrationLinkSelection', () => {
       organization: {
         id: 'shop-1',
         org_name: 'Kedai Maju',
-        branch: null,
+        branch: 'HQ',
         org_type_code: 'SHOP',
         is_active: true,
       },
@@ -78,7 +86,7 @@ describe('resolveRegistrationLinkSelection', () => {
       },
     }), {
       organizationId: 'shop-1',
-      shopName: 'Kedai Maju',
+      shopName: 'Kedai Maju (HQ)',
       referenceUserId: 'ref-1',
       referralPhone: '+60199999999',
     })
@@ -119,6 +127,7 @@ describe('resolveRegistrationLinkSelection', () => {
       organizationId: 'shop-1',
       organizationName: 'Kedai Maju',
       shopDisplayName: 'Kedai Maju (HQ)',
+      pendingShopRequest: null,
       referenceUserId: 'ref-1',
       referralPhone: '+60123456789',
       referenceDisplayName: 'Ref',

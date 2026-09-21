@@ -6957,7 +6957,7 @@ export default function PremiumLoyaltyTemplate({
                                                     setIsSignUpShopRequestOpen(true)
                                                 }}
                                                 placeholder="Search shop by name..."
-                                                maxLength={50}
+                                                maxLength={120}
                                             />
                                             {signUpShopError && (
                                                 <p className="text-xs text-red-500 mt-1">{signUpShopError}</p>
@@ -7648,7 +7648,7 @@ export default function PremiumLoyaltyTemplate({
                                                         setIsShopRequestOpen(true)
                                                     }}
                                                     placeholder="Search shop by name..."
-                                                    maxLength={50}
+                                                    maxLength={120}
                                                 />
                                             </div>
                                             <Button

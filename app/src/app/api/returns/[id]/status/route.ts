@@ -58,15 +58,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         notes: body.notes || null,
     })
 
-    let inventoryPosting: { posted_lines?: number; skipped_lines?: number } | null = null
+    let inventoryPosting: {
+        posted_lines?: number
+        skipped_lines?: number
+        historically_excluded?: boolean
+        notice?: string
+    } | null = null
     // Inventory is posted only when entering Return Received. Retries are
-    // idempotent inside post_return_case_inventory.
+    // idempotent inside post_return_case_inventory. Historically excluded
+    // returns (posted Opening Balance) skip inventory and still advance.
     if (next === 'return_received') {
         const { data: posting, error: postingError } = await (ctx.admin as any).rpc(
             'post_return_case_inventory',
             { p_return_case_id: id },
         )
         if (postingError) {
+            const raw = postingError.message || 'Return inventory posting failed; status was not advanced.'
+            const friendly = raw.includes('inventory_cutoff_transaction_historically_excluded')
+                ? 'This return was excluded by a posted Opening Balance and cannot add stock through the original return path. Ask inventory to confirm the Opening Balance treatment, or complete workflow only after the DB skip migration is applied.'
+                : raw
             // Roll the status transition back so Draft/Submitted never appear posted
             // and Received never sticks without a successful inventory attempt.
             await ctx.admin.from('return_cases').update({
@@ -81,7 +91,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
                 .eq('to_status', next)
                 .eq('changed_by', ctx.userId)
             return NextResponse.json(
-                { error: postingError.message || 'Return inventory posting failed; status was not advanced.' },
+                { error: friendly },
                 { status: 500 },
             )
         }

@@ -1263,7 +1263,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                         }}
                         disabled={isSaving}
                         placeholder="Search shop or type name..."
-                        maxLength={50}
+                        maxLength={120}
                       />
                       <p className="mt-1 text-xs text-[var(--sera-muted)]">Selecting a shop from the list links your profile to that shop for RoadTour and staff rewards.</p>
                     </div>
