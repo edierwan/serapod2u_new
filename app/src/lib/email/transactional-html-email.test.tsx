@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveTransactionalFromEmail, transactionalMessageId } from './transactional-html-email'
+import { resolveTransactionalFromEmail } from './transactional-html-email'
 
 describe('resolveTransactionalFromEmail', () => {
   it('sends Gmail as the Gmail mailbox, not a custom From', () => {
@@ -14,11 +14,5 @@ describe('resolveTransactionalFromEmail', () => {
       from_email: 'no-reply@serapod2u.com',
       gmail_email: 'noreply@gmail.com',
     })).toBe('no-reply@serapod2u.com')
-  })
-})
-
-describe('transactionalMessageId', () => {
-  it('uses the sender domain', () => {
-    expect(transactionalMessageId('no-reply@serapod2u.com')).toMatch(/^<[0-9a-f]+@serapod2u\.com>$/)
   })
 })

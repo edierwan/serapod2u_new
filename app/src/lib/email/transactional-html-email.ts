@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
 
 type EmailResult = { success: boolean; notConfigured?: boolean; error?: string; providerName?: string }
@@ -9,11 +9,6 @@ export function resolveTransactionalFromEmail(providerName: string, config: Reco
         return String(config.gmail_email || config.from_email || '').trim()
     }
     return String(config.from_email || config.gmail_email || '').trim()
-}
-
-export function transactionalMessageId(fromEmail: string) {
-    const domain = String(fromEmail.split('@')[1] || 'serapod2u.com').trim() || 'serapod2u.com'
-    return `<${randomBytes(16).toString('hex')}@${domain}>`
 }
 
 function secrets(value: unknown): Record<string, any> {
@@ -106,18 +101,7 @@ export async function sendTransactionalHtmlEmail(
                         refreshToken: secret.oauth_refresh_token, accessToken: token.access_token },
                 })
             }
-            const mail = {
-                from: { name: fromName, address: fromEmail },
-                ...message,
-                replyTo: fromEmail,
-                messageId: transactionalMessageId(fromEmail),
-            }
-            // Gmail only: MAIL FROM must be the Gmail mailbox. Leave SMTP envelope to the authenticated user.
-            await transporter.sendMail(
-                provider.provider_name === 'gmail'
-                    ? { ...mail, envelope: { from: fromEmail, to: input.to } }
-                    : mail,
-            )
+            await transporter.sendMail({ from: `"${fromName}" <${fromEmail}>`, ...message })
             return { success: true, providerName: provider.provider_name }
         }
 
