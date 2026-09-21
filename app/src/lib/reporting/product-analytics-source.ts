@@ -25,6 +25,8 @@ import {
   ALL_CATEGORIES_LABEL,
   ELIGIBLE_ORDER_STATUSES,
   emptyAggregate,
+  LEGACY_REPORT_DATE_FIELD,
+  REPORT_DATE_FIELD,
   resolveProductReportPeriod,
   type CategoryTotals,
   type ProductAnalyticsAggregate,
@@ -32,6 +34,14 @@ import {
   type VariantAggregate,
 } from './product-analytics'
 import { reportingPeriodFromKey, REPORTING_TIME_ZONE, type ReportingPeriod } from './reporting-period'
+import { addDaysToDateKey, businessDateStartUtc, isDateKey, orderBusinessDate } from '@/lib/orders/order-date'
+import {
+  filterBusinessDateRange,
+  legacyOrderDateNotice,
+  orderByBusinessDate,
+  orderDateSelect,
+  resolveOrderDateColumn,
+} from './business-date-query'
 
 const PAGE_SIZE = 1000
 /** Hard ceiling for the degraded fallback. Beyond this the migration is required. */
@@ -79,9 +89,7 @@ export interface OrderItemRecord {
   line_total: number | null
   unit_price?: number | null
   /** PostgREST embed — resolved in the same request, never an N+1 lookup. */
-  orders?: { created_at: string | null; status: string | null }
-    | Array<{ created_at: string | null; status: string | null }>
-    | null
+  orders?: EmbeddedOrder | EmbeddedOrder[] | null
 }
 
 export interface CatalogueRecord {
@@ -106,7 +114,14 @@ export interface InventoryRecord {
   updated_at?: string | null
 }
 
-function orderOf(row: OrderItemRecord): { created_at: string | null; status: string | null } | null {
+/** The order a line belongs to. order_date is absent on a database without the column. */
+interface EmbeddedOrder {
+  order_date?: string | null
+  created_at: string | null
+  status: string | null
+}
+
+function orderOf(row: OrderItemRecord): EmbeddedOrder | null {
   const order = row.orders
   if (!order) return null
   return Array.isArray(order) ? order[0] ?? null : order
@@ -126,7 +141,8 @@ function lineValue(row: OrderItemRecord): number {
  *
  * `items` must already be restricted to eligible statuses and to the union of
  * the report window and its comparison window; which window a row belongs to is
- * decided here from `orders.created_at`, bucketed in Asia/Kuala_Lumpur.
+ * decided here from the order's business date `orders.order_date` (the Malaysia
+ * date of `created_at` for a legacy row without one).
  */
 export function aggregateProductOrders(
   items: OrderItemRecord[],
@@ -136,11 +152,13 @@ export function aggregateProductOrders(
   now: Date = new Date(),
   period: ProductReportPeriod = resolveProductReportPeriod(month, now),
   categoryId: string = ALL_CATEGORIES,
+  dateField: string = REPORT_DATE_FIELD,
 ): ProductAnalyticsAggregate {
-  const currentStart = period.startUtc
-  const currentEnd = period.endUtc
-  const comparisonStart = period.comparisonStartUtc
-  const comparisonEnd = period.comparisonEndUtc
+  // Half-open business-date windows, identical to the SQL function's.
+  const currentStart = period.startDate
+  const currentEnd = addDaysToDateKey(period.startDate, period.dayCount)
+  const comparisonStart = period.comparisonStartDate
+  const comparisonEnd = addDaysToDateKey(period.comparisonStartDate, period.comparisonDayCount)
 
   const isAllCategories = categoryId === ALL_CATEGORIES
   const catalogueById = new Map(catalogue.map((row) => [row.id, row]))
@@ -193,17 +211,17 @@ export function aggregateProductOrders(
 
   for (const row of items) {
     const order = orderOf(row)
-    const createdAt = order?.created_at
+    const orderDate = orderBusinessDate(order)
     const status = order?.status
-    if (!createdAt || !status) continue
+    if (!orderDate || !status) continue
     if (!(ELIGIBLE_ORDER_STATUSES as readonly string[]).includes(status)) continue
     const variantId = row.variant_id
     if (!variantId) continue
 
     const units = Number(row.qty) || 0
     const value = lineValue(row)
-    const inCurrent = createdAt >= currentStart && createdAt < currentEnd
-    const inPrevious = createdAt >= comparisonStart && createdAt < comparisonEnd
+    const inCurrent = orderDate >= currentStart && orderDate < currentEnd
+    const inPrevious = orderDate >= comparisonStart && orderDate < comparisonEnd
     if (!inCurrent && !inPrevious) continue
 
     const master = catalogueById.get(variantId)
@@ -225,7 +243,7 @@ export function aggregateProductOrders(
     if (!inScope(variantId)) continue
 
     const seen = lastOrdered.get(variantId)
-    if (!seen || createdAt > seen) lastOrdered.set(variantId, createdAt)
+    if (!seen || orderDate > seen) lastOrdered.set(variantId, orderDate)
 
     if (inCurrent) {
       currentUnits += units
@@ -237,7 +255,7 @@ export function aggregateProductOrders(
       bucket.value += value
       currentByVariant.set(variantId, bucket)
 
-      const date = mytDate(createdAt)
+      const date = orderDate
       const day = daily.get(date) ?? { units: 0, orderValue: 0 }
       day.units += units
       day.orderValue += value
@@ -310,7 +328,8 @@ export function aggregateProductOrders(
       reorderPoint: stock.reorderPoint,
       safetyStock: stock.safetyStock,
       stockValue: stock.value,
-      lastOrderedAt: lastOrdered.get(variantId) ?? null,
+      // The MYT start of the last business date, as the RPC reports it.
+      lastOrderedAt: lastOrdered.has(variantId) ? businessDateStartUtc(lastOrdered.get(variantId)!) : null,
     }
   })
 
@@ -372,21 +391,27 @@ export async function fetchProductOrderPeriods(supabase: any): Promise<Reporting
   }
   if (!isMissingProductPeriodsRpc(error)) throw error
 
-  // Degraded discovery: read only the order timestamps, never the items, and
-  // derive the distinct MYT months locally.
+  // Degraded discovery: read only the order dates, never the items, and
+  // derive the distinct business months locally.
+  const dateColumn = await resolveOrderDateColumn(supabase)
   const months = new Map<string, number>()
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data: page, error: pageError } = await supabase
-      .from('orders')
-      .select('created_at')
-      .in('status', ELIGIBLE_ORDER_STATUSES as unknown as string[])
-      .not('created_at', 'is', null)
-      .order('created_at', { ascending: false })
+    const { data: page, error: pageError } = await orderByBusinessDate(
+      supabase
+        .from('orders')
+        .select(`id, ${orderDateSelect(dateColumn)}`)
+        .in('status', ELIGIBLE_ORDER_STATUSES as unknown as string[])
+        .not(dateColumn, 'is', null),
+      dateColumn,
+      false,
+    )
       .range(from, from + PAGE_SIZE - 1)
     if (pageError) throw pageError
-    const rows = (page || []) as { created_at: string }[]
+    const rows = (page || []) as { order_date?: string | null; created_at: string | null }[]
     for (const row of rows) {
-      const key = mytDate(row.created_at).slice(0, 7)
+      const date = orderBusinessDate(row)
+      if (!date) continue
+      const key = date.slice(0, 7)
       months.set(key, (months.get(key) ?? 0) + 1)
     }
     if (rows.length < PAGE_SIZE || from > 50_000) break
@@ -453,7 +478,16 @@ export async function fetchProductAnalyticsAggregate(
     p_category_id: isAllCategories ? null : categoryId,
   })
   if (!error) {
-    return { aggregate: normalizeAggregate(data, month, period, categoryId), source: 'rpc', degraded: false, notice: null }
+    const aggregate = normalizeAggregate(data, month, period, categoryId)
+    return {
+      aggregate,
+      source: 'rpc',
+      degraded: false,
+      notice: aggregate.dateField === LEGACY_REPORT_DATE_FIELD
+        ? 'Reporting function still buckets on orders.created_at — backdated SO dates are not reflected yet. '
+          + 'Apply migrations 20260921120000_add_orders_order_date.sql and 20260921120300_product_analytics_order_date.sql.'
+        : null,
+    }
   }
   if (!isMissingProductAnalyticsRpc(error)) throw error
 
@@ -468,17 +502,22 @@ export async function fetchProductAnalyticsAggregate(
 
   const budget = { remaining: MAX_FALLBACK_ROWS }
   const statuses = ELIGIBLE_ORDER_STATUSES as unknown as string[]
+  const dateColumn = await resolveOrderDateColumn(supabase)
 
   // The report window and its comparison window are adjacent, so one range
   // covering both is a single scan rather than two.
   const [items, variants, products, inventory] = await Promise.all([
     readPages<OrderItemRecord>(
-      (from, to) => supabase
-        .from('order_items')
-        .select('variant_id, product_id, qty, unit_price, line_total, orders!inner(created_at, status)')
-        .in('orders.status', statuses)
-        .gte('orders.created_at', period.comparisonStartUtc)
-        .lt('orders.created_at', period.endUtc)
+      (from, to) => filterBusinessDateRange(
+        supabase
+          .from('order_items')
+          .select(`variant_id, product_id, qty, unit_price, line_total, orders!inner(${orderDateSelect(dateColumn)}, status)`)
+          .in('orders.status', statuses),
+        dateColumn,
+        period.comparisonStartDate,
+        addDaysToDateKey(period.startDate, period.dayCount),
+        'orders.',
+      )
         .order('id', { ascending: true })
         .range(from, to),
       budget,
@@ -536,14 +575,25 @@ export async function fetchProductAnalyticsAggregate(
   })
 
   return {
-    aggregate: aggregateProductOrders(items, catalogue, inventory, month, now, period, categoryId),
+    aggregate: aggregateProductOrders(
+      items, catalogue, inventory, month, now, period, categoryId,
+      dateColumn === 'order_date' ? REPORT_DATE_FIELD : LEGACY_REPORT_DATE_FIELD,
+    ),
     source: 'fallback',
     degraded: true,
-    notice:
+    notice: [
       'Reporting function not installed yet — figures were aggregated on the server from the selected month and its '
       + 'comparison period. "Last order" reflects that window only, until migration '
-      + '20260907120000_product_analytics_monthly_report.sql is applied.',
+      + '20260921120300_product_analytics_order_date.sql is applied.',
+      legacyOrderDateNotice(dateColumn),
+    ].filter(Boolean).join(' '),
   }
+}
+
+/** Last-ordered instant: the MYT start of the business date when the RPC sends one. */
+function normalizeLastOrdered(dateKey: unknown, instant: unknown): string | null {
+  if (typeof dateKey === 'string' && isDateKey(dateKey.slice(0, 10))) return businessDateStartUtc(dateKey.slice(0, 10))
+  return typeof instant === 'string' ? instant : null
 }
 
 /** Coerce the RPC's JSON (bigint counts arrive as numbers, arrays may be null). */
@@ -564,6 +614,8 @@ function normalizeAggregate(
     month: payload?.month || month,
     categoryId: payload?.categoryId || categoryId,
     categoryName: payload?.categoryName || (categoryId === ALL_CATEGORIES ? ALL_CATEGORIES_LABEL : 'Unknown category'),
+    // The pre-order_date RPC does not report its date field: it bucketed on created_at.
+    dateField: payload?.dateField || LEGACY_REPORT_DATE_FIELD,
     current: totals(payload?.current),
     previous: totals(payload?.previous),
     activeSkus: Number(payload?.activeSkus) || 0,
@@ -590,7 +642,7 @@ function normalizeAggregate(
       reorderPoint: Number(row.reorderPoint) || 0,
       safetyStock: Number(row.safetyStock) || 0,
       stockValue: Number(row.stockValue) || 0,
-      lastOrderedAt: row.lastOrderedAt ?? null,
+      lastOrderedAt: normalizeLastOrdered(row.lastOrderedDate, row.lastOrderedAt),
     })),
     inventory: {
       totalValue: Number(payload?.inventory?.totalValue) || 0,

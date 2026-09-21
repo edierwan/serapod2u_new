@@ -17,10 +17,16 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Building2, Calendar, DollarSign, Sparkles, Gift, Trophy, QrCode, FileText, Receipt, Clock, CheckCircle2, Download, MessageCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
+import {
+  salesOrderLineDescription,
+  sortSalesOrderLinesForDisplay,
+} from '@/lib/orders/sales-order-line-presentation'
+import { formatExpectedDelivery, resolveOrderCasesPerBox } from '@/lib/orders/packaging'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
 import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
 import { MessagingOrderTimelinePanel } from '@/components/orders/MessagingOrderTimelinePanel'
 import { MessagingOrderFulfilmentPanel } from '@/components/orders/MessagingOrderFulfilmentPanel'
+import { formatDateKey, orderBusinessDate } from '@/lib/orders/order-date'
 
 interface UserProfile {
   id: string
@@ -525,6 +531,25 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
   const totalQuantity = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
 
+  // Presentation order of the line items: Hero rows first, then Zero, then any
+  // other family, each group keeping the sequence it was stored in. A copy is
+  // sorted, never `orderData.order_items` itself, and the totals above are
+  // summed from the stored rows — nothing here can move a number.
+  const displayItems: any[] = isSalesOrder
+    ? sortSalesOrderLinesForDisplay<any>(orderData.order_items, (item) => item.product?.product_name)
+    : (orderData.order_items ?? [])
+
+  // Expected Delivery, from the same case total the totals row prints, at the
+  // order's configured box size (100 cases = 1 box unless master data says
+  // otherwise).
+  const expectedDeliveryLabel = formatExpectedDelivery(
+    totalQuantity,
+    resolveOrderCasesPerBox(
+      (orderData.order_items ?? []).map((item: any) => item.units_per_case),
+      orderData.units_per_case,
+    ),
+  )
+
   // Persisted org media may be a relative storage path or a legacy-host URL;
   // the canonical resolver rebuilds it against the configured storage host.
   const headerOrgLogoUrl = resolveOrganizationLogoUrl(headerOrg?.logo_url)
@@ -725,7 +750,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-[var(--sera-muted)]">Date:</span>
-                <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
+                {/* Business SO date (order_date), not the entry timestamp; legacy rows fall back to created_at's MYT date. */}
+                <span className="font-medium text-gray-900">{formatDateKey(orderBusinessDate(orderData))}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-[var(--sera-muted)]">By:</span>
@@ -797,26 +823,15 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {orderData.order_items?.map((item: any, index: number) => (
+              {displayItems.map((item: any, index: number) => (
                 <tr key={item.id} className="break-inside-avoid page-break-inside-avoid">
                   <td className="py-3 text-xs text-[var(--sera-muted)] align-top pt-4">{index + 1}</td>
                   <td className="py-3 text-xs text-gray-900 align-top pt-4">
                     <p className="break-words text-sm font-medium sm:whitespace-nowrap">
-                      {(() => {
-                        // Extract product base name (e.g., "Cellera Hero")
-                        const productName = item.product?.product_name?.replace(/\[.*?\]\s*$/, '').trim() || '';
-                        // Extract variant details (e.g., "Deluxe Cellera Cartridge [ Strawberry Cheesecake ]")
-                        const variantName = item.variant?.variant_name || '';
-
-                        // If variant contains brackets, extract the parts
-                        const bracketMatch = variantName.match(/^(.*?)\s*\[(.*?)\]\s*$/);
-                        if (bracketMatch) {
-                          // Format: ProductName VariantType [ VariantFlavor ]
-                          return `${productName} ${bracketMatch[1].trim()} [ ${bracketMatch[2].trim()} ]`;
-                        }
-                        // Fallback: Just show product name and variant
-                        return `${productName} ${variantName}`;
-                      })()}
+                      {/* "Cellera Zero - [ Almond Corn ]" — the Product Name plus
+                          the flavour, without the marketing range words master
+                          data repeats inside every variant name. */}
+                      {salesOrderLineDescription(item.product?.product_name, item.variant?.variant_name)}
                     </p>
                   </td>
                   {/* Master-data identity, the same code Quick Order and the
@@ -842,6 +857,18 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             </tfoot>
           </table>
         </div>
+
+        {/* Expected Delivery - the ordered cases expressed in boxes, stated
+            between the order total and the Terms. Deliberately a plain heading
+            and value in the document's own type scale, not a card or a panel:
+            it is one more line of the order, and it must not break away from
+            the flow when the document paginates. */}
+        {isSalesOrder && (
+          <div className="mt-6 break-inside-avoid page-break-inside-avoid print:mt-4">
+            <h3 className="font-bold text-gray-900 mb-1 text-sm">Expected Delivery</h3>
+            <p className="text-sm font-medium text-gray-900">{expectedDeliveryLabel}</p>
+          </div>
+        )}
 
         {/* Terms & Conditions - the organization's own value, rendered verbatim */}
         {orderTerms && (

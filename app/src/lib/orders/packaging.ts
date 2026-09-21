@@ -146,3 +146,60 @@ export function formatPackagingLine(totals: PackagingTotals): string {
   if (totals.pcs !== null) parts.push(formatPcs(totals.pcs))
   return parts.join(' • ')
 }
+
+/**
+ * Expected Delivery — the SO PDF's box figure.
+ *
+ * The Sales Order PDF states, below the order total, how many boxes the ordered
+ * cases come to: "Expected Delivery / 56 Boxes". It is the plain conversion at
+ * the configured box size (100 cases = 1 box by default, via
+ * `resolveCasesPerBox`), taken from the SAME total case quantity the SO totals
+ * row prints.
+ *
+ * Unlike `formatBoxEstimate`, which floors and shows the remainder as loose
+ * cases ("56 Boxes + 50 Cases") for warehouse handling, Expected Delivery keeps
+ * the division intact:
+ *
+ *   5,600 cases @100 -> 56    Boxes
+ *   5,650 cases @100 -> 56.5  Boxes
+ *
+ * Both readings are correct for their purpose; picking needs whole boxes plus
+ * what is left over, the order document states the quantity being delivered.
+ */
+export function expectedDeliveryBoxes(totalCases: number, casesPerBox?: number | null): number {
+  const cases = Math.max(0, Math.floor(Number(totalCases) || 0))
+  const perBox = positiveInt(casesPerBox) ?? DEFAULT_CASES_PER_BOX
+  return cases / perBox
+}
+
+/**
+ * "56 Boxes" — the value line under the Expected Delivery heading.
+ *
+ * A whole result carries no decimals ("56 Boxes", never "56.00 Boxes"); a
+ * fractional one shows only the digits it needs ("56.5 Boxes"). Exactly one box
+ * reads "1 Box".
+ *
+ * Integer case quantities at the standard 100 cases/box always divide to at
+ * most two decimal places, so the two-digit cap below only ever engages for an
+ * unusual configured box size.
+ */
+export function formatExpectedDelivery(totalCases: number, casesPerBox?: number | null): string {
+  const boxes = expectedDeliveryBoxes(totalCases, casesPerBox)
+  const value = boxes.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return `${value} ${boxes === 1 ? 'Box' : 'Boxes'}`
+}
+
+/**
+ * The box size to convert an order-level case total with: the one every line
+ * agrees on, otherwise the order setting (and finally the 100-case default).
+ * Mirrors how `packagingForTotal` refuses to apply one line's box size to a
+ * mixed order.
+ */
+export function resolveOrderCasesPerBox(
+  itemCasesPerBox: Array<number | null | undefined>,
+  orderCasesPerBox?: number | null,
+): number {
+  const sizes = new Set(itemCasesPerBox.map((size) => positiveInt(size)).filter((size): size is number => size !== null))
+  if (sizes.size === 1) return sizes.values().next().value as number
+  return positiveInt(orderCasesPerBox) ?? DEFAULT_CASES_PER_BOX
+}

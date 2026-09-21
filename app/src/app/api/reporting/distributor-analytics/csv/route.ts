@@ -9,11 +9,21 @@ import {
   currentReportingMonthKey,
   distributorReportFilename,
   isValidMonthKey,
+  LEGACY_REPORT_DATE_FIELD,
+  REPORT_DATE_FIELD,
+  reportDateWindows,
   resolveDistributorReportPeriod,
   statusLabel,
   type OrderStatus,
 } from '@/lib/reporting/distributor-analytics'
-import { mytDate, scopeEligibleDistributorOrders } from '@/lib/reporting/distributor-analytics-source'
+import {
+  filterBusinessDateRange,
+  orderByBusinessDate,
+  orderDateSelect,
+  resolveOrderDateColumn,
+  scopeEligibleDistributorOrders,
+} from '@/lib/reporting/distributor-analytics-source'
+import { orderBusinessDate } from '@/lib/orders/order-date'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,23 +94,29 @@ export async function GET(request: Request) {
       : nameById.get(distributorId) || 'Unknown distributor'
 
     const lines: string[] = [HEADERS.map(csvCell).join(',')]
+    // Same business-date column and window as the report: order_date, or the
+    // MYT date of created_at on a database that predates the migration.
+    const dateColumn = await resolveOrderDateColumn(supabase)
+    const windows = reportDateWindows(period)
 
     if (scoped.length > 0 && period.dayCount > 0) {
       const ids = scoped.map((row) => row.id)
       for (let from = 0; ; from += PAGE_SIZE) {
         // Same eligible-order scope as the report and its drill-downs.
-        const query = scopeEligibleDistributorOrders(
-          supabase
-            .from('orders')
-            .select('id, order_no, display_doc_no, created_at, status, buyer_org_id, order_items(qty, unit_price, line_total)'),
-          ids,
-          status as OrderStatus | typeof ALL_STATUS,
+        const query = filterBusinessDateRange(
+          scopeEligibleDistributorOrders(
+            supabase
+              .from('orders')
+              .select(`id, order_no, display_doc_no, ${orderDateSelect(dateColumn)}, status, buyer_org_id, order_items(qty, unit_price, line_total)`),
+            ids,
+            status as OrderStatus | typeof ALL_STATUS,
+          ),
+          dateColumn,
+          windows.start,
+          windows.end,
         )
-          .gte('created_at', period.startUtc)
-          .lt('created_at', period.endUtc)
 
-        const { data, error } = await query
-          .order('created_at', { ascending: false })
+        const { data, error } = await orderByBusinessDate(query, dateColumn, false)
           .range(from, from + PAGE_SIZE - 1)
         if (error) throw error
 
@@ -115,7 +131,7 @@ export async function GET(request: Request) {
           const qty = items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0)
           lines.push([
             order.display_doc_no || order.order_no || order.id,
-            order.created_at ? mytDate(order.created_at) : '',
+            orderBusinessDate(order) ?? '',
             nameById.get(order.buyer_org_id) || 'Unknown distributor',
             statusLabel(order.status || 'unknown'),
             qty,
@@ -147,7 +163,7 @@ export async function GET(request: Request) {
       `# Report Period: ${period.rangeLabel}`,
       `# Distributor: ${scopeName}`,
       `# Status: ${status === ALL_STATUS ? 'All Status' : statusLabel(status)}`,
-      `# Order Type: ${ELIGIBLE_ORDER_TYPE} · Buyer Org Type: ${DISTRIBUTOR_ORG_TYPE} · Bucketed on orders.created_at (Asia/Kuala_Lumpur)`,
+      `# Order Type: ${ELIGIBLE_ORDER_TYPE} · Buyer Org Type: ${DISTRIBUTOR_ORG_TYPE} · Bucketed on ${dateColumn === 'order_date' ? `${REPORT_DATE_FIELD} (business SO date)` : `${LEGACY_REPORT_DATE_FIELD} (Asia/Kuala_Lumpur) — order_date migration not applied`}`,
     ].join('\n')
 
     return new Response(`${preamble}\n${lines.join('\n')}`, {

@@ -15,6 +15,13 @@ import {
   resolveSellerHqId,
   type HqFulfillmentWarehouse,
 } from '@/lib/orders/hq-fulfillment-warehouses'
+import {
+  D2H_ORDER_DATE_RPC_MIGRATION,
+  formatDateKey,
+  isMissingOrderDateRpcParameter,
+  malaysiaToday,
+  validateOrderDate,
+} from '@/lib/orders/order-date'
 
 interface UserProfile {
   id: string
@@ -124,6 +131,12 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const [fulfillmentWarehouseId, setFulfillmentWarehouseId] = useState('')
   const [defaultFulfillmentMissing, setDefaultFulfillmentMissing] = useState(false)
   const submitLockRef = useRef(false)
+
+  // SO Date — the business/document date (orders.order_date). Defaults to today
+  // in Asia/Kuala_Lumpur; past dates are allowed (backdated SO), future are not.
+  // created_at stays the real creation time and is never backdated.
+  const [orderDate, setOrderDate] = useState(() => malaysiaToday())
+  const [orderDateTouched, setOrderDateTouched] = useState(false)
 
   // Customer Information
   const [customerName, setCustomerName] = useState('')
@@ -629,6 +642,19 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         return
       }
 
+      // An untouched default follows the Malaysia calendar even if the page was
+      // left open past midnight; a chosen date is validated as chosen.
+      const orderDateCheck = validateOrderDate(orderDateTouched ? orderDate : malaysiaToday())
+      if (!orderDateCheck.ok) {
+        toast({
+          title: 'Validation Error',
+          description: orderDateCheck.error,
+          variant: 'destructive'
+        })
+        return
+      }
+      const soDate = orderDateCheck.orderDate
+
       const positiveOrderItems = orderItems.filter(item => item.qty > 0)
       if (positiveOrderItems.length === 0) {
         toast({
@@ -668,7 +694,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         ? crypto.randomUUID()
         : `d2h-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-      const { data: order, error: submitError } = await (supabase as any).rpc('submit_and_allocate_d2h_order', {
+      const submitArgs = {
         p_company_id: companyId,
         p_buyer_org_id: buyerOrg.id,
         p_seller_org_id: sellerOrg.id,
@@ -682,7 +708,27 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         p_notes: `Customer: ${customerName}, Phone: ${phoneNumber}, Address: ${deliveryAddress}`,
         p_created_by: userProfile.id,
         p_idempotency_key: idempotencyKey,
+      }
+      let { data: order, error: submitError } = await (supabase as any).rpc('submit_and_allocate_d2h_order', {
+        ...submitArgs,
+        p_order_date: soDate,
       })
+
+      if (submitError && isMissingOrderDateRpcParameter(submitError)) {
+        // The database has not had the SO Date migration applied yet. A
+        // today-dated SO is exactly what the previous RPC creates, so it is
+        // submitted through it; a backdated SO cannot be honoured and is refused
+        // rather than silently created with today's date.
+        if (!orderDateCheck.isBackdated) {
+          console.warn(`submit_and_allocate_d2h_order has no p_order_date yet — apply ${D2H_ORDER_DATE_RPC_MIGRATION}.`)
+          ;({ data: order, error: submitError } = await (supabase as any).rpc('submit_and_allocate_d2h_order', submitArgs))
+        } else {
+          throw new Error(
+            `Backdated SO Date is not available yet: database migration ${D2H_ORDER_DATE_RPC_MIGRATION} has not been applied. `
+            + 'Set SO Date to today or ask an administrator to apply the migration.'
+          )
+        }
+      }
 
       if (submitError) {
         console.error('Error submitting D2H order:', submitError)
@@ -721,6 +767,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       submitLockRef.current = false
     }
   }
+
+  const todayMyt = malaysiaToday()
+  // What is shown is what is submitted: an untouched default is always today.
+  const effectiveOrderDate = orderDateTouched ? orderDate : todayMyt
+  const orderDateValidation = validateOrderDate(effectiveOrderDate)
+  const orderDateInvalid = orderDateValidation.ok ? null : orderDateValidation.error
+  const orderDateBackdated = orderDateValidation.ok && orderDateValidation.isBackdated
 
   const calculateTotals = () => {
     const subtotal = orderItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
@@ -856,6 +909,37 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="mt-6">
+                <label htmlFor="d2h-so-date" className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
+                  SO Date <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  id="d2h-so-date"
+                  type="date"
+                  value={effectiveOrderDate}
+                  max={todayMyt}
+                  required
+                  onChange={(e) => {
+                    setOrderDate(e.target.value)
+                    setOrderDateTouched(true)
+                  }}
+                  className="w-full sm:w-56"
+                  aria-describedby="d2h-so-date-hint"
+                />
+                <div id="d2h-so-date-hint" className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {orderDateInvalid ? (
+                    <p className="text-xs text-red-600">{orderDateInvalid}</p>
+                  ) : orderDateBackdated ? (
+                    <span className="inline-flex items-center rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                      Backdated SO
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div>
                 <p className="text-xs text-[var(--sera-muted)] mt-2">
                   Stock for this order will be allocated and fulfilled from this warehouse.
                 </p>
@@ -1149,6 +1233,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">Fulfillment</h4>
                 <p className="text-sm text-[var(--sera-ink)]/80">
                   Fulfilled From: {selectedFulfillmentWarehouse?.org_name || 'Not selected'}
+                </p>
+                <p className="text-sm text-[var(--sera-ink)]/80 mt-1">
+                  SO Date: {formatDateKey(effectiveOrderDate)}
+                  {orderDateBackdated && <span className="ml-1.5 text-xs text-amber-700">(backdated)</span>}
                 </p>
               </div>
 

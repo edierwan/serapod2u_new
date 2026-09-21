@@ -10,6 +10,12 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { wrapTermsLines } from '@/lib/organizations/terms'
 import { isBuyerIssuedDocument, resolveCounterparty } from '@/lib/documents/counterparty'
+import { formatExpectedDelivery, resolveOrderCasesPerBox } from '@/lib/orders/packaging'
+import { formatDateKey, isDateKey } from '@/lib/orders/order-date'
+import {
+  salesOrderLineDescription,
+  sortSalesOrderLinesForDisplay,
+} from '@/lib/orders/sales-order-line-presentation'
 
 function pdfImageFormat(imageData: string): 'PNG' | 'JPEG' | 'WEBP' {
   if (/^data:image\/(?:jpe?g);/i.test(imageData)) return 'JPEG'
@@ -24,6 +30,8 @@ export interface TemplateOrderData {
   order_type: string
   status: string
   created_at: string
+  /** Business/SO date (orders.order_date, YYYY-MM-DD). Absent before the order_date migration. */
+  order_date?: string | null
   approved_at?: string
   payment_terms?: any
   approver?: {
@@ -74,6 +82,11 @@ export interface TemplateOrderData {
     unit_price: number
     line_total: number
   }>
+  /**
+   * `orders.units_per_case` — the order-level cases-per-box setting, used when
+   * the lines do not all agree on one. Legacy internal name; see packaging.ts.
+   */
+  units_per_case?: number | null
   /**
    * The issuing organization's Terms & Conditions
    * (organizations.settings.terms_conditions), resolved upstream. Separate
@@ -213,8 +226,56 @@ export class ClassicTemplate {
     return `${day} ${month} ${year}`
   }
 
+  /**
+   * The Expected Delivery section: a bold heading matching "Terms & Conditions"
+   * and the box figure directly under it.
+   *
+   *   Expected Delivery
+   *   56 Boxes
+   *
+   * The figure is the SAME case total the totals row is built from, converted at
+   * the order's configured box size. No formula or working is printed — the
+   * document states the quantity, it does not explain it.
+   *
+   * A page break is taken first when the heading and its value would not both
+   * fit above the footer, so the pair never splits and never lands on top of the
+   * signature block.
+   */
+  private addExpectedDeliverySection(orderData: TemplateOrderData, yPosition: number): number {
+    const totalCases = orderData.order_items.reduce((sum, item) => sum + (item.qty || 0), 0)
+    const label = formatExpectedDelivery(
+      totalCases,
+      resolveOrderCasesPerBox(
+        orderData.order_items.map((item) => item.units_per_case),
+        orderData.units_per_case,
+      ),
+    )
+
+    const pageHeight = this.doc.internal.pageSize.getHeight()
+    let y = yPosition
+    // Heading + value + the breathing room the Terms below expect.
+    if (y + 12 > pageHeight - this.margin) {
+      this.doc.addPage()
+      y = 20
+    }
+
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text('Expected Delivery', this.margin, y)
+
+    y += 5
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.text(label, this.margin, y)
+
+    return y
+  }
+
   async generate(orderData: TemplateOrderData, documentData: TemplateDocumentData, docTitle: string): Promise<Blob> {
     let y = 20
+
+    const isSalesOrderDoc = (documentData.doc_type || '').toUpperCase() === 'SO'
 
     // 1. Header Section - 2 Column Grid
     // Left Column (65%): Logo + Company Info (Side-by-side, vertically centered)
@@ -233,7 +294,11 @@ export class ClassicTemplate {
 
     const details = [
       { label: 'PO#:', value: documentData.display_doc_no || documentData.doc_no },
-      { label: 'Date:', value: this.formatDate(documentData.created_at) },
+      // A Sales Order is dated with the order's business SO date (order_date);
+      // every other document keeps its own issue date.
+      { label: 'Date:', value: isSalesOrderDoc && orderData.order_date && isDateKey(orderData.order_date.slice(0, 10))
+        ? formatDateKey(orderData.order_date)
+        : this.formatDate(documentData.created_at) },
       { label: 'By:', value: orderData.creator?.full_name || 'Not available' },
       { label: 'Ledger:', value: 'Stock Purchased / Inventory' }
     ]
@@ -391,29 +456,23 @@ export class ClassicTemplate {
     // Simple table with no borders, just lines
     const headers = ['No', 'Description', 'Unit', 'Price', 'Amount']
 
-    const tableData = orderData.order_items.map((item, index) => {
+    // Sales Orders group the lines Hero first, then Zero, then anything else;
+    // every other document keeps the stored sequence. Presentation only — the
+    // total below is summed from `orderData.order_items` either way.
+    const lineItems = isSalesOrderDoc
+      ? sortSalesOrderLinesForDisplay(orderData.order_items, (item) => item.product?.product_name)
+      : orderData.order_items
+
+    const tableData = lineItems.map((item, index) => {
       const qty = item.qty || 0
       const unitPrice = item.unit_price || 0
       const total = item.line_total || (qty * unitPrice)
 
-      // Format description to match Order print/save view
-      // Extract product base name (e.g., "Cellera Hero")
-      const productName = (item.product?.product_name || 'Product').replace(/\[.*?\]\s*$/, '').trim()
-      // Extract variant details (e.g., "Deluxe Cellera Cartridge [ Strawberry Cheesecake ]")
-      const variantName = item.variant?.variant_name || ''
-
-      let description = productName
-      if (variantName) {
-        // If variant contains brackets, extract the parts
-        const bracketMatch = variantName.match(/^(.*?)\s*\[(.*)\]\s*$/)
-        if (bracketMatch) {
-          // Format: ProductName VariantType [ VariantFlavor ]
-          description = `${productName} ${bracketMatch[1].trim()} [ ${bracketMatch[2].trim()} ]`
-        } else {
-          // Fallback: Just show product name and variant
-          description = `${productName} ${variantName}`
-        }
-      }
+      // Same description as the Order print/save view: the Product Name plus the
+      // bracketed flavour, without the marketing range words master data
+      // repeats inside every variant name.
+      const description =
+        salesOrderLineDescription(item.product?.product_name, item.variant?.variant_name) || 'Product'
 
       return [
         (index + 1).toString(),
@@ -499,12 +558,27 @@ export class ClassicTemplate {
     this.doc.text('Total', totalX - 20, y, { align: 'right' })
     this.doc.text(this.formatCurrency(totalAmount), this.pageWidth - this.margin, y, { align: 'right' })
 
+    // 4b. Expected Delivery - the ordered cases in boxes, between the total and
+    // the Terms. Sales Orders only; a PO or an invoice states no delivery figure.
+    if (isSalesOrderDoc) {
+      y = this.addExpectedDeliverySection(orderData, y + 8)
+    }
+
     // 5. Organization Terms & Conditions - verbatim, omitted when unset
     y = this.addTermsSection(orderData.organization_terms, y + 6)
 
     y += 24
 
     // 6. Signatures / Footer
+    // The block needs roughly 50mm below its top edge: the two audit names, the
+    // signatures, the signature lines, the dates and the footer note. Nothing
+    // above guarantees that much room is left on a long document, so it takes a
+    // fresh page rather than running off the bottom or printing over the Terms.
+    const footerBlockHeight = 50
+    if (y + footerBlockHeight > this.doc.internal.pageSize.getHeight() - this.margin) {
+      this.doc.addPage()
+      y = this.margin + 10
+    }
     const footerY = y
 
     // Issued by (Left) - Organization stamp/signature

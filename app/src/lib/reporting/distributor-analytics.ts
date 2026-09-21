@@ -36,6 +36,7 @@ import {
   type RateDelta,
 } from './consumer-analytics'
 import { REPORTING_TIME_ZONE } from './reporting-period'
+import { addDaysToDateKey } from '@/lib/orders/order-date'
 
 export {
   REPORTING_TIME_ZONE,
@@ -99,8 +100,20 @@ export const APPROVED_STATUSES: string[] = ['approved', 'closed']
 /** Statuses treated as completed by the Completion Rate. */
 export const COMPLETED_STATUSES: string[] = ['closed']
 
-/** The business date the monthly report buckets on — `orders.created_at`. */
-export const REPORT_DATE_FIELD = 'orders.created_at'
+/**
+ * The business date the monthly report buckets on — `orders.order_date`, the
+ * SO date (a Malaysia calendar date that may be backdated). `orders.created_at`
+ * stays the audit/entry timestamp and no longer decides the reporting period:
+ * an SO dated 31 Aug keyed in on 21 Sep is August sell-in.
+ */
+export const REPORT_DATE_FIELD = 'orders.order_date'
+
+/**
+ * What the report bucketed on when the database predates the order_date
+ * migration (the legacy RPC, or a fallback that cannot see the column). The
+ * report states it in its meta rather than silently claiming order_date.
+ */
+export const LEGACY_REPORT_DATE_FIELD = 'orders.created_at'
 
 /** Order Value is summed from order lines, never from an order header total. */
 export const ORDER_VALUE_FIELD = 'sum(order_items.line_total)'
@@ -170,6 +183,25 @@ export function resolveDistributorReportPeriod(month: string, now: Date = new Da
   return resolveProductReportPeriod(month, now)
 }
 
+/**
+ * The report and comparison windows as half-open BUSINESS-DATE ranges
+ * [start, end) over `orders.order_date` — the same windows the SQL applies.
+ * A window with no days (a month that has not started) has start === end.
+ */
+export function reportDateWindows(period: DistributorReportPeriod): {
+  start: string
+  end: string
+  comparisonStart: string
+  comparisonEnd: string
+} {
+  return {
+    start: period.startDate,
+    end: addDaysToDateKey(period.startDate, period.dayCount),
+    comparisonStart: period.comparisonStartDate,
+    comparisonEnd: addDaysToDateKey(period.comparisonStartDate, period.comparisonDayCount),
+  }
+}
+
 // ── Raw aggregate (mirrors the RPC's JSON shape 1:1) ───────────────────────
 
 export interface PeriodTotals {
@@ -199,6 +231,13 @@ export interface DistributorAggregate {
   lastOrderAt: string | null
   /** Lifetime eligible order count, used to derive an ordering cadence. */
   lifetimeOrders: number
+  /**
+   * First / last business date (YYYY-MM-DD). `firstOrderAt` / `lastOrderAt`
+   * are the instants those Malaysia days start, so recency arithmetic and the
+   * period boundaries (also MYT midnights) compare like with like.
+   */
+  firstOrderDate?: string | null
+  lastOrderDate?: string | null
 }
 
 export interface StatusTotals {
@@ -220,6 +259,9 @@ export interface ProductTotals {
 export interface OrderRecordTotals {
   orderId: string
   orderNo: string | null
+  /** Business SO date (YYYY-MM-DD) — what the report displays and sorts on. */
+  orderDate: string
+  /** Actual system entry instant (audit), kept for reference. */
   createdAt: string
   status: string
   distributorId: string
@@ -235,6 +277,8 @@ export interface DistributorAnalyticsAggregate {
   distributorName: string
   /** `all`, or the single selected order status. */
   status: string
+  /** The column the source bucketed on; absent means the pre-order_date RPC. */
+  dateField?: string
   current: PeriodTotals
   previous: PeriodTotals
   dailyTrend: { date: string; orders: number; orderValue: number }[]
@@ -506,8 +550,9 @@ export function classifyStage(row: {
   periodEndUtc: string
 }): RelationshipStage {
   if (row.currentOrders > 0) {
-    const first = row.firstOrderAt
-    if (first && first >= row.periodStartUtc && first < row.periodEndUtc) return 'new'
+    // Instants compared numerically: PostgREST (+00:00) and the period window (Z) format differently.
+    const first = row.firstOrderAt ? Date.parse(row.firstOrderAt) : NaN
+    if (Number.isFinite(first) && first >= Date.parse(row.periodStartUtc) && first < Date.parse(row.periodEndUtc)) return 'new'
     return 'returning'
   }
   if (row.previousOrders > 0) return 'inactive'
@@ -928,7 +973,7 @@ export function buildDistributorAnalyticsReport(
   const aovDelta = metricDelta(avgOrderValue ?? 0, previousAvgOrderValue ?? 0)
   const previousReturningRate = safeShare(
     rows.filter((row) => row.previousOrders > 0 && row.firstOrderAt !== null
-      && row.firstOrderAt < period.comparisonStartUtc).length,
+      && Date.parse(row.firstOrderAt) < Date.parse(period.comparisonStartUtc)).length,
     previousActive,
   )
   const returningDelta = rateDelta(returningRatePct, previousReturningRate)
@@ -1101,7 +1146,7 @@ export function buildDistributorAnalyticsReport(
       orderType: ELIGIBLE_ORDER_TYPE,
       buyerOrgType: DISTRIBUTOR_ORG_TYPE,
       statuses: statusId === ALL_STATUS ? [...ORDER_STATUSES] : [statusId],
-      dateField: REPORT_DATE_FIELD,
+      dateField: aggregate.dateField ?? REPORT_DATE_FIELD,
       orderValueField: ORDER_VALUE_FIELD,
       approvedStatuses: APPROVED_STATUSES,
       completedStatuses: COMPLETED_STATUSES,

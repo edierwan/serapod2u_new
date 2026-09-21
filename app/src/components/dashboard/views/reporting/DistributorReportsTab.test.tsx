@@ -86,7 +86,7 @@ function reportFor(month: string, distributorId = ALL_DISTRIBUTORS, status = 'al
     ],
     recentOrders: [
       {
-        orderId: 'o1', orderNo: 'D2H-0001', createdAt: '2026-09-04T02:00:00.000Z', status: 'approved',
+        orderId: 'o1', orderNo: 'D2H-0001', orderDate: '2026-09-04', createdAt: '2026-09-04T02:00:00.000Z', status: 'approved',
         distributorId: rows[0]?.distributorId ?? INFY, distributorName: rows[0]?.name ?? 'Infy Tech Distribution',
         orderValue: 120_000, itemCount: 6,
       },
