@@ -65,7 +65,7 @@ export default function OutdoorLoginClient() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-12 sm:px-6 sm:py-16">
+    <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
       <div className="out-card px-5 py-8 sm:px-8 sm:py-10">
         <Link href="/outdoor" className="inline-flex">
           <OutdoorBrandMark className="h-7 w-auto" />
