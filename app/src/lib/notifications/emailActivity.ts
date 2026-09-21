@@ -27,6 +27,11 @@ const ACTION_LABELS: Record<string, string> = {
     password_changed: 'Password changed',
     password_reset_request: 'Password reset request',
     password_reset_otp: 'Password reset OTP',
+    shop_contact_otp_sent: 'Shop contact OTP',
+    shop_contact_otp_resend_sent: 'Shop contact OTP',
+    shop_contact_otp_send_failed: 'Shop contact OTP',
+    registration_otp_sent: 'Registration OTP',
+    registration_otp_resend_sent: 'Registration OTP',
     delete_user_otp: 'User deletion OTP',
     login_suspicious: 'Suspicious login',
     po_created: 'PO created',
@@ -103,6 +108,7 @@ export function extractEmailReceiver(...sources: unknown[]): string | null {
         const row = source as Record<string, unknown>
         const email = asString(row.to_email)
             || asString(row.recipient_value)
+            || asString(row.recipient_email)
             || asString(row.email)
             || asString(row.created_by_email)
         if (email) return email

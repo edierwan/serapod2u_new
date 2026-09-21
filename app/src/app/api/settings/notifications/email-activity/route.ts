@@ -118,7 +118,17 @@ export async function GET(_request: NextRequest) {
       outboxQuery = outboxQuery.in('org_id', orgIds)
     }
 
-    const [logsRes, outboxRes, providersRes] = await Promise.all([
+    const otpEventTypes = [
+      'shop_contact_otp_sent',
+      'shop_contact_otp_resend_sent',
+      'shop_contact_otp_send_failed',
+      'registration_otp_sent',
+      'registration_otp_resend_sent',
+      'password_reset_otp_sent',
+      'password_reset_otp_resend_sent',
+    ]
+
+    const [logsRes, outboxRes, providersRes, otpRes] = await Promise.all([
       logsQuery,
       outboxQuery,
       admin
@@ -126,10 +136,18 @@ export async function GET(_request: NextRequest) {
         .select('org_id, last_test_status, last_test_error, last_test_at')
         .eq('channel', 'email')
         .eq('is_active', true),
+      admin
+        .from('notification_events')
+        .select('id, created_at, sent_at, status, event_type, recipient_email, provider, provider_message_id, error_message, meta')
+        .eq('channel', 'email')
+        .in('event_type', otpEventTypes)
+        .order('created_at', { ascending: false })
+        .limit(200),
     ])
 
     if (logsRes.error) return NextResponse.json({ error: logsRes.error.message }, { status: 500 })
     if (outboxRes.error) return NextResponse.json({ error: outboxRes.error.message }, { status: 500 })
+    if (otpRes.error) console.warn('[email-activity] notification_events:', otpRes.error.message)
 
     const providerBlockByOrg = new Map<string, ProviderBlock>()
     for (const provider of providersRes.data || []) {
@@ -236,6 +254,49 @@ export async function GET(_request: NextRequest) {
         maxRetries: outbox.max_retries != null ? Number(outbox.max_retries) : null,
         templateCode: asString(outbox.template_code) || null,
         priority: asString(outbox.priority) || null,
+        payload,
+        subject: extractEmailSubject(payload, eventCode),
+        messageBody: extractEmailBody(payload),
+        ...emailOrderFields(payload),
+        providerResponse: null,
+        statusDetails: null,
+      })
+    }
+
+    for (const event of otpRes.data || []) {
+      const eventCode = asString(event.event_type) || 'shop_contact_otp_sent'
+      const rawStatus = eventCode.includes('failed') ? 'failed' : (asString(event.status) || 'sent')
+      const createdAt = event.created_at || event.sent_at || null
+      const sentAt = event.sent_at || createdAt
+      const overlay = applyProviderTestFailure(
+        null,
+        rawStatus,
+        createdAt,
+        sentAt,
+        asString(event.error_message) || null,
+        providerBlockByOrg,
+      )
+      const payload = event.meta && typeof event.meta === 'object' ? event.meta : null
+      messages.push({
+        id: event.id,
+        source: 'log',
+        outboxId: null,
+        createdAt,
+        queuedAt: createdAt,
+        sentAt,
+        deliveredAt: overlay.status === 'delivered' ? sentAt : null,
+        failedAt: overlay.status === 'failed' ? sentAt || createdAt : null,
+        status: overlay.status,
+        rawStatus: overlay.rawStatus,
+        receiver: extractEmailReceiver(event.recipient_email, payload),
+        eventCode,
+        providerName: asString(event.provider) || 'email',
+        providerMessageId: asString(event.provider_message_id) || null,
+        errorMessage: overlay.errorMessage,
+        retryCount: 0,
+        maxRetries: null,
+        templateCode: null,
+        priority: null,
         payload,
         subject: extractEmailSubject(payload, eventCode),
         messageBody: extractEmailBody(payload),

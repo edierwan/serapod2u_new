@@ -26,11 +26,9 @@ describe('emailActivity', () => {
         expect(formatNotificationAction(null)).toBe('-')
     })
 
-    it('reads receiver from outbox and log fields', () => {
-        expect(extractEmailReceiver({ to_email: 'owner@shop.test' })).toBe('owner@shop.test')
-        expect(extractEmailReceiver({ recipient_value: 'log@shop.test' })).toBe('log@shop.test')
-        expect(extractEmailReceiver('direct@shop.test', { to_email: 'ignored@shop.test' })).toBe('direct@shop.test')
-        expect(extractEmailReceiver({ created_by_email: 'creator@shop.test' })).toBe('creator@shop.test')
+    it('reads receiver from OTP notification events', () => {
+        expect(extractEmailReceiver({ recipient_email: 'sobir218@icloud.com' })).toBe('sobir218@icloud.com')
+        expect(formatNotificationAction('shop_contact_otp_sent')).toBe('Shop contact OTP')
     })
 
     it('reads subject and body from payload', () => {

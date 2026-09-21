@@ -1,7 +1,20 @@
-import { createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
 
 type EmailResult = { success: boolean; notConfigured?: boolean; error?: string; providerName?: string }
+
+/** Gmail must send as the Gmail mailbox. Custom From + Gmail SMTP fails SPF and iCloud/Yahoo drop it. */
+export function resolveTransactionalFromEmail(providerName: string, config: Record<string, any>) {
+    if (providerName === 'gmail') {
+        return String(config.gmail_email || config.from_email || '').trim()
+    }
+    return String(config.from_email || config.gmail_email || '').trim()
+}
+
+export function transactionalMessageId(fromEmail: string) {
+    const domain = String(fromEmail.split('@')[1] || 'serapod2u.com').trim() || 'serapod2u.com'
+    return `<${randomBytes(16).toString('hex')}@${domain}>`
+}
 
 function secrets(value: unknown): Record<string, any> {
     if (!value) return {}
@@ -59,8 +72,9 @@ export async function sendTransactionalHtmlEmail(
 
     const config = provider.config_public || {}
     const secret = secrets(provider.config_encrypted)
-    const fromEmail = config.from_email || config.gmail_email
+    const fromEmail = resolveTransactionalFromEmail(provider.provider_name, config)
     const fromName = input.fromName || config.from_name || 'Serapod2U'
+    if (!fromEmail) return { success: false, notConfigured: true, error: 'Sender email is not configured', providerName: provider.provider_name }
     const message = { to: input.to, subject: input.subject, text: input.text, html: input.html }
     try {
         if (provider.provider_name === 'smtp' || provider.provider_name === 'gmail') {
@@ -92,7 +106,18 @@ export async function sendTransactionalHtmlEmail(
                         refreshToken: secret.oauth_refresh_token, accessToken: token.access_token },
                 })
             }
-            await transporter.sendMail({ from: `"${fromName}" <${fromEmail}>`, ...message })
+            const mail = {
+                from: { name: fromName, address: fromEmail },
+                ...message,
+                replyTo: fromEmail,
+                messageId: transactionalMessageId(fromEmail),
+            }
+            // Gmail only: MAIL FROM must be the Gmail mailbox. Leave SMTP envelope to the authenticated user.
+            await transporter.sendMail(
+                provider.provider_name === 'gmail'
+                    ? { ...mail, envelope: { from: fromEmail, to: input.to } }
+                    : mail,
+            )
             return { success: true, providerName: provider.provider_name }
         }
 
