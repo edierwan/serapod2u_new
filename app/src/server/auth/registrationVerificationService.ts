@@ -6,7 +6,7 @@ import { buildRegistrationOtpEmail, buildShopContactOtpEmail } from '@/lib/auth/
 import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
 
 export const OTP_LENGTH = 4
-export const OTP_EXPIRY_MINUTES = 15
+export const OTP_EXPIRY_MINUTES = 5
 export const RESEND_COOLDOWN_SECONDS = 60
 export const MAX_SEND_ATTEMPTS_PER_15MIN = 3
 export const MAX_VERIFY_ATTEMPTS_PER_OTP = 5

@@ -3,14 +3,6 @@ import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
 
 type EmailResult = { success: boolean; notConfigured?: boolean; error?: string; providerName?: string }
 
-/** Gmail must send as the Gmail mailbox. Custom From + Gmail SMTP fails SPF and iCloud/Yahoo drop it. */
-export function resolveTransactionalFromEmail(providerName: string, config: Record<string, any>) {
-    if (providerName === 'gmail') {
-        return String(config.gmail_email || config.from_email || '').trim()
-    }
-    return String(config.from_email || config.gmail_email || '').trim()
-}
-
 function secrets(value: unknown): Record<string, any> {
     if (!value) return {}
     if (typeof value === 'object') return value as Record<string, any>
@@ -67,9 +59,8 @@ export async function sendTransactionalHtmlEmail(
 
     const config = provider.config_public || {}
     const secret = secrets(provider.config_encrypted)
-    const fromEmail = resolveTransactionalFromEmail(provider.provider_name, config)
+    const fromEmail = config.from_email || config.gmail_email
     const fromName = input.fromName || config.from_name || 'Serapod2U'
-    if (!fromEmail) return { success: false, notConfigured: true, error: 'Sender email is not configured', providerName: provider.provider_name }
     const message = { to: input.to, subject: input.subject, text: input.text, html: input.html }
     try {
         if (provider.provider_name === 'smtp' || provider.provider_name === 'gmail') {
