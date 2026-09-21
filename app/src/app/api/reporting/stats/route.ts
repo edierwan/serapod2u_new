@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { malaysiaDateOf, orderBusinessDate } from '@/lib/orders/order-date'
+import { orderDateSelect, resolveOrderDateColumn } from '@/lib/reporting/business-date-query'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,8 +52,12 @@ export async function GET(request: Request) {
     // FETCH DATA FROM ACTUAL POPULATED TABLES
     // ==========================================
 
-    // 1. Fetch Orders with Items
-    let ordersQuery = supabase
+    // 1. Fetch Orders with Items. Periods, trend and dates follow the business
+    // SO date (order_date); created_at only on a database without the column.
+    const dateColumn = await resolveOrderDateColumn(supabase)
+    // The select list is built at runtime (order_date may not exist yet), so the
+    // typed query parser cannot follow it.
+    let ordersQuery = (supabase as any)
       .from('orders')
       .select(`
         id,
@@ -59,7 +65,7 @@ export async function GET(request: Request) {
         display_doc_no,
         order_type,
         status,
-        created_at,
+        ${orderDateSelect(dateColumn)},
         updated_at,
         buyer:organizations!orders_buyer_org_id_fkey (
           id,
@@ -80,14 +86,22 @@ export async function GET(request: Request) {
         )
       `)
       .in('status', ['approved', 'closed', 'submitted'])
+      // Entry order: it only decides which rows the "recent" activity list shows.
       .order('created_at', { ascending: false })
 
-    // Apply date filters
+    // Apply date filters. The client sends instants; order_date is compared
+    // with the Malaysia calendar days they fall on (inclusive).
+    const startKey = startDate ? malaysiaDateOf(startDate) : null
+    const endKey = endDate ? malaysiaDateOf(endDate) : null
     if (startDate) {
-      ordersQuery = ordersQuery.gte('created_at', startDate)
+      ordersQuery = dateColumn === 'order_date' && startKey
+        ? ordersQuery.gte('order_date', startKey)
+        : ordersQuery.gte('created_at', startDate)
     }
     if (endDate) {
-      ordersQuery = ordersQuery.lte('created_at', endDate)
+      ordersQuery = dateColumn === 'order_date' && endKey
+        ? ordersQuery.lte('order_date', endKey)
+        : ordersQuery.lte('created_at', endDate)
     }
     
     // Filter by distributor if specified
@@ -155,9 +169,9 @@ export async function GET(request: Request) {
     }
 
     orders?.forEach((order: any) => {
-      const dateObj = new Date(order.created_at)
-      const monthKey = dateObj.toISOString().slice(0, 7) // YYYY-MM
-      const dailyDate = dateObj.toISOString().split('T')[0]
+      // Business date (Malaysia calendar day) — never the UTC day of created_at.
+      const businessDate = orderBusinessDate(order) ?? ''
+      const monthKey = businessDate.slice(0, 7) // YYYY-MM
 
       // Get distributor name (buyer for orders)
       const distributorName = order.buyer?.org_name || 'Unknown'
@@ -216,7 +230,9 @@ export async function GET(request: Request) {
       if (stats.recentShipments.length < 10) {
         stats.recentShipments.push({
           id: order.id,
+          // Activity list rendered with a time of day: the real entry instant.
           date: order.created_at,
+          orderDate: businessDate || null,
           distributor: distributorName,
           orderNo: order.display_doc_no || order.order_no,
           units: orderUnits,

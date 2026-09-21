@@ -22,6 +22,8 @@ import {
   type DistributorRow,
 } from './distributor-analytics'
 import type { EligibleWindowOrder, OrderRecord } from './distributor-analytics-source'
+import { businessDateStartUtc, malaysiaDateOf, orderBusinessDate } from '@/lib/orders/order-date'
+import { reportDateWindows } from './distributor-analytics'
 
 export const DRILLDOWN_METRICS = ['total_orders', 'active', 'new', 'inactive', 'returning'] as const
 export type DrilldownMetric = (typeof DRILLDOWN_METRICS)[number]
@@ -66,6 +68,9 @@ export const DRILLDOWN_META: Record<DrilldownMetric, { title: string; noun: stri
 export interface OrderRef {
   orderId: string
   orderNo: string
+  /** Business SO date (YYYY-MM-DD). */
+  date: string
+  /** The instant that business date starts in MYT (kept for existing consumers). */
   at: string
 }
 
@@ -148,7 +153,9 @@ export function buildDistributorDrilldown(input: {
 
   if (metric === 'total_orders') {
     orders = [...(input.orders || [])]
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      // Business date first, entry time as the tie-break — the report's own order.
+      .sort((a, b) => (b.orderDate || '').localeCompare(a.orderDate || '')
+        || Date.parse(b.createdAt) - Date.parse(a.createdAt))
       .map(({ createdById, ...order }) => ({
         ...order,
         orderValue: round2(order.orderValue),
@@ -158,29 +165,36 @@ export function buildDistributorDrilldown(input: {
     reconciled = orders.length === count && Math.abs(value - report.summary.orderValue) < 0.01
   } else {
     const codeById = new Map(aggregate.distributors.map((row) => [row.distributorId, row.orgCode]))
-    const historyBy = new Map<string, OrderRecord[]>()
+    // History is labelled by BUSINESS date — the same date that decided each
+    // distributor's membership in the headline.
+    type Dated = OrderRecord & { businessDate: string }
+    const historyBy = new Map<string, Dated[]>()
     for (const order of input.history || []) {
-      if (!order.buyer_org_id || !order.created_at) continue
+      const businessDate = orderBusinessDate(order)
+      if (!order.buyer_org_id || !businessDate) continue
       const list = historyBy.get(order.buyer_org_id) || []
-      list.push(order)
+      list.push({ ...order, businessDate })
       historyBy.set(order.buyer_org_id, list)
     }
-    const ref = (order: OrderRecord | undefined): OrderRef | null =>
-      order ? { orderId: order.id, orderNo: orderNo(order), at: order.created_at as string } : null
+    const ref = (order: Dated | undefined): OrderRef | null =>
+      order ? { orderId: order.id, orderNo: orderNo(order), date: order.businessDate, at: businessDateStartUtc(order.businessDate) } : null
+    const windows = reportDateWindows(period)
+    const entered = (order: OrderRecord) => (order.created_at ? Date.parse(order.created_at) : 0)
 
     distributors = buildDistributorRows(aggregate, period)
       .filter(DISTRIBUTOR_METRIC_PREDICATES[metric])
       .sort(SORT[metric])
       .map((row) => {
-        // Instants compared numerically: PostgREST (+00:00) and the period window (Z) format differently.
-        const ms = (value: string | null | undefined) => (value ? Date.parse(value) : NaN)
-        const start = ms(period.startUtc)
-        const end = ms(period.endUtc)
-        const history = [...(historyBy.get(row.distributorId) || [])].sort((a, b) => ms(a.created_at) - ms(b.created_at))
-        const inPeriod = history.filter((o) => ms(o.created_at) >= start && ms(o.created_at) < end)
-        const beforePeriod = history.filter((o) => ms(o.created_at) < start)
-        const atLastOrder = row.lastOrderAt ? history.filter((o) => ms(o.created_at) === ms(row.lastOrderAt)) : []
-        const atFirstOrder = row.firstOrderAt ? history.filter((o) => ms(o.created_at) === ms(row.firstOrderAt)) : []
+        const history = [...(historyBy.get(row.distributorId) || [])]
+          .sort((a, b) => a.businessDate.localeCompare(b.businessDate) || entered(a) - entered(b))
+        const inPeriod = history.filter((o) => o.businessDate >= windows.start && o.businessDate < windows.end)
+        const beforePeriod = history.filter((o) => o.businessDate < windows.start)
+        // first/last order instants are the MYT starts of business dates, so
+        // their Malaysia date IS the business date to match on.
+        const lastDate = row.lastOrderAt ? malaysiaDateOf(row.lastOrderAt) : null
+        const firstDate = row.firstOrderAt ? malaysiaDateOf(row.firstOrderAt) : null
+        const atLastOrder = lastDate ? history.filter((o) => o.businessDate === lastDate) : []
+        const atFirstOrder = firstDate ? history.filter((o) => o.businessDate === firstDate) : []
         return {
           distributorId: row.distributorId,
           name: row.name,

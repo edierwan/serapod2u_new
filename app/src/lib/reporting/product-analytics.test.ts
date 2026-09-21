@@ -232,7 +232,7 @@ describe('monthly summary', () => {
   it('documents the eligible order statuses and the report date field it used', () => {
     expect(report.meta.eligibleStatuses).toEqual(['approved', 'closed', 'submitted'])
     expect([...ELIGIBLE_ORDER_STATUSES]).toEqual(report.meta.eligibleStatuses)
-    expect(report.meta.dateField).toBe('orders.created_at')
+    expect(report.meta.dateField).toBe('orders.order_date')
   })
 })
 
@@ -520,6 +520,39 @@ describe('product identity labelling', () => {
     expect(productIdentityLabel('Cellera Hero', null, 'BV')).toBe('Cellera Hero – BV')
     expect(productIdentityLabel('Cellera Hero', 'Corn', null)).toBe('Cellera Hero / Corn')
     expect(productIdentityLabel(null, 'Corn', 'CO')).toBe('Corn – CO')
+  })
+})
+
+describe('Product Analytics buckets on the business SO date (orders.order_date)', () => {
+  const OCT = new Date('2026-10-05T10:00:00+08:00')
+  const catalogue = [
+    { id: 'v1', product_id: 'p1', variant_name: 'Deluxe Cellera Cartridge [ Banana Vanilla ]', product_code: 'BV', is_active: true, productName: 'Cellera Hero', categoryId: VAPE, categoryName: 'Vape' },
+  ]
+  // SO dated 31 Aug 2026, keyed in on 21 Sep 2026 — same order as the distributor report test.
+  const backdated: OrderItemRecord = {
+    variant_id: 'v1', product_id: 'p1', qty: 5, line_total: 500,
+    orders: { order_date: '2026-08-31', created_at: '2026-09-21T03:00:00.000Z', status: 'approved' },
+  }
+
+  it('counts the SO in August and not in September, like Distributor Analytics', () => {
+    const aug = aggregateProductOrders([backdated], catalogue, [], '2026-08', OCT)
+    const sep = aggregateProductOrders([backdated], catalogue, [], '2026-09', OCT)
+    expect(aug.current).toMatchObject({ units: 5, orderValue: 500 })
+    expect(aug.dailyTrend.find((row) => row.date === '2026-08-31')).toMatchObject({ units: 5, orderValue: 500 })
+    expect(sep.current).toMatchObject({ units: 0, orderValue: 0 })
+    // September's comparison window is the whole of August.
+    expect(sep.previous).toMatchObject({ units: 5, orderValue: 500 })
+  })
+
+  it('reports Last Ordered as the SO date', () => {
+    const aug = aggregateProductOrders([backdated], catalogue, [], '2026-08', OCT)
+    const v1 = aug.variants.find((row) => row.variantId === 'v1')!
+    expect(v1.lastOrderedAt).toBe('2026-08-30T16:00:00.000Z')
+  })
+
+  it('keeps legacy lines without order_date on their MYT created_at date', () => {
+    const legacy: OrderItemRecord = { ...backdated, orders: { created_at: '2026-08-31T16:30:00.000Z', status: 'approved' } }
+    expect(aggregateProductOrders([legacy], catalogue, [], '2026-09', OCT).dailyTrend.find((row) => row.date === '2026-09-01')?.units).toBe(5)
   })
 })
 

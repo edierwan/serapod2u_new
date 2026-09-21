@@ -26,6 +26,7 @@ import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/Or
 import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
 import { MessagingOrderTimelinePanel } from '@/components/orders/MessagingOrderTimelinePanel'
 import { MessagingOrderFulfilmentPanel } from '@/components/orders/MessagingOrderFulfilmentPanel'
+import { formatDateKey, orderBusinessDate } from '@/lib/orders/order-date'
 
 interface UserProfile {
   id: string
@@ -749,7 +750,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-[var(--sera-muted)]">Date:</span>
-                <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
+                {/* Business SO date (order_date), not the entry timestamp; legacy rows fall back to created_at's MYT date. */}
+                <span className="font-medium text-gray-900">{formatDateKey(orderBusinessDate(orderData))}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-[var(--sera-muted)]">By:</span>

@@ -57,8 +57,15 @@ const DAY_MS = 24 * 60 * 60 * 1000
  */
 export const ELIGIBLE_ORDER_STATUSES = ['approved', 'closed', 'submitted'] as const
 
-/** The business date the monthly report buckets on — `orders.created_at`. */
-export const REPORT_DATE_FIELD = 'orders.created_at'
+/**
+ * The business date the monthly report buckets on — `orders.order_date`, the
+ * SO date. `orders.created_at` stays the audit/entry timestamp. Shared with
+ * Distributor Analytics so the two reports put a backdated SO in the same month.
+ */
+export const REPORT_DATE_FIELD = 'orders.order_date'
+
+/** What the report bucketed on before the order_date migration was applied. */
+export const LEGACY_REPORT_DATE_FIELD = 'orders.created_at'
 
 /** Sentinel for the unfiltered, consolidated report across every category. */
 export const ALL_CATEGORIES = 'all'
@@ -284,6 +291,8 @@ export interface ProductAnalyticsAggregate {
   /** `all`, or the selected `product_categories.id`. */
   categoryId: string
   categoryName: string
+  /** The column the source bucketed on; absent means the pre-order_date RPC. */
+  dateField?: string
   current: PeriodTotals
   previous: PeriodTotals
   /** Active variants WITHIN the selected category scope. */
@@ -1004,7 +1013,7 @@ export function buildProductAnalyticsReport(
     categoryPerformance,
     meta: {
       eligibleStatuses: [...ELIGIBLE_ORDER_STATUSES],
-      dateField: REPORT_DATE_FIELD,
+      dateField: aggregate.dateField ?? REPORT_DATE_FIELD,
       excessCoverDays: EXCESS_COVER_DAYS,
     },
     isEmpty: totalUnits === 0 && totalValue === 0,

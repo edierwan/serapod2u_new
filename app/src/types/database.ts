@@ -19514,6 +19514,7 @@ export type Database = {
           has_rfid: boolean | null
           id: string
           notes: string | null
+          order_date: string
           order_no: string
           order_type: Database["public"]["Enums"]["order_type"]
           parent_order_id: string | null
@@ -19542,6 +19543,7 @@ export type Database = {
           has_rfid?: boolean | null
           id?: string
           notes?: string | null
+          order_date?: string
           order_no: string
           order_type: Database["public"]["Enums"]["order_type"]
           parent_order_id?: string | null
@@ -19570,6 +19572,7 @@ export type Database = {
           has_rfid?: boolean | null
           id?: string
           notes?: string | null
+          order_date?: string
           order_no?: string
           order_type?: Database["public"]["Enums"]["order_type"]
           parent_order_id?: string | null

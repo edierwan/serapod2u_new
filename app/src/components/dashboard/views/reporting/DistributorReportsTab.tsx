@@ -105,8 +105,14 @@ function formatPct(value: number | null): string {
   return value === null ? '—' : `${value.toFixed(1)}%`
 }
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 function formatDay(value: string | null): string {
   if (!value) return '—'
+  // A business date (YYYY-MM-DD) is a calendar day: format it as-is, never
+  // through a UTC-midnight instant.
+  const dateKey = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (dateKey) return `${dateKey[3]} ${MONTH_SHORT[Number(dateKey[2]) - 1] ?? ''}`.trim()
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return new Intl.DateTimeFormat('en-GB', {
@@ -760,7 +766,7 @@ export default function DistributorReportsTab({
         </div>
       ) : null}
 
-      {meta?.degraded && meta.notice ? (
+      {meta?.notice ? (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{meta.notice}</span>
@@ -978,7 +984,7 @@ export default function DistributorReportsTab({
                         {report.recentOrders.map((order) => (
                           <tr key={order.orderId} className="border-b border-[var(--sera-line)]/60 last:border-0">
                             <td className="px-2 py-2.5 font-medium text-[var(--sera-ink)]">{order.orderNo || order.orderId}</td>
-                            <td className="px-2 py-2.5">{formatDay(order.createdAt)}</td>
+                            <td className="px-2 py-2.5">{formatDay(order.orderDate || order.createdAt)}</td>
                             <td className="px-2 py-2.5">{statusLabel(order.status)}</td>
                             <td className="px-2 py-2.5 text-right tabular-nums">{formatCount(order.itemCount)}</td>
                             <td className="px-2 py-2.5 text-right tabular-nums">{formatRM(order.orderValue)}</td>
@@ -994,7 +1000,7 @@ export default function DistributorReportsTab({
                           <span className="truncate text-xs font-semibold text-[var(--sera-ink)]">{order.orderNo || order.orderId}</span>
                           <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[11px]">{statusLabel(order.status)}</Badge>
                         </div>
-                        <MobileField label="Date">{formatDay(order.createdAt)}</MobileField>
+                        <MobileField label="Date">{formatDay(order.orderDate || order.createdAt)}</MobileField>
                         <MobileField label="Items">{formatCount(order.itemCount)}</MobileField>
                         <MobileField label="Order Value">{formatRM(order.orderValue)}</MobileField>
                       </div>
@@ -1553,7 +1559,7 @@ export default function DistributorReportsTab({
                       <div key={order.orderId} className="flex items-baseline justify-between gap-3 rounded-lg border border-[var(--sera-line)] px-3 py-2">
                         <span className="min-w-0 truncate text-xs text-[var(--sera-ink)]">
                           {order.orderNo || order.orderId}
-                          <span className="ml-2 text-[var(--sera-muted)]">{formatDay(order.createdAt)}</span>
+                          <span className="ml-2 text-[var(--sera-muted)]">{formatDay(order.orderDate || order.createdAt)}</span>
                         </span>
                         <span className="shrink-0 text-xs tabular-nums text-[var(--sera-muted)]">
                           {statusLabel(order.status)} · {formatRMCompact(order.orderValue)}
@@ -1616,7 +1622,7 @@ function OrderRefCell({ value }: { value: OrderRef | null }) {
   if (!value) return <span className="text-[var(--sera-muted)]">—</span>
   return (
     <span className="whitespace-nowrap">
-      {formatDay(value.at)}
+      {formatDay(value.date || value.at)}
       <span className="block text-[11px] text-[var(--sera-muted)]">{value.orderNo}</span>
     </span>
   )
@@ -1774,7 +1780,7 @@ function MetricDrilldownPanel({ metric, data, loading, error, periodLabel }: {
                                 ? <a href={`/supply-chain/${path}`} className="text-[var(--sera-orange-deep)] hover:underline">{order.orderNo}</a>
                                 : order.orderNo}
                             </td>
-                            <td className={cn(td, 'whitespace-nowrap')}>{formatDay(order.createdAt)}</td>
+                            <td className={cn(td, 'whitespace-nowrap')}>{formatDay(order.orderDate || order.createdAt)}</td>
                             <td className={td}><DistributorCell name={order.distributorName} code={order.distributorCode} /></td>
                             <td className={td}>{statusLabel(order.status)}</td>
                             <td className={num}>{formatCount(order.lineCount)}</td>

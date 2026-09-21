@@ -15,6 +15,7 @@
  */
 
 import { getOrderDisplayOrgName, type SearchableOrder } from './order-search'
+import { orderBusinessDate } from './order-date'
 
 export type OrderSortDirection = 'asc' | 'desc'
 
@@ -24,6 +25,8 @@ export interface SortableOrderItem {
 
 export interface SortableOrder extends SearchableOrder {
   created_at?: string | null
+  /** Business/SO date (YYYY-MM-DD); legacy rows fall back to created_at's MYT date. */
+  order_date?: string | null
   status?: string | null
   created_by_user?: { full_name?: string | null; email?: string | null } | null
   order_items?: SortableOrderItem[] | null
@@ -46,6 +49,13 @@ function sortValue(
   viewerOrgId?: string | null,
 ): string | number | null {
   switch (sortColumn) {
+    case 'order_date': {
+      // The Date column is the business date. Orders sharing a date keep their
+      // real entry order, so the sort is deterministic in both directions.
+      const createdMs = order.created_at ? Date.parse(order.created_at) : NaN
+      const entered = Number.isFinite(createdMs) ? new Date(createdMs).toISOString() : ''
+      return `${orderBusinessDate(order) ?? ''}|${entered}`
+    }
     case 'created_at':
       return new Date(order.created_at as string).getTime()
     case 'order_no':
