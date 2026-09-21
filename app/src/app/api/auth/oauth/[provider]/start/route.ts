@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 import {
-  instagramAuthorizeUrl,
   isCustomSocialProvider,
   newOAuthState,
+  newPkceVerifier,
+  pkceChallenge,
   SOCIAL_OAUTH_STATE_COOKIE,
-  tiktokAuthorizeUrl,
+  socialAuthorizeUrl,
 } from '@/lib/auth/social-oauth'
 import { sanitizeOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
@@ -30,12 +31,17 @@ export async function GET(
 
   try {
     const state = newOAuthState()
-    const authorize =
-      provider === 'tiktok' ? tiktokAuthorizeUrl(origin, state) : instagramAuthorizeUrl(origin, state)
+    const verifier = provider === 'twitter' ? newPkceVerifier() : undefined
+    const authorize = socialAuthorizeUrl(
+      provider,
+      origin,
+      state,
+      verifier ? pkceChallenge(verifier) : undefined,
+    )
     const res = NextResponse.redirect(authorize)
     res.cookies.set(
       SOCIAL_OAUTH_STATE_COOKIE,
-      JSON.stringify({ state, provider, next: nextPath }),
+      JSON.stringify({ state, provider, next: nextPath, verifier }),
       { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 600, secure: origin.startsWith('https') },
     )
     return res

@@ -7,6 +7,7 @@ describe('custom social oauth helpers', () => {
       'tiktok.afd97af1b87b48b9ac98@oauth.serapod2u.com',
     )
     expect(isCustomSocialProvider('instagram')).toBe(true)
+    expect(isCustomSocialProvider('twitter')).toBe(true)
     expect(isCustomSocialProvider('google')).toBe(false)
   })
 })

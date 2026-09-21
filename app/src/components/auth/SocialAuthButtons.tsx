@@ -21,7 +21,7 @@ const LABELS: Record<SocialProvider, string> = {
   tiktok: 'TikTok',
 }
 
-const NATIVE: SocialProvider[] = ['google', 'facebook', 'twitter']
+const NATIVE: SocialProvider[] = ['google', 'facebook']
 
 export default function SocialAuthButtons({
   nextPath,

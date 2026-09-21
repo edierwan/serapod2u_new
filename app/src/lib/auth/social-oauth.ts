@@ -1,11 +1,11 @@
-import { randomBytes } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 
 export const SOCIAL_OAUTH_STATE_COOKIE = 'social_oauth_state'
 
-export type CustomSocialProvider = 'tiktok' | 'instagram'
+export type CustomSocialProvider = 'tiktok' | 'instagram' | 'twitter'
 
 export function isCustomSocialProvider(value: string): value is CustomSocialProvider {
-  return value === 'tiktok' || value === 'instagram'
+  return value === 'tiktok' || value === 'instagram' || value === 'twitter'
 }
 
 export function syntheticSocialEmail(provider: string, providerUserId: string) {
@@ -15,6 +15,14 @@ export function syntheticSocialEmail(provider: string, providerUserId: string) {
 
 export function newOAuthState() {
   return randomBytes(24).toString('hex')
+}
+
+export function newPkceVerifier() {
+  return randomBytes(32).toString('base64url')
+}
+
+export function pkceChallenge(verifier: string) {
+  return createHash('sha256').update(verifier).digest('base64url')
 }
 
 export function socialOAuthRedirectUri(origin: string, provider: CustomSocialProvider) {
@@ -43,6 +51,32 @@ export function instagramAuthorizeUrl(origin: string, state: string) {
   url.searchParams.set('scope', 'instagram_business_basic')
   url.searchParams.set('state', state)
   return url.toString()
+}
+
+export function twitterAuthorizeUrl(origin: string, state: string, challenge: string) {
+  const clientId = String(process.env.TWITTER_CLIENT_ID || '').trim()
+  if (!clientId) throw new Error('X login is not configured yet.')
+  const url = new URL('https://twitter.com/i/oauth2/authorize')
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('client_id', clientId)
+  url.searchParams.set('redirect_uri', socialOAuthRedirectUri(origin, 'twitter'))
+  url.searchParams.set('scope', 'users.read tweet.read offline.access')
+  url.searchParams.set('state', state)
+  url.searchParams.set('code_challenge', challenge)
+  url.searchParams.set('code_challenge_method', 'S256')
+  return url.toString()
+}
+
+export function socialAuthorizeUrl(
+  provider: CustomSocialProvider,
+  origin: string,
+  state: string,
+  challenge?: string,
+) {
+  if (provider === 'tiktok') return tiktokAuthorizeUrl(origin, state)
+  if (provider === 'instagram') return instagramAuthorizeUrl(origin, state)
+  if (!challenge) throw new Error('X login is missing a security code.')
+  return twitterAuthorizeUrl(origin, state, challenge)
 }
 
 export async function exchangeTikTokCode(origin: string, code: string) {
@@ -82,6 +116,48 @@ export async function exchangeTikTokCode(origin: string, code: string) {
     email: null as string | null,
     fullName: String(user.display_name || ''),
     avatarUrl: String(user.avatar_url || ''),
+  }
+}
+
+export async function exchangeTwitterCode(origin: string, code: string, verifier: string) {
+  const clientId = String(process.env.TWITTER_CLIENT_ID || '').trim()
+  const clientSecret = String(process.env.TWITTER_CLIENT_SECRET || '').trim()
+  if (!clientId || !clientSecret) throw new Error('X login is not configured yet.')
+
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+  const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: socialOAuthRedirectUri(origin, 'twitter'),
+      code_verifier: verifier,
+    }),
+  })
+  const tokenJson = await tokenRes.json().catch(() => null)
+  const accessToken = tokenJson?.access_token
+  if (!tokenRes.ok || !accessToken) {
+    throw new Error(tokenJson?.error_description || tokenJson?.error || 'X token exchange failed')
+  }
+
+  const userRes = await fetch('https://api.twitter.com/2/users/me?user.fields=name,username,profile_image_url', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  const userJson = await userRes.json().catch(() => null)
+  const user = userJson?.data || {}
+  const providerUserId = String(user.id || '')
+  if (!providerUserId) throw new Error('X did not return a user id')
+
+  return {
+    provider: 'twitter' as const,
+    providerUserId,
+    email: null as string | null,
+    fullName: String(user.name || user.username || ''),
+    avatarUrl: String(user.profile_image_url || ''),
   }
 }
 

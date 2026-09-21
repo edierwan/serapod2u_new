@@ -3,9 +3,9 @@ import { publicOriginFromRequest } from '@/lib/http/public-origin'
 import {
   exchangeInstagramCode,
   exchangeTikTokCode,
+  exchangeTwitterCode,
   isCustomSocialProvider,
   SOCIAL_OAUTH_STATE_COOKIE,
-  type CustomSocialProvider,
 } from '@/lib/auth/social-oauth'
 import { createSessionForSocialProfile, socialPostLoginPath } from '@/server/auth/create-social-session'
 import { OUTDOOR_OAUTH_NEXT_COOKIE, sanitizeOutdoorReturnPath } from '@/lib/outdoor/auth-return'
@@ -31,7 +31,9 @@ export async function GET(
 
   try {
     const rawState = request.cookies.get(SOCIAL_OAUTH_STATE_COOKIE)?.value
-    const parsed = rawState ? JSON.parse(rawState) as { state?: string; provider?: string; next?: string } : null
+    const parsed = rawState
+      ? JSON.parse(rawState) as { state?: string; provider?: string; next?: string; verifier?: string }
+      : null
     const expectedState = parsed?.state
     const nextFromCookie = parsed?.next
     if (nextFromCookie?.startsWith('/outdoor')) nextPath = sanitizeOutdoorReturnPath(nextFromCookie)
@@ -57,9 +59,11 @@ export async function GET(
     }
 
     const profile =
-      (provider as CustomSocialProvider) === 'tiktok'
+      provider === 'tiktok'
         ? await exchangeTikTokCode(origin, code)
-        : await exchangeInstagramCode(origin, code)
+        : provider === 'twitter'
+          ? await exchangeTwitterCode(origin, code, parsed?.verifier || '')
+          : await exchangeInstagramCode(origin, code)
 
     await createSessionForSocialProfile(profile)
     const redirectTo = await socialPostLoginPath(nextPath)
