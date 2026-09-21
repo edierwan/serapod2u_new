@@ -30,6 +30,8 @@ export default function OutdoorCheckoutPage() {
   const [ratesMsg, setRatesMsg] = useState('Add your postcode to see courier options.')
   const [ratesLoading, setRatesLoading] = useState(false)
   const [selectedRate, setSelectedRate] = useState<Rate | null>(null)
+  const [payMethods, setPayMethods] = useState<{ key: string; label: string; isDefault: boolean }[]>([])
+  const [payProvider, setPayProvider] = useState('')
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -90,6 +92,20 @@ export default function OutdoorCheckoutPage() {
     })
   }, [router])
 
+  useEffect(() => {
+    void fetch('/api/storefront/payment/methods')
+      .then((res) => res.json())
+      .then((data) => {
+        const methods = Array.isArray(data?.methods) ? data.methods : []
+        setPayMethods(methods)
+        const def = methods.find((m: { isDefault: boolean }) => m.isDefault) || methods[0]
+        if (def?.key) setPayProvider(def.key)
+      })
+      .catch(() => {
+        setPayMethods([])
+      })
+  }, [])
+
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-md px-5 py-16 text-center">
@@ -128,6 +144,7 @@ export default function OutdoorCheckoutPage() {
           items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
           returnBasePath: '/outdoor',
           salesChannel: 'outdoor',
+          paymentProvider: payProvider || undefined,
           shipping: selectedRate
             ? {
                 serviceId: selectedRate.serviceId,
@@ -254,6 +271,31 @@ export default function OutdoorCheckoutPage() {
               )}
             </div>
           </div>
+
+          {payMethods.length > 1 ? (
+            <div>
+              <h2 className="font-display text-xl text-[var(--out-bark)]">Pay with</h2>
+              <div className="mt-4 space-y-2">
+                {payMethods.map((m) => {
+                  const active = payProvider === m.key
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => setPayProvider(m.key)}
+                      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition-colors ${
+                        active
+                          ? 'border-[var(--out-bark)] bg-[var(--out-ivory)]'
+                          : 'border-[var(--out-bark)]/10 hover:border-[var(--out-bark)]/30'
+                      }`}
+                    >
+                      <span className="font-semibold text-[var(--out-bark)]">{m.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button type="submit" disabled={loading} className="out-btn w-full">

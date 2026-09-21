@@ -15,6 +15,7 @@ import useEmblaCarousel from 'embla-carousel-react'
 import Autoplay from 'embla-carousel-autoplay'
 import HeroMedia from '@/components/storefront/HeroMedia'
 import LoginProductStage3D from '@/components/auth/LoginProductStage3D'
+import SocialAuthButtons from '@/components/auth/SocialAuthButtons'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -43,27 +44,6 @@ interface LoginPageClientProps {
 
 const WORDMARK_SRC = '/brand/serapod-wordmark.png'
 const WORDMARK_LIGHT_SRC = '/brand/serapod-wordmark-light.png'
-
-// ── Social Icons ──────────────────────────────────────────────────
-
-function GoogleIcon({ className }: { className?: string }) {
-    return (
-        <svg className={className} viewBox="0 0 24 24" fill="none">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-        </svg>
-    )
-}
-
-function FacebookIcon({ className }: { className?: string }) {
-    return (
-        <svg className={className} viewBox="0 0 24 24" fill="#1877F2">
-            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-        </svg>
-    )
-}
 
 function BrandWordmark({
     src,
@@ -95,7 +75,6 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
     const [password, setPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
-    const [socialLoading, setSocialLoading] = useState<'google' | 'facebook' | null>(null)
     const [error, setError] = useState('')
     const [selectedIndex, setSelectedIndex] = useState(0)
     const router = useRouter()
@@ -103,6 +82,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
     // Mode from URL: ?mode=store | ?mode=business (UI copy only)
     const [mode, setMode] = useState<'store' | 'business'>('store')
     const [signupHref, setSignupHref] = useState('/signup')
+    const [nextPath, setNextPath] = useState('/store')
     useEffect(() => {
         const params = new URLSearchParams(window.location.search)
         const m = params.get('mode')
@@ -112,6 +92,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
             setError('You were signed out because your account was accessed from another device.')
         }
         const next = params.get('next') || params.get('redirect')
+        if (next && next.startsWith('/') && !next.startsWith('//')) setNextPath(next)
         const qs = new URLSearchParams()
         if (next) qs.set('next', next)
         if (m) qs.set('mode', m)
@@ -324,44 +305,6 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
         }
     }
 
-    // ── Social Login ────────────────────────────────────────────────
-    const handleSocialLogin = async (provider: 'google' | 'facebook') => {
-        setSocialLoading(provider)
-        setError('')
-
-        try {
-            const supabase = createClient()
-            const siteUrl = window.location.origin
-
-            const params = new URLSearchParams(window.location.search)
-            const nextParam = params.get('next') || params.get('redirect')
-            const safeNext =
-                nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
-                    ? nextParam
-                    : null
-            const callbackUrl = safeNext
-                ? `${siteUrl}/auth/callback?next=${encodeURIComponent(safeNext)}`
-                : `${siteUrl}/auth/callback`
-
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider,
-                options: {
-                    redirectTo: callbackUrl,
-                    queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined,
-                },
-            })
-
-            if (error) {
-                setError(`Failed to connect with ${provider}. Please try again.`)
-                setSocialLoading(null)
-            }
-            // If successful, browser will redirect to provider
-        } catch (err) {
-            setError('An unexpected error occurred. Please try again.')
-            setSocialLoading(null)
-        }
-    }
-
     // ── Render ──────────────────────────────────────────────────────
 
     return (
@@ -544,7 +487,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
-                                    disabled={isLoading || !!socialLoading}
+                                    disabled={isLoading}
                                     className="h-12 rounded-lg border-[var(--sera-line)] bg-white px-3.5 text-[var(--sera-ink)] placeholder:text-gray-400 focus-visible:ring-[var(--sera-orange)]/30 focus-visible:border-[var(--sera-orange)]"
                                 />
                             </div>
@@ -561,7 +504,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
-                                        disabled={isLoading || !!socialLoading}
+                                        disabled={isLoading}
                                         className="h-12 pr-11 rounded-lg border-[var(--sera-line)] bg-white px-3.5 text-[var(--sera-ink)] placeholder:text-gray-400 focus-visible:ring-[var(--sera-orange)]/30 focus-visible:border-[var(--sera-orange)]"
                                     />
                                     <button
@@ -578,7 +521,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                             <Button
                                 type="submit"
                                 className="w-full h-12 rounded-lg bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white font-semibold tracking-wide shadow-none transition-colors"
-                                disabled={isLoading || !!socialLoading}
+                                disabled={isLoading}
                             >
                                 {isLoading ? (
                                     <>
@@ -611,36 +554,13 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 login-rise login-rise-delay-4">
-                            <button
-                                type="button"
-                                onClick={() => handleSocialLogin('facebook')}
-                                disabled={isLoading || !!socialLoading}
-                                aria-label="Continue with Facebook"
-                                className="flex items-center justify-center gap-2 h-11 px-4 rounded-lg border border-[var(--sera-line)] bg-white hover:border-[var(--sera-ink)]/30 text-sm font-medium text-[var(--sera-ink)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {socialLoading === 'facebook' ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <FacebookIcon className="h-5 w-5" />
-                                )}
-                                <span>Facebook</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => handleSocialLogin('google')}
-                                disabled={isLoading || !!socialLoading}
-                                aria-label="Continue with Google"
-                                className="flex items-center justify-center gap-2 h-11 px-4 rounded-lg border border-[var(--sera-line)] bg-white hover:border-[var(--sera-ink)]/30 text-sm font-medium text-[var(--sera-ink)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {socialLoading === 'google' ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <GoogleIcon className="h-5 w-5" />
-                                )}
-                                <span>Google</span>
-                            </button>
+                        <div className="login-rise login-rise-delay-4">
+                            <SocialAuthButtons
+                                nextPath={nextPath}
+                                disabled={isLoading}
+                                onError={setError}
+                                variant="portal"
+                            />
                         </div>
 
                         <div className="mt-8 text-center text-sm text-[var(--sera-muted)] login-rise login-rise-delay-4">

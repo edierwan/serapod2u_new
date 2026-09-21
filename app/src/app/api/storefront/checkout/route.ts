@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createPaymentIntent } from '@/lib/payments'
+import { publicOriginFromRequest } from '@/lib/http/public-origin'
 
 // NOTE: storefront_orders / storefront_order_items are not in the
 // auto-generated database types yet. After running STOREFRONT_MIGRATION.sql
@@ -46,6 +47,7 @@ interface CheckoutBody {
     fbclid?: string
     referrerDomain?: string
   } | null
+  paymentProvider?: string
 }
 
 function cleanAttributionText(value: unknown, max = 300) {
@@ -269,23 +271,26 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 6. Create payment intent via gateway adapter ─────────────
-    const origin = request.nextUrl.origin
+    const origin = publicOriginFromRequest(request)
     const returnBase =
       typeof body.returnBasePath === 'string' && body.returnBasePath.startsWith('/')
         ? body.returnBasePath.replace(/\/$/, '')
         : '/store'
-    const paymentResult = await createPaymentIntent({
-      orderId: order.id,
-      orderRef: order.order_ref,
-      amount: payableTotal,
-      currency: 'MYR',
-      customerName: body.customer.name,
-      customerEmail: body.customer.email,
-      customerPhone: body.customer.phone,
-      description: `Order ${order.order_ref}`,
-      returnUrl: `${origin}${returnBase}/orders/success?ref=${order.order_ref}`,
-      callbackUrl: `${origin}/api/storefront/payment/webhook`,
-    })
+    const paymentResult = await createPaymentIntent(
+      {
+        orderId: order.id,
+        orderRef: order.order_ref,
+        amount: payableTotal,
+        currency: 'MYR',
+        customerName: body.customer.name,
+        customerEmail: body.customer.email,
+        customerPhone: body.customer.phone,
+        description: `Order ${order.order_ref}`,
+        returnUrl: `${origin}${returnBase}/orders/success?ref=${order.order_ref}`,
+        callbackUrl: `${origin}/api/storefront/payment/webhook`,
+      },
+      body.paymentProvider,
+    )
 
     if (!paymentResult.success) {
       // Update order as failed

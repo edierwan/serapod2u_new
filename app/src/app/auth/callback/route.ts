@@ -5,19 +5,9 @@ import { ensureUserRow } from '@/server/auth/ensureUserRow'
 import { getPostLoginRedirect } from '@/server/auth/getPostLoginRedirect'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OUTDOOR_OAUTH_NEXT_COOKIE, sanitizeOutdoorReturnPath } from '@/lib/outdoor/auth-return'
+import { publicOriginFromRequest } from '@/lib/http/public-origin'
 
 export const dynamic = 'force-dynamic'
-
-function publicOrigin(request: NextRequest) {
-  const env = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
-  if (env && !/0\.0\.0\.0|127\.0\.0\.1/i.test(env)) return env
-  const xfHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-  const xfProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https'
-  if (xfHost && !/0\.0\.0\.0|127\.0\.0\.1/i.test(xfHost)) return `${xfProto}://${xfHost}`
-  const url = new URL(request.url)
-  if (!/0\.0\.0\.0|127\.0\.0\.1/i.test(url.hostname)) return url.origin
-  return 'https://stg.serapod2u.com'
-}
 
 // ── Portal email domains ─────────────────────────────────────────
 const PORTAL_EMAIL_DOMAINS = ['serapod.com', 'serapod2u.com']
@@ -38,7 +28,7 @@ export async function GET(request: NextRequest) {
   const errorDescription = requestUrl.searchParams.get('error_description')
   const rawNext = requestUrl.searchParams.get('next') || request.cookies.get(OUTDOOR_OAUTH_NEXT_COOKIE)?.value || null
   const nextPath = rawNext?.startsWith('/outdoor') ? sanitizeOutdoorReturnPath(rawNext) : rawNext
-  const origin = publicOrigin(request)
+  const origin = publicOriginFromRequest(request)
   const failLoginPath = nextPath?.startsWith('/outdoor') ? '/outdoor/login' : '/login'
   const successRedirect = (path: string) => {
     const res = NextResponse.redirect(new URL(path, origin))

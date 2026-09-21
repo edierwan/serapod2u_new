@@ -1,14 +1,19 @@
 // ── Billplz Adapter ────────────────────────────────────────────────
 // Docs: https://www.billplz.com/api
-// Flow: Create Bill → redirect → callback/return
+// Flow: Create Bill → shopper pays on Billplz → callback + redirect
 
 import type { PaymentProviderAdapter, PaymentIntentInput, PaymentIntentResult, PaymentCallbackResult } from '../types'
+import { flattenPaymentParams, verifyBillplzSignature } from './billplz-signature'
 
 const SANDBOX_URL = 'https://www.billplz-sandbox.com'
 const PRODUCTION_URL = 'https://www.billplz.com'
 
 function baseUrl(credentials: Record<string, string>) {
   return credentials.environment === 'production' ? PRODUCTION_URL : SANDBOX_URL
+}
+
+function isPaidFlag(value: unknown) {
+  return value === true || value === 'true' || value === '1'
 }
 
 export const billplz: PaymentProviderAdapter = {
@@ -27,7 +32,7 @@ export const billplz: PaymentProviderAdapter = {
       collection_id: collectionId,
       email: input.customerEmail,
       name: input.customerName || input.customerEmail.split('@')[0],
-      amount: String(Math.round(input.amount * 100)), // Billplz expects cents (sen)
+      amount: String(Math.round(input.amount * 100)),
       description: input.description.slice(0, 200),
       callback_url: `${input.callbackUrl}?provider=billplz`,
       redirect_url: input.returnUrl,
@@ -70,16 +75,22 @@ export const billplz: PaymentProviderAdapter = {
   },
 
   async verifyCallback(payload: Record<string, string>, credentials: Record<string, string>): Promise<PaymentCallbackResult> {
-    // Billplz callback/redirect fields: id, collection_id, paid, state, amount,
-    // paid_amount, due_at, email, mobile, name, url, reference_1, reference_2, ...
-    const billId = payload.id || payload.billplz_id || ''
-    const paidRaw = payload.paid || payload.billplz_paid || ''
-    const orderRef = payload.reference_1 || ''
+    const flat = flattenPaymentParams(payload)
+    const billId = flat.id || flat.billplz_id || ''
+    const paidRaw = flat.paid || ''
+    const orderRef = flat.reference_1 || ''
+    const xKey = credentials.x_signature_key || ''
 
-    // Optionally verify by fetching the bill from API
-    let apiVerified = true
+    if (xKey) {
+      const signed = verifyBillplzSignature(flat, xKey)
+      if (!signed) {
+        return { verified: false, orderId: '', paid: false, error: 'Invalid Billplz X-Signature' }
+      }
+    }
+
+    let paid = isPaidFlag(paidRaw)
     const apiKey = credentials.api_key
-    if (apiKey && billId) {
+    if (apiKey && billId && !xKey) {
       try {
         const apiUrl = baseUrl(credentials)
         const res = await fetch(`${apiUrl}/api/v3/bills/${billId}`, {
@@ -89,27 +100,38 @@ export const billplz: PaymentProviderAdapter = {
         })
         if (res.ok) {
           const bill = await res.json()
-          apiVerified = bill.paid === true || bill.paid === 'true'
+          paid = isPaidFlag(bill.paid)
         }
       } catch {
-        apiVerified = paidRaw === 'true'
+        // keep payload paid flag
       }
     }
 
-    // Resolve orderId from the external reference
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const supabase: any = createAdminClient()
-    const { data: order } = await supabase
-      .from('storefront_orders')
-      .select('id')
-      .eq('order_ref', orderRef)
-      .maybeSingle()
+    let orderId = ''
+    if (orderRef) {
+      const { data: byRef } = await supabase
+        .from('storefront_orders')
+        .select('id')
+        .eq('order_ref', orderRef)
+        .maybeSingle()
+      orderId = byRef?.id || ''
+    }
+    if (!orderId && billId) {
+      const { data: byBill } = await supabase
+        .from('storefront_orders')
+        .select('id')
+        .eq('payment_ref', billId)
+        .maybeSingle()
+      orderId = byBill?.id || ''
+    }
 
     return {
       verified: true,
-      orderId: order?.id || '',
-      paid: (paidRaw === 'true' || paidRaw === '1') && apiVerified,
-      transactionId: billId,
+      orderId,
+      paid,
+      transactionId: billId || flat.transaction_id,
     }
   },
 }

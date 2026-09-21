@@ -10,8 +10,8 @@ import { resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 function oauthErrorMessage(code: string | null, message: string | null) {
   if (!code) return ''
   if (message) return message
-  if (code === 'oauth_failed') return 'Google or Facebook sign-in was cancelled or failed. Try again.'
-  if (code === 'no_code' || code === 'session_failed') return 'Could not finish Google or Facebook sign-in. Try again.'
+  if (code === 'oauth_failed') return 'Social sign-in was cancelled or failed. Try again.'
+  if (code === 'no_code' || code === 'session_failed') return 'Could not finish social sign-in. Try again.'
   return 'Could not sign in. Try again.'
 }
 
