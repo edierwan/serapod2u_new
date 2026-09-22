@@ -72,8 +72,7 @@ describe('ShopPicker', () => {
                             org_id: 'shop-1',
                             org_name: 'Kedai Maju',
                             branch: 'HQ',
-                            contact_name: 'Ali',
-                            contact_phone: '0123456789',
+                            contact_phone_masked: '+60*****6789',
                             state_name: 'Selangor',
                             display_label: 'Kedai Maju (HQ)',
                         }],
@@ -140,6 +139,33 @@ describe('ShopPicker', () => {
         await user.type(input, ' X')
 
         expect(onSelect).toHaveBeenLastCalledWith(null, 'Kedai Maju (HQ)X')
+    })
+
+    it('shows name, branch, state and only the masked phone, and still selects the shop', async () => {
+        const user = userEvent.setup()
+        const onSelect = vi.fn()
+
+        render(<ShopPickerHarness onSelectSpy={onSelect} />)
+        await user.type(screen.getByPlaceholderText('Search shop by name...'), 'Kedai Maju')
+
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 350))
+        })
+
+        await waitFor(() => {
+            expect(screen.getByText('Kedai Maju')).toBeTruthy()
+        })
+        expect(screen.getAllByText('(HQ)', { exact: false }).length).toBeGreaterThan(0)
+        expect(screen.getByText('Selangor')).toBeTruthy()
+        expect(screen.getByText('+60*****6789')).toBeTruthy()
+        expect(screen.queryByText('Ali')).toBeNull()
+        expect(document.body.textContent).not.toContain('0123456789')
+
+        await user.click(screen.getByText('Kedai Maju'))
+        expect(onSelect).toHaveBeenLastCalledWith(
+            expect.objectContaining({ org_id: 'shop-1', org_name: 'Kedai Maju' }),
+            'Kedai Maju (HQ)'
+        )
     })
 
     it('reports blur for typed shop text without a selected shop', async () => {

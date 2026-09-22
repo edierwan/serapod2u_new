@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, type Ref } from 'react'
+import { useState, useRef, useEffect, useCallback, type MutableRefObject, type Ref } from 'react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Store, X, Search, MapPin, Phone } from 'lucide-react'
@@ -10,8 +10,8 @@ export interface ShopResult {
     org_id: string
     org_name: string
     branch: string | null
-    contact_name: string | null
-    contact_phone: string | null
+    /** Masked by the public search API (e.g. "+60*****9818"); full contact details are never returned. */
+    contact_phone_masked?: string | null
     state_name: string | null
     display_label: string
 }
@@ -47,7 +47,7 @@ export function ShopPicker({
     const [showSelectionHint, setShowSelectionHint] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-    const inputRef = useRef<HTMLInputElement>(null)
+    const inputRef = useRef<HTMLInputElement | null>(null)
 
     // Sync external value
     useEffect(() => {
@@ -186,7 +186,8 @@ export function ShopPicker({
                         if (typeof externalInputRef === 'function') {
                             externalInputRef(node)
                         } else if (externalInputRef) {
-                            externalInputRef.current = node
+                            // @types/react 18 types object refs as read-only RefObject; callers pass useRef objects.
+                            ;(externalInputRef as MutableRefObject<HTMLInputElement | null>).current = node
                         }
                     }}
                     value={searchTerm}
@@ -260,13 +261,10 @@ export function ShopPicker({
                                                 {shop.state_name}
                                             </span>
                                         )}
-                                        {shop.contact_name && (
-                                            <span className="truncate">{shop.contact_name}</span>
-                                        )}
-                                        {shop.contact_phone && (
+                                        {shop.contact_phone_masked && (
                                             <span className="inline-flex items-center gap-1">
                                                 <Phone className="w-3 h-3" />
-                                                {shop.contact_phone}
+                                                {shop.contact_phone_masked}
                                             </span>
                                         )}
                                     </div>
