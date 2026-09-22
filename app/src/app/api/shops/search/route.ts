@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { maskShopContactPhone } from '@/lib/shop-requests/shop-identity-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,6 +8,10 @@ export const dynamic = 'force-dynamic'
  * GET /api/shops/search?q=<term>&limit=<n>
  * Search active shops by name prefix.
  * Returns organizations with org_type_code = 'SHOP' and is_active = true.
+ *
+ * Public (unauthenticated) endpoint: never returns contact_name or the full
+ * contact_phone — only a strongly masked phone ("+60*****9818") to help tell
+ * outlets apart.
  */
 export async function GET(request: NextRequest) {
     try {
@@ -26,7 +31,6 @@ export async function GET(request: NextRequest) {
                 id,
                 org_name,
                 branch,
-                contact_name,
                 contact_phone,
                 states(state_name)
             `)
@@ -49,8 +53,7 @@ export async function GET(request: NextRequest) {
             org_id: shop.id,
             org_name: shop.org_name,
             branch: shop.branch,
-            contact_name: shop.contact_name,
-            contact_phone: shop.contact_phone,
+            contact_phone_masked: shop.contact_phone ? maskShopContactPhone(shop.contact_phone) : null,
             state_name: shop.states?.state_name || null,
             display_label: shop.branch && shop.branch.trim()
                 ? `${shop.org_name} (${shop.branch})`
