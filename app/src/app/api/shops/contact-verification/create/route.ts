@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { createShopOrganization, findShopDuplicateConflicts } from '@/lib/shop-requests/create-shop'
+import { createShopOrganization } from '@/lib/shop-requests/create-shop'
+import { isShopIdentityConflictError } from '@/lib/shop-requests/shop-identity-guard'
 import { sanitizeShopRequestForm, validateShopRequestForm } from '@/lib/shop-requests/core'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { logNotificationEvent, markCodeUsed } from '@/server/auth/registrationVerificationService'
-import { findVerifiedShopContactCode } from '@/server/auth/shopContactVerificationService'
+import { logNotificationEvent } from '@/server/auth/registrationVerificationService'
+import {
+    claimVerifiedShopContactCode,
+    findVerifiedShopContactCode,
+    readShopContactIdentityConfirmations,
+    releaseShopContactCodeClaim,
+} from '@/server/auth/shopContactVerificationService'
 
 export async function POST(req: NextRequest) {
     try {
@@ -29,24 +35,13 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: validation.errors[0] || 'Invalid shop details.' }, { status: 400 })
         }
 
-        const duplicates = await findShopDuplicateConflicts(admin, form)
-        if (duplicates.exactMatches.length > 0) {
-            await logNotificationEvent(admin, {
-                eventType: 'shop_contact_create_blocked_duplicate',
-                phone: verificationCode.phone_normalized,
-                status: 'failed',
-                meta: {
-                    codeId: verificationCode.id,
-                    duplicate_ids: duplicates.exactMatches.map((row) => row.org_id),
-                },
-                ip,
-            })
-
+        // Claim the code before creating so a double-submitted token cannot create two shops.
+        const claimedAt = await claimVerifiedShopContactCode(admin, verificationCode)
+        if (!claimedAt) {
             return NextResponse.json({
                 success: false,
-                duplicateBlocked: true,
-                duplicates: duplicates.exactMatches,
-                error: 'A shop with this phone number or name already exists. Please select it from the existing shop list.',
+                code: 'SHOP_VERIFICATION_ALREADY_USED',
+                error: 'This verification code has already been used. Please select your shop from the list or request a new code.',
             }, { status: 409 })
         }
 
@@ -55,9 +50,9 @@ export async function POST(req: NextRequest) {
                 form,
                 createdBy: null,
                 userOrgId: verificationCode.meta?.org_id || null,
+                // Shared identity guard (same rules as /api/shops/create) runs inside.
+                identityConfirmations: readShopContactIdentityConfirmations(verificationCode.meta),
             })
-
-            await markCodeUsed(admin, verificationCode.id)
 
             await logNotificationEvent(admin, {
                 eventType: 'shop_contact_shop_created',
@@ -77,6 +72,26 @@ export async function POST(req: NextRequest) {
                 shopRequest: form,
             })
         } catch (createError: any) {
+            // Nothing was created: release our claim so a blocked attempt does not burn the
+            // verification session (the user can still pick the existing shop / retry).
+            await releaseShopContactCodeClaim(admin, verificationCode.id, claimedAt)
+
+            if (isShopIdentityConflictError(createError)) {
+                await logNotificationEvent(admin, {
+                    eventType: 'shop_contact_create_blocked_duplicate',
+                    phone: verificationCode.phone_normalized,
+                    status: 'failed',
+                    meta: {
+                        codeId: verificationCode.id,
+                        code: createError.decision.body.code,
+                        duplicate_ids: createError.decision.body.duplicates.map((row) => row.org_id),
+                    },
+                    ip,
+                })
+
+                return NextResponse.json(createError.decision.body, { status: createError.decision.status })
+            }
+
             await logNotificationEvent(admin, {
                 eventType: 'shop_contact_create_failed',
                 phone: verificationCode.phone_normalized,

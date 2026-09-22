@@ -20,6 +20,8 @@ interface CreateShopDialogProps {
     onOpenChange: (open: boolean) => void
     defaultShopName?: string
     onCreated?: (org: { id: string; org_name: string; branch?: string | null }) => void
+    /** Called when the user picks an existing shop from a duplicate match. Falls back to onCreated. */
+    onSelectExisting?: (org: { id: string; org_name: string; branch?: string | null }) => void
     onPrepared?: (shopRequest: ShopRequestFormInput) => void
     linkUser?: boolean
     mode?: 'create' | 'prepare-registration'
@@ -31,7 +33,22 @@ interface DuplicateShop {
     org_name: string
     branch: string | null
     state_name: string | null
+    address?: string | null
+    contact_phone?: string | null
+    contact_email?: string | null
+    match_reasons?: string[]
 }
+
+// blocked = same physical outlet (no create option); outlet = shared phone/email/address,
+// needs explicit "different outlet / branch"; similar = name-only suggestion.
+type DuplicateKind = 'blocked' | 'outlet' | 'similar'
+
+interface CreateConfirmations {
+    confirmCreate: boolean
+    confirmDifferentOutlet: boolean
+}
+
+const NO_CONFIRMATIONS: CreateConfirmations = { confirmCreate: false, confirmDifferentOutlet: false }
 
 type DialogStep = 'form' | 'verify'
 
@@ -40,6 +57,7 @@ export function CreateShopDialog({
     onOpenChange,
     defaultShopName = '',
     onCreated,
+    onSelectExisting,
     onPrepared,
     linkUser = false,
     mode = 'create',
@@ -70,7 +88,8 @@ export function CreateShopDialog({
     // Duplicate check
     const [duplicates, setDuplicates] = useState<DuplicateShop[]>([])
     const [showDuplicates, setShowDuplicates] = useState(false)
-    const [duplicateBlocked, setDuplicateBlocked] = useState(false)
+    const [duplicateKind, setDuplicateKind] = useState<DuplicateKind | null>(null)
+    const [confirmations, setConfirmations] = useState<CreateConfirmations>(NO_CONFIRMATIONS)
 
     // OTP verification step
     const [step, setStep] = useState<DialogStep>('form')
@@ -110,7 +129,8 @@ export function CreateShopDialog({
         setEmailError('')
         setDuplicates([])
         setShowDuplicates(false)
-        setDuplicateBlocked(false)
+        setDuplicateKind(null)
+        setConfirmations(NO_CONFIRMATIONS)
         setStep('form')
         setPreparedShopRequest(null)
         setVerificationPhone('')
@@ -164,7 +184,49 @@ export function CreateShopDialog({
     const clearDuplicateState = () => {
         setDuplicates([])
         setShowDuplicates(false)
-        setDuplicateBlocked(false)
+        setDuplicateKind(null)
+    }
+
+    /** Shows the matching duplicate panel for any 409 from the shared shop identity guard. */
+    const applyDuplicateResponse = (status: number, result: any) => {
+        if (status !== 409) return false
+
+        let kind: DuplicateKind | null = null
+        let rows: DuplicateShop[] = result.duplicates || []
+        if (result.duplicateBlocked) {
+            kind = 'blocked'
+        } else if (result.requiresDifferentOutletConfirmation) {
+            kind = 'outlet'
+            rows = [...rows, ...(result.nameSuggestions || [])]
+        } else if (result.duplicateWarning) {
+            kind = 'similar'
+        }
+        if (!kind) return false
+
+        setDuplicates(rows)
+        setDuplicateKind(kind)
+        setShowDuplicates(true)
+        return true
+    }
+
+    const handleSelectExisting = (dup: DuplicateShop) => {
+        const org = { id: dup.org_id, org_name: dup.org_name, branch: dup.branch }
+        if (onSelectExisting) {
+            onSelectExisting(org)
+        } else {
+            onCreated?.(org)
+        }
+        onOpenChange(false)
+    }
+
+    const resubmitWithConfirmation = (next: CreateConfirmations) => {
+        setConfirmations(next)
+        clearDuplicateState()
+        if (mode === 'prepare-registration') {
+            void requestShopContactVerification(false, next)
+            return
+        }
+        void handleCreateShop(next)
     }
 
     const normalizeContactPhone = (value: string, options: { requireValue?: boolean; updateInput?: boolean } = {}) => {
@@ -290,7 +352,7 @@ export function CreateShopDialog({
         normalizedContactPhone: string,
         normalizedShopName: string,
         normalizedAddress: string,
-        confirmCreate = false,
+        confirm: CreateConfirmations = NO_CONFIRMATIONS,
     ) => ({
         shopName: normalizedShopName,
         branch: selectedDistrict?.district_name || branch.trim() || null,
@@ -304,11 +366,12 @@ export function CreateShopDialog({
         sellsSbox,
         sellsSboxSpecialEdition,
         notes: notes.trim() || null,
-        confirmCreate,
+        confirmCreate: confirm.confirmCreate || confirm.confirmDifferentOutlet,
+        confirmDifferentOutlet: confirm.confirmDifferentOutlet,
         ...(mode === 'create' ? { linkUser } : { orgId: verificationOrgId || '' }),
     })
 
-    const handleCreateShop = async (confirmCreate = false) => {
+    const handleCreateShop = async (confirm: CreateConfirmations = NO_CONFIRMATIONS) => {
         const validated = validateFormFields()
         if (!validated) {
             return
@@ -325,16 +388,13 @@ export function CreateShopDialog({
                     validated.normalizedContactPhone,
                     validated.normalizedShopName,
                     validated.normalizedAddress,
-                    confirmCreate,
+                    confirm,
                 )),
             })
 
             const result = await response.json()
 
-            if (response.status === 409 && result.duplicateWarning) {
-                setDuplicates(result.duplicates || [])
-                setDuplicateBlocked(false)
-                setShowDuplicates(true)
+            if (applyDuplicateResponse(response.status, result)) {
                 return
             }
 
@@ -351,7 +411,7 @@ export function CreateShopDialog({
         }
     }
 
-    const requestShopContactVerification = async (isResend = false, confirmCreate = false) => {
+    const requestShopContactVerification = async (isResend = false, confirm: CreateConfirmations = NO_CONFIRMATIONS) => {
         const validated = validateFormFields()
         if (!validated) {
             return
@@ -376,17 +436,14 @@ export function CreateShopDialog({
                         validated.normalizedContactPhone,
                         validated.normalizedShopName,
                         validated.normalizedAddress,
-                        confirmCreate,
+                        confirm,
                     )),
                 },
             )
 
             const result = await response.json()
 
-            if (response.status === 409 && (result.duplicateWarning || result.duplicateBlocked)) {
-                setDuplicates(result.duplicates || [])
-                setDuplicateBlocked(Boolean(result.duplicateBlocked))
-                setShowDuplicates(true)
+            if (applyDuplicateResponse(response.status, result)) {
                 setStep('form')
                 setError(result.error || '')
                 return
@@ -426,10 +483,7 @@ export function CreateShopDialog({
 
         const result = await response.json()
 
-        if (response.status === 409 && result.duplicateBlocked) {
-            setDuplicates(result.duplicates || [])
-            setDuplicateBlocked(true)
-            setShowDuplicates(true)
+        if (applyDuplicateResponse(response.status, result)) {
             setStep('form')
             setVerificationToken('')
             setVerificationError(result.error || '')
@@ -498,6 +552,7 @@ export function CreateShopDialog({
     }
 
     const handleBackToForm = () => {
+        setConfirmations(NO_CONFIRMATIONS)
         setStep('form')
         setVerificationCode('')
         setVerificationError('')
@@ -523,35 +578,61 @@ export function CreateShopDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* Duplicate warning overlay */}
+                {/* Duplicate / existing-shop panel (driven by the shared server-side identity guard) */}
                 {showDuplicates && duplicates.length > 0 && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
                         <div className="flex items-start gap-2">
                             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
                             <div>
                                 <p className="text-sm font-medium text-amber-800">
-                                    {duplicateBlocked ? 'A matching shop already exists' : 'Similar shops already exist'}
+                                    {duplicateKind === 'blocked'
+                                        ? 'Existing shop found'
+                                        : duplicateKind === 'outlet'
+                                            ? 'We found other outlets using the same phone/email'
+                                            : 'Similar shops already exist'}
                                 </p>
                                 <p className="text-xs text-amber-700 mt-1">
-                                    {duplicateBlocked
-                                        ? 'Please close this dialog and select the existing shop from the search list instead of creating a duplicate.'
-                                        : 'Please verify none of these is your shop before creating a new one.'}
+                                    {duplicateKind === 'blocked'
+                                        ? 'This appears to be the same outlet. Please select the existing shop instead of creating another one.'
+                                        : duplicateKind === 'outlet'
+                                            ? 'If your shop is listed, select it. Only continue if this is a different outlet / branch at a different address.'
+                                            : 'Please verify none of these is your shop before creating a new one.'}
                                 </p>
                             </div>
                         </div>
                         <div className="space-y-1.5">
                             {duplicates.map((dup) => (
-                                <div key={dup.org_id} className="flex items-center gap-2 p-2 bg-white rounded-md border text-sm">
-                                    <Store className="w-4 h-4 text-orange-500 shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                        <span className="font-medium">{dup.org_name}</span>
-                                        {dup.branch && <span className="text-muted-foreground"> ({dup.branch})</span>}
-                                        {dup.state_name && (
-                                            <span className="text-xs text-muted-foreground ml-2 inline-flex items-center gap-0.5">
-                                                <MapPin className="w-3 h-3" />{dup.state_name}
-                                            </span>
+                                <div key={dup.org_id} className="flex items-start gap-2 p-2 bg-white rounded-md border text-sm">
+                                    <Store className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                                    <div className="flex-1 min-w-0 space-y-0.5">
+                                        <div>
+                                            <span className="font-medium">{dup.org_name}</span>
+                                            {dup.branch && <span className="text-muted-foreground"> ({dup.branch})</span>}
+                                            {dup.state_name && (
+                                                <span className="text-xs text-muted-foreground ml-2 inline-flex items-center gap-0.5">
+                                                    <MapPin className="w-3 h-3" />{dup.state_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {duplicateKind !== 'similar' && dup.address && (
+                                            <p className="text-xs text-muted-foreground break-words">{dup.address}</p>
+                                        )}
+                                        {duplicateKind !== 'similar' && (dup.contact_phone || dup.contact_email) && (
+                                            <p className="text-xs text-muted-foreground break-all">
+                                                {[dup.contact_phone, dup.contact_email].filter(Boolean).join(' · ')}
+                                            </p>
                                         )}
                                     </div>
+                                    {duplicateKind !== 'similar' && (
+                                        <Button
+                                            size="sm"
+                                            variant={duplicateKind === 'blocked' ? 'default' : 'outline'}
+                                            className="shrink-0"
+                                            onClick={() => handleSelectExisting(dup)}
+                                        >
+                                            Use this shop
+                                        </Button>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -566,18 +647,25 @@ export function CreateShopDialog({
                             >
                                 Go back
                             </Button>
-                            {!duplicateBlocked && (
+                            {duplicateKind === 'outlet' && (
                                 <Button
                                     size="sm"
                                     className="flex-1"
-                                    onClick={() => {
-                                        clearDuplicateState()
-                                        if (mode === 'prepare-registration') {
-                                            void requestShopContactVerification(false, true)
-                                            return
-                                        }
-                                        void handleCreateShop(true)
-                                    }}
+                                    onClick={() => resubmitWithConfirmation({ confirmCreate: true, confirmDifferentOutlet: true })}
+                                    disabled={submitting}
+                                >
+                                    {submitting
+                                        ? mode === 'prepare-registration'
+                                            ? 'Sending code...'
+                                            : 'Creating...'
+                                        : 'This is a different outlet / branch'}
+                                </Button>
+                            )}
+                            {duplicateKind === 'similar' && (
+                                <Button
+                                    size="sm"
+                                    className="flex-1"
+                                    onClick={() => resubmitWithConfirmation({ ...confirmations, confirmCreate: true })}
                                     disabled={submitting}
                                 >
                                     {submitting
@@ -810,11 +898,12 @@ export function CreateShopDialog({
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
                         <Button
                             onClick={() => {
+                                setConfirmations(NO_CONFIRMATIONS)
                                 if (mode === 'prepare-registration') {
                                     void requestShopContactVerification(false)
                                     return
                                 }
-                                void handleCreateShop(false)
+                                void handleCreateShop()
                             }}
                             disabled={submitting || !!phoneError || !!emailError}
                         >
@@ -835,7 +924,7 @@ export function CreateShopDialog({
                         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                             <Button
                                 variant="outline"
-                                onClick={() => void requestShopContactVerification(true, true)}
+                                onClick={() => void requestShopContactVerification(true, { ...confirmations, confirmCreate: true })}
                                 disabled={submitting || verifying || resendCooldown > 0}
                             >
                                 {submitting

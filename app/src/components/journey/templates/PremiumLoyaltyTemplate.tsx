@@ -3345,16 +3345,31 @@ export default function PremiumLoyaltyTemplate({
             }
 
             // Call API to update profile (this will sync phone with Supabase Auth)
-            const response = await fetch('/api/user/update-profile', {
+            const submitProfileUpdate = (extra: Record<string, unknown> = {}) => fetch('/api/user/update-profile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: targetUserId,
-                    ...updateData
+                    ...updateData,
+                    ...extra,
                 })
             })
 
-            const data = await response.json()
+            let response = await submitProfileUpdate()
+            let data = await response.json()
+
+            // Server refuses to silently move a SHOP-linked profile to another shop.
+            if (response.status === 409 && data?.requiresShopSwitchConfirmation) {
+                const currentShopLabel = data.currentShop?.org_name || 'your current shop'
+                const requestedShopLabel = data.requestedShop?.org_name || 'the selected shop'
+                if (!window.confirm(`Your profile is linked to ${currentShopLabel}. Switch to ${requestedShopLabel}?`)) {
+                    setProfileSaveError('Shop was not changed.')
+                    setSavingProfile(false)
+                    return
+                }
+                response = await submitProfileUpdate({ confirmShopSwitch: true })
+                data = await response.json()
+            }
 
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to update profile')
@@ -7693,6 +7708,17 @@ export default function PremiumLoyaltyTemplate({
                                     setEditingShopName(true)
                                     setProfileSaveError('')
                                     setProfileSaveNotice('New shop created. Please save your changes to continue collecting points.')
+                                }}
+                                onSelectExisting={(org) => {
+                                    const displayName = org.org_name + (org.branch ? ` (${org.branch})` : '')
+                                    setIsShopRequestOpen(false)
+                                    setPendingShopRequestName('')
+                                    setNewShopName(displayName)
+                                    setNewLinkedOrganizationId(org.id)
+                                    setInvalidShop(false)
+                                    setEditingShopName(true)
+                                    setProfileSaveError('')
+                                    setProfileSaveNotice('Existing shop selected. Please save your changes to continue collecting points.')
                                 }}
                             />
 
