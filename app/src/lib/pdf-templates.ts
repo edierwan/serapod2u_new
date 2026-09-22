@@ -227,19 +227,18 @@ export class ClassicTemplate {
   }
 
   /**
-   * The Expected Delivery section: a bold heading matching "Terms & Conditions"
-   * and the box figure directly under it.
+   * The Expected Delivery line: a bold label and the box figure beside it, on
+   * one line directly below the order total.
    *
-   *   Expected Delivery
-   *   56 Boxes
+   *   Expected Delivery: 55 Standard Boxes + 1 Small Box
    *
-   * The figure is the SAME case total the totals row is built from, converted at
-   * the order's configured box size. No formula or working is printed — the
-   * document states the quantity, it does not explain it.
+   * The figure is the SAME case total the totals row is built from, converted by
+   * the shared `formatExpectedDelivery` the SO detail page also uses. No formula
+   * or working is printed — the document states the quantity, it does not
+   * explain it.
    *
-   * A page break is taken first when the heading and its value would not both
-   * fit above the footer, so the pair never splits and never lands on top of the
-   * signature block.
+   * A page break is taken first when the line would not fit above the footer,
+   * so it never lands on top of the signature block.
    */
   private addExpectedDeliverySection(orderData: TemplateOrderData, yPosition: number): number {
     const totalCases = orderData.order_items.reduce((sum, item) => sum + (item.qty || 0), 0)
@@ -253,23 +252,24 @@ export class ClassicTemplate {
 
     const pageHeight = this.doc.internal.pageSize.getHeight()
     let y = yPosition
-    // Heading + value + the breathing room the Terms below expect.
-    if (y + 12 > pageHeight - this.margin) {
+    // The line + the breathing room the Terms below expect.
+    if (y + 7 > pageHeight - this.margin) {
       this.doc.addPage()
       y = 20
     }
 
+    const heading = 'Expected Delivery:'
     this.doc.setFontSize(9)
-    this.doc.setFont('helvetica', 'bold')
     this.doc.setTextColor(0, 0, 0)
-    this.doc.text('Expected Delivery', this.margin, y)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.text(heading, this.margin, y)
+    const valueX = this.margin + this.doc.getTextWidth(heading) + 1.5
 
-    y += 5
-    this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.text(label, this.margin, y)
+    this.doc.text(label, valueX, y)
 
-    return y
+    // A little air before the Terms heading, which follows at y + 6.
+    return y + 2
   }
 
   async generate(orderData: TemplateOrderData, documentData: TemplateDocumentData, docTitle: string): Promise<Blob> {

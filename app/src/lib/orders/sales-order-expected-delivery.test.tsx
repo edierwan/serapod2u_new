@@ -24,44 +24,53 @@ const classicTemplate = source('lib/pdf-templates.ts')
  * in the browser and so can only be read here as source.
  */
 describe('Expected Delivery figure', () => {
-  it('converts the SO case total at 100 cases to a box', () => {
+  it.each([
+    [5600, '56 Standard Boxes'],
+    [5550, '55 Standard Boxes + 1 Small Box'],
+    [5050, '50 Standard Boxes + 1 Small Box'],
+    [100, '1 Standard Box'],
+    [50, '1 Small Box'],
+    [200, '2 Standard Boxes'],
+  ])('%i cases -> "%s"', (cases, expected) => {
+    expect(formatExpectedDelivery(cases)).toBe(expected)
+  })
+
+  it('splits into whole Standard Boxes plus at most one Small Box', () => {
     expect(DEFAULT_CASES_PER_BOX).toBe(100)
-    expect(expectedDeliveryBoxes(5600)).toBe(56)
-    expect(formatExpectedDelivery(5600)).toBe('56 Boxes')
+    expect(expectedDeliveryBoxes(5600)).toEqual({ standardBoxes: 56, smallBoxes: 0 })
+    expect(expectedDeliveryBoxes(5550)).toEqual({ standardBoxes: 55, smallBoxes: 1 })
+    expect(expectedDeliveryBoxes(5599)).toEqual({ standardBoxes: 55, smallBoxes: 1 })
+    expect(expectedDeliveryBoxes(5601)).toEqual({ standardBoxes: 56, smallBoxes: 1 })
+    expect(expectedDeliveryBoxes(1)).toEqual({ standardBoxes: 0, smallBoxes: 1 })
   })
 
-  it('keeps the division intact instead of rounding', () => {
-    expect(expectedDeliveryBoxes(5650)).toBe(56.5)
-    expect(formatExpectedDelivery(5650)).toBe('56.5 Boxes')
-    expect(formatExpectedDelivery(5650)).not.toBe('56 Boxes')
-    expect(formatExpectedDelivery(5650)).not.toBe('57 Boxes')
-    expect(formatExpectedDelivery(5625)).toBe('56.25 Boxes')
-    expect(formatExpectedDelivery(50)).toBe('0.5 Boxes')
-  })
-
-  it('shows no decimals on a whole result', () => {
-    expect(formatExpectedDelivery(5600)).not.toBe('56.00 Boxes')
-    expect(formatExpectedDelivery(5600)).not.toContain('.')
-    expect(formatExpectedDelivery(0)).toBe('0 Boxes')
-    expect(formatExpectedDelivery(100)).toBe('1 Box')
-    expect(formatExpectedDelivery(200)).toBe('2 Boxes')
+  it('never prints a decimal, a zero part, or the loose case count', () => {
+    for (const cases of [1, 50, 99, 100, 101, 150, 5050, 5550, 5600, 5625, 5650, 5699]) {
+      const label = formatExpectedDelivery(cases)
+      expect(label).not.toMatch(/\d\.\d/)
+      expect(label).not.toContain('+ 0')
+      expect(label).not.toMatch(/^0 Standard/)
+      expect(label).not.toContain('Cases')
+      expect(label).not.toMatch(/\b\d+ Boxes?\b/) // never a bare "56 Boxes" total
+    }
+    expect(formatExpectedDelivery(5550)).not.toContain('55.5')
+    expect(formatExpectedDelivery(5550)).not.toContain('56 ')
   })
 
   it('groups thousands on a large order', () => {
-    expect(formatExpectedDelivery(1_000_000)).toBe('10,000 Boxes')
+    expect(formatExpectedDelivery(1_000_000)).toBe('10,000 Standard Boxes')
   })
 
-  it('does not disturb the warehouse box split, which floors on purpose', () => {
-    // Picking still reads whole boxes plus the loose remainder; only the order
-    // document states the plain division.
+  it('does not disturb the warehouse box split, which states loose cases on purpose', () => {
     expect(formatBoxEstimate(5650, 100)).toBe('56 Boxes + 50 Cases')
-    expect(formatExpectedDelivery(5650)).toBe('56.5 Boxes')
+    expect(formatExpectedDelivery(5650)).toBe('56 Standard Boxes + 1 Small Box')
   })
 
   it('honours a configured box size, and falls back to 100', () => {
-    expect(formatExpectedDelivery(600, 50)).toBe('12 Boxes')
-    expect(formatExpectedDelivery(5600, null)).toBe('56 Boxes')
-    expect(formatExpectedDelivery(5600, 0)).toBe('56 Boxes')
+    expect(formatExpectedDelivery(600, 50)).toBe('12 Standard Boxes')
+    expect(formatExpectedDelivery(620, 50)).toBe('12 Standard Boxes + 1 Small Box')
+    expect(formatExpectedDelivery(5600, null)).toBe('56 Standard Boxes')
+    expect(formatExpectedDelivery(5600, 0)).toBe('56 Standard Boxes')
   })
 
   it('uses one box size only when every line agrees on it', () => {
@@ -74,8 +83,8 @@ describe('Expected Delivery figure', () => {
   })
 
   it('yields the figure alone, with no working attached', () => {
-    const rendered = [formatExpectedDelivery(5600), formatExpectedDelivery(5650)].join(' ')
-    for (const working of ['/', '÷', 'Calculation', '100 cases', 'cases per box', '=']) {
+    const rendered = [formatExpectedDelivery(5600), formatExpectedDelivery(5550)].join(' ')
+    for (const working of ['/', '÷', 'Calculation', '100 cases', 'cases per box', '=', 'remaining']) {
       expect(rendered).not.toContain(working)
     }
   })
@@ -99,9 +108,11 @@ describe('Sales Order PDF section', () => {
     expect(section).toContain('orderData.order_items.reduce((sum, item) => sum + (item.qty || 0), 0)')
   })
 
-  it('stays a plain heading and value, not a card or a coloured panel', () => {
-    // Same weight and size as the Terms heading.
+  it('stays one plain line — bold label, normal value — not a card or a coloured panel', () => {
+    expect(section).toContain("const heading = 'Expected Delivery:'")
     expect(section).toContain("this.doc.setFont('helvetica', 'bold')")
+    expect(section).toContain("this.doc.setFont('helvetica', 'normal')")
+    expect(section).toContain('this.doc.text(label, valueX, y)')
     expect(section).toContain('this.doc.setFontSize(9)')
     expect(section).not.toContain('this.doc.rect(')
     expect(section).not.toContain('setFillColor')
@@ -137,7 +148,7 @@ describe('Sales Order detail page', () => {
 
   it('shows Expected Delivery between the totals row and the Terms', () => {
     const totalsRow = view.indexOf('{formatCurrency(subtotal)}')
-    const expectedDelivery = view.indexOf('<h3 className="font-bold text-gray-900 mb-1 text-sm">Expected Delivery</h3>')
+    const expectedDelivery = view.indexOf('<span className="font-semibold">Expected Delivery:</span>')
     const terms = view.indexOf('<h3 className="font-bold text-gray-900 mb-3 text-sm">Terms &amp; Conditions</h3>')
     expect(totalsRow).toBeGreaterThan(-1)
     expect(expectedDelivery).toBeGreaterThan(totalsRow)
@@ -157,6 +168,16 @@ describe('Sales Order detail page', () => {
     expect(section).not.toContain('bg-')
     expect(section).not.toContain('text-2xl')
     expect(section).not.toContain('text-3xl')
+    // One line, sitting close under the totals row.
+    expect(section).not.toContain('<h3')
+    expect(section).toContain('mt-2')
+    expect(section).not.toContain('mt-6')
+  })
+
+  it('uses the same shared helper as the PDF', () => {
+    expect(view).toContain("import { formatExpectedDelivery, resolveOrderCasesPerBox } from '@/lib/orders/packaging'")
+    expect(view).toContain('const expectedDeliveryLabel = formatExpectedDelivery(')
+    expect(view).not.toMatch(/totalQuantity\s*\/\s*100/)
   })
 
   it('keeps the signature and footer blocks', () => {

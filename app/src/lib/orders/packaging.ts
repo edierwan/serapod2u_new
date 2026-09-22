@@ -148,45 +148,46 @@ export function formatPackagingLine(totals: PackagingTotals): string {
 }
 
 /**
- * Expected Delivery — the SO PDF's box figure.
+ * Expected Delivery — the box figure the Sales Order states below its total.
  *
- * The Sales Order PDF states, below the order total, how many boxes the ordered
- * cases come to: "Expected Delivery / 56 Boxes". It is the plain conversion at
- * the configured box size (100 cases = 1 box by default, via
- * `resolveCasesPerBox`), taken from the SAME total case quantity the SO totals
- * row prints.
+ * Every full lot of `casesPerBox` cases (100 cases by default, via
+ * `resolveCasesPerBox`) is one Standard Box; whatever is left over, however
+ * few cases, goes into exactly one Small Box. Taken from the SAME total case
+ * quantity the SO totals row prints, and shared by the SO detail page and the
+ * SO PDF so the two cannot disagree.
  *
- * Unlike `formatBoxEstimate`, which floors and shows the remainder as loose
- * cases ("56 Boxes + 50 Cases") for warehouse handling, Expected Delivery keeps
- * the division intact:
+ *   5,600 cases @100 -> 56 Standard Boxes, 0 Small Boxes
+ *   5,550 cases @100 -> 55 Standard Boxes, 1 Small Box
+ *      50 cases @100 ->  0 Standard Boxes, 1 Small Box
  *
- *   5,600 cases @100 -> 56    Boxes
- *   5,650 cases @100 -> 56.5  Boxes
- *
- * Both readings are correct for their purpose; picking needs whole boxes plus
- * what is left over, the order document states the quantity being delivered.
+ * Unlike `formatBoxEstimate` ("55 Boxes + 50 Cases"), which states the loose
+ * cases for picking, Expected Delivery states only physical boxes.
  */
-export function expectedDeliveryBoxes(totalCases: number, casesPerBox?: number | null): number {
+export interface ExpectedDeliveryBoxes {
+  standardBoxes: number
+  smallBoxes: 0 | 1
+}
+
+export function expectedDeliveryBoxes(totalCases: number, casesPerBox?: number | null): ExpectedDeliveryBoxes {
   const cases = Math.max(0, Math.floor(Number(totalCases) || 0))
   const perBox = positiveInt(casesPerBox) ?? DEFAULT_CASES_PER_BOX
-  return cases / perBox
+  return {
+    standardBoxes: Math.floor(cases / perBox),
+    smallBoxes: cases % perBox > 0 ? 1 : 0,
+  }
 }
 
 /**
- * "56 Boxes" — the value line under the Expected Delivery heading.
- *
- * A whole result carries no decimals ("56 Boxes", never "56.00 Boxes"); a
- * fractional one shows only the digits it needs ("56.5 Boxes"). Exactly one box
- * reads "1 Box".
- *
- * Integer case quantities at the standard 100 cases/box always divide to at
- * most two decimal places, so the two-digit cap below only ever engages for an
- * unusual configured box size.
+ * "55 Standard Boxes + 1 Small Box" — the value printed after "Expected
+ * Delivery:". Whole numbers only; a zero part is left out entirely, so there is
+ * never a "+ 0 Small Box" nor a "0 Standard Boxes + 1 Small Box".
  */
 export function formatExpectedDelivery(totalCases: number, casesPerBox?: number | null): string {
-  const boxes = expectedDeliveryBoxes(totalCases, casesPerBox)
-  const value = boxes.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-  return `${value} ${boxes === 1 ? 'Box' : 'Boxes'}`
+  const { standardBoxes, smallBoxes } = expectedDeliveryBoxes(totalCases, casesPerBox)
+  const standard = `${standardBoxes.toLocaleString('en-MY')} Standard ${standardBoxes === 1 ? 'Box' : 'Boxes'}`
+  if (smallBoxes === 0) return standard
+  const small = '1 Small Box'
+  return standardBoxes === 0 ? small : `${standard} + ${small}`
 }
 
 /**

@@ -858,16 +858,16 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           </table>
         </div>
 
-        {/* Expected Delivery - the ordered cases expressed in boxes, stated
-            between the order total and the Terms. Deliberately a plain heading
-            and value in the document's own type scale, not a card or a panel:
-            it is one more line of the order, and it must not break away from
-            the flow when the document paginates. */}
+        {/* Expected Delivery - the ordered cases expressed in Standard/Small
+            boxes, stated on one line between the order total and the Terms.
+            Deliberately plain text in the document's own type scale, not a card
+            or a panel: it is one more line of the order, and it must not break
+            away from the flow when the document paginates. */}
         {isSalesOrder && (
-          <div className="mt-6 break-inside-avoid page-break-inside-avoid print:mt-4">
-            <h3 className="font-bold text-gray-900 mb-1 text-sm">Expected Delivery</h3>
-            <p className="text-sm font-medium text-gray-900">{expectedDeliveryLabel}</p>
-          </div>
+          <p className="mt-2 text-sm text-gray-900 break-inside-avoid page-break-inside-avoid print:mt-1">
+            <span className="font-semibold">Expected Delivery:</span>{' '}
+            <span>{expectedDeliveryLabel}</span>
+          </p>
         )}
 
         {/* Terms & Conditions - the organization's own value, rendered verbatim */}

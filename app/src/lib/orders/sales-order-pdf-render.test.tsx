@@ -1,5 +1,6 @@
 import { inflateSync } from 'node:zlib'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { formatExpectedDelivery } from '@/lib/orders/packaging'
 import { ClassicTemplate, type TemplateDocumentData, type TemplateOrderData } from '@/lib/pdf-templates'
 
 /**
@@ -163,8 +164,8 @@ describe('Sales Order PDF', () => {
 
   it('states Expected Delivery between the order total and the Terms', () => {
     const total = text.indexOf('Total')
-    const heading = text.indexOf('Expected Delivery')
-    const value = text.indexOf('56 Boxes')
+    const heading = text.indexOf('Expected Delivery:')
+    const value = text.indexOf('56 Standard Boxes')
     const terms = text.findIndex((entry) => entry.toUpperCase().startsWith('TERMS'))
 
     expect(total).toBeGreaterThan(-1)
@@ -181,6 +182,7 @@ describe('Sales Order PDF', () => {
     expect(joined).not.toContain('100 cases')
     expect(joined).not.toContain('cases per box')
     expect(joined).not.toContain('56.00 Boxes')
+    expect(joined).not.toContain('Small Box')
   })
 
   it('leaves the order total and the line amounts alone', () => {
@@ -190,7 +192,7 @@ describe('Sales Order PDF', () => {
     expect(text.filter((value) => value === 'RM 44800.00')).toHaveLength(4)
     const cases = ORDER_ITEMS.reduce((sum, item) => sum + item.qty, 0)
     expect(cases).toBe(5600)
-    expect(text).toContain('56 Boxes')
+    expect(text).toContain('56 Standard Boxes')
   })
 
   it('keeps the signature block and the footer note', () => {
@@ -200,20 +202,37 @@ describe('Sales Order PDF', () => {
     expect(joined).toContain('Payment within 30 days of invoice date.')
   })
 
-  it('divides without rounding when the cases do not fill whole boxes', async () => {
-    const halfBox = await renderDocument('SO', [
-      line('Cellera Hero', 'Fruity Cellera Cartridge [ Honeydew ]', 5650, 32),
+  it('packs the leftover cases into one Small Box, with no decimals', async () => {
+    const partial = await renderDocument('SO', [
+      line('Cellera Hero', 'Fruity Cellera Cartridge [ Honeydew ]', 5550, 32),
     ])
-    expect(halfBox).toContain('56.5 Boxes')
-    expect(halfBox).not.toContain('56 Boxes')
-    expect(halfBox).not.toContain('57 Boxes')
+    expect(partial).toContain('55 Standard Boxes + 1 Small Box')
+    expect(partial.join(' ')).not.toContain('55.5')
+    expect(partial.join(' ')).not.toContain('50 Cases')
   })
 
   it('renders a single-box order in the singular', async () => {
     const oneBox = await renderDocument('SO', [
       line('Cellera Hero', 'Fruity Cellera Cartridge [ Honeydew ]', 100, 32),
     ])
-    expect(oneBox).toContain('1 Box')
+    expect(oneBox).toContain('1 Standard Box')
+  })
+
+  it('shows only a Small Box when the order is under one Standard Box', async () => {
+    const small = await renderDocument('SO', [
+      line('Cellera Hero', 'Fruity Cellera Cartridge [ Honeydew ]', 50, 32),
+    ])
+    expect(small).toContain('1 Small Box')
+    expect(small.join(' ')).not.toContain('0 Standard Boxes')
+  })
+
+  it('prints the same string the detail page renders', async () => {
+    for (const cases of [5600, 5550, 5050, 100, 50, 200]) {
+      const drawn = await renderDocument('SO', [
+        line('Cellera Hero', 'Fruity Cellera Cartridge [ Honeydew ]', cases, 32),
+      ])
+      expect(drawn).toContain(formatExpectedDelivery(cases))
+    }
   })
 })
 
@@ -229,12 +248,12 @@ describe('a long Sales Order', () => {
     const text = pdfText(bytes)
 
     expect(pdfPageCount(bytes)).toBeGreaterThan(1)
-    expect(text.filter((value) => value === 'Expected Delivery')).toHaveLength(1)
+    expect(text.filter((value) => value === 'Expected Delivery:')).toHaveLength(1)
     expect(text.filter((value) => value === 'Issued by:')).toHaveLength(1)
     expect(text.filter((value) => value === 'Created by:')).toHaveLength(1)
     expect(text.filter((value) => value === 'Approved by:')).toHaveLength(1)
     // 40 lines x 140 cases = 5,600 cases.
-    expect(text).toContain('56 Boxes')
+    expect(text).toContain('56 Standard Boxes')
   })
 
   it('still groups every Hero line ahead of every Zero line across the pages', async () => {
@@ -251,17 +270,16 @@ describe('a long Sales Order', () => {
     expect(text).toContain('This is a computer generated document.')
   })
 
-  it('keeps Expected Delivery on the page, directly above its value', async () => {
+  it('keeps Expected Delivery on the page, on one line with its value', async () => {
     const longTerms = Array.from({ length: 60 }, (_, index) => `${index + 1}. Clause ${index + 1}.`).join('\n')
     const drawn = pdfDrawnText(await renderBytes('SO', manyLines, longTerms))
 
-    const heading = drawn.find((run) => run.text === 'Expected Delivery')
-    const value = drawn.find((run) => run.text === '56 Boxes')
+    const heading = drawn.find((run) => run.text === 'Expected Delivery:')
+    const value = drawn.find((run) => run.text === '56 Standard Boxes')
     expect(heading?.y).toBeGreaterThan(0)
     expect(value?.y).toBeGreaterThan(0)
-    // The value sits directly under its heading, on the same page.
-    expect(heading!.y - value!.y).toBeGreaterThan(0)
-    expect(heading!.y - value!.y).toBeLessThan(30)
+    // The value sits beside its label, on the same line.
+    expect(heading!.y).toBeCloseTo(value!.y, 3)
   })
 
   /**
@@ -297,7 +315,7 @@ describe('a long Sales Order', () => {
 describe('other documents from the same template', () => {
   it('leave the Purchase Order without an Expected Delivery section', async () => {
     const text = await renderDocument('PO')
-    expect(text).not.toContain('Expected Delivery')
+    expect(text.join(' ')).not.toContain('Expected Delivery')
     expect(text).toContain('Total')
     expect(text).toContain('Issued by:')
   })
