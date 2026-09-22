@@ -22,6 +22,8 @@ import JourneyDesignerV2 from './JourneyDesignerV2'
 import JourneyCardWithStats from './JourneyCardWithStats'
 import JourneyListRow from './JourneyListRow'
 import MasterAnnouncementBannerView from '@/components/announcement-banner/MasterAnnouncementBannerView'
+import { kpiValueSizeClass } from '@/lib/journey/number-sizing'
+import type { TrendPoint, TrendRange } from '@/lib/journey/engagement-trend'
 
 interface UserProfile {
     id: string
@@ -62,13 +64,17 @@ interface Order {
 interface DashboardSummary {
     kpis: { totalJourneys: number; totalQrGenerated: number; totalScans: number; pointsRedeemed: number; failedScans: number }
     typeCounts: { points: number; luckyDraw: number; freeGift: number }
-    trend: { date: string; scans: number; redeemed: number; failed: number }[]
     journeys: { id: string; stats: any }[]
     topPerforming: { id: string; name: string; order_no: string | null; scans: number; redeemed: number; conversionRate: number; sparkline: number[] } | null
     recentActivity: { id: string; type: string; title: string; location: string | null; time: string }[]
 }
 
-type TrendRange = '7d' | '30d' | '3m' | '6m' | 'lastMonth' | '12m'
+type TrendMetric = 'scans' | 'redeemed'
+
+type TrendState =
+    | { status: 'loading'; points: TrendPoint[] }
+    | { status: 'error'; points: TrendPoint[] }
+    | { status: 'ready'; points: TrendPoint[] }
 
 const DEFAULT_PAGE_SIZE = 3
 
@@ -87,40 +93,8 @@ function timeAgo(iso: string): string {
     return `${Math.floor(h / 24)}d ago`
 }
 
-function parseTrendDate(value: string) {
-    return new Date(`${value}T00:00:00`)
-}
-
-function filterTrendByRange(data: DashboardSummary['trend'], range: TrendRange) {
-    if (data.length === 0) return []
-
-    const latest = parseTrendDate(data[data.length - 1].date)
-    let start = new Date(latest)
-    let end = new Date(latest)
-
-    if (range === '7d') {
-        start.setDate(start.getDate() - 6)
-    } else if (range === '30d') {
-        start.setDate(start.getDate() - 29)
-    } else if (range === '3m') {
-        start.setMonth(start.getMonth() - 3)
-    } else if (range === '6m') {
-        start.setMonth(start.getMonth() - 6)
-    } else if (range === '12m') {
-        start.setFullYear(start.getFullYear() - 1)
-    } else {
-        start = new Date(latest.getFullYear(), latest.getMonth() - 1, 1)
-        end = new Date(latest.getFullYear(), latest.getMonth(), 0)
-    }
-
-    return data.filter((point) => {
-        const current = parseTrendDate(point.date)
-        return current >= start && current <= end
-    })
-}
-
 // ───────────────────────────────── KPI Card ─────────────────────────────────
-function KpiCard({ icon, label, value, hint, tone }: {
+export function KpiCard({ icon, label, value, hint, tone }: {
     icon: React.ReactNode; label: string; value: string | number; hint?: string;
     tone: 'blue' | 'indigo' | 'emerald' | 'amber' | 'red'
 }) {
@@ -137,7 +111,13 @@ function KpiCard({ icon, label, value, hint, tone }: {
                 <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border ${toneMap[tone]}`}>{icon}</span>
                 <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-slate-500">{label}</p>
-                    <p className="mt-0.5 text-2xl font-bold text-slate-900 tabular-nums leading-tight">{value}</p>
+                    <p
+                        data-testid="kpi-value"
+                        title={String(value)}
+                        className={`mt-0.5 font-bold leading-tight text-slate-900 ${kpiValueSizeClass(value)}`}
+                    >
+                        {value}
+                    </p>
                     {hint && <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p>}
                 </div>
             </div>
@@ -276,11 +256,28 @@ function TopPerformingCard({ top }: { top: DashboardSummary['topPerforming'] }) 
 }
 
 // ───────────────────────────── Trend Chart ───────────────────────────────
-function EngagementTrendChart({ data, metric }: { data: DashboardSummary['trend']; metric: 'scans' | 'redeemed' | 'failed' }) {
-    const hasData = data.some(d => (d as any)[metric] > 0)
+export function EngagementTrendChart({ state, metric, onRetry }: {
+    state: TrendState; metric: TrendMetric; onRetry: () => void
+}) {
+    const data = state.points
+    const hasData = state.status === 'ready' && data.some(d => d[metric] > 0)
     return (
         <div className={`${hasData ? 'h-[260px]' : 'h-[220px]'} max-h-[300px]`}>
-            {!hasData ? (
+            {state.status === 'loading' ? (
+                <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/80 text-slate-400" role="status">
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    <span className="text-xs font-medium">Loading engagement trend…</span>
+                </div>
+            ) : state.status === 'error' ? (
+                <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-red-200 bg-red-50/40 px-6 text-center text-slate-500" role="alert">
+                    <AlertCircle className="mb-2 h-8 w-8 text-red-400" />
+                    <p className="text-sm font-semibold text-slate-700">Unable to load engagement trend</p>
+                    <p className="mt-0.5 max-w-sm text-xs">The trend could not be retrieved. Your scan data is unaffected.</p>
+                    <Button variant="outline" size="sm" onClick={onRetry} className="mt-3 h-7 text-xs">
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />Retry
+                    </Button>
+                </div>
+            ) : !hasData ? (
                 <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-6 text-center text-slate-400">
                     <BarChart3 className="mb-2 h-8 w-8" />
                     <p className="text-sm font-semibold text-slate-600">No engagement data yet</p>
@@ -295,15 +292,23 @@ function EngagementTrendChart({ data, metric }: { data: DashboardSummary['trend'
                                 <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <XAxis dataKey="date" tickFormatter={(v: string) => `${parseInt(v.slice(8, 10))} ${new Date(v).toLocaleDateString(undefined, { month: 'short' })}`} tick={{ fontSize: 10, fill: '#94a3b8' }} interval={Math.max(1, Math.floor(data.length / 8))} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={32} />
-                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} />
-                        <Area type="monotone" dataKey={metric} stroke="#3b82f6" fillOpacity={1} fill="url(#trendArea)" strokeWidth={2} />
+                        <XAxis dataKey="date" tickFormatter={formatTrendTick} tick={{ fontSize: 10, fill: '#94a3b8' }} interval={Math.max(1, Math.floor(data.length / 8))} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={40} allowDecimals={false} />
+                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} labelFormatter={(v: any) => formatTrendTick(String(v))} />
+                        <Area type="monotone" dataKey={metric} name={metric === 'scans' ? 'Scans' : 'Redeemed'} stroke="#3b82f6" fillOpacity={1} fill="url(#trendArea)" strokeWidth={2} />
                     </AreaChart>
                 </ResponsiveContainer>
             )}
         </div>
     )
+}
+
+// Trend dates are already Malaysia calendar dates; format them as-is (UTC)
+// so the viewer's browser time zone cannot shift the label by a day.
+function formatTrendTick(v: string) {
+    const d = new Date(`${v}T00:00:00Z`)
+    if (Number.isNaN(d.getTime())) return v
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
 }
 
 // ─────────────────────────────────── Main ─────────────────────────────────
@@ -322,8 +327,10 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
     const [activeTab, setActiveTab] = useState('existing')
     const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
     const [visibleCount, setVisibleCount] = useState(DEFAULT_PAGE_SIZE)
-    const [trendMetric, setTrendMetric] = useState<'scans' | 'redeemed' | 'failed'>('scans')
+    const [trendMetric, setTrendMetric] = useState<TrendMetric>('scans')
     const [trendRange, setTrendRange] = useState<TrendRange>('30d')
+    const [trendState, setTrendState] = useState<TrendState>({ status: 'loading', points: [] })
+    const [trendReloadKey, setTrendReloadKey] = useState(0)
 
     const supabase = createClient()
 
@@ -336,6 +343,29 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
     useEffect(() => {
         loadJourneys(); loadSummary() // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    useEffect(() => {
+        let cancelled = false
+        setTrendState(prev => ({ status: 'loading', points: prev.points }))
+        ;(async () => {
+            try {
+                const r = await fetch(`/api/journey/engagement-trend?range=${trendRange}`)
+                const d = await r.json().catch(() => null)
+                if (cancelled) return
+                if (!r.ok || !d?.success || !Array.isArray(d.points)) {
+                    setTrendState({ status: 'error', points: [] })
+                    return
+                }
+                setTrendState({ status: 'ready', points: d.points })
+            } catch (e) {
+                console.error('engagement trend error', e)
+                if (!cancelled) setTrendState({ status: 'error', points: [] })
+            }
+        })()
+        return () => { cancelled = true }
+    }, [trendRange, trendReloadKey])
+
+    function reloadTrend() { setTrendReloadKey(k => k + 1) }
 
     async function loadJourneys() {
         try {
@@ -457,11 +487,6 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
         setSearchQuery(''); setStatusFilter('all'); setTypeFilter('all'); setRangeFilter('all')
     }
 
-    const trendData = useMemo(() => {
-        if (!summary) return []
-        return filterTrendByRange(summary.trend, trendRange)
-    }, [summary, trendRange])
-
     const k = summary?.kpis
 
     if (step === 'design-journey' && selectedOrder) {
@@ -486,7 +511,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                     <p className="text-sm text-slate-500 mt-0.5">Create engaging consumer experiences when they scan QR codes</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => { loadJourneys(); loadSummary() }}>
+                    <Button variant="outline" size="sm" onClick={() => { loadJourneys(); loadSummary(); reloadTrend() }}>
                         <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading || summaryLoading ? 'animate-spin' : ''}`} />
                         Refresh
                     </Button>
@@ -529,12 +554,11 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                                     <SelectContent>
                                         <SelectItem value="scans">Scans</SelectItem>
                                         <SelectItem value="redeemed">Redeemed</SelectItem>
-                                        <SelectItem value="failed">Failed</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                         </div>
-                        <EngagementTrendChart data={trendData} metric={trendMetric} />
+                        <EngagementTrendChart state={trendState} metric={trendMetric} onRetry={reloadTrend} />
                     </div>
 
                     {/* Tabs */}

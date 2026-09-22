@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { addTrendDays, buildTrendSeries, resolveTrendWindow } from '@/lib/journey/engagement-trend'
 
 /**
  * GET /api/journey/dashboard-summary
  *
- * Aggregates Journey Builder KPIs, per-journey stats, daily scan trend, and
- * top performing journey for the current user's organization.
+ * Aggregates Journey Builder KPIs, per-journey stats and top performing
+ * journey for the current user's organization.
  *
  * Response shape:
  * {
  *   kpis: { totalJourneys, totalQrGenerated, totalScans, pointsRedeemed, failedScans },
  *   typeCounts: { points, luckyDraw, freeGift },
- *   trend: [{ date: 'YYYY-MM-DD', scans: number, redeemed: number, failed: number }, ...],
  *   journeys: [{ id, stats: { total_valid_links, links_scanned, redemptions, lucky_draw_entries, points_collected } }],
  *   topPerforming: { id, name, order_no, scans, redeemed, conversionRate, sparkline: number[] } | null,
  *   recentActivity: [{ id, type, title, location, time }],
@@ -78,47 +78,22 @@ export async function GET(_req: NextRequest) {
             })
         }
 
-        // 4) Daily scan trend (last 12 months) — group consumer_qr_scans by day
-        const trend: { date: string; scans: number; redeemed: number; failed: number }[] = []
-        const trendLookbackDays = 365
-        const trendStart = new Date(); trendStart.setDate(trendStart.getDate() - (trendLookbackDays - 1))
-        const startIso = trendStart.toISOString().slice(0, 10)
-
-        let scansByDay = new Map<string, number>()
-        let redeemByDay = new Map<string, number>()
+        // 4) Daily trend lives in /api/journey/engagement-trend (server-side
+        //    aggregate, selected range only). Here we only need the last 14
+        //    MYT days for the Top Performing sparkline, from the same RPC.
+        let sparkline: number[] = []
         if (orderIds.length > 0) {
-            // Get QR codes for these orders
-            const { data: qrCodes } = await supabase
-                .from('qr_codes')
-                .select('id')
-                .in('order_id', orderIds)
-                .limit(50000)
-            const qrIds = (qrCodes || []).map((q: any) => q.id)
-
-            if (qrIds.length > 0) {
-                // Process in chunks to avoid IN-clause limits
-                const chunkSize = 500
-                for (let i = 0; i < qrIds.length; i += chunkSize) {
-                    const chunk = qrIds.slice(i, i + chunkSize)
-                    const { data: scans } = await supabase
-                        .from('consumer_qr_scans')
-                        .select('scanned_at, redeemed_at, collected_points')
-                        .in('qr_code_id', chunk)
-                        .gte('scanned_at', `${startIso}T00:00:00Z`)
-                    for (const s of scans || []) {
-                        const day = String((s as any).scanned_at).slice(0, 10)
-                        scansByDay.set(day, (scansByDay.get(day) || 0) + 1)
-                        if ((s as any).redeemed_at) {
-                            redeemByDay.set(day, (redeemByDay.get(day) || 0) + 1)
-                        }
-                    }
-                }
+            const endDate = resolveTrendWindow('7d').endDate
+            const startDate = addTrendDays(endDate, -13)
+            const { data: trendRows, error: trendErr } = await (supabase as any).rpc('get_journey_engagement_trend', {
+                p_start_date: startDate,
+                p_end_date: endDate,
+            })
+            if (trendErr) {
+                console.error('[dashboard-summary] sparkline trend error', trendErr)
+            } else {
+                sparkline = buildTrendSeries(trendRows as any[], startDate, endDate).map(t => t.scans)
             }
-        }
-        for (let i = 0; i < trendLookbackDays; i++) {
-            const d = new Date(trendStart); d.setDate(trendStart.getDate() + i)
-            const key = d.toISOString().slice(0, 10)
-            trend.push({ date: key, scans: scansByDay.get(key) || 0, redeemed: redeemByDay.get(key) || 0, failed: 0 })
         }
 
         // 5) KPIs
@@ -162,7 +137,7 @@ export async function GET(_req: NextRequest) {
                     scans: best.stats.links_scanned,
                     redeemed: best.stats.redemptions,
                     conversionRate: conv,
-                    sparkline: trend.slice(-14).map(t => t.scans),
+                    sparkline,
                 }
             }
         }
@@ -191,7 +166,6 @@ export async function GET(_req: NextRequest) {
                 failedScans: 0,
             },
             typeCounts,
-            trend,
             journeys: Object.entries(statsByJourney).map(([id, stats]) => ({ id, stats })),
             topPerforming,
             recentActivity,

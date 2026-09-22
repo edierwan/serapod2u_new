@@ -4,7 +4,10 @@ import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import JourneyBuilderV2 from './JourneyBuilderV2'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+
+import JourneyBuilderV2, { EngagementTrendChart, KpiCard } from './JourneyBuilderV2'
 
 const fromMock = vi.fn()
 
@@ -74,10 +77,18 @@ function buildQueryChain(result: { data: any; error: any }) {
 const dashboardSummary = {
   kpis: { totalJourneys: 0, totalQrGenerated: 0, totalScans: 0, pointsRedeemed: 0, failedScans: 0 },
   typeCounts: { points: 0, luckyDraw: 0, freeGift: 0 },
-  trend: [],
   journeys: [],
   topPerforming: null,
   recentActivity: [],
+}
+
+function mockFetch({ summary, trend }: { summary: any; trend: { ok: boolean; body: any } }) {
+  global.fetch = vi.fn((url: string) => {
+    if (String(url).startsWith('/api/journey/engagement-trend')) {
+      return Promise.resolve({ ok: trend.ok, json: () => Promise.resolve(trend.body) })
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(summary) })
+  }) as any
 }
 
 describe('JourneyBuilderV2', () => {
@@ -96,12 +107,7 @@ describe('JourneyBuilderV2', () => {
       return buildQueryChain({ data: null, error: null })
     })
 
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(dashboardSummary),
-      })
-    ) as any
+    mockFetch({ summary: dashboardSummary, trend: { ok: true, body: { success: true, points: [] } } })
   })
 
   afterEach(() => {
@@ -190,5 +196,95 @@ describe('JourneyBuilderV2', () => {
 
     await user.click(screen.getByRole('tab', { name: /Announcement Banner/ }))
     expect(screen.getByTestId('announcement-banner-view')).toBeTruthy()
+  })
+
+  it('renders large KPI values in full with length-aware sizing', async () => {
+    mockFetch({
+      summary: { ...dashboardSummary, kpis: { totalJourneys: 23, totalQrGenerated: 1372760, totalScans: 101580, pointsRedeemed: 0, failedScans: 0 } },
+      trend: { ok: true, body: { success: true, points: [] } },
+    })
+    render(<JourneyBuilderV2 userProfile={userProfile} />)
+
+    const generated = await screen.findByText('1,372,760')
+    expect(generated.className).toContain('text-xl')
+    expect(generated.className).toContain('tabular-nums')
+    expect(generated.className).toContain('whitespace-nowrap')
+    expect(screen.getByText('101,580').className).toContain('text-2xl')
+    expect(screen.getByText('23').className).toContain('text-2xl')
+    expect(screen.queryByText(/1\.37M|101\.5K|K$/)).toBeNull()
+  })
+
+  it('requests the selected trend range from the server-side trend API', async () => {
+    render(<JourneyBuilderV2 userProfile={userProfile} />)
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/journey/engagement-trend?range=30d'))
+  })
+
+  it('shows "No engagement data yet" only when the trend loads successfully with zero activity', async () => {
+    mockFetch({
+      summary: dashboardSummary,
+      trend: { ok: true, body: { success: true, points: [{ date: '2026-09-20', scans: 0, redeemed: 0 }] } },
+    })
+    render(<JourneyBuilderV2 userProfile={userProfile} />)
+    await waitFor(() => expect(screen.getByText('No engagement data yet')).toBeTruthy())
+    expect(screen.queryByText('Unable to load engagement trend')).toBeNull()
+  })
+
+  it('shows an error state with retry, not the empty state, when the trend API fails', async () => {
+    mockFetch({ summary: dashboardSummary, trend: { ok: false, body: { success: false, error: 'boom' } } })
+    render(<JourneyBuilderV2 userProfile={userProfile} />)
+    await waitFor(() => expect(screen.getByText('Unable to load engagement trend')).toBeTruthy())
+    expect(screen.queryByText('No engagement data yet')).toBeNull()
+
+    mockFetch({
+      summary: dashboardSummary,
+      trend: { ok: true, body: { success: true, points: [{ date: '2026-09-20', scans: 0, redeemed: 0 }] } },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Retry/ }))
+    await waitFor(() => expect(screen.getByText('No engagement data yet')).toBeTruthy())
+  })
+
+  it('renders the chart for real trend data instead of the empty state', async () => {
+    mockFetch({
+      summary: { ...dashboardSummary, kpis: { ...dashboardSummary.kpis, totalScans: 101580 } },
+      trend: { ok: true, body: { success: true, points: [{ date: '2026-09-19', scans: 5110, redeemed: 138 }, { date: '2026-09-20', scans: 4320, redeemed: 120 }] } },
+    })
+    const { container } = render(<JourneyBuilderV2 userProfile={userProfile} />)
+    await waitFor(() => expect(container.querySelector('.recharts-responsive-container')).toBeTruthy())
+    expect(screen.queryByText('No engagement data yet')).toBeNull()
+    expect(screen.queryByText('Unable to load engagement trend')).toBeNull()
+  })
+
+  it('does not offer a fabricated "Failed" trend metric', () => {
+    const source = readFileSync(path.resolve(__dirname, 'JourneyBuilderV2.tsx'), 'utf8')
+    expect(source).not.toContain('<SelectItem value="failed">')
+  })
+})
+
+describe('EngagementTrendChart', () => {
+  afterEach(() => cleanup())
+
+  it('shows a loading state while the trend is in flight', () => {
+    render(<EngagementTrendChart state={{ status: 'loading', points: [] }} metric="scans" onRetry={() => {}} />)
+    expect(screen.getByText(/Loading engagement trend/)).toBeTruthy()
+  })
+
+  it('treats redeemed-only activity as empty for the scans metric and as data for redeemed', () => {
+    const points = [{ date: '2026-09-20', scans: 0, redeemed: 4 }]
+    const { container, rerender } = render(<EngagementTrendChart state={{ status: 'ready', points }} metric="scans" onRetry={() => {}} />)
+    expect(screen.getByText('No engagement data yet')).toBeTruthy()
+    rerender(<EngagementTrendChart state={{ status: 'ready', points }} metric="redeemed" onRetry={() => {}} />)
+    expect(container.querySelector('.recharts-responsive-container')).toBeTruthy()
+  })
+})
+
+describe('KpiCard', () => {
+  afterEach(() => cleanup())
+
+  it('keeps 10,000,000+ visible in full with a smaller step and a title tooltip', () => {
+    render(<KpiCard tone="indigo" icon={null} label="Total QR Generated" value="10,000,000" />)
+    const value = screen.getByTestId('kpi-value')
+    expect(value.textContent).toBe('10,000,000')
+    expect(value.getAttribute('title')).toBe('10,000,000')
+    expect(value.className).toContain('text-lg')
   })
 })
