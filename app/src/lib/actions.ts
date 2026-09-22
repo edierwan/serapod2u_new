@@ -17,6 +17,11 @@ import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
 import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
 import { createShopOrganization } from '@/lib/shop-requests/create-shop'
+import {
+  assertShopCreationAllowed,
+  isShopIdentityConflictError,
+  type ShopIdentityConfirmations,
+} from '@/lib/shop-requests/shop-identity-guard'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 import { getRoadtourExperienceForCategory } from '@/lib/roadtour/experience-registry'
 import {
@@ -889,6 +894,29 @@ export async function registerConsumer(userData: {
     let finalOrganizationId = linkSelection.organizationId
     let finalShopDisplayName = linkSelection.shopDisplayName
 
+    // Legacy pending-shop registration carries no "different outlet" confirmation, so
+    // strong duplicates AND shared-contact/address candidates stop registration here,
+    // before the auth user is created. createShopOrganization re-runs the same guard.
+    const pendingShopIdentityConfirmations: ShopIdentityConfirmations = {
+      confirmDifferentOutlet: false,
+      confirmSimilarName: true,
+    }
+    if (!finalOrganizationId && linkSelection.pendingShopRequest) {
+      try {
+        await assertShopCreationAllowed(adminClient, linkSelection.pendingShopRequest, pendingShopIdentityConfirmations)
+      } catch (guardError) {
+        if (isShopIdentityConflictError(guardError)) {
+          return {
+            success: false,
+            error: guardError.decision.body.code === 'SHOP_DUPLICATE_BLOCKED'
+              ? guardError.message
+              : 'We found existing shops using the same phone, email or address. Please select your shop from the list, or use Create New Shop to confirm it is a different outlet.',
+          }
+        }
+        throw guardError
+      }
+    }
+
     // Create user with auto-confirm to bypass rate limits and verification
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
       email: normalizedEmail,
@@ -922,6 +950,7 @@ export async function registerConsumer(userData: {
         const { organization } = await createShopOrganization(adminClient, {
           form: linkSelection.pendingShopRequest,
           createdBy: authUser.user.id,
+          identityConfirmations: pendingShopIdentityConfirmations,
         })
 
         finalOrganizationId = organization.id

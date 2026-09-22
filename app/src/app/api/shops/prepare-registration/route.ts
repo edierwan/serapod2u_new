@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getRegistrationPendingShopDisplayName } from '@/lib/engagement/registration-link-selection'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeShopRequestForm, validateShopRequestForm } from '@/lib/shop-requests/core'
-import { findSimilarShopSuggestions } from '@/lib/shop-requests/create-shop'
+import { assessShopIdentity, decideShopCreation } from '@/lib/shop-requests/shop-identity-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,14 +17,14 @@ export async function POST(request: NextRequest) {
         }
 
         const adminClient = createAdminClient()
-        const duplicates = await findSimilarShopSuggestions(adminClient, form.shopName)
-        if (duplicates.length > 0 && !rawBody.confirmCreate) {
-            return NextResponse.json({
-                success: false,
-                duplicateWarning: true,
-                duplicates,
-                error: 'Similar shops already exist. Please confirm creation.',
-            }, { status: 409 })
+        // Advisory only — the shop is actually created later by registration, which
+        // re-runs the same shared guard immediately before insert.
+        const decision = decideShopCreation(await assessShopIdentity(adminClient, form), {
+            confirmDifferentOutlet: rawBody.confirmDifferentOutlet === true,
+            confirmSimilarName: rawBody.confirmCreate === true,
+        })
+        if (!decision.allowed) {
+            return NextResponse.json(decision.body, { status: decision.status })
         }
 
         return NextResponse.json({

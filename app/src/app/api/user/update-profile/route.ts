@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { userId, full_name, phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
+    // Explicit intent required to move a user from one SHOP to a different SHOP.
+    const confirmShopSwitch = body?.confirmShopSwitch === true
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -238,7 +240,7 @@ export async function POST(request: NextRequest) {
       if (organization_id) {
         const { data: orgData, error: orgError } = await adminClient
           .from('organizations')
-          .select('id, org_type_code, is_active')
+          .select('id, org_name, branch, org_type_code, is_active')
           .eq('id', organization_id)
           .single()
 
@@ -259,10 +261,11 @@ export async function POST(request: NextRequest) {
         const { data: currentUserRow, error: currentUserError } = await adminClient
           .from('users')
           .select(`
+            organization_id,
             role_code,
             account_scope,
             roles(role_level),
-            organizations!fk_users_organization(org_type_code)
+            organizations!fk_users_organization(id, org_name, branch, org_type_code)
           `)
           .eq('id', userId)
           .single()
@@ -286,6 +289,37 @@ export async function POST(request: NextRequest) {
           return NextResponse.json(
             { success: false, error: shopLinkBlockReason },
             { status: 400 }
+          )
+        }
+
+        // Never silently re-point a SHOP-linked user to a different SHOP. Switching is
+        // allowed, but only with an explicit confirmShopSwitch=true from the caller.
+        const currentOrg = (currentUserRow?.organizations as any) || null
+        const currentOrganizationId = currentUserRow?.organization_id || null
+        if (
+          currentOrganizationId &&
+          currentOrganizationId !== orgData.id &&
+          currentOrg?.org_type_code === 'SHOP' &&
+          !confirmShopSwitch
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: 'SHOP_SWITCH_CONFIRMATION_REQUIRED',
+              requiresShopSwitchConfirmation: true,
+              currentShop: {
+                org_id: currentOrganizationId,
+                org_name: currentOrg?.org_name || null,
+                branch: currentOrg?.branch || null,
+              },
+              requestedShop: {
+                org_id: orgData.id,
+                org_name: orgData.org_name || null,
+                branch: orgData.branch || null,
+              },
+              error: 'This profile is already linked to another shop. Please confirm that you want to switch shops.',
+            },
+            { status: 409 }
           )
         }
       }

@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
             form: body,
             orgId,
             confirmCreate: Boolean(body?.confirmCreate),
+            confirmDifferentOutlet: body?.confirmDifferentOutlet === true,
             resend: false,
             ip,
             userAgent,

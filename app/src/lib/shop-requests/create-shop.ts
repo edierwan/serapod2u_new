@@ -3,91 +3,8 @@ import {
     sanitizeShopRequestForm,
     type ShopRequestFormInput,
 } from './core'
-import { samePhone } from '@/utils/phone'
 import { upsertOrganizationProgramMembership, type LoyaltyProgramCode } from '@/lib/server/loyalty-memberships'
-
-export interface DuplicateShopSuggestion {
-    org_id: string
-    org_name: string
-    branch: string | null
-    state_name: string | null
-}
-
-export interface ShopDuplicateCheckResult {
-    exactMatches: DuplicateShopSuggestion[]
-    fuzzyMatches: DuplicateShopSuggestion[]
-    hasExactPhoneMatch: boolean
-    hasExactIdentityMatch: boolean
-}
-
-function normalizeComparisonValue(value?: string | null) {
-    return String(value || '').trim().toLowerCase()
-}
-
-function mapDuplicateRow(row: any): DuplicateShopSuggestion {
-    return {
-        org_id: row.id,
-        org_name: row.org_name,
-        branch: row.branch || null,
-        state_name: row.states?.state_name || null,
-    }
-}
-
-function uniqueDuplicates(rows: DuplicateShopSuggestion[]) {
-    const seen = new Set<string>()
-    return rows.filter((row) => {
-        if (seen.has(row.org_id)) return false
-        seen.add(row.org_id)
-        return true
-    })
-}
-
-async function findExactPhoneMatches(adminClient: any, contactPhone?: string | null) {
-    const normalizedPhone = String(contactPhone || '').trim()
-    if (!normalizedPhone) return []
-
-    const { data } = await adminClient
-        .from('organizations')
-        .select('id, org_name, branch, contact_phone, states(state_name)')
-        .eq('org_type_code', 'SHOP')
-        .eq('is_active', true)
-        .eq('contact_phone', normalizedPhone)
-        .limit(5)
-
-    return (data || []).filter((row: any) => samePhone(row.contact_phone || '', normalizedPhone)).map(mapDuplicateRow)
-}
-
-async function findExactIdentityMatches(adminClient: any, form: ShopRequestFormInput) {
-    const normalizedShopName = normalizeComparisonValue(form.shopName)
-    const hasLocationQualifier = Boolean(form.branch || form.state || form.address)
-    if (!normalizedShopName || !hasLocationQualifier) return []
-
-    const { data } = await adminClient
-        .from('organizations')
-        .select('id, org_name, branch, address, states(state_name)')
-        .eq('org_type_code', 'SHOP')
-        .eq('is_active', true)
-        .ilike('org_name', form.shopName || '')
-        .limit(20)
-
-    return (data || [])
-        .filter((row: any) => {
-            if (normalizeComparisonValue(row.org_name) !== normalizedShopName) {
-                return false
-            }
-            if (form.branch && normalizeComparisonValue(row.branch) !== normalizeComparisonValue(form.branch)) {
-                return false
-            }
-            if (form.state && normalizeComparisonValue(row.states?.state_name) !== normalizeComparisonValue(form.state)) {
-                return false
-            }
-            if (form.address && normalizeComparisonValue(row.address) !== normalizeComparisonValue(form.address)) {
-                return false
-            }
-            return true
-        })
-        .map(mapDuplicateRow)
-}
+import { assertShopCreationAllowed, type ShopIdentityConfirmations } from './shop-identity-guard'
 
 /**
  * Resolve default parent distributor for a new shop.
@@ -154,46 +71,6 @@ export async function resolveStateId(adminClient: any, stateName?: string | null
     return data?.id || null
 }
 
-export async function findSimilarShopSuggestions(
-    adminClient: any,
-    shopName?: string | null,
-): Promise<DuplicateShopSuggestion[]> {
-    const normalizedShopName = String(shopName || '').trim()
-    if (!normalizedShopName) return []
-
-    const { data: duplicates } = await adminClient
-        .from('organizations')
-        .select('id, org_name, branch, states(state_name)')
-        .eq('org_type_code', 'SHOP')
-        .eq('is_active', true)
-        .ilike('org_name', `${normalizedShopName}%`)
-        .limit(5)
-
-    return (duplicates || []).map(mapDuplicateRow)
-}
-
-export async function findShopDuplicateConflicts(
-    adminClient: any,
-    input: ShopRequestFormInput,
-): Promise<ShopDuplicateCheckResult> {
-    const form = sanitizeShopRequestForm(input)
-    const [exactPhoneMatches, exactIdentityMatches, fuzzyMatches] = await Promise.all([
-        findExactPhoneMatches(adminClient, form.contactPhone),
-        findExactIdentityMatches(adminClient, form),
-        findSimilarShopSuggestions(adminClient, form.shopName),
-    ])
-
-    const exactMatches = uniqueDuplicates([...exactPhoneMatches, ...exactIdentityMatches])
-    const exactMatchIds = new Set(exactMatches.map((row) => row.org_id))
-
-    return {
-        exactMatches,
-        fuzzyMatches: fuzzyMatches.filter((row) => !exactMatchIds.has(row.org_id)),
-        hasExactPhoneMatch: exactPhoneMatches.length > 0,
-        hasExactIdentityMatch: exactIdentityMatches.length > 0,
-    }
-}
-
 export async function createShopOrganization(
     adminClient: any,
     input: {
@@ -201,6 +78,12 @@ export async function createShopOrganization(
         createdBy?: string | null
         userOrgId?: string | null
         loyaltyProgramCode?: LoyaltyProgramCode
+        /**
+         * Required: every self-service creation path passes the user's explicit
+         * confirmations. The shared identity guard re-runs here, immediately before
+         * insert, so no caller can bypass it (throws ShopIdentityConflictError).
+         */
+        identityConfirmations: ShopIdentityConfirmations
     },
 ) {
     const form = sanitizeShopRequestForm(input.form)
@@ -220,6 +103,10 @@ export async function createShopOrganization(
         stateId,
         createdBy: input.createdBy,
     })
+
+    // Final server-side guard, as close to the insert as possible to narrow the
+    // check-then-insert window between concurrent requests.
+    await assertShopCreationAllowed(adminClient, form, input.identityConfirmations)
 
     const { data: createdOrganization, error: createError } = await adminClient
         .from('organizations')

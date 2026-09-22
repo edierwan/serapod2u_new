@@ -5,7 +5,8 @@ import {
     sanitizeShopRequestForm,
     validateShopRequestForm,
 } from '@/lib/shop-requests/core'
-import { createShopOrganization, findSimilarShopSuggestions } from '@/lib/shop-requests/create-shop'
+import { createShopOrganization } from '@/lib/shop-requests/create-shop'
+import { isShopIdentityConflictError } from '@/lib/shop-requests/shop-identity-guard'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { upsertUserProgramMembership } from '@/lib/server/loyalty-memberships'
 import { getShopOrgReassignmentBlockReason } from '@/lib/auth/employment-org-guard'
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
                 role_code,
                 account_scope,
                 roles(role_level),
-                organizations!fk_users_organization(org_type_code)
+                organizations!fk_users_organization(id, org_name, branch, org_type_code)
             `)
             .eq('id', user.id)
             .single()
@@ -54,28 +55,50 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: validation.errors[0] }, { status: 400 })
         }
 
-        // --- Duplicate check ---
-        const duplicates = await findSimilarShopSuggestions(adminClient, form.shopName)
-        if (duplicates.length > 0 && !rawBody.confirmCreate) {
+        // --- Linking intent (checked BEFORE creating anything) ---
+        // A user already linked to a SHOP must never be moved silently onto the new
+        // shop. Only an explicit confirmSwitchLinkedShop=true may re-point
+        // users.organization_id; otherwise nothing is created and the UI must ask.
+        const shouldLinkUser = rawBody.linkUser === true
+        const currentOrg = (userRow.organizations as any) || null
+        if (
+            shouldLinkUser &&
+            currentOrg?.org_type_code === 'SHOP' &&
+            userRow.organization_id &&
+            rawBody.confirmSwitchLinkedShop !== true
+        ) {
             return NextResponse.json({
                 success: false,
-                duplicateWarning: true,
-                duplicates,
-                error: 'Similar shops already exist. Please confirm creation.',
+                code: 'SHOP_LINK_SWITCH_CONFIRMATION_REQUIRED',
+                requiresLinkSwitchConfirmation: true,
+                currentShop: {
+                    org_id: userRow.organization_id,
+                    org_name: currentOrg.org_name || null,
+                    branch: currentOrg.branch || null,
+                },
+                error: 'Your profile is already linked to a shop. Creating another outlet will not change your linked shop unless you explicitly confirm the switch.',
             }, { status: 409 })
         }
 
         let createdOrganization: { id: string; org_name: string; branch?: string | null }
         let parentOrgId: string
         try {
+            // Shared identity guard runs inside createShopOrganization (same rules as QR path).
             const result = await createShopOrganization(adminClient, {
                 form,
                 createdBy: user.id,
                 userOrgId: userRow.organization_id,
+                identityConfirmations: {
+                    confirmDifferentOutlet: rawBody.confirmDifferentOutlet === true,
+                    confirmSimilarName: rawBody.confirmCreate === true,
+                },
             })
             createdOrganization = result.organization
             parentOrgId = result.parentOrgId
         } catch (createError: any) {
+            if (isShopIdentityConflictError(createError)) {
+                return NextResponse.json(createError.decision.body, { status: createError.decision.status })
+            }
             console.error('Shop create error:', createError)
             return NextResponse.json({
                 success: false,
@@ -112,10 +135,10 @@ export async function POST(request: NextRequest) {
         // --- Link user to the new shop ---
         // Default is NO link. Explicit linkUser=true only, and never for portal employment accounts.
         // (Previous default linkUser!==false could move HQ Admin onto a SHOP and hide admin menus.)
-        const shouldLinkUser = rawBody.linkUser === true
+        // Switching from an existing SHOP additionally required confirmSwitchLinkedShop above.
         if (shouldLinkUser) {
             const linkBlockReason = getShopOrgReassignmentBlockReason({
-                currentOrgTypeCode: (userRow.organizations as any)?.org_type_code || null,
+                currentOrgTypeCode: currentOrg?.org_type_code || null,
                 currentRoleCode: userRow.role_code,
                 currentRoleLevel: (userRow.roles as any)?.role_level ?? null,
                 currentAccountScope: userRow.account_scope,

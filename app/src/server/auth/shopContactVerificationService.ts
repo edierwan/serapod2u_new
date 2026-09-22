@@ -1,7 +1,11 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 
 import { type ShopRequestFormInput, sanitizeShopRequestForm, validateShopRequestForm } from '@/lib/shop-requests/core'
-import { findShopDuplicateConflicts } from '@/lib/shop-requests/create-shop'
+import {
+    assessShopIdentity,
+    decideShopCreation,
+    type ShopIdentityConfirmations,
+} from '@/lib/shop-requests/shop-identity-guard'
 import { maskEmail } from '@/lib/auth/registration-otp-email'
 import { EMAIL_REGEX } from '@/lib/utils/orgValidation'
 import { normalizePhoneE164 } from '@/utils/phone'
@@ -25,7 +29,7 @@ export const SHOP_CONTACT_VERIFICATION_PURPOSE = 'shop_contact_verification'
 
 const SHOP_CONTACT_REQUEST_EVENT_TYPES = ['shop_contact_otp_requested', 'shop_contact_otp_resend']
 const SHOP_CONTACT_RESEND_EVENT_TYPE = 'shop_contact_otp_resend'
-const emailChannel = { channel: SHOP_CONTACT_OTP_CHANNEL as const }
+const emailChannel: { channel: typeof SHOP_CONTACT_OTP_CHANNEL } = { channel: SHOP_CONTACT_OTP_CHANNEL }
 
 export function resolveShopContactVerificationForm(input: ShopRequestFormInput) {
     const form = sanitizeShopRequestForm(input)
@@ -37,11 +41,14 @@ export function resolveShopContactVerificationForm(input: ShopRequestFormInput) 
     }
 }
 
-export async function checkShopContactDuplicateState(
-    adminClient: SupabaseClient,
-    form: ShopRequestFormInput,
-) {
-    return findShopDuplicateConflicts(adminClient, form)
+/** Confirmations captured at request-code time and replayed by /contact-verification/create. */
+export function readShopContactIdentityConfirmations(meta: any): ShopIdentityConfirmations {
+    const stored = meta?.identity_confirmations || {}
+    return {
+        confirmDifferentOutlet: stored.confirmDifferentOutlet === true,
+        // The similar-name warning was already gated before the OTP was sent.
+        confirmSimilarName: true,
+    }
 }
 
 export async function startShopContactVerification(
@@ -50,6 +57,7 @@ export async function startShopContactVerification(
         form: ShopRequestFormInput
         orgId: string
         confirmCreate?: boolean
+        confirmDifferentOutlet?: boolean
         resend?: boolean
         ip?: string | null
         userAgent?: string | null
@@ -82,30 +90,19 @@ export async function startShopContactVerification(
         }
     }
 
-    const duplicates = await findShopDuplicateConflicts(adminClient, form)
-    if (duplicates.exactMatches.length > 0) {
-        return {
-            ok: false as const,
-            status: 409,
-            body: {
-                success: false,
-                duplicateBlocked: true,
-                duplicates: duplicates.exactMatches,
-                error: 'A shop with this phone number or name already exists. Please select it from the existing shop list.',
-            },
-        }
+    const identityConfirmations: ShopIdentityConfirmations = {
+        confirmDifferentOutlet: input.confirmDifferentOutlet === true,
+        confirmSimilarName: input.confirmCreate === true,
     }
-
-    if (duplicates.fuzzyMatches.length > 0 && !input.confirmCreate) {
+    const identityDecision = decideShopCreation(
+        await assessShopIdentity(adminClient, form),
+        identityConfirmations,
+    )
+    if (!identityDecision.allowed) {
         return {
             ok: false as const,
-            status: 409,
-            body: {
-                success: false,
-                duplicateWarning: true,
-                duplicates: duplicates.fuzzyMatches,
-                error: 'Similar shops already exist. Please confirm creation.',
-            },
+            status: identityDecision.status,
+            body: identityDecision.body,
         }
     }
 
@@ -169,6 +166,9 @@ export async function startShopContactVerification(
             org_id: input.orgId,
             shop_request: form,
             email: contactEmail,
+            identity_confirmations: {
+                confirmDifferentOutlet: identityConfirmations.confirmDifferentOutlet === true,
+            },
         },
         input.ip || null,
         input.userAgent || null,
@@ -276,4 +276,62 @@ export async function findVerifiedShopContactCode(
         purpose: SHOP_CONTACT_VERIFICATION_PURPOSE,
         ...emailChannel,
     })
+}
+
+/**
+ * Atomically claim a verified shop-contact code so a replayed or double-submitted
+ * verification token cannot create two shops.
+ *
+ * Single conditional UPDATE (compiled by PostgREST to):
+ *   UPDATE auth_verification_codes SET used_at = <claimedAt>
+ *    WHERE id = <codeId> AND reset_token = <token> AND purpose = 'shop_contact_verification'
+ *      AND channel = 'email' AND used_at IS NULL AND invalidated_at IS NULL
+ *      AND reset_token_expires > now()
+ *   RETURNING id
+ * Under READ COMMITTED a concurrent second UPDATE blocks on the row lock, then
+ * re-evaluates the WHERE clause against the committed row, sees used_at IS NOT NULL
+ * and updates 0 rows — so exactly one request wins. Returns the claim timestamp,
+ * or null when the token was already claimed/used/invalidated/expired.
+ */
+export async function claimVerifiedShopContactCode(
+    adminClient: SupabaseClient,
+    code: { id: string; reset_token: string },
+): Promise<string | null> {
+    const claimedAt = new Date().toISOString()
+    const { data, error } = await adminClient
+        .from('auth_verification_codes')
+        .update({ used_at: claimedAt })
+        .eq('id', code.id)
+        .eq('reset_token', code.reset_token)
+        .eq('purpose', SHOP_CONTACT_VERIFICATION_PURPOSE)
+        .eq('channel', SHOP_CONTACT_OTP_CHANNEL)
+        .is('used_at', null)
+        .is('invalidated_at', null)
+        .gt('reset_token_expires', claimedAt)
+        .select('id')
+
+    if (error) throw new Error(error.message || 'Unable to claim verification code.')
+    return Array.isArray(data) && data.length > 0 ? claimedAt : null
+}
+
+/**
+ * Release OUR claim when the shop was not created (duplicate conflict or error),
+ * so the verification session is not consumed by a blocked attempt. Conditional on
+ * used_at still equal to our own claim timestamp, so it can never re-open a code
+ * that was consumed by another request or by a successful creation.
+ */
+export async function releaseShopContactCodeClaim(
+    adminClient: SupabaseClient,
+    codeId: string,
+    claimedAt: string,
+) {
+    const { error } = await adminClient
+        .from('auth_verification_codes')
+        .update({ used_at: null })
+        .eq('id', codeId)
+        .eq('used_at', claimedAt)
+
+    if (error) {
+        console.warn('[shopContactVerification] failed to release code claim:', error.message)
+    }
 }
