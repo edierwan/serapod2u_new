@@ -32,6 +32,7 @@ import {
     TrendingUp,
     type LucideIcon,
 } from 'lucide-react'
+import { metricValueSizeClass } from '@/lib/journey/number-sizing'
 
 interface JourneyConfig {
     id: string
@@ -76,7 +77,7 @@ interface JourneyCardWithStatsProps {
     onDelete: () => void
 }
 
-function AnimatedNumber({ value, className }: { value: number; className?: string }) {
+function AnimatedNumber({ value, className, title }: { value: number; className?: string; title?: string }) {
     const [displayValue, setDisplayValue] = useState(value)
     const [isAnimating, setIsAnimating] = useState(false)
     const prevValueRef = useRef(value)
@@ -110,7 +111,7 @@ function AnimatedNumber({ value, className }: { value: number; className?: strin
     }, [value])
 
     return (
-        <span className={`${className} ${isAnimating ? 'text-blue-600' : ''} transition-colors duration-200`}>
+        <span title={title} className={`${className} ${isAnimating ? 'text-blue-600' : ''} transition-colors duration-200`}>
             {displayValue.toLocaleString()}
         </span>
     )
@@ -193,28 +194,35 @@ function UtilizationRing({ percent, color }: { percent: number; color: string })
     return (
         <div className="flex flex-col items-center gap-2">
             <div
-                className="grid h-24 w-24 place-items-center rounded-full shadow-inner"
+                className="grid h-[88px] w-[88px] place-items-center rounded-full shadow-inner"
                 style={{ background: `conic-gradient(${color} ${safePercent * 3.6}deg, #e2e8f0 0deg)` }}
             >
-                <div className="grid h-[72px] w-[72px] place-items-center rounded-full bg-white">
+                <div className="grid h-[66px] w-[66px] place-items-center rounded-full bg-white">
                     <div className="text-center leading-none">
                         <div className="text-xl font-bold tabular-nums text-slate-950">{safePercent}%</div>
                         <div className="mt-1 text-[10px] font-medium uppercase text-slate-400">QR Use</div>
                     </div>
                 </div>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500">
+            <div className="flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-50 px-1.5 py-1 text-[11px] font-medium text-slate-500">
                 <Scan className="h-3 w-3" /> Utilization
             </div>
         </div>
     )
 }
 
-function MetricCell({ label, value, tone }: { label: string; value: number; tone: string }) {
+export function MetricCell({ label, value, tone }: { label: string; value: number; tone: string }) {
+    // Size from the final value, not the animating one, so the font does not
+    // jump while counting up.
+    const full = value.toLocaleString()
     return (
-        <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-            <AnimatedNumber value={value} className={`mt-0.5 block text-lg font-bold leading-none tabular-nums ${tone}`} />
+        <div data-testid="journey-metric" className="min-w-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50/80 px-2 py-2">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+            <AnimatedNumber
+                value={value}
+                title={full}
+                className={`mt-0.5 block font-bold leading-none ${metricValueSizeClass(full)} ${tone}`}
+            />
         </div>
     )
 }
@@ -376,9 +384,9 @@ export default function JourneyCardWithStats({
                 </div>
 
                 <div className="flex flex-1 flex-col gap-4 p-4">
-                    <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3">
+                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3">
                         <UtilizationRing percent={utilization} color={primaryFeature.ringColor} />
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid min-w-0 grid-cols-2 gap-2">
                             <MetricCell label="Generated" value={generated} tone="text-slate-950" />
                             <MetricCell label="Scanned" value={scanned} tone="text-emerald-700" />
                             <MetricCell label={outcomeMetric.label} value={outcomeMetric.value} tone="text-blue-700" />
