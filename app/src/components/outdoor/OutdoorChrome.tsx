@@ -74,6 +74,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   const isFlowPage =
     pathname.startsWith('/outdoor/fulfilment') ||
     pathname.startsWith('/outdoor/checkout') ||
+    pathname.startsWith('/outdoor/pay') ||
     pathname.startsWith('/outdoor/cart') ||
     pathname.startsWith('/outdoor/track') ||
     pathname.startsWith('/outdoor/login') ||

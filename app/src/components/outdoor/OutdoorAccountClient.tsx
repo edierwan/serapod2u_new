@@ -29,10 +29,16 @@ function money(amount: number, currency = 'MYR') {
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency }).format(amount)
 }
 
-export default function OutdoorAccountClient() {
+export default function OutdoorAccountClient({
+  initialTab = 'profile',
+  pendingRef = '',
+}: {
+  initialTab?: 'profile' | 'orders'
+  pendingRef?: string
+}) {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'profile' | 'orders'>('profile')
+  const [tab, setTab] = useState<'profile' | 'orders'>(initialTab)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -45,7 +51,10 @@ export default function OutdoorAccountClient() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        router.push(`/outdoor/login?next=${encodeURIComponent('/outdoor/account')}`)
+        const next = pendingRef
+          ? `/outdoor/account?tab=orders&pending=${encodeURIComponent(pendingRef)}`
+          : '/outdoor/account'
+        router.push(`/outdoor/login?next=${encodeURIComponent(next)}`)
         return
       }
       setUserId(user.id)
@@ -68,7 +77,7 @@ export default function OutdoorAccountClient() {
       setLoading(false)
     }
     void load()
-  }, [router])
+  }, [router, pendingRef])
 
   useEffect(() => {
     if (tab !== 'orders') return
@@ -205,12 +214,17 @@ export default function OutdoorAccountClient() {
         </div>
       ) : (
         <div className="mt-8 space-y-3">
+          {pendingRef ? (
+            <p className="rounded-xl border border-[var(--out-line)] bg-white px-4 py-3 text-sm text-[var(--out-ink)]">
+              Payment was not completed. Order <span className="font-mono font-semibold">{pendingRef}</span> is still pending payment.
+            </p>
+          ) : null}
           {ordersError ? <p className="text-sm text-red-600">{ordersError}</p> : null}
           {orders.length === 0 && !ordersError ? (
             <p className="text-sm text-[var(--out-muted)]">No Outdoor orders found for this email yet.</p>
           ) : null}
           {orders.map((order) => (
-            <div key={order.orderRef} className="rounded-xl border border-[var(--out-line)] bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div key={order.orderRef} className={`rounded-xl border bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${order.orderRef === pendingRef ? 'border-[var(--out-moss)]' : 'border-[var(--out-line)]'}`}>
               <div>
                 <p className="font-mono text-sm font-semibold">{order.orderRef}</p>
                 <p className="text-xs text-[var(--out-muted)] mt-1">

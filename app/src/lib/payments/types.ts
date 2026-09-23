@@ -12,6 +12,7 @@ export interface PaymentIntentInput {
   customerPhone: string
   description: string
   returnUrl: string       // where user lands after payment
+  cancelUrl?: string      // where user lands if they leave hosted checkout
   callbackUrl: string     // server-side webhook endpoint
 }
 

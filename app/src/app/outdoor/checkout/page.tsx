@@ -158,7 +158,8 @@ export default function OutdoorCheckoutPage() {
       if (!res.ok) throw new Error(data?.error || 'Checkout failed')
       clearCart()
       if (data?.paymentUrl) {
-        window.location.href = data.paymentUrl
+        sessionStorage.setItem('outdoor-pay-next', data.paymentUrl)
+        window.location.replace(`/outdoor/pay?ref=${encodeURIComponent(data.orderRef || '')}`)
         return
       }
       router.push(`/outdoor/orders/success?ref=${encodeURIComponent(data.orderRef || '')}`)

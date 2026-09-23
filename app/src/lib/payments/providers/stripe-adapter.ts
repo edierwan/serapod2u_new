@@ -23,8 +23,11 @@ export const stripe: PaymentProviderAdapter = {
     params.append('submit_type', 'auto')
     params.append('integration_identifier', 'hosted_web_0001')
     params.append('origin_context', 'web')
-    params.append('success_url', `${input.returnUrl}?session_id={CHECKOUT_SESSION_ID}`)
-    params.append('cancel_url', `${input.returnUrl}?cancelled=true`)
+    // returnUrl already contains ?ref=. A second ? makes Stripe's back link invalid.
+    // Keep {CHECKOUT_SESSION_ID} raw so Stripe can replace it.
+    const joinQuery = (url: string, query: string) => `${url}${url.includes('?') ? '&' : '?'}${query}`
+    params.append('success_url', joinQuery(input.returnUrl, 'session_id={CHECKOUT_SESSION_ID}'))
+    params.append('cancel_url', input.cancelUrl || joinQuery(input.returnUrl, 'cancelled=true'))
     params.append('client_reference_id', input.orderRef)
     params.append('customer_email', input.customerEmail)
     params.append('line_items[0][price_data][currency]', (input.currency ?? 'myr').toLowerCase())

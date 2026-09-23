@@ -287,6 +287,9 @@ export async function POST(request: NextRequest) {
         customerPhone: body.customer.phone,
         description: `Order ${order.order_ref}`,
         returnUrl: `${origin}${returnBase}/orders/success?ref=${order.order_ref}`,
+        cancelUrl: returnBase === '/outdoor'
+          ? `${origin}/outdoor/account?tab=orders&pending=${encodeURIComponent(order.order_ref)}`
+          : undefined,
         callbackUrl: `${origin}/api/storefront/payment/webhook`,
       },
       body.paymentProvider,
