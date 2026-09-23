@@ -52,7 +52,7 @@ export default function OutdoorAccountClient() {
 
       const { data } = await supabase
         .from('users')
-        .select('email, full_name, phone, address, location' as any)
+        .select('email, full_name, phone, address' as any)
         .eq('id', user.id)
         .single()
 
@@ -63,7 +63,7 @@ export default function OutdoorAccountClient() {
         fullName: row?.full_name || '',
         phone: (typeof user.user_metadata?.outdoor_phone === 'string' && user.user_metadata.outdoor_phone) || row?.phone || '',
         address: row?.address || '',
-        location: row?.location || '',
+        location: (typeof user.user_metadata?.outdoor_location === 'string' && user.user_metadata.outdoor_location) || '',
       })
       setLoading(false)
     }
@@ -97,6 +97,7 @@ export default function OutdoorAccountClient() {
           userId,
           full_name: profile.fullName.trim(),
           outdoor_phone: profile.phone.trim(),
+          outdoor_location: profile.location.trim(),
           address: profile.address.trim(),
         }),
       })

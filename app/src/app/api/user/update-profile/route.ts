@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, outdoor_phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, outdoor_phone, outdoor_location, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
     // Explicit intent required to move a user from one SHOP to a different SHOP.
     const confirmShopSwitch = body?.confirmShopSwitch === true
 
@@ -113,6 +113,33 @@ export async function POST(request: NextRequest) {
         console.error('Outdoor phone metadata update failed:', outdoorPhoneError)
         return NextResponse.json(
           { success: false, error: 'Could not save the delivery phone.' },
+          { status: 500 }
+        )
+      }
+    }
+
+    // Outdoor city stays on this storefront profile and does not write users.location.
+    if (outdoor_location !== undefined) {
+      const raw = typeof outdoor_location === 'string' ? outdoor_location.trim() : ''
+      if (raw.length > 120) {
+        return NextResponse.json(
+          { success: false, error: 'City must be 120 characters or less' },
+          { status: 400 }
+        )
+      }
+
+      const { data: authRecord } = await adminClient.auth.admin.getUserById(userId)
+      const { error: outdoorLocationError } = await adminClient.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...(authRecord?.user?.user_metadata || {}),
+          outdoor_location: raw || null,
+        },
+      })
+
+      if (outdoorLocationError) {
+        console.error('Outdoor location metadata update failed:', outdoorLocationError)
+        return NextResponse.json(
+          { success: false, error: 'Could not save the city.' },
           { status: 500 }
         )
       }
