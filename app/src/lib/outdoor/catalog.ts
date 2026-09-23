@@ -209,7 +209,7 @@ export function outdoorCategoryNavFromProducts(products: StorefrontProduct[]) {
   const hrefFor = (product: StorefrontProduct | null) => (product ? `/outdoor/shop/${product.id}` : '/outdoor/shop')
 
   return [
-    { key: 'new', label: 'New in', href: '/outdoor/shop?sort=newest', icon: 'new' as const },
+    { key: 'new', label: 'New in', href: '/outdoor/shop?collection=new', icon: 'new' as const },
     { key: 'chair', label: 'Moon Chair', href: hrefFor(find('chair', 'moonchair')), icon: 'chair' as const },
     { key: 'tumbler', label: 'Tumbler', href: hrefFor(find('tumbler')), icon: 'tumbler' as const },
     { key: 'mat', label: 'Camp Mat', href: hrefFor(find('mat', 'mattress', 'pad')), icon: 'mat' as const },
