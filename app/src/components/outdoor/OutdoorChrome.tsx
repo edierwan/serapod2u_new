@@ -39,6 +39,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [authEmail, setAuthEmail] = useState<string | null>(null)
+  const [authLabel, setAuthLabel] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [isStaff, setIsStaff] = useState(false)
   const [pageSearch, setPageSearch] = useState('')
@@ -53,16 +54,25 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
     const supabase = createClient()
     let cancelled = false
 
+    const applyUser = (user: { email?: string | null; user_metadata?: Record<string, unknown> } | null) => {
+      const email = user?.email ?? null
+      const provider = String(user?.user_metadata?.auth_provider || '')
+      const username = String(user?.user_metadata?.username || '').replace(/^@/, '').trim()
+      const social = provider === 'twitter' || provider === 'tiktok' || provider === 'instagram'
+      setAuthEmail(email)
+      setAuthLabel(social && username ? username : email ? email.split('@')[0] : null)
+    }
+
     const sync = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (cancelled) return
-      setAuthEmail(user?.email ?? null)
+      applyUser(user)
       setAuthReady(true)
     }
 
     void sync()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthEmail(session?.user?.email ?? null)
+      applyUser(session?.user ?? null)
       setAuthReady(true)
     })
 
@@ -114,6 +124,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
     const supabase = createClient()
     await supabase.auth.signOut()
     setAuthEmail(null)
+    setAuthLabel(null)
     window.location.href = '/outdoor'
   }
 
@@ -307,7 +318,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             ) : null}
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 mb-4">Shop</p>
+            <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 underline">Shop</p>
             <ul className="space-y-2.5 text-sm">
               <li><Link href="/outdoor/shop" className="hover:text-[var(--out-moss)]">All products</Link></li>
               <li><Link href="/outdoor/about" className="hover:text-[var(--out-moss)]">About</Link></li>
@@ -316,7 +327,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             </ul>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 mb-4">Help</p>
+            <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 underline">Help</p>
             <ul className="space-y-2.5 text-sm">
               <li><Link href="/outdoor/shipping-returns" className="hover:text-[var(--out-moss)]">Shipping & Returns</Link></li>
               <li><Link href="/outdoor/privacy" className="hover:text-[var(--out-moss)]">Privacy</Link></li>
@@ -325,7 +336,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             </ul>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 mb-4">Account</p>
+            <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 underline">Account</p>
             <ul className="space-y-2.5 text-sm">
               <li><Link href="/outdoor/track" className="hover:text-[var(--out-moss)]">Track order</Link></li>
               {signedIn ? (
@@ -333,7 +344,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                   <li><Link href="/outdoor/account" className="hover:text-[var(--out-moss)]">My account</Link></li>
                   <li>
                     <button type="button" onClick={() => void signOut()} className="hover:text-[var(--out-moss)]">
-                      Sign out{authEmail ? ` (${authEmail.split('@')[0]})` : ''}
+                      Sign out{authLabel ? ` (${authLabel})` : ''}
                     </button>
                   </li>
                 </>
