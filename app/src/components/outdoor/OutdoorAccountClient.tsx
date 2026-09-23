@@ -61,7 +61,7 @@ export default function OutdoorAccountClient() {
       setProfile({
         email: socialAccountLabel(authEmail, user.user_metadata?.username),
         fullName: row?.full_name || '',
-        phone: row?.phone || '',
+        phone: (typeof user.user_metadata?.outdoor_phone === 'string' && user.user_metadata.outdoor_phone) || row?.phone || '',
         address: row?.address || '',
         location: row?.location || '',
       })
@@ -96,7 +96,7 @@ export default function OutdoorAccountClient() {
         body: JSON.stringify({
           userId,
           full_name: profile.fullName.trim(),
-          phone: profile.phone.trim(),
+          outdoor_phone: profile.phone.trim(),
           address: profile.address.trim(),
         }),
       })

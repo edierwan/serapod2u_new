@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, outdoor_phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
     // Explicit intent required to move a user from one SHOP to a different SHOP.
     const confirmShopSwitch = body?.confirmShopSwitch === true
 
@@ -63,10 +63,14 @@ export async function POST(request: NextRequest) {
     if (full_name !== undefined) {
       updateData.full_name = full_name?.trim() || null
 
-      // Sync full_name to Supabase Auth user_metadata (display_name)
+      // Sync full_name to Supabase Auth user_metadata without dropping other fields.
       try {
+        const { data: authRecord } = await adminClient.auth.admin.getUserById(userId)
         const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
-          user_metadata: { full_name: full_name?.trim() || null }
+          user_metadata: {
+            ...(authRecord?.user?.user_metadata || {}),
+            full_name: full_name?.trim() || null,
+          },
         })
 
         if (authMetaError) {
@@ -78,6 +82,39 @@ export async function POST(request: NextRequest) {
       } catch (metaErr) {
         console.error('Auth metadata update exception:', metaErr)
         // Don't fail the whole operation for metadata sync failure
+      }
+    }
+
+    // Outdoor delivery phone is per storefront profile. It is not a login phone,
+    // so it must not use the shared users.phone uniqueness check or Auth phone.
+    if (outdoor_phone !== undefined) {
+      const raw = typeof outdoor_phone === 'string' ? outdoor_phone.trim() : ''
+      let stored: string | null = null
+      if (raw) {
+        const validation = validatePhoneNumber(raw)
+        if (!validation.isValid) {
+          return NextResponse.json(
+            { success: false, error: validation.error || 'Invalid phone number format' },
+            { status: 400 }
+          )
+        }
+        stored = normalizePhone(raw)
+      }
+
+      const { data: authRecord } = await adminClient.auth.admin.getUserById(userId)
+      const { error: outdoorPhoneError } = await adminClient.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...(authRecord?.user?.user_metadata || {}),
+          outdoor_phone: stored,
+        },
+      })
+
+      if (outdoorPhoneError) {
+        console.error('Outdoor phone metadata update failed:', outdoorPhoneError)
+        return NextResponse.json(
+          { success: false, error: 'Could not save the delivery phone.' },
+          { status: 500 }
+        )
       }
     }
 
