@@ -12,7 +12,7 @@ type ProductDraft = {
   imageUrl: string
 }
 
-const fieldClass = 'w-full bg-transparent text-[var(--out-bark)] outline-none placeholder:text-[var(--out-muted)]'
+const fieldClass = 'mt-1.5 w-full rounded-md border border-[var(--out-line)] bg-white px-3 text-[var(--out-bark)] outline-none focus:border-[var(--out-moss)]'
 
 function ProductSheet({
   name,
@@ -67,22 +67,26 @@ function ProductSheet({
         </label>
       </div>
 
-      <label className="mt-4 block">
-        <span className="sr-only">Name</span>
-        <input value={name} onChange={(event) => onName(event.target.value)} required placeholder="Product name" className={`${fieldClass} font-display text-3xl tracking-tight`} />
-      </label>
-      <label className="mt-1 block">
-        <span className="sr-only">Price (RM)</span>
-        <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="Price" className={`${fieldClass} text-lg font-semibold`} />
-      </label>
-      <label className="mt-3 block text-sm text-[var(--out-muted)]">
-        Color
-        <input value={color} onChange={(event) => onColor(event.target.value)} placeholder="Color" className={`${fieldClass} mt-1 text-base text-[var(--out-bark)]`} />
-      </label>
-      <label className="mt-3 block text-sm text-[var(--out-muted)]">
-        Description
-        <textarea value={description} onChange={(event) => onDescription(event.target.value)} rows={4} placeholder="Description" className={`${fieldClass} mt-1 resize-y text-base leading-relaxed text-[var(--out-bark)]`} />
-      </label>
+      <div className="mt-4 space-y-3 rounded-[1.6rem] bg-white p-4 sm:p-5">
+        <label className="block text-sm font-medium text-[var(--out-bark)]">
+          Name
+          <input value={name} onChange={(event) => onName(event.target.value)} required placeholder="Product name" className={`${fieldClass} h-11 text-base`} />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Price (RM)
+            <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="0.00" className={`${fieldClass} h-11`} />
+          </label>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Color
+            <input value={color} onChange={(event) => onColor(event.target.value)} placeholder="Color" className={`${fieldClass} h-11`} />
+          </label>
+        </div>
+        <label className="block text-sm font-medium text-[var(--out-bark)]">
+          Description
+          <textarea value={description} onChange={(event) => onDescription(event.target.value)} rows={4} placeholder="Description" className={`${fieldClass} resize-y py-2 leading-relaxed`} />
+        </label>
+      </div>
       <button type="submit" disabled={saving} className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40">
         {saving ? 'Saving…' : submitLabel}
       </button>
