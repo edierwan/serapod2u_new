@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 type OrderItem = {
   id: string
@@ -53,7 +53,8 @@ function money(n: number) {
 
 export default function OutdoorFulfilmentClient() {
   const router = useRouter()
-  const [tab, setTab] = useState<'orders' | 'inbox'>('orders')
+  const searchParams = useSearchParams()
+  const tab = searchParams.get('tab') === 'inbox' ? 'inbox' : 'orders'
   const [orderStatus, setOrderStatus] = useState('fulfilment')
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -118,13 +119,15 @@ export default function OutdoorFulfilmentClient() {
   }, [load])
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('tab') === 'inbox') setTab('inbox')
-    const status = params.get('easyparcel')
+    document.getElementById(tab === 'inbox' ? 'outdoor-messages' : 'outdoor-orders')?.scrollIntoView({ block: 'start' })
+  }, [tab])
+
+  useEffect(() => {
+    const status = searchParams.get('easyparcel')
     if (status === 'connected') setNotice('EasyParcel connected.')
     if (status === 'error' || status === 'invalid') setError('EasyParcel connection failed. Try Connect again.')
     if (status === 'unauthorized') setError('Log in as HQ staff, then Connect EasyParcel.')
-  }, [])
+  }, [searchParams])
 
   const runAction = async (id: string, action: string, extra?: Record<string, string>) => {
     setBusyId(id)
@@ -177,24 +180,24 @@ export default function OutdoorFulfilmentClient() {
         </button>
       </div>
 
-      <div className="mt-6 flex gap-2 border-b border-[var(--out-line)]">
+      <div id={tab === 'inbox' ? 'outdoor-messages' : 'outdoor-orders'} className="mt-6 flex gap-2 border-b border-[var(--out-line)] scroll-mt-28">
         <button
           type="button"
-          onClick={() => setTab('orders')}
+          onClick={() => router.push('/outdoor/fulfilment')}
           className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
             tab === 'orders' ? 'border-[var(--out-moss)]' : 'border-transparent text-[var(--out-muted)]'
           }`}
         >
-          Fulfilment
+          Follow orders
         </button>
         <button
           type="button"
-          onClick={() => setTab('inbox')}
+          onClick={() => router.push('/outdoor/fulfilment?tab=inbox')}
           className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
             tab === 'inbox' ? 'border-[var(--out-moss)]' : 'border-transparent text-[var(--out-muted)]'
           }`}
         >
-          Contact inbox
+          Messages
         </button>
       </div>
 
