@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
+import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
+
+const OUTDOOR_CONTACT_INBOX = 'outdoor@serapod.com'
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  }[char]!))
+}
 
 async function requireOutdoorStaff(supabase: any) {
   const {
@@ -47,6 +61,31 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('[outdoor/contact]', error)
+      return NextResponse.json({ error: 'Could not send message.' }, { status: 500 })
+    }
+
+    const orgId = await resolveOrgForEmail(admin)
+    if (!orgId) {
+      return NextResponse.json({ error: 'Could not send message.' }, { status: 500 })
+    }
+
+    const subject = `Outdoor contact from ${name}`
+    const text = [
+      `Name: ${name}`,
+      `Email: ${email}`,
+      '',
+      message,
+    ].join('\n')
+    const html = `<p><strong>Name:</strong> ${escapeHtml(name)}<br><strong>Email:</strong> ${escapeHtml(email)}</p><p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>`
+    const sent = await sendTransactionalHtmlEmail(admin, orgId, {
+      to: OUTDOOR_CONTACT_INBOX,
+      subject,
+      text,
+      html,
+      fromName: 'SeraOutdoor',
+    })
+    if (!sent.success) {
+      console.error('[outdoor/contact] email failed:', sent.error)
       return NextResponse.json({ error: 'Could not send message.' }, { status: 500 })
     }
 
