@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 
@@ -155,6 +156,15 @@ export async function POST(request: NextRequest) {
 
     // ── 2. Shipping (Outdoor may pass EasyParcel quote; /store stays free/zero) ──
     const salesChannel = body.salesChannel === 'outdoor' ? 'outdoor' : 'store'
+    if (salesChannel === 'outdoor') {
+      const session = await createClient()
+      const { data: { user } } = await session.auth.getUser()
+      const accountEmail = String(user?.email || '').trim()
+      if (!accountEmail) {
+        return NextResponse.json({ error: 'Sign in before paying.' }, { status: 401 })
+      }
+      body.customer.email = accountEmail
+    }
     const shippingAmountRaw = Number(body.shipping?.amount ?? 0)
     const shippingAmount =
       salesChannel === 'outdoor' && Number.isFinite(shippingAmountRaw) && shippingAmountRaw >= 0

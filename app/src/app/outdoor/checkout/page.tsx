@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
 import { MALAYSIA_STATES } from '@/lib/shipping/malaysia-states'
+import { socialAccountLabel } from '@/lib/auth/social-oauth'
 
 const LOGIN_FOR_CHECKOUT = `/outdoor/login?next=${encodeURIComponent('/outdoor/checkout')}`
 
@@ -32,6 +33,7 @@ export default function OutdoorCheckoutPage() {
   const [selectedRate, setSelectedRate] = useState<Rate | null>(null)
   const [payMethods, setPayMethods] = useState<{ key: string; label: string; isDefault: boolean }[]>([])
   const [payProvider, setPayProvider] = useState('')
+  const [accountEmail, setAccountEmail] = useState('')
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -88,7 +90,16 @@ export default function OutdoorCheckoutPage() {
   useEffect(() => {
     const supabase = createClient()
     void supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) router.replace(LOGIN_FOR_CHECKOUT)
+      if (!user?.email) {
+        router.replace(LOGIN_FOR_CHECKOUT)
+        return
+      }
+      setAccountEmail(user.email)
+      const username = typeof user.user_metadata?.username === 'string' ? user.user_metadata.username : ''
+      setForm((current) => ({
+        ...current,
+        email: socialAccountLabel(user.email || '', username),
+      }))
     })
   }, [router])
 
@@ -140,7 +151,7 @@ export default function OutdoorCheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer: form,
+          customer: { ...form, email: accountEmail || form.email },
           items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
           returnBasePath: '/outdoor',
           salesChannel: 'outdoor',
@@ -199,7 +210,10 @@ export default function OutdoorCheckoutPage() {
             <h2 className="font-display text-xl text-[var(--out-bark)]">Your details</h2>
             <div className="mt-4 space-y-3">
               {field('name', 'Full name')}
-              {field('email', 'Email', { type: 'email' })}
+              <label className="block text-sm font-medium text-[var(--out-bark)]">
+                Account
+                <input readOnly value={form.email} className="out-input bg-[var(--out-sand)]/40" />
+              </label>
               {field('phone', 'Phone', { type: 'tel' })}
             </div>
           </div>
