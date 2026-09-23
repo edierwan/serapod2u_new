@@ -9,13 +9,16 @@ export async function createSessionForSocialProfile(profile: {
   provider: string
   providerUserId: string
   email?: string | null
+  username?: string
   fullName?: string
   avatarUrl?: string
 }) {
   const admin = createAdminClient()
   const email = profile.email?.trim() || syntheticSocialEmail(profile.provider, profile.providerUserId)
+  const username = String(profile.username || '').replace(/^@/, '').trim()
   const metadata = {
     full_name: profile.fullName || '',
+    username,
     avatar_url: profile.avatarUrl || '',
     auth_provider: profile.provider,
     [`${profile.provider}_id`]: profile.providerUserId,
@@ -65,6 +68,13 @@ export async function createSessionForSocialProfile(profile: {
   if (otpError || !sessionData.user) {
     throw new Error(otpError?.message || 'Could not verify social login')
   }
+
+  await admin.auth.admin.updateUserById(sessionData.user.id, {
+    user_metadata: {
+      ...sessionData.user.user_metadata,
+      ...metadata,
+    },
+  })
 
   await ensureUserRow(sessionData.user.id, sessionData.user.email || email, {
     fullName: profile.fullName,

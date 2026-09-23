@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { socialAccountLabel } from '@/lib/auth/social-oauth'
 
 type Profile = {
   email: string
@@ -56,8 +57,9 @@ export default function OutdoorAccountClient() {
         .single()
 
       const row = data as any
+      const authEmail = row?.email || user.email || ''
       setProfile({
-        email: row?.email || user.email || '',
+        email: socialAccountLabel(authEmail, user.user_metadata?.username),
         fullName: row?.full_name || '',
         phone: row?.phone || '',
         address: row?.address || '',

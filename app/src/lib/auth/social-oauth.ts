@@ -13,6 +13,15 @@ export function syntheticSocialEmail(provider: string, providerUserId: string) {
   return `${provider}.${id}@oauth.serapod2u.com`
 }
 
+/** Show @username on the account page. The oauth email stays internal. */
+export function socialAccountLabel(email: string, username?: string | null) {
+  const handle = String(username || '').replace(/^@/, '').trim()
+  if (handle && String(email || '').toLowerCase().endsWith('@oauth.serapod2u.com')) {
+    return `@${handle}`
+  }
+  return email
+}
+
 export function newOAuthState() {
   return randomBytes(24).toString('hex')
 }
@@ -156,6 +165,7 @@ export async function exchangeTwitterCode(origin: string, code: string, verifier
     provider: 'twitter' as const,
     providerUserId,
     email: null as string | null,
+    username: String(user.username || ''),
     fullName: String(user.name || user.username || ''),
     avatarUrl: String(user.profile_image_url || ''),
   }
