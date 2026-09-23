@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
 
 type TrackedOrder = {
   orderRef: string
@@ -67,6 +68,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
   const [loading, setLoading] = useState(Boolean(directRef))
   const [error, setError] = useState('')
   const [order, setOrder] = useState<TrackedOrder | null>(null)
+  const [paying, setPaying] = useState(false)
   const [showForm, setShowForm] = useState(!directRef)
   const [accountMode, setAccountMode] = useState<'loading' | 'guest' | 'in'>('loading')
   const [accountOrders, setAccountOrders] = useState<MineOrder[]>([])
@@ -220,6 +222,25 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
               {statusLabel(order.status)}
             </span>
           </div>
+
+          {order.status === 'pending_payment' ? (
+            <button
+              type="button"
+              disabled={paying}
+              onClick={() => {
+                setPaying(true)
+                setError('')
+                void resumeOutdoorPayment(order.orderRef).catch((err: any) => {
+                  setPaying(false)
+                  setError(err.message || 'Could not continue payment')
+                })
+              }}
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
+            >
+              {paying ? 'Opening payment…' : 'Continue payment'}
+            </button>
+          ) : null}
+          {error && order ? <p className="text-sm text-red-600">{error}</p> : null}
 
           <ol className="grid grid-cols-4 gap-2">
             {STEPS.map((label, i) => {

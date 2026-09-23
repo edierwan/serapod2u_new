@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { socialAccountLabel } from '@/lib/auth/social-oauth'
+import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
 
 type Profile = {
   email: string
@@ -265,12 +266,25 @@ export default function OutdoorAccountClient({
               </div>
               <div className="text-right">
                 <p className="font-semibold">{money(order.totalAmount, order.currency)}</p>
-                <Link
-                  href={`/outdoor/track?order=${encodeURIComponent(order.orderRef)}`}
-                  className="text-xs font-semibold text-[var(--out-moss)] hover:underline"
-                >
-                  Track
-                </Link>
+                <div className="mt-2 flex flex-col items-end gap-2">
+                  {order.status === 'pending_payment' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void resumeOutdoorPayment(order.orderRef).catch((err: any) => setOrdersError(err.message || 'Could not continue payment'))
+                      }}
+                      className="h-9 rounded-full bg-[var(--out-moss)] px-4 text-xs font-semibold text-white"
+                    >
+                      Continue payment
+                    </button>
+                  ) : null}
+                  <Link
+                    href={`/outdoor/track?order=${encodeURIComponent(order.orderRef)}`}
+                    className="text-xs font-semibold text-[var(--out-moss)] hover:underline"
+                  >
+                    Track
+                  </Link>
+                </div>
               </div>
             </div>
           ))}
