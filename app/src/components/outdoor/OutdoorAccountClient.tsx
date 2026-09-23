@@ -225,7 +225,7 @@ export default function OutdoorAccountClient() {
               <div className="text-right">
                 <p className="font-semibold">{money(order.totalAmount, order.currency)}</p>
                 <Link
-                  href={`/outdoor/track`}
+                  href={`/outdoor/track?order=${encodeURIComponent(order.orderRef)}`}
                   className="text-xs font-semibold text-[var(--out-moss)] hover:underline"
                 >
                   Track

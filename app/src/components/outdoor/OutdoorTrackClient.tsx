@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type TrackedOrder = {
   orderRef: string
@@ -47,15 +47,16 @@ function stepIndex(status: string) {
 
 const STEPS = ['Placed', 'Paid', 'Shipped', 'Delivered']
 
-export default function OutdoorTrackClient() {
-  const [orderRef, setOrderRef] = useState('')
+export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOrderRef?: string }) {
+  const directRef = initialOrderRef.trim()
+  const [orderRef, setOrderRef] = useState(directRef)
   const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(Boolean(directRef))
   const [error, setError] = useState('')
   const [order, setOrder] = useState<TrackedOrder | null>(null)
+  const [showForm, setShowForm] = useState(!directRef)
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const lookup = async (ref: string, mail: string) => {
     setLoading(true)
     setError('')
     setOrder(null)
@@ -63,16 +64,32 @@ export default function OutdoorTrackClient() {
       const res = await fetch('/api/storefront/orders/lookup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderRef, email }),
+        body: JSON.stringify({ orderRef: ref, email: mail }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || 'Lookup failed')
       setOrder(data.order)
+      setShowForm(false)
     } catch (err: any) {
+      setShowForm(true)
       setError(err.message || 'Lookup failed')
     } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    if (!directRef) return
+    const mail = new URLSearchParams(window.location.search).get('email')?.trim() || ''
+    if (mail) setEmail(mail)
+    void lookup(directRef, mail)
+    // Load the order from the account link once. The signed-in email is already known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directRef])
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await lookup(orderRef, email)
   }
 
   const activeStep = order ? stepIndex(order.status) : -1
@@ -83,10 +100,13 @@ export default function OutdoorTrackClient() {
         SeraOutdoor
       </p>
       <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Track order</h1>
-      <p className="mt-2 text-center text-sm text-[var(--out-muted)]">
-        Use the order number from your confirmation email.
-      </p>
+      {showForm ? (
+        <p className="mt-2 text-center text-sm text-[var(--out-muted)]">
+          Use the order number from your confirmation email.
+        </p>
+      ) : null}
 
+      {showForm ? (
       <form className="out-card mt-8 space-y-4 p-5 sm:p-7" onSubmit={submit}>
         <label className="block text-sm font-medium text-[var(--out-bark)]">
           Order number
@@ -113,6 +133,9 @@ export default function OutdoorTrackClient() {
           {loading ? 'Searching…' : 'Find my order'}
         </button>
       </form>
+      ) : loading ? (
+        <p className="mt-8 text-center text-sm text-[var(--out-muted)]">Loading this order…</p>
+      ) : null}
 
       {order ? (
         <div className="out-card mt-5 space-y-6 p-5 sm:p-7">
@@ -177,6 +200,13 @@ export default function OutdoorTrackClient() {
               Courier updates appear here after we ship.
             </p>
           ) : null}
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="text-xs font-semibold text-[var(--out-moss)] hover:underline"
+          >
+            Track a different order
+          </button>
         </div>
       ) : null}
     </div>

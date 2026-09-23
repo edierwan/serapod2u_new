@@ -43,7 +43,7 @@ export default async function OutdoorOrderSuccessPage({
           </div>
         ) : null}
         <div className="mt-8 flex flex-col gap-2">
-          <Link href="/outdoor/track" className="out-btn w-full">
+          <Link href={ref ? `/outdoor/track?order=${encodeURIComponent(ref)}` : '/outdoor/track'} className="out-btn w-full">
             Track order
           </Link>
           <Link

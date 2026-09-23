@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { easyParcelTrackAwb, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
 
 function normalizeEmail(value: unknown) {
@@ -14,7 +15,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
     const orderRef = normalizeRef(body?.orderRef || body?.ref)
-    const email = normalizeEmail(body?.email)
+    let email = normalizeEmail(body?.email)
+    if (!email) {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      email = normalizeEmail(user?.email)
+    }
 
     if (!orderRef || !email || !email.includes('@')) {
       return NextResponse.json(
