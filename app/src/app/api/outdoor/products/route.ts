@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { resolveOutdoorCatalogScope } from '@/lib/outdoor/catalog'
 import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
+import { outdoorStaticImage } from '@/lib/outdoor/merch'
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (char) => ({
@@ -42,6 +43,39 @@ function colorOf(variant: any) {
   return name && name.toLowerCase() !== 'default' ? name : ''
 }
 
+function savedImage(variant: any) {
+  const custom = variant?.attributes && typeof variant.attributes === 'object'
+    ? String(variant.attributes.outdoor_image || '').trim()
+    : ''
+  return custom
+}
+
+function previewImage(name: string, variant: any) {
+  return savedImage(variant) || outdoorStaticImage(name, colorOf(variant) || '#76232F') || ''
+}
+
+function allowedImage(url: string) {
+  if (!url) return true
+  if (url.startsWith('/outdoor/products/')) return true
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' && parsed.pathname.includes('/product-images/')
+  } catch {
+    return false
+  }
+}
+
+async function rememberProductImage(admin: any, productId: string, imageUrl: string) {
+  if (!imageUrl || imageUrl.startsWith('/outdoor/')) return
+  const { error } = await admin.from('product_images').insert({
+    product_id: productId,
+    image_url: imageUrl,
+    image_type: 'PRODUCT',
+    is_primary: true,
+  })
+  if (error) console.error('[outdoor/products] image row', error)
+}
+
 function toEditorProduct(row: any) {
   const variant = pickVariant(row.product_variants)
   return {
@@ -50,6 +84,7 @@ function toEditorProduct(row: any) {
     description: row.product_description || '',
     price: Number(variant?.suggested_retail_price || 0),
     color: colorOf(variant),
+    imageUrl: previewImage(row.product_name || '', variant),
   }
 }
 
@@ -114,11 +149,15 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const id = String(body.id || '').trim()
     const name = String(body.name || '').trim().slice(0, 140)
-    const color = String(body.color || '').trim().slice(0, 40)
+    const color = String(body.color || '').trim().slice(0, 80)
     const description = String(body.description || '').trim().slice(0, 2000)
+    const imageUrl = String(body.imageUrl || '').trim().slice(0, 500)
     const price = Number(body.price)
     if (!id || !name || !Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: 'Enter a product name and a price above 0.' }, { status: 400 })
+    }
+    if (!allowedImage(imageUrl)) {
+      return NextResponse.json({ error: 'That photo could not be saved.' }, { status: 400 })
     }
 
     const admin: any = createAdminClient()
@@ -146,11 +185,14 @@ export async function PATCH(request: NextRequest) {
     const attributes = { ...(variant?.attributes && typeof variant.attributes === 'object' ? variant.attributes : {}) }
     if (color) attributes.color = color
     else delete attributes.color
-    const variantPatch = {
+    const customPhoto = imageUrl && !imageUrl.startsWith('/outdoor/') ? imageUrl : ''
+    if (customPhoto) attributes.outdoor_image = customPhoto
+    const variantPatch: Record<string, unknown> = {
       variant_name: color || 'Default',
       suggested_retail_price: Math.round(price * 100) / 100,
       attributes,
     }
+    if (customPhoto) variantPatch.image_url = customPhoto
     const variantWrite = variant
       ? await admin.from('product_variants').update(variantPatch).eq('id', variant.id)
       : await admin.from('product_variants').insert({
@@ -165,6 +207,7 @@ export async function PATCH(request: NextRequest) {
       console.error('[outdoor/products] variant update', variantWrite.error)
       return NextResponse.json({ error: 'Could not save the product price.' }, { status: 500 })
     }
+    if (customPhoto) await rememberProductImage(admin, id, customPhoto)
 
     const text = [`Updated: ${name}`, color ? `Color: ${color}` : '', `Price: RM ${price.toFixed(2)}`, description].filter(Boolean).join('\n')
     const html = `<p><strong>Product update</strong></p><p>${escapeHtml(name)}${color ? `<br>Color: ${escapeHtml(color)}` : ''}<br>RM ${price.toFixed(2)}</p>${description ? `<p>${escapeHtml(description)}</p>` : ''}`
@@ -197,9 +240,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}))
     const name = String(body.name || '').trim().slice(0, 140)
-    const color = String(body.color || '').trim().slice(0, 40)
+    const color = String(body.color || '').trim().slice(0, 80)
     const description = String(body.description || '').trim().slice(0, 2000)
+    const imageUrl = String(body.imageUrl || '').trim().slice(0, 500)
     const price = Number(body.price)
+    if (!allowedImage(imageUrl)) {
+      return NextResponse.json({ error: 'That photo could not be saved.' }, { status: 400 })
+    }
     if (!name || !Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: 'Enter a product name and a price above 0.' }, { status: 400 })
     }
@@ -237,7 +284,11 @@ export async function POST(request: NextRequest) {
       is_active: true,
       is_default: true,
       sort_order: 0,
-      attributes: color ? { color } : {},
+      ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { image_url: imageUrl } : {}),
+      attributes: {
+        ...(color ? { color } : {}),
+        ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { outdoor_image: imageUrl } : {}),
+      },
     })
 
     if (variantError) {
@@ -245,6 +296,7 @@ export async function POST(request: NextRequest) {
       await admin.from('products').delete().eq('id', product.id)
       return NextResponse.json({ error: 'Could not add the product price.' }, { status: 500 })
     }
+    if (imageUrl && !imageUrl.startsWith('/outdoor/')) await rememberProductImage(admin, product.id, imageUrl)
 
     const text = [name, color ? `Color: ${color}` : '', `Price: RM ${price.toFixed(2)}`, description].filter(Boolean).join('\n')
     const html = `<p><strong>New product</strong></p><p>${escapeHtml(name)}${color ? `<br>Color: ${escapeHtml(color)}` : ''}<br>RM ${price.toFixed(2)}</p>${description ? `<p>${escapeHtml(description)}</p>` : ''}`

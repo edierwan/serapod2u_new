@@ -9,10 +9,86 @@ type ProductDraft = {
   price: string
   color: string
   description: string
+  imageUrl: string
 }
 
-const inputClass = 'mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3'
-const textClass = 'mt-1.5 w-full rounded-md border border-[var(--out-line)] px-3 py-2'
+const fieldClass = 'w-full bg-transparent text-[var(--out-bark)] outline-none placeholder:text-[var(--out-muted)]'
+
+function ProductSheet({
+  name,
+  price,
+  color,
+  description,
+  imageUrl,
+  saving,
+  submitLabel,
+  onName,
+  onPrice,
+  onColor,
+  onDescription,
+  onImage,
+  onSubmit,
+}: {
+  name: string
+  price: string
+  color: string
+  description: string
+  imageUrl: string
+  saving: boolean
+  submitLabel: string
+  onName: (value: string) => void
+  onPrice: (value: string) => void
+  onColor: (value: string) => void
+  onDescription: (value: string) => void
+  onImage: (file: File) => void
+  onSubmit: (event: React.FormEvent) => void
+}) {
+  return (
+    <form onSubmit={onSubmit} className="mx-auto w-full max-w-xl">
+      <div className="relative overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" className="mx-auto h-auto w-full max-h-[58vh] object-contain" />
+        ) : (
+          <div className="flex aspect-square items-center justify-center text-sm text-[var(--out-muted)]">Add a photo</div>
+        )}
+        <label className="absolute bottom-4 right-4 cursor-pointer rounded-full bg-[var(--out-bark)] px-4 py-2 text-xs font-semibold text-[var(--out-cream)]">
+          Change photo
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) onImage(file)
+              event.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
+      <label className="mt-4 block">
+        <span className="sr-only">Name</span>
+        <input value={name} onChange={(event) => onName(event.target.value)} required placeholder="Product name" className={`${fieldClass} font-display text-3xl tracking-tight`} />
+      </label>
+      <label className="mt-1 block">
+        <span className="sr-only">Price (RM)</span>
+        <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="Price" className={`${fieldClass} text-lg font-semibold`} />
+      </label>
+      <label className="mt-3 block text-sm text-[var(--out-muted)]">
+        Color
+        <input value={color} onChange={(event) => onColor(event.target.value)} placeholder="Color" className={`${fieldClass} mt-1 text-base text-[var(--out-bark)]`} />
+      </label>
+      <label className="mt-3 block text-sm text-[var(--out-muted)]">
+        Description
+        <textarea value={description} onChange={(event) => onDescription(event.target.value)} rows={4} placeholder="Description" className={`${fieldClass} mt-1 resize-y text-base leading-relaxed text-[var(--out-bark)]`} />
+      </label>
+      <button type="submit" disabled={saving} className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40">
+        {saving ? 'Saving…' : submitLabel}
+      </button>
+    </form>
+  )
+}
 
 export default function OutdoorAdminClient() {
   const [allowed, setAllowed] = useState<boolean | null>(null)
@@ -22,7 +98,10 @@ export default function OutdoorAdminClient() {
   const [productPrice, setProductPrice] = useState('')
   const [productColor, setProductColor] = useState('')
   const [productDescription, setProductDescription] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [productImage, setProductImage] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [savingId, setSavingId] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -47,6 +126,7 @@ export default function OutdoorAdminClient() {
       price: item.price ? String(item.price) : '',
       color: item.color || '',
       description: item.description || '',
+      imageUrl: item.imageUrl || '',
     })))
   }
 
@@ -56,9 +136,24 @@ export default function OutdoorAdminClient() {
 
   const emailedNote = (count: number) => `Emailed ${count} subscriber${count === 1 ? '' : 's'}.`
 
+  const uploadPhoto = async (file: File) => {
+    setUploading(true)
+    setError('')
+    try {
+      const body = new FormData()
+      body.set('file', file)
+      const res = await fetch('/api/outdoor/products/image', { method: 'POST', body })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.url) throw new Error(data?.error || 'Could not upload the photo')
+      return String(data.url)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const addProduct = async (event: React.FormEvent) => {
     event.preventDefault()
-    setSaving(true)
+    setSavingId('new')
     setMessage('')
     setError('')
     try {
@@ -70,6 +165,7 @@ export default function OutdoorAdminClient() {
           price: Number(productPrice),
           color: productColor,
           description: productDescription,
+          imageUrl: productImage,
         }),
       })
       const data = await res.json().catch(() => null)
@@ -78,18 +174,20 @@ export default function OutdoorAdminClient() {
       setProductPrice('')
       setProductColor('')
       setProductDescription('')
+      setProductImage('')
+      setAdding(false)
       setMessage(`Product added. ${emailedNote(data.emailed || 0)}`)
       await load()
     } catch (err: any) {
       setError(err.message || 'Could not add the product')
     } finally {
-      setSaving(false)
+      setSavingId('')
     }
   }
 
   const saveProduct = async (event: React.FormEvent, product: ProductDraft) => {
     event.preventDefault()
-    setSaving(true)
+    setSavingId(product.id)
     setMessage('')
     setError('')
     try {
@@ -102,6 +200,7 @@ export default function OutdoorAdminClient() {
           price: Number(product.price),
           color: product.color,
           description: product.description,
+          imageUrl: product.imageUrl,
         }),
       })
       const data = await res.json().catch(() => null)
@@ -111,7 +210,7 @@ export default function OutdoorAdminClient() {
     } catch (err: any) {
       setError(err.message || 'Could not save the product')
     } finally {
-      setSaving(false)
+      setSavingId('')
     }
   }
 
@@ -138,63 +237,60 @@ export default function OutdoorAdminClient() {
       <div className="mt-4 flex gap-4 text-sm font-semibold">
         <Link href="/outdoor/fulfilment" className="text-[var(--out-moss)]">Follow orders</Link>
         <Link href="/outdoor/fulfilment?tab=inbox" className="text-[var(--out-moss)]">Messages</Link>
+        <button type="button" onClick={() => setAdding((open) => !open)} className="text-[var(--out-moss)]">
+          {adding ? 'Close' : 'Add product'}
+        </button>
       </div>
 
       {error ? <p className="mt-6 text-sm text-red-600">{error}</p> : null}
       {message ? <p className="mt-6 text-sm font-medium text-emerald-700">{message}</p> : null}
+      {uploading ? <p className="mt-4 text-sm text-[var(--out-muted)]">Uploading photo…</p> : null}
 
-      <form onSubmit={addProduct} className="mt-8 space-y-4 rounded-2xl border border-[var(--out-line)] bg-white p-5">
-        <p className="font-semibold">Add a new product</p>
-        <label className="block text-sm">
-          Name
-          <input value={productName} onChange={(e) => setProductName(e.target.value)} required className={inputClass} />
-        </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
-            Price (RM)
-            <input value={productPrice} onChange={(e) => setProductPrice(e.target.value)} required type="number" min="0.01" step="0.01" className={inputClass} />
-          </label>
-          <label className="block text-sm">
-            Color
-            <input value={productColor} onChange={(e) => setProductColor(e.target.value)} className={inputClass} />
-          </label>
+      {adding ? (
+        <div className="mt-8">
+          <ProductSheet
+            name={productName}
+            price={productPrice}
+            color={productColor}
+            description={productDescription}
+            imageUrl={productImage}
+            saving={savingId === 'new' || uploading}
+            submitLabel="Add product"
+            onName={setProductName}
+            onPrice={setProductPrice}
+            onColor={setProductColor}
+            onDescription={setProductDescription}
+            onImage={(file) => {
+              void uploadPhoto(file).then(setProductImage).catch((err: any) => setError(err.message || 'Could not upload the photo'))
+            }}
+            onSubmit={addProduct}
+          />
         </div>
-        <label className="block text-sm">
-          Description
-          <textarea value={productDescription} onChange={(e) => setProductDescription(e.target.value)} rows={3} className={textClass} />
-        </label>
-        <button type="submit" disabled={saving} className="h-11 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white disabled:opacity-50">
-          {saving ? 'Adding…' : 'Add product'}
-        </button>
-      </form>
+      ) : null}
 
-      <div className="mt-8 space-y-4">
-        <p className="font-semibold">Current products</p>
+      <div className="mt-10 space-y-12">
         {products.length === 0 ? <p className="text-sm text-[var(--out-muted)]">No outdoor products yet.</p> : null}
         {products.map((product) => (
-          <form key={product.id} onSubmit={(event) => saveProduct(event, product)} className="space-y-4 rounded-2xl border border-[var(--out-line)] bg-white p-5">
-            <label className="block text-sm">
-              Name
-              <input value={product.name} onChange={(e) => updateDraft(product.id, { name: e.target.value })} required className={inputClass} />
-            </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm">
-                Price (RM)
-                <input value={product.price} onChange={(e) => updateDraft(product.id, { price: e.target.value })} required type="number" min="0.01" step="0.01" className={inputClass} />
-              </label>
-              <label className="block text-sm">
-                Color
-                <input value={product.color} onChange={(e) => updateDraft(product.id, { color: e.target.value })} className={inputClass} />
-              </label>
-            </div>
-            <label className="block text-sm">
-              Description
-              <textarea value={product.description} onChange={(e) => updateDraft(product.id, { description: e.target.value })} rows={3} className={textClass} />
-            </label>
-            <button type="submit" disabled={saving} className="h-11 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white disabled:opacity-50">
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </form>
+          <ProductSheet
+            key={product.id}
+            name={product.name}
+            price={product.price}
+            color={product.color}
+            description={product.description}
+            imageUrl={product.imageUrl}
+            saving={savingId === product.id || uploading}
+            submitLabel="Save"
+            onName={(value) => updateDraft(product.id, { name: value })}
+            onPrice={(value) => updateDraft(product.id, { price: value })}
+            onColor={(value) => updateDraft(product.id, { color: value })}
+            onDescription={(value) => updateDraft(product.id, { description: value })}
+            onImage={(file) => {
+              void uploadPhoto(file)
+                .then((url) => updateDraft(product.id, { imageUrl: url }))
+                .catch((err: any) => setError(err.message || 'Could not upload the photo'))
+            }}
+            onSubmit={(event) => saveProduct(event, product)}
+          />
         ))}
       </div>
     </div>

@@ -74,7 +74,13 @@ export function outdoorSwatchesFromVariants(
     const attrs = asRecord(variant.attributes)
     const attrColor = String(attrs.color || attrs.colour || attrs.hex || attrs.Color || '')
     const found = outdoorColorFromText(attrColor) || outdoorColorFromText(String(variant.variant_name || ''))
-    if (!found) continue
+    const custom = String(attrs.outdoor_image || '').trim()
+    if (!found) {
+      if (!custom || seen.has(custom)) continue
+      seen.add(custom)
+      out.push({ hex: '#C1C6C8', label: 'Photo', imageUrl: custom })
+      continue
+    }
     const key = found.hex.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -82,7 +88,7 @@ export function outdoorSwatchesFromVariants(
     out.push({
       hex: found.hex,
       label: found.label,
-      imageUrl: outdoorStaticImage(kindName, found.hex) || variant.image_url || null,
+      imageUrl: custom || outdoorStaticImage(kindName, found.hex) || variant.image_url || null,
     })
   }
   return out

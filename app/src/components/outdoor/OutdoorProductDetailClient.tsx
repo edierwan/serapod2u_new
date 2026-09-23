@@ -25,7 +25,10 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
       product.product_name,
     ).map((swatch) => ({
       ...swatch,
-      imageUrl: outdoorStaticImage(product.product_name, swatch.hex) || swatch.imageUrl,
+      imageUrl:
+        swatch.imageUrl && !swatch.imageUrl.startsWith('/outdoor/products/')
+          ? swatch.imageUrl
+          : outdoorStaticImage(product.product_name, swatch.hex) || swatch.imageUrl,
     }))
     return parsed.length > 0 ? parsed : outdoorFallbackSwatches(product.product_name)
   }, [product.product_name, product.variants])
@@ -74,7 +77,6 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   const [activeHex, setActiveHex] = useState<string | null>(selectedHex)
   const displayHex = String(activeHex || selectedHex || '')
   const displayImage =
-    (displayHex ? outdoorStaticImage(product.product_name, displayHex) : null) ||
     swatches.find((s) => s.hex.toLowerCase() === displayHex.toLowerCase())?.imageUrl ||
     gallery[0]
 
