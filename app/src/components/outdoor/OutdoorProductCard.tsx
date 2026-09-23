@@ -68,10 +68,16 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
         </Link>
         <Link
           href={`/outdoor/shop/${product.id}`}
-          aria-label={`Open ${product.product_name}`}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--out-bark)]/15 text-[var(--out-bark)]"
+          aria-label={`View ${product.product_name}`}
+          className="group/hint relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--out-bark)]/15 text-[var(--out-bark)]"
         >
           <ShoppingBag className="h-4 w-4" />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-[calc(100%+6px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--out-bark)] px-2 py-1 text-[11px] font-medium leading-none text-[var(--out-cream)] opacity-0 shadow-md transition-opacity duration-150 group-hover/hint:opacity-100"
+          >
+            View product
+          </span>
         </Link>
       </div>
     </article>
