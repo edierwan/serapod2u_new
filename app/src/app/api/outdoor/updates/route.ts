@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
-import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
-import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
+import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
 
 const KINDS = ['product', 'color', 'event', 'other'] as const
 
@@ -62,21 +61,6 @@ export async function POST(request: NextRequest) {
     }
 
     const admin: any = createAdminClient()
-    const { data: subscribers, error: listError } = await admin
-      .from('outdoor_newsletter_subscribers')
-      .select('email_normalized')
-      .limit(500)
-
-    if (listError) {
-      console.error('[outdoor/updates] subscribers', listError)
-      return NextResponse.json({ error: 'Could not load subscribers.' }, { status: 500 })
-    }
-
-    const orgId = await resolveOrgForEmail(admin)
-    if (!orgId) {
-      return NextResponse.json({ error: 'Email is not configured.' }, { status: 500 })
-    }
-
     const { data: created, error: insertError } = await admin.from('outdoor_admin_updates').insert({
       kind,
       title,
@@ -91,25 +75,18 @@ export async function POST(request: NextRequest) {
     }
 
     const label = KIND_LABEL[kind] || 'Update'
-    const subject = `SeraOutdoor: ${title}`
-    const html = `<p><strong>${escapeHtml(label)}</strong></p><p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>`
-    let emailed = 0
-    for (const row of subscribers || []) {
-      const to = String(row.email_normalized || '').trim()
-      if (!to.includes('@')) continue
-      const sent = await sendTransactionalHtmlEmail(admin, orgId, {
-        to,
-        subject,
-        text: `${label}\n\n${text}`,
-        html,
-        fromName: 'SeraOutdoor',
-      })
-      if (sent.success) emailed += 1
+    const mailed = await emailOutdoorSubscribers(admin, {
+      subject: `SeraOutdoor: ${title}`,
+      text: `${label}\n\n${text}`,
+      html: `<p><strong>${escapeHtml(label)}</strong></p><p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>`,
+    })
+    if (!mailed.ok) {
+      return NextResponse.json({ error: mailed.error }, { status: 500 })
     }
 
-    await admin.from('outdoor_admin_updates').update({ emailed_count: emailed }).eq('id', created.id)
+    await admin.from('outdoor_admin_updates').update({ emailed_count: mailed.emailed }).eq('id', created.id)
 
-    return NextResponse.json({ ok: true, emailed, subscribers: (subscribers || []).length })
+    return NextResponse.json({ ok: true, emailed: mailed.emailed, subscribers: mailed.subscribers })
   } catch (err) {
     console.error('[outdoor/updates POST]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

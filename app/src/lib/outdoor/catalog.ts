@@ -127,6 +127,7 @@ export async function listOutdoorProducts(params: {
           sort: params.sort,
           page: 1,
           limit,
+          channel: 'outdoor',
         }),
       ),
     )
@@ -153,6 +154,7 @@ export async function listOutdoorProducts(params: {
     sort: params.sort,
     page,
     limit,
+    channel: 'outdoor',
   })
 
   // Never leak non-outdoor items into Outdoor UI

@@ -90,6 +90,8 @@ interface ListProductsParams {
   category?: string
   /** Optional brand UUID — used by Outdoor when OUTDOOR_BRAND_ID is set. */
   brandId?: string
+  /** Outdoor listings include products created from the Outdoor admin desk. */
+  channel?: 'store' | 'outdoor'
   sort?: 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
   page?: number
   limit?: number
@@ -166,7 +168,7 @@ export function selectStorefrontProductMedia(
 // ── Functions ────────────────────────────────────────────────────
 
 export async function listProducts(params: ListProductsParams = {}) {
-  const { search, category, brandId, sort = 'newest', page = 1, limit = 12 } = params
+  const { search, category, brandId, sort = 'newest', page = 1, limit = 12, channel = 'store' } = params
   const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
@@ -178,6 +180,7 @@ export async function listProducts(params: ListProductsParams = {}) {
 
   const hiddenGroupIds = hiddenGroups?.map(g => g.id) || []
 
+  const runQuery = (excludeOutdoorOnly: boolean) => {
   // Build query for products with their variants
   let query = supabase
     .from('products')
@@ -208,6 +211,8 @@ export async function listProducts(params: ListProductsParams = {}) {
       )
     `, { count: 'exact' })
     .eq('is_active', true)
+
+  if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
 
   // Exclude products from hidden groups
   if (hiddenGroupIds.length > 0) {
@@ -243,8 +248,16 @@ export async function listProducts(params: ListProductsParams = {}) {
 
   // Pagination
   query = query.range(offset, offset + limit - 1)
+  return query
+  }
 
-  const { data, error, count } = await query
+  let { data, error, count } = await runQuery(channel !== 'outdoor')
+  if (error && channel !== 'outdoor' && /outdoor_only/i.test(error.message || '')) {
+    const retry = await runQuery(false)
+    data = retry.data
+    error = retry.error
+    count = retry.count
+  }
 
   if (error) {
     console.error('Error fetching products:', formatStorefrontError(error))
