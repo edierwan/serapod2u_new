@@ -59,9 +59,14 @@ export default function OutdoorNewsletter({
           disabled={done || loading}
           className="h-10 shrink-0 rounded-full bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50"
         >
-          {done ? 'Registered' : loading ? 'Saving…' : 'Subscribe'}
+          {loading ? 'Saving…' : 'Subscribe'}
         </button>
       </div>
+      {done ? (
+        <p className={`mt-3 text-sm font-medium ${onDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+          You&apos;re subscribed. We&apos;ll email Outdoor news to this address.
+        </p>
+      ) : null}
       {error ? (
         <p className={`mt-2 text-sm ${onDark ? 'text-red-200' : 'text-red-600'}`}>{error}</p>
       ) : null}
