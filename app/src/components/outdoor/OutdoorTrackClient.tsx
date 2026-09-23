@@ -47,6 +47,19 @@ function stepIndex(status: string) {
 
 const STEPS = ['Placed', 'Paid', 'Shipped', 'Delivered']
 
+type MineOrder = {
+  orderRef: string
+  status: string
+  createdAt: string
+  preview: string[]
+}
+
+function orderOptionLabel(item: MineOrder) {
+  const when = item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' }) : ''
+  const name = item.preview.filter(Boolean).join(', ')
+  return [item.orderRef, name, statusLabel(item.status), when].filter(Boolean).join(' · ')
+}
+
 export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOrderRef?: string }) {
   const directRef = initialOrderRef.trim()
   const [orderRef, setOrderRef] = useState(directRef)
@@ -55,6 +68,8 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
   const [error, setError] = useState('')
   const [order, setOrder] = useState<TrackedOrder | null>(null)
   const [showForm, setShowForm] = useState(!directRef)
+  const [accountMode, setAccountMode] = useState<'loading' | 'guest' | 'in'>('loading')
+  const [accountOrders, setAccountOrders] = useState<MineOrder[]>([])
 
   const lookup = async (ref: string, mail: string) => {
     setLoading(true)
@@ -79,6 +94,28 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
   }
 
   useEffect(() => {
+    let cancelled = false
+    void fetch('/api/storefront/orders/mine?channel=outdoor')
+      .then(async (res) => {
+        if (cancelled) return
+        if (!res.ok) {
+          setAccountMode('guest')
+          return
+        }
+        const data = await res.json().catch(() => null)
+        if (cancelled) return
+        setAccountOrders(data?.orders || [])
+        setAccountMode('in')
+      })
+      .catch(() => {
+        if (!cancelled) setAccountMode('guest')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!directRef) return
     const mail = new URLSearchParams(window.location.search).get('email')?.trim() || ''
     if (mail) setEmail(mail)
@@ -86,6 +123,9 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
     // Load the order from the account link once. The signed-in email is already known.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [directRef])
+
+  const signedIn = accountMode === 'in'
+  const waitingForAccount = accountMode === 'loading' && !directRef
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -100,13 +140,45 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
         SeraOutdoor
       </p>
       <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Track order</h1>
-      {showForm ? (
+      {showForm && !signedIn ? (
         <p className="mt-2 text-center text-sm text-[var(--out-muted)]">
-          Use the order number from your confirmation email.
+          {waitingForAccount ? 'Loading your orders…' : 'Use the order number from your confirmation email.'}
         </p>
       ) : null}
 
-      {showForm ? (
+      {signedIn ? (
+        <form className="out-card mt-8 space-y-4 p-5 sm:p-7" onSubmit={(event) => event.preventDefault()}>
+          {accountOrders.length === 0 ? (
+            <p className="text-sm text-[var(--out-muted)]">You do not have an order yet.</p>
+          ) : (
+          <>
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Your order
+            <select
+              required
+              value={orderRef}
+              onChange={(event) => {
+                const next = event.target.value
+                setOrderRef(next)
+                if (next) void lookup(next, '')
+              }}
+              className="out-input"
+            >
+              <option value="">Choose an order</option>
+              {accountOrders.map((item) => (
+                <option key={item.orderRef} value={item.orderRef}>
+                  {orderOptionLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error && !order ? <p className="text-sm text-red-600">{error}</p> : null}
+          </>
+          )}
+        </form>
+      ) : null}
+
+      {showForm && !signedIn && !waitingForAccount ? (
       <form className="out-card mt-8 space-y-4 p-5 sm:p-7" onSubmit={submit}>
         <label className="block text-sm font-medium text-[var(--out-bark)]">
           Order number
@@ -200,6 +272,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
               Courier updates appear here after we ship.
             </p>
           ) : null}
+          {signedIn ? null : (
           <button
             type="button"
             onClick={() => setShowForm(true)}
@@ -207,6 +280,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
           >
             Track a different order
           </button>
+          )}
         </div>
       ) : null}
     </div>
