@@ -4,10 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { outdoorPublicOrigin, persistOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 import {
-  FacebookIcon,
   GoogleIcon,
-  InstagramIcon,
-  TikTokIcon,
   XIcon,
 } from '@/components/auth/SocialProviderIcons'
 
@@ -80,11 +77,9 @@ export default function SocialAuthButtons({
     'flex min-w-0 items-center justify-center gap-2 h-11 px-3 rounded-lg border border-[var(--sera-line)] bg-white hover:border-[var(--sera-ink)]/30 text-sm font-medium text-[var(--sera-ink)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
   const btnClass = variant === 'portal' ? portalBtn : outdoorBtn
 
+  // Paused until the provider apps are ready: Facebook, Instagram, TikTok.
   const items: { provider: SocialProvider; icon: ReactNode }[] = [
     { provider: 'google', icon: <GoogleIcon className="h-5 w-5 shrink-0" /> },
-    { provider: 'facebook', icon: <FacebookIcon className="h-5 w-5 shrink-0" /> },
-    { provider: 'instagram', icon: <InstagramIcon className="h-5 w-5 shrink-0" /> },
-    { provider: 'tiktok', icon: <TikTokIcon className="h-5 w-5 shrink-0" /> },
     { provider: 'twitter', icon: <XIcon className="h-5 w-5 shrink-0" /> },
   ]
 
