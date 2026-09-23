@@ -157,7 +157,7 @@ export async function middleware(request: NextRequest) {
     /^\/rt\/\d{4}\//.test(pathname)
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/lp', '/api/landing-pages/events', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register', '/api/auth/oauth', '/api/reference/search', '/api/shops/search', '/api/shops/locations', '/api/shops/prepare-registration', '/api/shops/contact-verification', '/api/health', '/scan', '/api/roadtour/claim-reward', '/api/roadtour/qr-image', '/api/support/whatsapp/ingest', '/api/webhooks/whatsapp/meta', '/api/webhooks/sms-gateway', '/api/telegram/webhook', '/privacy-policy', '/terms-of-service', '/data-deletion', '/help', '/outdoor', '/corporate', '/forgot-password', '/login']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/lp', '/api/landing-pages/events', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register', '/api/auth/oauth', '/api/outdoor/newsletter', '/api/outdoor/contact', '/api/reference/search', '/api/shops/search', '/api/shops/locations', '/api/shops/prepare-registration', '/api/shops/contact-verification', '/api/health', '/scan', '/api/roadtour/claim-reward', '/api/roadtour/qr-image', '/api/support/whatsapp/ingest', '/api/webhooks/whatsapp/meta', '/api/webhooks/sms-gateway', '/api/telegram/webhook', '/privacy-policy', '/terms-of-service', '/data-deletion', '/help', '/outdoor', '/corporate', '/forgot-password', '/login']
 
   // Check if current path is public
   const isPublicPath = isPublicRoadtourScanPath || PUBLIC_PATHS.some((path) =>
@@ -265,7 +265,7 @@ export async function middleware(request: NextRequest) {
         authError.status === 400
       ) {
         // Public API routes that don't require authentication
-        const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth/password-reset/') || request.nextUrl.pathname.startsWith('/api/auth/register/') || request.nextUrl.pathname.startsWith('/api/auth/oauth/')
+        const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth/password-reset/') || request.nextUrl.pathname.startsWith('/api/auth/register/') || request.nextUrl.pathname.startsWith('/api/auth/oauth/') || request.nextUrl.pathname.startsWith('/api/outdoor/newsletter') || request.nextUrl.pathname.startsWith('/api/outdoor/contact')
 
         // Return 401 for API routes instead of redirecting (except public ones)
         if (request.nextUrl.pathname.startsWith('/api/') && !isPublicApi) {
