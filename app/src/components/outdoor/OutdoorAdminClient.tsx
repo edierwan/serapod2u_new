@@ -3,32 +3,25 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
-type UpdateRow = {
+type ProductDraft = {
   id: string
-  kind: string
-  title: string
-  body: string
-  emailed_count: number
-  created_at: string
+  name: string
+  price: string
+  color: string
+  description: string
 }
 
-const KINDS = [
-  { value: 'color', label: 'New color' },
-  { value: 'event', label: 'Event' },
-  { value: 'other', label: 'Other update' },
-]
+const inputClass = 'mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3'
+const textClass = 'mt-1.5 w-full rounded-md border border-[var(--out-line)] px-3 py-2'
 
 export default function OutdoorAdminClient() {
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [subscribers, setSubscribers] = useState(0)
-  const [updates, setUpdates] = useState<UpdateRow[]>([])
+  const [products, setProducts] = useState<ProductDraft[]>([])
   const [productName, setProductName] = useState('')
   const [productPrice, setProductPrice] = useState('')
   const [productColor, setProductColor] = useState('')
   const [productDescription, setProductDescription] = useState('')
-  const [kind, setKind] = useState('event')
-  const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -41,19 +34,27 @@ export default function OutdoorAdminClient() {
       return
     }
     setAllowed(true)
-    const res = await fetch('/api/outdoor/updates')
+    const res = await fetch('/api/outdoor/products')
     const data = await res.json().catch(() => null)
     if (!res.ok) {
-      setError(data?.error || 'Could not load updates')
+      setError(data?.error || 'Could not load products')
       return
     }
-    setUpdates(data.updates || [])
     setSubscribers(data.subscribers || 0)
+    setProducts((data.products || []).map((item: any) => ({
+      id: item.id,
+      name: item.name || '',
+      price: item.price ? String(item.price) : '',
+      color: item.color || '',
+      description: item.description || '',
+    })))
   }
 
   useEffect(() => {
     void load()
   }, [])
+
+  const emailedNote = (count: number) => `Emailed ${count} subscriber${count === 1 ? '' : 's'}.`
 
   const addProduct = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -77,7 +78,7 @@ export default function OutdoorAdminClient() {
       setProductPrice('')
       setProductColor('')
       setProductDescription('')
-      setMessage(`Product added. Emailed ${data.emailed} subscriber${data.emailed === 1 ? '' : 's'}.`)
+      setMessage(`Product added. ${emailedNote(data.emailed || 0)}`)
       await load()
     } catch (err: any) {
       setError(err.message || 'Could not add the product')
@@ -86,28 +87,36 @@ export default function OutdoorAdminClient() {
     }
   }
 
-  const publish = async (event: React.FormEvent) => {
+  const saveProduct = async (event: React.FormEvent, product: ProductDraft) => {
     event.preventDefault()
     setSaving(true)
     setMessage('')
     setError('')
     try {
-      const res = await fetch('/api/outdoor/updates', {
-        method: 'POST',
+      const res = await fetch('/api/outdoor/products', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, title, body }),
+        body: JSON.stringify({
+          id: product.id,
+          name: product.name,
+          price: Number(product.price),
+          color: product.color,
+          description: product.description,
+        }),
       })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error || 'Could not publish')
-      setTitle('')
-      setBody('')
-      setMessage(`Sent to ${data.emailed} subscriber${data.emailed === 1 ? '' : 's'}.`)
+      if (!res.ok) throw new Error(data?.error || 'Could not save the product')
+      setMessage(`Saved ${product.name}. ${emailedNote(data.emailed || 0)}`)
       await load()
     } catch (err: any) {
-      setError(err.message || 'Could not publish')
+      setError(err.message || 'Could not save the product')
     } finally {
       setSaving(false)
     }
+  }
+
+  const updateDraft = (id: string, patch: Partial<ProductDraft>) => {
+    setProducts((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))
   }
 
   if (allowed === false) {
@@ -124,7 +133,7 @@ export default function OutdoorAdminClient() {
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--out-muted)]">Admin</p>
       <h1 className="mt-2 font-display text-4xl tracking-tight">Outdoor desk</h1>
       <p className="mt-2 text-sm text-[var(--out-muted)]">
-        {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. A new product, color, event, or any other update is emailed to them.
+        {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. Adding or changing a product emails them automatically.
       </p>
       <div className="mt-4 flex gap-4 text-sm font-semibold">
         <Link href="/outdoor/fulfilment" className="text-[var(--out-moss)]">Follow orders</Link>
@@ -138,60 +147,56 @@ export default function OutdoorAdminClient() {
         <p className="font-semibold">Add a new product</p>
         <label className="block text-sm">
           Name
-          <input value={productName} onChange={(e) => setProductName(e.target.value)} required className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3" />
+          <input value={productName} onChange={(e) => setProductName(e.target.value)} required className={inputClass} />
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
             Price (RM)
-            <input value={productPrice} onChange={(e) => setProductPrice(e.target.value)} required type="number" min="0.01" step="0.01" className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3" />
+            <input value={productPrice} onChange={(e) => setProductPrice(e.target.value)} required type="number" min="0.01" step="0.01" className={inputClass} />
           </label>
           <label className="block text-sm">
             Color
-            <input value={productColor} onChange={(e) => setProductColor(e.target.value)} className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3" />
+            <input value={productColor} onChange={(e) => setProductColor(e.target.value)} className={inputClass} />
           </label>
         </div>
         <label className="block text-sm">
           Description
-          <textarea value={productDescription} onChange={(e) => setProductDescription(e.target.value)} rows={3} className="mt-1.5 w-full rounded-md border border-[var(--out-line)] px-3 py-2" />
+          <textarea value={productDescription} onChange={(e) => setProductDescription(e.target.value)} rows={3} className={textClass} />
         </label>
         <button type="submit" disabled={saving} className="h-11 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white disabled:opacity-50">
-          {saving ? 'Adding…' : 'Add product and email subscribers'}
+          {saving ? 'Adding…' : 'Add product'}
         </button>
       </form>
 
-      <form onSubmit={publish} className="mt-6 space-y-4 rounded-2xl border border-[var(--out-line)] bg-white p-5">
-        <p className="font-semibold">Other update</p>
-        <label className="block text-sm">
-          What are you adding?
-          <select value={kind} onChange={(e) => setKind(e.target.value)} className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3">
-            {KINDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-        </label>
-        <label className="block text-sm">
-          Title
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required className="mt-1.5 h-11 w-full rounded-md border border-[var(--out-line)] px-3" />
-        </label>
-        <label className="block text-sm">
-          Message
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} required rows={5} className="mt-1.5 w-full rounded-md border border-[var(--out-line)] px-3 py-2" />
-        </label>
-        <button type="submit" disabled={saving} className="h-11 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white disabled:opacity-50">
-          {saving ? 'Sending…' : 'Publish and email subscribers'}
-        </button>
-      </form>
-
-      <ul className="mt-8 space-y-3">
-        {updates.map((item) => (
-          <li key={item.id} className="rounded-xl border border-[var(--out-line)] bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-[var(--out-muted)]">{item.kind}</p>
-            <p className="mt-1 font-semibold">{item.title}</p>
-            <p className="mt-1 text-sm text-[var(--out-ink-soft)] whitespace-pre-wrap">{item.body}</p>
-            <p className="mt-2 text-xs text-[var(--out-muted)]">
-              {new Date(item.created_at).toLocaleString()} · emailed {item.emailed_count}
-            </p>
-          </li>
+      <div className="mt-8 space-y-4">
+        <p className="font-semibold">Current products</p>
+        {products.length === 0 ? <p className="text-sm text-[var(--out-muted)]">No outdoor products yet.</p> : null}
+        {products.map((product) => (
+          <form key={product.id} onSubmit={(event) => saveProduct(event, product)} className="space-y-4 rounded-2xl border border-[var(--out-line)] bg-white p-5">
+            <label className="block text-sm">
+              Name
+              <input value={product.name} onChange={(e) => updateDraft(product.id, { name: e.target.value })} required className={inputClass} />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm">
+                Price (RM)
+                <input value={product.price} onChange={(e) => updateDraft(product.id, { price: e.target.value })} required type="number" min="0.01" step="0.01" className={inputClass} />
+              </label>
+              <label className="block text-sm">
+                Color
+                <input value={product.color} onChange={(e) => updateDraft(product.id, { color: e.target.value })} className={inputClass} />
+              </label>
+            </div>
+            <label className="block text-sm">
+              Description
+              <textarea value={product.description} onChange={(e) => updateDraft(product.id, { description: e.target.value })} rows={3} className={textClass} />
+            </label>
+            <button type="submit" disabled={saving} className="h-11 rounded-md bg-[var(--out-moss)] px-5 text-sm font-semibold text-white disabled:opacity-50">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </form>
         ))}
-      </ul>
+      </div>
     </div>
   )
 }
