@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
@@ -36,6 +36,7 @@ const SOCIALS = [
 export default function OutdoorChrome({ children }: { children: React.ReactNode }) {
   const { totalItems } = useCart()
   const pathname = usePathname()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [authEmail, setAuthEmail] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -90,6 +91,12 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
     }
   }, [authEmail])
 
+  useEffect(() => {
+    if (!isStaff) return
+    const staffPage = pathname.startsWith('/outdoor/admin') || pathname.startsWith('/outdoor/fulfilment')
+    if (!staffPage) router.replace('/outdoor/admin')
+  }, [isStaff, pathname, router])
+
   const signedIn = Boolean(authEmail)
   const isFlowPage =
     pathname.startsWith('/outdoor/fulfilment') ||
@@ -99,7 +106,8 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
     pathname.startsWith('/outdoor/track') ||
     pathname.startsWith('/outdoor/login') ||
     pathname.startsWith('/outdoor/register') ||
-    pathname.startsWith('/outdoor/orders')
+    pathname.startsWith('/outdoor/orders') ||
+    pathname.startsWith('/outdoor/admin')
   const hideStoreMarketing = isFlowPage
 
   const signOut = async () => {
@@ -132,7 +140,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             <OutdoorBrandMark variant="onDark" className="h-5 w-auto max-w-[9.5rem] object-contain sm:h-7 sm:max-w-[13rem]" priority />
           </Link>
 
-          <nav className={`hidden items-center gap-1 ml-2 text-sm ${isFlowPage ? 'md:hidden' : 'md:flex'}`} aria-label="Primary">
+          <nav className={`hidden items-center gap-1 ml-2 text-sm ${isFlowPage || isStaff ? 'md:hidden' : 'md:flex'}`} aria-label="Primary">
             {NAV.map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
               return (
@@ -153,13 +161,13 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
           </nav>
 
           <div className="flex items-center justify-end gap-0.5 sm:gap-1 md:ml-auto">
-            <Link href="/outdoor/shop" className="group/hint relative p-2 hidden md:inline-flex hover:text-white" aria-label="Search products">
+            <Link href="/outdoor/shop" className={`group/hint relative p-2 hover:text-white ${isStaff ? 'hidden' : 'hidden md:inline-flex'}`} aria-label="Search products">
               <Search className="h-5 w-5" />
               <IconTip>Search</IconTip>
             </Link>
             {authReady && signedIn ? (
               <>
-                <Link href="/outdoor/account" className="group/hint relative p-2 hover:text-white" aria-label="My account">
+                <Link href="/outdoor/account" className={`group/hint relative p-2 hover:text-white ${isStaff ? 'hidden' : ''}`} aria-label="My account">
                   <User className="h-5 w-5" />
                   <IconTip>Account</IconTip>
                 </Link>
@@ -179,7 +187,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                 <IconTip>Sign in</IconTip>
               </Link>
             )}
-            <Link href="/outdoor/cart" className="group/hint relative p-2 hover:text-white" aria-label="Cart">
+            <Link href="/outdoor/cart" className={`group/hint relative p-2 hover:text-white ${isStaff ? 'hidden' : ''}`} aria-label="Cart">
               <ShoppingBag className="h-5 w-5" />
               <IconTip>Cart</IconTip>
               {totalItems > 0 ? (
@@ -195,6 +203,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
         <div className="bg-[var(--out-ink)] text-[var(--out-cream)]">
           <div className="mx-auto flex h-9 max-w-6xl items-center gap-4 px-4 text-xs font-semibold sm:px-8">
             <span className="uppercase tracking-[0.14em] text-[var(--out-cream)]/55">Admin</span>
+            <Link href="/outdoor/admin" className="hover:text-[var(--out-moss)]">Add update</Link>
             <Link href="/outdoor/fulfilment" className="hover:text-[var(--out-moss)]">Follow orders</Link>
             <Link href="/outdoor/fulfilment?tab=inbox" className="hover:text-[var(--out-moss)]">Messages</Link>
           </div>
@@ -212,8 +221,8 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
               </button>
             </div>
             <nav className="flex flex-col gap-4 text-base">
-              <Link href="/outdoor" onClick={() => setOpen(false)} className="py-1">Home</Link>
-              {NAV.map((item) => (
+              {isStaff ? null : <Link href="/outdoor" onClick={() => setOpen(false)} className="py-1">Home</Link>}
+              {isStaff ? null : NAV.map((item) => (
                 <Link key={item.href} href={item.href} onClick={() => setOpen(false)} className="py-1">
                   {item.label}
                 </Link>
@@ -222,6 +231,9 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                 <>
                   {isStaff ? (
                     <>
+                      <Link href="/outdoor/admin" onClick={() => setOpen(false)} className="py-1 font-semibold">
+                        Add update
+                      </Link>
                       <Link href="/outdoor/fulfilment" onClick={() => setOpen(false)} className="py-1 font-semibold">
                         Follow orders
                       </Link>
@@ -261,7 +273,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
 
       <main className="min-w-0 flex-1">{children}</main>
 
-      {hideStoreMarketing ? null : (
+      {hideStoreMarketing || isStaff ? null : (
       <section className="px-4 sm:px-8 pb-8">
         <div className="mx-auto max-w-xl rounded-[1.75rem] bg-[var(--out-bark)] px-6 py-8 text-center sm:px-10 sm:py-10">
           <h2 className="font-display text-3xl tracking-tight text-[var(--out-cream)] sm:text-4xl">Get Updates</h2>
@@ -275,7 +287,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
       </section>
       )}
 
-      <footer className="mt-auto bg-[var(--out-bark)] text-[var(--out-cream)]">
+      {isStaff ? null : <footer className="mt-auto bg-[var(--out-bark)] text-[var(--out-cream)]">
         <div className="mx-auto max-w-6xl px-5 sm:px-8 py-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <OutdoorBrandMark variant="onDark" className="h-8 w-auto" />
@@ -337,7 +349,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
         <div className="border-t border-white/10 px-5 sm:px-8 py-4 text-center text-[11px] text-[var(--out-cream)]/50">
           © {new Date().getFullYear()} SeraOutdoor
         </div>
-      </footer>
+      </footer>}
     </div>
   )
 }
