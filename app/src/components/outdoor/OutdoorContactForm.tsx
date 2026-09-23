@@ -72,7 +72,7 @@ export default function OutdoorContactForm() {
         {loading ? 'Sending…' : sent ? 'Send another' : 'Send message'}
       </button>
       {sent ? (
-        <p className="text-sm text-[var(--out-moss)]">
+        <p className="text-sm font-medium text-emerald-700">
           Thanks — your message was received. Our team will follow up by email.
         </p>
       ) : null}
