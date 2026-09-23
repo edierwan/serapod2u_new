@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
 import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
 
@@ -14,29 +14,6 @@ function escapeHtml(value: string) {
     "'": '&#39;',
     '"': '&quot;',
   }[char]!))
-}
-
-async function requireOutdoorStaff(supabase: any) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const admin = createAdminClient()
-  const { data: profile } = await admin
-    .from('users')
-    .select('organizations!fk_users_organization(org_type_code), roles(role_level, role_code)')
-    .eq('id', user.id)
-    .single()
-
-  const orgType = (profile?.organizations as any)?.org_type_code
-  const role = (profile?.roles as any) || {}
-  const roleLevel = Number(role.role_level ?? 99)
-  const roleCode = String(role.role_code || '').toLowerCase()
-  const allowed =
-    orgType === 'HQ' &&
-    (roleLevel <= 30 || ['super_admin', 'admin', 'org_admin', 'warehouse', 'fulfilment'].includes(roleCode))
-  return allowed ? { userId: user.id } : null
 }
 
 /** POST /api/outdoor/contact — store contact form message. */
@@ -99,8 +76,7 @@ export async function POST(request: NextRequest) {
 /** GET — recent Outdoor contact messages for HQ staff. */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const staff = await requireOutdoorStaff(supabase)
+    const staff = await requireOutdoorStaff()
     if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') || 30), 100)

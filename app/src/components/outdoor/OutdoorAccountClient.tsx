@@ -45,6 +45,7 @@ export default function OutdoorAccountClient({
   const [profile, setProfile] = useState<Profile | null>(null)
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [ordersError, setOrdersError] = useState('')
+  const [isStaff, setIsStaff] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -78,6 +79,21 @@ export default function OutdoorAccountClient({
     }
     void load()
   }, [router, pendingRef])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetch('/api/outdoor/fulfilment/access')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setIsStaff(Boolean(data?.allowed))
+      })
+      .catch(() => {
+        if (!cancelled) setIsStaff(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (tab !== 'orders') return
@@ -214,6 +230,17 @@ export default function OutdoorAccountClient({
         </div>
       ) : (
         <div className="mt-8 space-y-3">
+          {isStaff ? (
+            <div className="rounded-xl border border-[var(--out-bark)] bg-[var(--out-bark)] px-4 py-3 text-sm text-[var(--out-cream)]">
+              <p className="font-semibold">Admin view</p>
+              <p className="mt-1 text-[var(--out-cream)]/80">
+                This list is only the shopper orders for this email. Follow every Outdoor order from the admin desk.
+              </p>
+              <Link href="/outdoor/fulfilment" className="mt-2 inline-block font-semibold text-[var(--out-moss)]">
+                Follow orders
+              </Link>
+            </div>
+          ) : null}
           {pendingRef ? (
             <p className="rounded-xl border border-[var(--out-line)] bg-white px-4 py-3 text-sm text-[var(--out-ink)]">
               Payment was not completed. Order <span className="font-mono font-semibold">{pendingRef}</span> is still pending payment.

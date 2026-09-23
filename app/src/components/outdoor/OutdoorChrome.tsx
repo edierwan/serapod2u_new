@@ -39,6 +39,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
   const [open, setOpen] = useState(false)
   const [authEmail, setAuthEmail] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(false)
+  const [isStaff, setIsStaff] = useState(false)
   const [pageSearch, setPageSearch] = useState('')
   const loginHref = outdoorAuthHref('login', pathname, pageSearch)
   const signupHref = outdoorAuthHref('register', pathname, pageSearch)
@@ -69,6 +70,25 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!authEmail) {
+      setIsStaff(false)
+      return
+    }
+    let cancelled = false
+    void fetch('/api/outdoor/fulfilment/access')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setIsStaff(Boolean(data?.allowed))
+      })
+      .catch(() => {
+        if (!cancelled) setIsStaff(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authEmail])
 
   const signedIn = Boolean(authEmail)
   const isFlowPage =
@@ -171,6 +191,15 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
           </div>
         </div>
       </header>
+      {isStaff ? (
+        <div className="bg-[var(--out-ink)] text-[var(--out-cream)]">
+          <div className="mx-auto flex h-9 max-w-6xl items-center gap-4 px-4 text-xs font-semibold sm:px-8">
+            <span className="uppercase tracking-[0.14em] text-[var(--out-cream)]/55">Admin</span>
+            <Link href="/outdoor/fulfilment" className="hover:text-[var(--out-moss)]">Follow orders</Link>
+            <Link href="/outdoor/fulfilment?tab=inbox" className="hover:text-[var(--out-moss)]">Messages</Link>
+          </div>
+        </div>
+      ) : null}
 
       {open ? (
         <div className="fixed inset-0 z-50 md:hidden">
@@ -191,6 +220,16 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
               ))}
               {signedIn ? (
                 <>
+                  {isStaff ? (
+                    <>
+                      <Link href="/outdoor/fulfilment" onClick={() => setOpen(false)} className="py-1 font-semibold">
+                        Follow orders
+                      </Link>
+                      <Link href="/outdoor/fulfilment?tab=inbox" onClick={() => setOpen(false)} className="py-1">
+                        Messages
+                      </Link>
+                    </>
+                  ) : null}
                   <Link href="/outdoor/account" onClick={() => setOpen(false)} className="py-1 font-semibold text-[var(--out-moss)]">
                     My account
                   </Link>

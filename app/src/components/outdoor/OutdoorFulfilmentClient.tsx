@@ -54,6 +54,7 @@ function money(n: number) {
 export default function OutdoorFulfilmentClient() {
   const router = useRouter()
   const [tab, setTab] = useState<'orders' | 'inbox'>('orders')
+  const [orderStatus, setOrderStatus] = useState('fulfilment')
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [messages, setMessages] = useState<ContactMessage[]>([])
@@ -67,7 +68,7 @@ export default function OutdoorFulfilmentClient() {
   const [trackingDraft, setTrackingDraft] = useState<Record<string, string>>({})
 
   const loadOrders = useCallback(async () => {
-    const params = new URLSearchParams({ status: 'fulfilment' })
+    const params = new URLSearchParams({ status: orderStatus })
     if (search.trim()) params.set('search', search.trim())
     const res = await fetch(`/api/outdoor/fulfilment?${params}`)
     const data = await res.json().catch(() => null)
@@ -79,7 +80,7 @@ export default function OutdoorFulfilmentClient() {
     setOrders(data.orders || [])
     setEasyParcelConfigured(Boolean(data.easyParcelConfigured))
     setEasyParcelNeedsConnect(Boolean(data.easyParcelNeedsConnect))
-  }, [search])
+  }, [search, orderStatus])
 
   const loadInbox = useCallback(async () => {
     const res = await fetch('/api/outdoor/contact?limit=40')
@@ -117,7 +118,9 @@ export default function OutdoorFulfilmentClient() {
   }, [load])
 
   useEffect(() => {
-    const status = new URLSearchParams(window.location.search).get('easyparcel')
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('tab') === 'inbox') setTab('inbox')
+    const status = params.get('easyparcel')
     if (status === 'connected') setNotice('EasyParcel connected.')
     if (status === 'error' || status === 'invalid') setError('EasyParcel connection failed. Try Connect again.')
     if (status === 'unauthorized') setError('Log in as HQ staff, then Connect EasyParcel.')
@@ -149,8 +152,8 @@ export default function OutdoorFulfilmentClient() {
         <p className="mt-3 text-sm text-[var(--out-muted)]">
           This page is for warehouse and HQ staff — not for shoppers.
         </p>
-        <Link href={`/login?next=${encodeURIComponent('/outdoor/fulfilment')}`} className="mt-6 inline-block text-[var(--out-moss)] font-semibold">
-          Sign in
+        <Link href="/outdoor/shop" className="mt-6 inline-block text-[var(--out-moss)] font-semibold">
+          Back to shop
         </Link>
       </div>
     )
@@ -196,7 +199,28 @@ export default function OutdoorFulfilmentClient() {
       </div>
 
       {tab === 'orders' ? (
-        <div className="mt-6 flex flex-wrap gap-3 items-center">
+        <div className="mt-6 flex flex-wrap gap-2">
+          {[
+            ['fulfilment', 'Paid, ready to ship'],
+            ['pending_payment', 'Waiting for payment'],
+            ['all', 'All orders'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setOrderStatus(value)}
+              className={`h-9 rounded-full px-3 text-xs font-semibold ${
+                orderStatus === value ? 'bg-[var(--out-bark)] text-[var(--out-cream)]' : 'border border-[var(--out-line)]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {tab === 'orders' ? (
+        <div className="mt-4 flex flex-wrap gap-3 items-center">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
