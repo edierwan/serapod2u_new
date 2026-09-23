@@ -16,6 +16,17 @@ const NAV = [
   { href: '/outdoor/contact', label: 'Contact' },
 ]
 
+function IconTip({ children }: { children: string }) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute left-1/2 top-[calc(100%+6px)] z-50 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--out-cream)] px-2 py-1 text-[11px] font-medium leading-none text-[var(--out-ink)] opacity-0 shadow-md transition-opacity duration-150 group-hover/hint:opacity-100"
+    >
+      {children}
+    </span>
+  )
+}
+
 const SOCIALS = [
   { label: 'Instagram', href: process.env.NEXT_PUBLIC_OUTDOOR_INSTAGRAM },
   { label: 'Facebook', href: process.env.NEXT_PUBLIC_OUTDOOR_FACEBOOK },
@@ -90,8 +101,9 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
             >
               <Menu className="h-5 w-5" />
             </button>
-            <Link href="/outdoor/shop" className="p-2 md:hidden" aria-label="Search products">
+            <Link href="/outdoor/shop" className="group/hint relative p-2 md:hidden" aria-label="Search products">
               <Search className="h-5 w-5" />
+              <IconTip>Search</IconTip>
             </Link>
           </div>
 
@@ -120,30 +132,35 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
           </nav>
 
           <div className="flex items-center justify-end gap-0.5 sm:gap-1 md:ml-auto">
-            <Link href="/outdoor/shop" className="p-2 hidden md:inline-flex hover:text-white" aria-label="Search products">
+            <Link href="/outdoor/shop" className="group/hint relative p-2 hidden md:inline-flex hover:text-white" aria-label="Search products">
               <Search className="h-5 w-5" />
+              <IconTip>Search</IconTip>
             </Link>
             {authReady && signedIn ? (
               <>
-                <Link href="/outdoor/account" className="p-2 hover:text-white" aria-label="My account">
+                <Link href="/outdoor/account" className="group/hint relative p-2 hover:text-white" aria-label="My account">
                   <User className="h-5 w-5" />
+                  <IconTip>Account</IconTip>
                 </Link>
                 <button
                   type="button"
                   onClick={() => void signOut()}
-                  className="hidden sm:inline-flex p-2 hover:text-white"
+                  className="group/hint relative hidden sm:inline-flex p-2 hover:text-white"
                   aria-label="Sign out"
                 >
                   <LogOut className="h-5 w-5" />
+                  <IconTip>Sign out</IconTip>
                 </button>
               </>
             ) : (
-              <Link href={loginHref} className="p-2 hover:text-white" aria-label="Sign in">
+              <Link href={loginHref} className="group/hint relative p-2 hover:text-white" aria-label="Sign in">
                 <User className="h-5 w-5" />
+                <IconTip>Sign in</IconTip>
               </Link>
             )}
-            <Link href="/outdoor/cart" className="relative p-2 hover:text-white" aria-label="Cart">
+            <Link href="/outdoor/cart" className="group/hint relative p-2 hover:text-white" aria-label="Cart">
               <ShoppingBag className="h-5 w-5" />
+              <IconTip>Cart</IconTip>
               {totalItems > 0 ? (
                 <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--out-ember)] text-white text-[10px] font-semibold flex items-center justify-center px-1">
                   {totalItems}
