@@ -219,9 +219,9 @@ export async function listProducts(params: ListProductsParams = {}) {
   else if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
   if (hideRemoved) query = query.eq('outdoor_hidden', false)
 
-  // Exclude products from hidden groups. New Outdoor desk products have no
-  // group, so they are added separately and are not dropped by this filter.
-  if (hiddenGroupIds.length > 0) {
+  // Hidden groups stay out of the catalogue. Desk products have no group_id,
+  // and NOT IN drops those rows, so the outdoor-only lookup skips this filter.
+  if (hiddenGroupIds.length > 0 && !outdoorOnly) {
     query = query.not('group_id', 'in', `(${hiddenGroupIds.map(id => `"${id}"`).join(',')})`)
   }
 

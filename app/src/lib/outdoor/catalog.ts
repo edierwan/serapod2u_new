@@ -31,6 +31,7 @@ function withOutdoorAppearance(product: StorefrontProduct): StorefrontProduct {
   const colorSwatches = parsed.length > 0 ? parsed : outdoorFallbackSwatches(product.product_name)
   return {
     ...product,
+    outdoorNav: product.outdoorNav || 'new',
     specLabel,
     colorSwatches: colorSwatches.some((s) => s.imageUrl) ? colorSwatches : product.colorSwatches,
   }
