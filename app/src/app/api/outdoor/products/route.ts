@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { resolveOutdoorCatalogScope } from '@/lib/outdoor/catalog'
-import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
+import { countOutdoorSubscribers, emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
 import { buildOutdoorProductEmail } from '@/lib/outdoor/product-email'
 import { outdoorNavKey, outdoorStaticImage } from '@/lib/outdoor/merch'
 import { isSupabaseStorageUrl } from '@/lib/utils'
@@ -146,8 +146,8 @@ export async function GET() {
 
     const admin: any = createAdminClient()
     const scope = await resolveOutdoorCatalogScope()
-    const [{ count }, loaded] = await Promise.all([
-      admin.from('outdoor_newsletter_subscribers').select('id', { count: 'exact', head: true }),
+    const [subscribers, loaded] = await Promise.all([
+      countOutdoorSubscribers(admin),
       loadOutdoorProducts(admin, scope),
     ])
     const ids = loaded.map((item: { id: string }) => item.id)
@@ -159,7 +159,7 @@ export async function GET() {
         products = loaded.filter((item: { id: string }) => !hiddenIds.has(item.id))
       }
     }
-    return NextResponse.json({ products, subscribers: count || 0 })
+    return NextResponse.json({ products, subscribers })
   } catch (err) {
     console.error('[outdoor/products GET]', err)
     return NextResponse.json({ error: 'Could not load products.' }, { status: 500 })

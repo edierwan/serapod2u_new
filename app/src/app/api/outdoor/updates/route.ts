@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
-import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
+import { countOutdoorSubscribers, emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
 
 const KINDS = ['product', 'color', 'event', 'other'] as const
 
@@ -29,9 +29,9 @@ export async function GET() {
     if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const admin: any = createAdminClient()
-    const [{ data, error }, { count }] = await Promise.all([
+    const [{ data, error }, subscribers] = await Promise.all([
       admin.from('outdoor_admin_updates').select('id, kind, title, body, emailed_count, created_at').order('created_at', { ascending: false }).limit(30),
-      admin.from('outdoor_newsletter_subscribers').select('id', { count: 'exact', head: true }),
+      countOutdoorSubscribers(admin),
     ])
 
     if (error) {
@@ -39,7 +39,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Could not load updates.' }, { status: 500 })
     }
 
-    return NextResponse.json({ updates: data || [], subscribers: count || 0 })
+    return NextResponse.json({ updates: data || [], subscribers })
   } catch (err) {
     console.error('[outdoor/updates GET]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

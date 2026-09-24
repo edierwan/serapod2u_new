@@ -22,7 +22,7 @@ export default function OutdoorPrivacyPage() {
           body: [
             'To process and fulfil orders, arrange delivery, and provide tracking updates.',
             'To respond to support requests and improve the Outdoor shopping experience.',
-            'To send newsletter updates only if you subscribe (you can stop at any time by contacting us).',
+            'To send newsletter updates only if you subscribe. Every email has an unsubscribe link, and using it stops further Outdoor product emails.',
             'We do not sell personal information.',
           ],
         },

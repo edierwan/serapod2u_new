@@ -8,7 +8,7 @@ export default function OutdoorNewsletter({
   variant?: 'default' | 'onDark'
 }) {
   const [email, setEmail] = useState('')
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const onDark = variant === 'onDark'
@@ -26,7 +26,11 @@ export default function OutdoorNewsletter({
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || 'Could not subscribe')
-      setDone(true)
+      setDone(data?.already
+        ? 'This email is already subscribed.'
+        : data?.welcomed
+          ? 'You are subscribed. A short welcome is on its way, then only product news. Every email has an unsubscribe link.'
+          : 'You are subscribed. Product news will come to this address.')
     } catch (err: any) {
       setError(err.message || 'Could not subscribe')
     } finally {
@@ -51,20 +55,20 @@ export default function OutdoorNewsletter({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Your email"
-          disabled={done || loading}
+          disabled={Boolean(done) || loading}
           className="min-w-0 flex-1 h-10 bg-transparent px-4 text-sm text-[var(--out-ink)] placeholder:text-[var(--out-muted)] outline-none disabled:opacity-70"
         />
         <button
           type="submit"
-          disabled={done || loading}
+          disabled={Boolean(done) || loading}
           className="h-10 shrink-0 rounded-full bg-[var(--out-moss)] px-5 text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-50"
         >
           {loading ? 'Saving…' : 'Subscribe'}
         </button>
       </div>
       {done ? (
-        <p className={`mt-3 text-sm font-medium ${onDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
-          You&apos;re subscribed. We&apos;ll email Outdoor news to this address.
+        <p className={`mt-3 text-sm font-medium ${onDark ? 'text-[var(--out-cream)]' : 'text-emerald-700'}`}>
+          {done}
         </p>
       ) : null}
       {error ? (
