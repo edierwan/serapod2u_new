@@ -40,13 +40,9 @@ function StaffTabs() {
     pathname.startsWith("/outdoor/fulfilment") &&
     searchParams.get("tab") === "inbox";
   const orders = pathname.startsWith("/outdoor/fulfilment") && !inbox;
-  const products = pathname.startsWith("/outdoor/admin");
   return (
     <div className="border-b border-[var(--out-line)] bg-[var(--out-cream)]">
       <div className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 py-3 sm:px-8">
-        <Link href="/outdoor/admin" className={staffTabClass(products)}>
-          Add product
-        </Link>
         <Link href="/outdoor/fulfilment" className={staffTabClass(orders)}>
           Follow orders
         </Link>
@@ -354,13 +350,6 @@ export default function OutdoorChrome({
                 <>
                   {isStaff ? (
                     <>
-                      <Link
-                        href="/outdoor/admin"
-                        onClick={() => setOpen(false)}
-                        className="py-1 font-semibold"
-                      >
-                        Add product
-                      </Link>
                       <Link
                         href="/outdoor/fulfilment"
                         onClick={() => setOpen(false)}
