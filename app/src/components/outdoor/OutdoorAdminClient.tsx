@@ -26,37 +26,40 @@ const fieldClass = 'mt-1.5 w-full rounded-md border border-[var(--out-line)] bg-
 
 function ColorChoice({ value, onPick }: { value: string; onPick: (label: string) => void }) {
   const current = outdoorColorFromText(value)
-  const known = current ? OUTDOOR_COLOURWAYS.some((way) => way.hex.toLowerCase() === current.hex.toLowerCase()) : false
+  const known = current ? OUTDOOR_COLOURWAYS.find((way) => way.hex.toLowerCase() === current.hex.toLowerCase()) : undefined
+  const custom = Boolean(current && !known)
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-2">
-      {OUTDOOR_COLOURWAYS.map((way) => {
-        const selected = current?.hex.toLowerCase() === way.hex.toLowerCase()
-        return (
-          <button
-            key={way.hex}
-            type="button"
-            aria-label={way.label}
-            title={way.label}
-            onClick={() => onPick(way.label)}
-            className={`h-8 w-8 rounded-full border ${selected ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)] ring-offset-2' : 'border-black/10'}`}
-            style={{ background: way.hex }}
-          />
-        )
-      })}
-      <label title="Custom color" className={`relative h-8 w-8 cursor-pointer overflow-hidden rounded-full border ${current && !known ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)] ring-offset-2' : 'border-black/10'}`}>
-        <span className="sr-only">Custom color</span>
+    <div className="mt-2 flex items-center gap-3">
+      <span
+        aria-hidden
+        className={`h-10 w-10 shrink-0 rounded-full border ${current ? 'border-black/10' : 'border-dashed border-[var(--out-line)] bg-white'}`}
+        style={current ? { background: current.hex } : undefined}
+      />
+      <select
+        value={known?.label || (custom ? 'custom' : '')}
+        onChange={(event) => {
+          const next = event.target.value
+          if (!next) onPick('')
+          else if (next === 'custom') onPick(custom && current ? current.hex : '#D7C4A3')
+          else onPick(next)
+        }}
+        className={`${fieldClass} mt-0 h-11`}
+      >
+        <option value="">Pick a color</option>
+        {OUTDOOR_COLOURWAYS.map((way) => (
+          <option key={way.hex} value={way.label}>{way.label}</option>
+        ))}
+        <option value="custom">Custom color</option>
+      </select>
+      {custom ? (
         <input
           type="color"
-          value={current?.hex || '#76232F'}
+          aria-label="Custom color"
+          value={current?.hex || '#D7C4A3'}
           onChange={(event) => onPick(event.target.value.toUpperCase())}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          className="h-11 w-14 shrink-0 cursor-pointer rounded-md border border-[var(--out-line)] bg-white p-1"
         />
-        <span
-          className="block h-full w-full"
-          style={{ background: current && !known ? current.hex : 'conic-gradient(#76232F, #5E6738, #7C878E, #d7c4a3, #76232F)' }}
-        />
-      </label>
-      <span className="text-sm font-semibold text-[var(--out-bark)]">{current?.label || 'Pick a color'}</span>
+      ) : null}
     </div>
   )
 }
@@ -78,6 +81,7 @@ function ProductSheet({
   onColors,
   onDelete,
   onSubmit,
+  compact,
 }: {
   name: string
   price: string
@@ -95,13 +99,14 @@ function ProductSheet({
   onColors?: (colors: ColorDraft[]) => void
   onDelete?: () => void
   onSubmit: (event: React.FormEvent) => void
+  compact?: boolean
 }) {
   return (
-    <form onSubmit={onSubmit} className="mx-auto w-full max-w-xl">
+    <form onSubmit={onSubmit} className="w-full">
       <div className="relative overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" className="mx-auto h-auto w-full max-h-[58vh] object-contain" />
+          <img src={imageUrl} alt="" className={`mx-auto h-auto w-full object-contain ${compact ? 'max-h-56' : 'max-h-[58vh]'}`} />
         ) : (
           <div className="flex aspect-square items-center justify-center text-sm text-[var(--out-muted)]">Add a photo</div>
         )}
@@ -132,7 +137,7 @@ function ProductSheet({
         {colors && onColors ? (
           <div>
             <p className="text-sm font-medium text-[var(--out-bark)]">Colors</p>
-            <p className="mt-1 text-sm text-[var(--out-muted)]">Pick one color. Press “Add another color” if this product has more.</p>
+            <p className="mt-1 text-sm text-[var(--out-muted)]">Each box is one color. Add another box if the product has more colors.</p>
             <div className="mt-3 space-y-3">
               {colors.filter((item) => !item.removed).map((item, index, visible) => (
                 <div key={item.key} className="rounded-xl border border-[var(--out-line)] p-3">
@@ -389,7 +394,7 @@ export default function OutdoorAdminClient() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-12 sm:px-8 sm:py-16">
+    <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--out-muted)]">Admin</p>
       <h1 className="mt-2 font-display text-4xl tracking-tight">Outdoor desk</h1>
       <p className="mt-2 text-sm text-[var(--out-muted)]">
@@ -406,7 +411,7 @@ export default function OutdoorAdminClient() {
       {uploading ? <p className="mt-4 text-sm text-[var(--out-muted)]">Uploading photo…</p> : null}
 
       {adding ? (
-        <div className="mt-8">
+        <div className="mt-8 max-w-xl">
           <ProductSheet
             name={productName}
             price={productPrice}
@@ -433,7 +438,7 @@ export default function OutdoorAdminClient() {
         </div>
       ) : null}
 
-      <div className="mt-10 space-y-12">
+      <div className="mt-10 grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
         {products.length === 0 ? <p className="text-sm text-[var(--out-muted)]">No outdoor products yet.</p> : null}
         {products.map((product) => (
           <ProductSheet
@@ -446,6 +451,7 @@ export default function OutdoorAdminClient() {
             colors={product.colors}
             saving={savingId === product.id || uploading}
             submitLabel="Save"
+            compact
             onName={(value) => updateDraft(product.id, { name: value })}
             onPrice={(value) => updateDraft(product.id, { price: value }, true)}
             onColor={(value) => updateDraft(product.id, { color: value })}
