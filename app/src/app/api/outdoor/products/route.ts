@@ -3,17 +3,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { resolveOutdoorCatalogScope } from '@/lib/outdoor/catalog'
 import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
+import { buildOutdoorProductEmail } from '@/lib/outdoor/product-email'
 import { outdoorNavKey, outdoorStaticImage } from '@/lib/outdoor/merch'
 import { isSupabaseStorageUrl } from '@/lib/utils'
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>'"]/g, (char) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    "'": '&#39;',
-    '"': '&quot;',
-  }[char]!))
+function emailColors(colors: unknown, fallbackName: string, fallbackPrice: number) {
+  const rows = Array.isArray(colors) ? colors : []
+  const picked = rows
+    .filter((item: any) => item && !item.removed && String(item.name || '').trim())
+    .map((item: any) => ({ name: String(item.name), price: Number(item.price) }))
+  if (picked.length > 0) return picked
+  if (fallbackName.trim()) return [{ name: fallbackName, price: fallbackPrice }]
+  return []
 }
 
 const PRODUCT_SELECT = `
@@ -295,13 +296,18 @@ export async function PATCH(request: NextRequest) {
     }
     if (customPhoto) await rememberProductImage(admin, id, customPhoto)
 
-    const text = [`Updated: ${name}`, color ? `Color: ${color}` : '', `Price: RM ${price.toFixed(2)}`, description].filter(Boolean).join('\n')
-    const html = `<p><strong>Product update</strong></p><p>${escapeHtml(name)}${color ? `<br>Color: ${escapeHtml(color)}` : ''}<br>RM ${price.toFixed(2)}</p>${description ? `<p>${escapeHtml(description)}</p>` : ''}`
-    const mailed = await emailOutdoorSubscribers(admin, {
-      subject: `SeraOutdoor update: ${name}`,
-      text,
-      html,
+    const mail = buildOutdoorProductEmail({
+      kind: 'update',
+      name,
+      price,
+      description,
+      imageUrl,
+      productId: id,
+      nav,
+      colors: emailColors(body.colors, color, price),
     })
+    const text = mail.text
+    const mailed = await emailOutdoorSubscribers(admin, mail)
 
     await admin.from('outdoor_admin_updates').insert({
       kind: 'product',
@@ -419,13 +425,18 @@ export async function POST(request: NextRequest) {
 
     if (imageUrl && !imageUrl.startsWith('/outdoor/')) await rememberProductImage(admin, product.id, imageUrl)
 
-    const text = [name, color ? `Color: ${color}` : '', `Price: RM ${price.toFixed(2)}`, description].filter(Boolean).join('\n')
-    const html = `<p><strong>New product</strong></p><p>${escapeHtml(name)}${color ? `<br>Color: ${escapeHtml(color)}` : ''}<br>RM ${price.toFixed(2)}</p>${description ? `<p>${escapeHtml(description)}</p>` : ''}`
-    const mailed = await emailOutdoorSubscribers(admin, {
-      subject: `SeraOutdoor: ${name}`,
-      text,
-      html,
+    const mail = buildOutdoorProductEmail({
+      kind: 'new',
+      name,
+      price,
+      description,
+      imageUrl,
+      productId: product.id,
+      nav,
+      colors: emailColors(body.colors, color, price),
     })
+    const text = mail.text
+    const mailed = await emailOutdoorSubscribers(admin, mail)
 
     await admin.from('outdoor_admin_updates').insert({
       kind: 'product',
@@ -478,12 +489,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Could not delete the product.' }, { status: 500 })
     }
 
-    const text = `${name} is no longer on the Outdoor shop.`
-    const mailed = await emailOutdoorSubscribers(admin, {
-      subject: `SeraOutdoor: ${name} is no longer available`,
-      text,
-      html: `<p>${escapeHtml(text)}</p>`,
-    })
+    const mail = buildOutdoorProductEmail({ kind: 'removed', name })
+    const text = mail.text
+    const mailed = await emailOutdoorSubscribers(admin, mail)
     await admin.from('outdoor_admin_updates').insert({
       kind: 'product',
       title: name,

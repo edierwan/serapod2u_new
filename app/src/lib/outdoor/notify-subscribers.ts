@@ -29,6 +29,7 @@ export async function emailOutdoorSubscribers(
       text: input.text,
       html: input.html,
       fromName: 'SeraOutdoor',
+      fromEmail: 'outdoor@serapod.com',
     })
     if (sent.success) emailed += 1
   }

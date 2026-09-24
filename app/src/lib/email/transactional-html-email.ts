@@ -50,7 +50,7 @@ async function sendSes(config: any, secret: any, fromEmail: string, to: string, 
 export async function sendTransactionalHtmlEmail(
     admin: any,
     orgId: string,
-    input: { to: string; subject: string; text: string; html: string; fromName?: string },
+    input: { to: string; subject: string; text: string; html: string; fromName?: string; fromEmail?: string },
 ): Promise<EmailResult> {
     const { data: provider } = await admin.from('notification_provider_configs').select('*')
         .eq('org_id', orgId).eq('channel', 'email').eq('is_active', true)
@@ -59,7 +59,8 @@ export async function sendTransactionalHtmlEmail(
 
     const config = provider.config_public || {}
     const secret = secrets(provider.config_encrypted)
-    const fromEmail = config.from_email || config.gmail_email
+    const configuredFrom = config.from_email || config.gmail_email
+    const fromEmail = input.fromEmail || configuredFrom
     const fromName = input.fromName || config.from_name || 'Serapod2U'
     const message = { to: input.to, subject: input.subject, text: input.text, html: input.html }
     try {
@@ -92,7 +93,13 @@ export async function sendTransactionalHtmlEmail(
                         refreshToken: secret.oauth_refresh_token, accessToken: token.access_token },
                 })
             }
-            await transporter.sendMail({ from: `"${fromName}" <${fromEmail}>`, ...message })
+            await transporter.sendMail({
+                from: `"${fromName}" <${fromEmail}>`,
+                ...(input.fromEmail && configuredFrom && input.fromEmail.toLowerCase() !== String(configuredFrom).toLowerCase()
+                    ? { envelope: { from: configuredFrom, to: input.to } }
+                    : {}),
+                ...message,
+            })
             return { success: true, providerName: provider.provider_name }
         }
 
