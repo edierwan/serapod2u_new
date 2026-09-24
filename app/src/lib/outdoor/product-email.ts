@@ -3,7 +3,7 @@ import { OUTDOOR_NAV, outdoorColorFromText } from '@/lib/outdoor/merch'
 
 const BARK = '#3f1c1f'
 const CREAM = '#f1e6b2'
-const MOSS = '#dc582a'
+const MOSS = '#3f1c1f'
 const INK = '#2e1416'
 const MUTED = '#6d5a52'
 
