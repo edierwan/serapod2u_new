@@ -78,7 +78,9 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   const displayHex = String(activeHex || selectedHex || '')
   const displayImage =
     swatches.find((s) => s.hex.toLowerCase() === displayHex.toLowerCase())?.imageUrl ||
-    gallery[0]
+    gallery[0] ||
+    product.image_url ||
+    null
 
   const productPrice = selected?.suggested_retail_price && selected.suggested_retail_price > 0
     ? selected.suggested_retail_price
@@ -94,7 +96,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
         productName: product.product_name,
         variantName: selected.variant_name,
         price: productPrice,
-        imageUrl: selected.image_url || gallery[0] || null,
+        imageUrl: displayImage || selected.image_url || gallery[0] || null,
       },
       qty,
     )
