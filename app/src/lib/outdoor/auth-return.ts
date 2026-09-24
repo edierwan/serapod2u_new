@@ -11,6 +11,7 @@ function isAuthOrCallbackPath(path: string) {
   return (
     pathname === '/outdoor/login' ||
     pathname === '/outdoor/register' ||
+    pathname === '/outdoor/forgot-password' ||
     pathname === '/auth/callback'
   )
 }
@@ -29,7 +30,11 @@ export function sanitizeOutdoorReturnPath(
 
 export function outdoorReturnPathFromLocation(pathname: string, search = ''): string {
   const query = search.startsWith('?') ? search.slice(1) : search
-  if (pathname.startsWith('/outdoor/login') || pathname.startsWith('/outdoor/register')) {
+  if (
+    pathname.startsWith('/outdoor/login') ||
+    pathname.startsWith('/outdoor/register') ||
+    pathname.startsWith('/outdoor/forgot-password')
+  ) {
     return sanitizeOutdoorReturnPath(new URLSearchParams(query).get('next'))
   }
   return sanitizeOutdoorReturnPath(`${pathname}${search}`)

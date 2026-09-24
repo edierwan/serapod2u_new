@@ -26,6 +26,8 @@ export default function OutdoorLoginClient() {
     const params = new URLSearchParams(window.location.search)
     const next = resolveOutdoorReturnPath(params.get('next'), params.get('redirect'))
     setNextPath(next)
+    const prefill = params.get('email')
+    if (prefill?.includes('@')) setEmail(prefill.trim())
     setError(oauthErrorMessage(params.get('error'), params.get('message')))
 
     const check = async () => {
@@ -111,6 +113,14 @@ export default function OutdoorLoginClient() {
               className="out-input"
             />
           </label>
+          <div className="flex justify-end">
+            <Link
+              href={`/outdoor/forgot-password?next=${encodeURIComponent(nextPath)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ''}`}
+              className="text-sm font-semibold text-[var(--out-moss)]"
+            >
+              Forgot password?
+            </Link>
+          </div>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button type="submit" disabled={loading} className="out-btn w-full">
             {loading ? 'Signing in…' : 'Sign in'}

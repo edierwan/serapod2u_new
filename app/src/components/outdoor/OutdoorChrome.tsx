@@ -160,7 +160,8 @@ export default function OutdoorChrome({
     const staffPage =
       pathname.startsWith("/outdoor/admin") ||
       pathname.startsWith("/outdoor/fulfilment") ||
-      pathname.startsWith("/outdoor/unsubscribe");
+      pathname.startsWith("/outdoor/unsubscribe") ||
+      pathname.startsWith("/outdoor/forgot-password");
     if (!staffPage) router.replace("/outdoor/admin");
   }, [isStaff, pathname, router]);
 
@@ -173,6 +174,7 @@ export default function OutdoorChrome({
     pathname.startsWith("/outdoor/track") ||
     pathname.startsWith("/outdoor/login") ||
     pathname.startsWith("/outdoor/register") ||
+    pathname.startsWith("/outdoor/forgot-password") ||
     pathname.startsWith("/outdoor/orders") ||
     pathname.startsWith("/outdoor/admin");
   const hideStoreMarketing = isFlowPage;
