@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
-import { outdoorColorFromText, outdoorFallbackSwatches, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
+import { outdoorColorFromText, outdoorFallbackSwatches, outdoorProductKind, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
 import { useRouter } from 'next/navigation'
 
 function formatPrice(price: number | null) {
@@ -26,15 +26,19 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
         is_default: v.is_default,
       })),
       product.product_name,
-    ).map((swatch) => ({
-      ...swatch,
-      imageUrl:
-        swatch.imageUrl && !swatch.imageUrl.startsWith('/outdoor/products/')
-          ? swatch.imageUrl
-          : outdoorStaticImage(product.product_name, swatch.hex) || swatch.imageUrl,
-    }))
+    ).map((swatch) => {
+      const packshot = outdoorStaticImage(product.product_name, swatch.hex)
+      if (outdoorProductKind(product.product_name)) return { ...swatch, imageUrl: packshot }
+      return {
+        ...swatch,
+        imageUrl:
+          swatch.imageUrl && !swatch.imageUrl.startsWith('/outdoor/products/')
+            ? swatch.imageUrl
+            : packshot || swatch.imageUrl,
+      }
+    })
     if (parsed.length > 0) return parsed
-    if (product.variants.length > 0) return []
+    if (product.variants.length > 0 && !outdoorProductKind(product.product_name)) return []
     return outdoorFallbackSwatches(product.product_name)
   }, [product.product_name, product.variants])
 

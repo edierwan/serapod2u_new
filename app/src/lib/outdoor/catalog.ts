@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   OUTDOOR_NAV,
   outdoorFallbackSwatches,
+  outdoorProductKind,
   outdoorSpecLabel,
   outdoorStaticImage,
 } from "@/lib/outdoor/merch";
@@ -29,14 +30,18 @@ function isOutdoorName(name: string | null | undefined) {
 
 function withOutdoorAppearance(product: StorefrontProduct): StorefrontProduct {
   const specLabel = product.specLabel || outdoorSpecLabel(product.product_name);
-  const parsed = (product.colorSwatches || []).map((swatch) => ({
-    ...swatch,
-    imageUrl:
-      swatch.imageUrl && !swatch.imageUrl.startsWith("/outdoor/products/")
-        ? swatch.imageUrl
-        : outdoorStaticImage(product.product_name, swatch.hex) ||
-          swatch.imageUrl,
-  }));
+  const readyMade = Boolean(outdoorProductKind(product.product_name));
+  const parsed = (product.colorSwatches || []).map((swatch) => {
+    const packshot = outdoorStaticImage(product.product_name, swatch.hex);
+    if (readyMade) return { ...swatch, imageUrl: packshot };
+    return {
+      ...swatch,
+      imageUrl:
+        swatch.imageUrl && !swatch.imageUrl.startsWith("/outdoor/products/")
+          ? swatch.imageUrl
+          : packshot || swatch.imageUrl,
+    };
+  });
   const colorSwatches =
     parsed.length > 0 ? parsed : outdoorFallbackSwatches(product.product_name);
   return {

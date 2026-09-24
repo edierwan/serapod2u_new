@@ -78,10 +78,7 @@ export function outdoorStaticImage(productName: string, hexOrFile: string): stri
       ? 'burgundy'
       : raw === 'grey' || raw === '#7c878e' || raw === '#c1c6c8'
         ? 'grey'
-        : raw === 'pink' || raw === '#5e6738'
-          ? 'pink'
-          : null
-  if (!file) return null
+        : 'pink'
   return `/outdoor/products/${kind}-${file}.png`
 }
 
@@ -133,6 +130,9 @@ export function outdoorSwatchesFromVariants(
     const amount = Number(variant.price)
     const price = Number.isFinite(amount) && amount > 0 ? amount : null
     if (!found) {
+      // Chair, mat, and tumbler keep their ready-made photos.
+      // A variant name that is not a colour must not replace those photos.
+      if (outdoorProductKind(productName || '')) continue
       const label = String(variant.variant_name || '').trim() || 'Variant'
       const imageUrl = photo(custom) || photo(String(variant.image_url || '')) || null
       const key = variant.id || label.toLowerCase()
