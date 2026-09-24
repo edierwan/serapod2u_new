@@ -4,6 +4,7 @@ import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { resolveOutdoorCatalogScope } from '@/lib/outdoor/catalog'
 import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
 import { outdoorStaticImage } from '@/lib/outdoor/merch'
+import { isSupabaseStorageUrl } from '@/lib/utils'
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (char) => ({
@@ -27,6 +28,7 @@ const PRODUCT_SELECT = `
     suggested_retail_price,
     is_default,
     sort_order,
+    image_url,
     attributes
   )
 `
@@ -47,7 +49,7 @@ function savedImage(variant: any) {
   const custom = variant?.attributes && typeof variant.attributes === 'object'
     ? String(variant.attributes.outdoor_image || '').trim()
     : ''
-  return custom
+  return custom || String(variant?.image_url || '').trim()
 }
 
 function previewImage(name: string, variant: any) {
@@ -55,8 +57,9 @@ function previewImage(name: string, variant: any) {
 }
 
 function allowedImage(url: string) {
-  if (!url) return true
+  if (!url || url.startsWith('blob:') || url.startsWith('data:')) return !url
   if (url.startsWith('/outdoor/products/')) return true
+  if (isSupabaseStorageUrl(url)) return true
   try {
     const parsed = new URL(url)
     return parsed.protocol === 'https:' && parsed.pathname.includes('/product-images/')
@@ -92,6 +95,7 @@ function toEditorProduct(row: any) {
     price: variantPrice(variant),
     color: colorOf(variant),
     imageUrl: previewImage(row.product_name || '', variant),
+    categoryId: row.category_id ? String(row.category_id) : '',
     colors: visible.map((item: any) => ({
       id: item.id,
       name: colorOf(item),
@@ -154,7 +158,15 @@ export async function GET() {
         products = loaded.filter((item: { id: string }) => !hiddenIds.has(item.id))
       }
     }
-    return NextResponse.json({ products, subscribers: count || 0 })
+    let categories: Array<{ id: string; name: string }> = []
+    if (scope.categoryIds.length > 0) {
+      const categoryRows = await admin.from('product_categories').select('id, category_name').in('id', scope.categoryIds).order('category_name')
+      categories = (categoryRows.data || []).map((row: { id: string; category_name?: string }) => ({
+        id: String(row.id),
+        name: row.category_name || 'Category',
+      }))
+    }
+    return NextResponse.json({ products, categories, subscribers: count || 0 })
   } catch (err) {
     console.error('[outdoor/products GET]', err)
     return NextResponse.json({ error: 'Could not load products.' }, { status: 500 })
@@ -172,7 +184,8 @@ export async function PATCH(request: NextRequest) {
     const name = String(body.name || '').trim().slice(0, 140)
     const color = String(body.color || '').trim().slice(0, 80)
     const description = String(body.description || '').trim().slice(0, 2000)
-    const imageUrl = String(body.imageUrl || '').trim().slice(0, 500)
+    const imageUrl = String(body.imageUrl || '').trim().slice(0, 2000)
+    const requestedCategory = String(body.categoryId || '').trim()
     const price = Number(body.price)
     if (!id || !name || !Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: 'Enter a product name and a price above 0.' }, { status: 400 })
@@ -192,10 +205,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'That product is not on the outdoor shop.' }, { status: 404 })
     }
 
+    const categoryId = scope.categoryIds.includes(requestedCategory) ? requestedCategory : ''
     const { error: productError } = await admin.from('products').update({
       product_name: name,
       product_description: description || null,
       short_description: description.slice(0, 180) || null,
+      ...(categoryId ? { category_id: categoryId } : {}),
     }).eq('id', id)
     if (productError) {
       console.error('[outdoor/products] update', productError)
@@ -246,12 +261,14 @@ export async function PATCH(request: NextRequest) {
           const nextAttributes = { ...(match.attributes && typeof match.attributes === 'object' ? match.attributes : {}) }
           nextAttributes.outdoor_price = colorAmount
           if (colorName) nextAttributes.color = colorName
+          if (customPhoto) nextAttributes.outdoor_image = customPhoto
           if (hidden) nextAttributes.outdoor_hidden = true
           else delete nextAttributes.outdoor_hidden
           const colorPatch: Record<string, unknown> = {
             attributes: nextAttributes,
             variant_name: colorName || match.variant_name || 'Default',
           }
+          if (customPhoto) colorPatch.image_url = customPhoto
           if (outdoorOnly) colorPatch.suggested_retail_price = colorAmount
           const colorWrite = await admin.from('product_variants').update(colorPatch).eq('id', match.id)
           if (colorWrite.error) {
@@ -267,9 +284,11 @@ export async function PATCH(request: NextRequest) {
             is_active: true,
             is_default: false,
             sort_order: 20 + index,
+            ...(customPhoto ? { image_url: customPhoto } : {}),
             attributes: {
               color: colorName,
               outdoor_price: colorAmount,
+              ...(customPhoto ? { outdoor_image: customPhoto } : {}),
               ...(outdoorOnly ? {} : { outdoor_only_variant: true }),
             },
           })
@@ -315,7 +334,8 @@ export async function POST(request: NextRequest) {
     const name = String(body.name || '').trim().slice(0, 140)
     const color = String(body.color || '').trim().slice(0, 80)
     const description = String(body.description || '').trim().slice(0, 2000)
-    const imageUrl = String(body.imageUrl || '').trim().slice(0, 500)
+    const imageUrl = String(body.imageUrl || '').trim().slice(0, 2000)
+    const requestedCategory = String(body.categoryId || '').trim()
     const price = Number(body.price)
     if (!allowedImage(imageUrl)) {
       return NextResponse.json({ error: 'That photo could not be saved.' }, { status: 400 })
@@ -325,7 +345,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scope = await resolveOutdoorCatalogScope()
-    const categoryId = scope.categoryIds[0]
+    const categoryId = scope.categoryIds.includes(requestedCategory) ? requestedCategory : scope.categoryIds[0]
     if (!categoryId) {
       return NextResponse.json({ error: 'Outdoor category is not set, so a new product cannot be added.' }, { status: 400 })
     }

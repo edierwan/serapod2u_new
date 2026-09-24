@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { OUTDOOR_COLOURWAYS, outdoorColorFromText } from '@/lib/outdoor/merch'
+import { getStorageUrl } from '@/lib/utils'
 
 type ColorDraft = {
   key: string
@@ -12,6 +13,8 @@ type ColorDraft = {
   removed?: boolean
 }
 
+type CategoryOption = { id: string; name: string }
+
 type ProductDraft = {
   id: string
   name: string
@@ -19,6 +22,7 @@ type ProductDraft = {
   color: string
   description: string
   imageUrl: string
+  categoryId: string
   colors: ColorDraft[]
 }
 
@@ -66,6 +70,8 @@ function ProductSheet({
   description,
   imageUrl,
   colors,
+  categoryId,
+  categories,
   saving,
   submitLabel,
   onName,
@@ -73,6 +79,7 @@ function ProductSheet({
   onColor,
   onDescription,
   onImage,
+  onCategory,
   onColors,
   onDelete,
   onSubmit,
@@ -84,6 +91,8 @@ function ProductSheet({
   description: string
   imageUrl: string
   colors?: ColorDraft[]
+  categoryId?: string
+  categories?: CategoryOption[]
   saving: boolean
   submitLabel: string
   onName: (value: string) => void
@@ -91,6 +100,7 @@ function ProductSheet({
   onColor: (value: string) => void
   onDescription: (value: string) => void
   onImage: (file: File) => void
+  onCategory?: (value: string) => void
   onColors?: (colors: ColorDraft[]) => void
   onDelete?: () => void
   onSubmit: (event: React.FormEvent) => void
@@ -101,7 +111,7 @@ function ProductSheet({
       <div className="relative overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" className={`mx-auto h-auto w-full object-contain ${compact ? 'max-h-56' : 'max-h-[58vh]'}`} />
+          <img src={getStorageUrl(imageUrl) || imageUrl} alt="" className={`mx-auto h-auto w-full object-contain ${compact ? 'max-h-56' : 'max-h-[58vh]'}`} />
         ) : (
           <div className="flex aspect-square items-center justify-center text-sm text-[var(--out-muted)]">Add a photo</div>
         )}
@@ -125,6 +135,16 @@ function ProductSheet({
           Name
           <input value={name} onChange={(event) => onName(event.target.value)} required placeholder="Product name" className={`${fieldClass} h-11 text-base`} />
         </label>
+        {categories && categories.length > 0 && onCategory ? (
+          <label className="block text-sm font-medium text-[var(--out-bark)]">
+            Category
+            <select value={categoryId || categories[0]?.id || ''} onChange={(event) => onCategory(event.target.value)} className={`${fieldClass} h-11`}>
+              {categories.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="block text-sm font-medium text-[var(--out-bark)]">
           Price (RM)
           <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="0.00" className={`${fieldClass} h-11`} />
@@ -211,11 +231,13 @@ export default function OutdoorAdminClient() {
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [subscribers, setSubscribers] = useState(0)
   const [products, setProducts] = useState<ProductDraft[]>([])
+  const [categories, setCategories] = useState<CategoryOption[]>([])
   const [productName, setProductName] = useState('')
   const [productPrice, setProductPrice] = useState('')
   const [productColor, setProductColor] = useState(OUTDOOR_COLOURWAYS[0].label)
   const [productDescription, setProductDescription] = useState('')
   const [productImage, setProductImage] = useState('')
+  const [productCategory, setProductCategory] = useState('')
   const [newColors, setNewColors] = useState<ColorDraft[]>(() => withWebsiteColors([], ''))
   const [adding, setAdding] = useState(false)
   const [savingId, setSavingId] = useState('')
@@ -238,6 +260,9 @@ export default function OutdoorAdminClient() {
       return
     }
     setSubscribers(data.subscribers || 0)
+    const nextCategories = (data.categories || []).map((item: any) => ({ id: String(item.id), name: item.name || 'Category' }))
+    setCategories(nextCategories)
+    setProductCategory((current) => current || nextCategories[0]?.id || '')
     setProducts((data.products || []).map((item: any) => {
       const price = item.price ? String(item.price) : ''
       const colors = withWebsiteColors((item.colors || []).map((color: any, index: number) => ({
@@ -253,6 +278,7 @@ export default function OutdoorAdminClient() {
         color: colors[0]?.name || item.color || '',
         description: item.description || '',
         imageUrl: item.imageUrl || '',
+        categoryId: item.categoryId || nextCategories[0]?.id || '',
         colors,
       }
     }))
@@ -293,7 +319,8 @@ export default function OutdoorAdminClient() {
           price: Number(productPrice),
           color: productColor,
           description: productDescription,
-          imageUrl: productImage,
+          imageUrl: productImage.startsWith('blob:') ? '' : productImage,
+          categoryId: productCategory,
           colors: newColors.filter((item) => item.name.trim()).map((item) => ({
             id: '',
             name: item.name,
@@ -309,6 +336,7 @@ export default function OutdoorAdminClient() {
       setProductColor('')
       setProductDescription('')
       setProductImage('')
+      setProductCategory(categories[0]?.id || '')
       setNewColors(withWebsiteColors([], ''))
       setProductColor(OUTDOOR_COLOURWAYS[0].label)
       setAdding(false)
@@ -336,7 +364,8 @@ export default function OutdoorAdminClient() {
           price: Number(product.price),
           color: product.colors.find((item) => !item.removed && item.name.trim())?.name || product.color,
           description: product.description,
-          imageUrl: product.imageUrl,
+          imageUrl: product.imageUrl.startsWith('blob:') ? '' : product.imageUrl,
+          categoryId: product.categoryId,
           colors: product.colors.filter((item) => item.name.trim() || item.id).map((item) => ({
             id: item.id,
             name: item.name,
@@ -424,6 +453,8 @@ export default function OutdoorAdminClient() {
             description={productDescription}
             imageUrl={productImage}
             colors={newColors}
+            categoryId={productCategory}
+            categories={categories}
             saving={savingId === 'new' || uploading}
             submitLabel="Add product"
             onName={setProductName}
@@ -435,8 +466,18 @@ export default function OutdoorAdminClient() {
               const first = colors.find((item) => !item.removed)
               setProductColor(first?.name || '')
             }}
+            onCategory={setProductCategory}
             onImage={(file) => {
-              void uploadPhoto(file).then(setProductImage).catch((err: any) => setError(err.message || 'Could not upload the photo'))
+              const preview = URL.createObjectURL(file)
+              setProductImage(preview)
+              void uploadPhoto(file).then((url) => {
+                URL.revokeObjectURL(preview)
+                setProductImage(url)
+              }).catch((err: any) => {
+                URL.revokeObjectURL(preview)
+                setProductImage('')
+                setError(err.message || 'Could not upload the photo')
+              })
             }}
             onSubmit={addProduct}
           />
@@ -454,6 +495,8 @@ export default function OutdoorAdminClient() {
             description={product.description}
             imageUrl={product.imageUrl}
             colors={product.colors}
+            categoryId={product.categoryId}
+            categories={categories}
             saving={savingId === product.id || uploading}
             submitLabel="Save"
             compact
@@ -462,11 +505,21 @@ export default function OutdoorAdminClient() {
             onColor={(value) => updateDraft(product.id, { color: value })}
             onDescription={(value) => updateDraft(product.id, { description: value })}
             onColors={(colors) => updateDraft(product.id, { colors })}
+            onCategory={(value) => updateDraft(product.id, { categoryId: value })}
             onDelete={() => void deleteProduct(product)}
             onImage={(file) => {
+              const preview = URL.createObjectURL(file)
+              updateDraft(product.id, { imageUrl: preview })
               void uploadPhoto(file)
-                .then((url) => updateDraft(product.id, { imageUrl: url }))
-                .catch((err: any) => setError(err.message || 'Could not upload the photo'))
+                .then((url) => {
+                  URL.revokeObjectURL(preview)
+                  updateDraft(product.id, { imageUrl: url })
+                })
+                .catch((err: any) => {
+                  URL.revokeObjectURL(preview)
+                  updateDraft(product.id, { imageUrl: '' })
+                  setError(err.message || 'Could not upload the photo')
+                })
             }}
             onSubmit={(event) => saveProduct(event, product)}
           />

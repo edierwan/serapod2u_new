@@ -1,3 +1,5 @@
+import { getStorageUrl } from '@/lib/utils'
+
 export type OutdoorColorSwatch = {
   hex: string
   label: string
@@ -76,20 +78,28 @@ export function outdoorSwatchesFromVariants(
     const attrColor = String(attrs.color || attrs.colour || attrs.hex || attrs.Color || '')
     const found = outdoorColorFromText(attrColor) || outdoorColorFromText(String(variant.variant_name || ''))
     const custom = String(attrs.outdoor_image || '').trim()
+    const photo = (raw: string) => {
+      const trimmed = raw.trim()
+      if (!trimmed) return ''
+      if (trimmed.startsWith('/outdoor/')) return trimmed
+      return getStorageUrl(trimmed) || trimmed
+    }
     if (!found) {
-      if (!custom || seen.has(custom)) continue
-      seen.add(custom)
-      out.push({ hex: '#C1C6C8', label: 'Photo', imageUrl: custom })
+      const imageUrl = photo(custom)
+      if (!imageUrl || seen.has(imageUrl)) continue
+      seen.add(imageUrl)
+      out.push({ hex: '#C1C6C8', label: 'Photo', imageUrl })
       continue
     }
     const key = found.hex.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
     const kindName = productName || String(variant.variant_name || '')
+    const imageUrl = photo(custom) || outdoorStaticImage(kindName, found.hex) || photo(String(variant.image_url || '')) || null
     out.push({
       hex: found.hex,
       label: found.label,
-      imageUrl: custom || outdoorStaticImage(kindName, found.hex) || variant.image_url || null,
+      imageUrl,
     })
   }
   return out
