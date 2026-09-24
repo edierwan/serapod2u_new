@@ -146,7 +146,7 @@ export async function listOutdoorProducts(params: {
     } else if (params.sort === 'name_asc') {
       products.sort((a, b) => a.product_name.localeCompare(b.product_name))
     }
-    products = products.slice(0, limit).map(withOutdoorAppearance)
+    products = (await withDeskProducts(products, params.sort, limit)).slice(0, limit).map(withOutdoorAppearance)
     return { products, total: products.length, page: 1, limit, scope }
   }
 
@@ -167,14 +167,29 @@ export async function listOutdoorProducts(params: {
     return isOutdoorName(p.category_name) || isOutdoorName(p.brand_name)
   })
 
+  const visible = await withDeskProducts(products, params.sort, limit)
   return {
-    products: products.map(withOutdoorAppearance),
-    total: products.length,
+    products: visible.slice(0, limit).map(withOutdoorAppearance),
+    total: visible.length,
     page: result.page,
     limit: result.limit,
     scope,
   }
 }
+
+async function withDeskProducts(products: StorefrontProduct[], sort: ListSort | undefined, limit: number) {
+  const added = await listProducts({
+    sort: sort || 'newest',
+    page: 1,
+    limit,
+    channel: 'outdoor',
+    outdoorOnly: true,
+  })
+  const seen = new Set(products.map((product) => product.id))
+  return [...added.products.filter((product) => !seen.has(product.id)), ...products]
+}
+
+type ListSort = 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
 
 export async function getOutdoorProductDetail(productId: string): Promise<StorefrontProductDetail | null> {
   const product = await getProductDetail(productId)
@@ -186,9 +201,12 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
   const supabase: any = createAdminClient()
   let rowQuery = await supabase
     .from('products')
-    .select('category_id, brand_id, outdoor_hidden')
+    .select('category_id, brand_id, outdoor_hidden, outdoor_only')
     .eq('id', productId)
     .maybeSingle()
+  if (rowQuery.error && /outdoor_hidden|outdoor_only/i.test(rowQuery.error.message || '')) {
+    rowQuery = await supabase.from('products').select('category_id, brand_id, outdoor_hidden').eq('id', productId).maybeSingle()
+  }
   if (rowQuery.error && /outdoor_hidden/i.test(rowQuery.error.message || '')) {
     rowQuery = await supabase.from('products').select('category_id, brand_id').eq('id', productId).maybeSingle()
   }
@@ -205,6 +223,8 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
         return { ...variant, suggested_retail_price: custom }
       }),
   }
+
+  if (row?.outdoor_only) return priced
 
   if (scope.categoryIds.length > 0) {
     if (row?.category_id && scope.categoryIds.includes(String(row.category_id))) return priced

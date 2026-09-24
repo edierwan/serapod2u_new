@@ -92,6 +92,8 @@ interface ListProductsParams {
   brandId?: string
   /** Outdoor listings include products created from the Outdoor admin desk. */
   channel?: 'store' | 'outdoor'
+  /** Outdoor admin products, even when they have no catalogue group. */
+  outdoorOnly?: boolean
   sort?: 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
   page?: number
   limit?: number
@@ -168,7 +170,7 @@ export function selectStorefrontProductMedia(
 // ── Functions ────────────────────────────────────────────────────
 
 export async function listProducts(params: ListProductsParams = {}) {
-  const { search, category, brandId, sort = 'newest', page = 1, limit = 12, channel = 'store' } = params
+  const { search, category, brandId, sort = 'newest', page = 1, limit = 12, channel = 'store', outdoorOnly = false } = params
   const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
@@ -212,13 +214,16 @@ export async function listProducts(params: ListProductsParams = {}) {
     `, { count: 'exact' })
     .eq('is_active', true)
 
-  if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
+  if (outdoorOnly) query = query.eq('outdoor_only', true)
+  else if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
   if (hideRemoved) query = query.eq('outdoor_hidden', false)
 
-  // Exclude products from hidden groups
+  // Exclude products from hidden groups. Outdoor products added from the desk
+  // have no group, and NOT IN drops those null rows.
   if (hiddenGroupIds.length > 0) {
-    // We use not.in to exclude products that have a group_id in the hidden list
-    query = query.not('group_id', 'in', `(${hiddenGroupIds.map(id => `"${id}"`).join(',')})`)
+    const hiddenList = hiddenGroupIds.map(id => `"${id}"`).join(',')
+    if (channel === 'outdoor') query = query.or(`group_id.is.null,group_id.not.in.(${hiddenList})`)
+    else query = query.not('group_id', 'in', `(${hiddenList})`)
   }
 
   // Apply search filter
@@ -264,6 +269,9 @@ export async function listProducts(params: ListProductsParams = {}) {
     data = retry.data
     error = retry.error
     count = retry.count
+  }
+  if (error && outdoorOnly) {
+    return { products: [], total: 0, page, limit }
   }
 
   if (error) {
