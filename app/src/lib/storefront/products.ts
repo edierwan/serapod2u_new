@@ -215,13 +215,14 @@ export async function listProducts(params: ListProductsParams = {}) {
     `, { count: 'exact' })
     .eq('is_active', true)
 
-  if (outdoorOnly) query = query.eq('outdoor_only', true)
-  else if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
+  if (outdoorOnly) {
+    query = query.eq('outdoor_only', true).not('group_id', 'is', null)
+  } else if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
   if (hideRemoved) query = query.eq('outdoor_hidden', false)
 
-  // Hidden groups stay out of the catalogue. Desk products have no group_id,
-  // and NOT IN drops those rows, so the outdoor-only lookup skips this filter.
-  if (hiddenGroupIds.length > 0 && !outdoorOnly) {
+  // Hidden groups stay out of both shops. A missing group_id is not a real
+  // master product, so those rows stay out as well.
+  if (hiddenGroupIds.length > 0) {
     query = query.not('group_id', 'in', `(${hiddenGroupIds.map(id => `"${id}"`).join(',')})`)
   }
 
@@ -348,6 +349,18 @@ export async function listProducts(params: ListProductsParams = {}) {
     page,
     limit,
   }
+}
+
+/** True only when the product is marked for the Outdoor shop. A missing column stays false. */
+export async function isOutdoorStoreOnly(productId: string) {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('products')
+    .select('outdoor_only')
+    .eq('id', productId)
+    .maybeSingle()
+  if (error) return false
+  return Boolean((data as { outdoor_only?: boolean } | null)?.outdoor_only)
 }
 
 export async function getProductDetail(productId: string): Promise<StorefrontProductDetail | null> {

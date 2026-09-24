@@ -156,6 +156,18 @@ export async function POST(request: NextRequest) {
 
     // ── 2. Shipping (Outdoor may pass EasyParcel quote; /store stays free/zero) ──
     const salesChannel = body.salesChannel === 'outdoor' ? 'outdoor' : 'store'
+    if (salesChannel === 'store') {
+      const productIds = [...new Set(variants.map((variant: any) => variant.product_id).filter(Boolean))]
+      if (productIds.length > 0) {
+        const flagged = await supabase.from('products').select('id, outdoor_only').in('id', productIds)
+        if (!flagged.error) {
+          const outdoorIds = new Set((flagged.data || []).filter((row: any) => row.outdoor_only).map((row: any) => row.id))
+          if (variants.some((variant: any) => outdoorIds.has(variant.product_id))) {
+            return NextResponse.json({ error: 'That product is sold on the Outdoor shop.' }, { status: 400 })
+          }
+        }
+      }
+    }
     if (salesChannel === 'outdoor') {
       const session = await createClient()
       const { data: { user } } = await session.auth.getUser()

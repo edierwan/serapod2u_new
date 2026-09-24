@@ -147,7 +147,8 @@ export async function listOutdoorProducts(params: {
     } else if (params.sort === 'name_asc') {
       products.sort((a, b) => a.product_name.localeCompare(b.product_name))
     }
-    products = products.slice(0, limit).map(withOutdoorAppearance)
+    const merged = await withOutdoorStoreProducts(products, limit)
+    products = merged.slice(0, limit).map(withOutdoorAppearance)
     return { products, total: products.length, page: 1, limit, scope }
   }
 
@@ -168,13 +169,25 @@ export async function listOutdoorProducts(params: {
     return isOutdoorName(p.category_name) || isOutdoorName(p.brand_name)
   })
 
+  const merged = await withOutdoorStoreProducts(products, limit)
   return {
-    products: products.slice(0, limit).map(withOutdoorAppearance),
-    total: result.total,
+    products: merged.slice(0, limit).map(withOutdoorAppearance),
+    total: merged.length,
     page: result.page,
     limit: result.limit,
     scope,
   }
+}
+
+async function withOutdoorStoreProducts(products: StorefrontProduct[], limit: number) {
+  const extra = await listProducts({
+    outdoorOnly: true,
+    sort: 'name_asc',
+    page: 1,
+    limit,
+  })
+  const seen = new Set(products.map((product) => product.id))
+  return [...products, ...extra.products.filter((product) => !seen.has(product.id))]
 }
 
 export async function getOutdoorProductDetail(productId: string): Promise<StorefrontProductDetail | null> {
@@ -187,7 +200,7 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
   const supabase: any = createAdminClient()
   let rowQuery = await supabase
     .from('products')
-    .select('category_id, brand_id, outdoor_hidden, outdoor_only')
+    .select('category_id, brand_id, group_id, outdoor_hidden, outdoor_only')
     .eq('id', productId)
     .maybeSingle()
   if (rowQuery.error && /outdoor_hidden|outdoor_only/i.test(rowQuery.error.message || '')) {
@@ -197,11 +210,13 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
     rowQuery = await supabase.from('products').select('category_id, brand_id').eq('id', productId).maybeSingle()
   }
   const row = rowQuery.data
-  if (row?.outdoor_only) return null
-
   const priced = {
     ...product,
     variants: product.variants.filter((variant) => !variant.attributes?.outdoor_only_variant),
+  }
+  if (row?.outdoor_only) {
+    if (!row.group_id) return null
+    return priced
   }
 
   if (scope.categoryIds.length > 0) {

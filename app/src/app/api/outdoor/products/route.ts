@@ -1,35 +1,14 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
-import { resolveOutdoorCatalogScope } from '@/lib/outdoor/catalog'
+import { listOutdoorProducts } from '@/lib/outdoor/catalog'
 import { countOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
-import { listProducts, type StorefrontProduct } from '@/lib/storefront/products'
 
 const MASTER_ONLY = 'Products are managed in the main admin. Outdoor shows those products.'
 
 async function loadShopProducts() {
-  const scope = await resolveOutdoorCatalogScope()
-  if (scope.matchedBy === 'none') return [] as StorefrontProduct[]
-
-  if (scope.categoryIds.length > 1) {
-    const pages = await Promise.all(
-      scope.categoryIds.map((id) => listProducts({ category: id, sort: 'name_asc', page: 1, limit: 48 })),
-    )
-    const map = new Map<string, StorefrontProduct>()
-    for (const page of pages) {
-      for (const product of page.products) map.set(product.id, product)
-    }
-    return [...map.values()]
-  }
-
-  const result = await listProducts({
-    category: scope.categoryIds[0],
-    brandId: scope.categoryIds.length === 0 ? scope.brandId || undefined : undefined,
-    sort: 'name_asc',
-    page: 1,
-    limit: 48,
-  })
-  return result.products
+  const { products } = await listOutdoorProducts({ sort: 'name_asc', limit: 48 })
+  return products
 }
 
 /** GET — the same Outdoor products the main shop lists, for staff to view. */

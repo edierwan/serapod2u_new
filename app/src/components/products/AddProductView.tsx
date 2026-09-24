@@ -35,6 +35,7 @@ interface FormData {
   is_vape: boolean
   age_restriction: number | null
   is_active: boolean
+  outdoor_store: boolean
   image_file?: File
 }
 
@@ -55,7 +56,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     manufacturer_id: '',
     is_vape: false,
     age_restriction: null,
-    is_active: true
+    is_active: true,
+    outdoor_store: false
   })
   
   const [loading, setLoading] = useState(false)
@@ -466,12 +468,23 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
             is_vape: formData.is_vape,
             age_restriction: formData.is_vape ? formData.age_restriction : null,
             is_active: formData.is_active,
+            ...(formData.outdoor_store ? { outdoor_only: true } : {}),
             created_by: userProfile.id
           }
         ])
         .select()
 
-      if (productError) throw productError
+      if (productError) {
+        if (formData.outdoor_store && /outdoor_only/i.test(productError.message || '')) {
+          toast({
+            title: 'Outdoor store option is not ready',
+            description: 'Apply the outdoor_only column, then create the product again.',
+            variant: 'destructive'
+          })
+          return
+        }
+        throw productError
+      }
 
       // Upload image if provided
       if (imagePreview && productData && productData.length > 0) {
@@ -862,6 +875,15 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                 />
                 <span className="text-sm font-medium text-gray-700">Product is active</span>
               </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <Checkbox
+                  checked={formData.outdoor_store}
+                  onCheckedChange={(checked) => handleChange('outdoor_store', checked === true)}
+                />
+                <span className="text-sm font-medium text-gray-700">Outdoor store</span>
+              </label>
+              <p className="text-xs text-gray-500 ml-7">Show this product on the Outdoor shop only. The main shop will not list it.</p>
             </div>
 
             {/* Action Buttons */}

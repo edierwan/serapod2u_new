@@ -51,7 +51,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     manufacturer_id: '',
     is_vape: false,
     is_active: true,
-    age_restriction: 0
+    age_restriction: 0,
+    outdoor_store: false
   })
 
   useEffect(() => {
@@ -111,7 +112,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         manufacturer_id: data.manufacturer_id || '',
         is_vape: data.is_vape || false,
         is_active: data.is_active !== false,
-        age_restriction: data.age_restriction || 0
+        age_restriction: data.age_restriction || 0,
+        outdoor_store: Boolean(data.outdoor_only)
       })
     } catch (error) {
       console.error('Error fetching product:', error)
@@ -382,20 +384,32 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
 
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('products')
-        .update({
-          product_name: formData.product_name,
-          product_description: formData.product_description || null,
-          brand_id: formData.brand_id || null,
-          category_id: formData.category_id || null,
-          manufacturer_id: formData.manufacturer_id || null,
-          is_vape: formData.is_vape,
-          is_active: formData.is_active,
-          age_restriction: formData.age_restriction || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', productId)
+      const changes: Record<string, unknown> = {
+        product_name: formData.product_name,
+        product_description: formData.product_description || null,
+        brand_id: formData.brand_id || null,
+        category_id: formData.category_id || null,
+        manufacturer_id: formData.manufacturer_id || null,
+        is_vape: formData.is_vape,
+        is_active: formData.is_active,
+        age_restriction: formData.age_restriction || null,
+        outdoor_only: formData.outdoor_store,
+        updated_at: new Date().toISOString()
+      }
+      let { error } = await supabase.from('products').update(changes).eq('id', productId)
+      if (error && /outdoor_only/i.test(error.message || '')) {
+        if (formData.outdoor_store) {
+          toast({
+            title: 'Outdoor store option is not ready',
+            description: 'Apply the outdoor_only column, then save again.',
+            variant: 'destructive'
+          })
+          return
+        }
+        delete changes.outdoor_only
+        const retry = await supabase.from('products').update(changes).eq('id', productId)
+        error = retry.error
+      }
 
       if (error) throw error
 
@@ -691,7 +705,17 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                 />
                 <Label htmlFor="is_active" className="cursor-pointer">Active</Label>
               </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="outdoor_store"
+                  checked={formData.outdoor_store}
+                  onCheckedChange={(checked: boolean) => setFormData({ ...formData, outdoor_store: checked === true })}
+                />
+                <Label htmlFor="outdoor_store" className="cursor-pointer">Outdoor store</Label>
+              </div>
             </div>
+            <p className="text-xs text-gray-500">Outdoor store lists this product on the Outdoor shop only. The main shop will not show it.</p>
           </CardContent>
         </Card>
 
