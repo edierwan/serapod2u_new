@@ -5,7 +5,7 @@ import {
   buildManualStockRpcItems,
   buildPostManualStockAdditionParams,
   catalogRowKey,
-  defaultConfigurationFilterKey,
+  effectiveConfigurationFilterKey,
   fetchExistingStockForWarehouse,
   filterManualStockCatalogRows,
   isSelectableManualStockConfiguration,
@@ -16,6 +16,7 @@ import {
   weightedAverageCost,
   type ManualStockCatalogRow,
 } from './add-stock-inventory'
+import { shouldShowConfigurationColumn } from './canonical-stock-config'
 
 type InventoryRow = {
   organization_id: string
@@ -244,7 +245,9 @@ describe('Manual Stock Addition bulk helpers', () => {
       }),
     ]
 
-    expect(defaultConfigurationFilterKey(rows)).toContain('20')
+    // Several configurations on one variant: the control is genuinely shown, so
+    // an explicit choice still filters.
+    expect(effectiveConfigurationFilterKey(rows, '20|new_box|20ml · New Box')).toBe('20|new_box|20ml · New Box')
     const filtered = filterManualStockCatalogRows(rows, {
       configurationKey: '20|new_box|20ml · New Box',
     })
@@ -400,5 +403,151 @@ describe('Manual Stock Addition UI contracts', () => {
     expect(addStockComponent).not.toContain('verify_and_post_stock_count')
     expect(addStockComponent).not.toContain('pending_approval')
     expect(addStockComponent).not.toContain('OTP')
+  })
+})
+
+describe('Add Stock hidden configuration filter regression (Device STD vs Cartridge 20NB)', () => {
+  const CARTRIDGE_20NB_KEY = '20|new_box|20ml · New Box'
+
+  function mixedCatalog(): ManualStockCatalogRow[] {
+    return [
+      catalogRow({
+        rowKey: catalogRowKey('v-cart', 'c-cart-20nb'),
+        stockConfigId: 'c-cart-20nb',
+        variantId: 'v-cart',
+        productId: 'p-cart',
+        productName: 'Cellera Cartridge Hazelnut',
+        variantName: 'Cellera Cartridge [Hazelnut]',
+        productLine: 'Cartridge',
+        manufacturerId: 'mfg-cellera',
+        configCode: '20NB',
+        configLabel: '20ml · New Box',
+        stockSku: 'CART-HAZ-20NB',
+        volumeMl: 20,
+        packaging: 'new_box',
+        isCellera: true,
+      }),
+      catalogRow({
+        rowKey: catalogRowKey('v-dev', 'c-dev-std'),
+        stockConfigId: 'c-dev-std',
+        variantId: 'v-dev',
+        productId: 'p-dev',
+        productCode: 'DEV-001',
+        productName: 'Serapod Device',
+        variantName: 'Serapod Device [Black]',
+        variantProductCode: 'DB',
+        alternativeName: 'Pod Device Black',
+        flavour: '[Black]',
+        productLine: 'Device',
+        manufacturerId: 'mfg-device',
+        manufacturerName: 'Device Mfg',
+        configCode: 'STD',
+        configLabel: 'Standard',
+        stockSku: 'DEV-BLK-STD',
+        volumeMl: null,
+        packaging: null,
+        isCellera: false,
+      }),
+    ]
+  }
+
+  it('hides the Configuration control for a single-canonical-config mixed catalog', () => {
+    expect(shouldShowConfigurationColumn(mixedCatalog())).toBe(false)
+  })
+
+  it('cannot leave an invisible 20NB filter active when the control is hidden', () => {
+    const rows = mixedCatalog()
+    // This is the exact stale state production was left in.
+    expect(effectiveConfigurationFilterKey(rows, CARTRIDGE_20NB_KEY)).toBe('all')
+    expect(effectiveConfigurationFilterKey(rows, 'all')).toBe('all')
+    expect(effectiveConfigurationFilterKey(rows, '')).toBe('all')
+    expect(effectiveConfigurationFilterKey(rows, 'no-such-config')).toBe('all')
+  })
+
+  it('returns the Device STD row when Product Group = Device', () => {
+    const rows = mixedCatalog()
+    const device = filterManualStockCatalogRows(rows, {
+      productLine: 'Device',
+      configurationKey: effectiveConfigurationFilterKey(rows, CARTRIDGE_20NB_KEY),
+    })
+    expect(device.map((row) => row.stockConfigId)).toEqual(['c-dev-std'])
+    expect(device[0].configCode).toBe('STD')
+
+    // Documents the production failure mode if the stale key reached the filter.
+    expect(filterManualStockCatalogRows(rows, {
+      productLine: 'Device',
+      configurationKey: CARTRIDGE_20NB_KEY,
+    })).toEqual([])
+  })
+
+  it('still returns the Cartridge 20NB row when Product Group = Cartridge', () => {
+    const rows = mixedCatalog()
+    const cartridge = filterManualStockCatalogRows(rows, {
+      productLine: 'Cartridge',
+      configurationKey: effectiveConfigurationFilterKey(rows, CARTRIDGE_20NB_KEY),
+    })
+    expect(cartridge.map((row) => row.stockConfigId)).toEqual(['c-cart-20nb'])
+    expect(cartridge[0].configCode).toBe('20NB')
+  })
+
+  it('shows both groups under All and keeps search, manufacturer and quantity-only filters working', () => {
+    const rows = mixedCatalog()
+    const configurationKey = effectiveConfigurationFilterKey(rows, CARTRIDGE_20NB_KEY)
+    expect(filterManualStockCatalogRows(rows, { productLine: 'all', configurationKey })).toHaveLength(2)
+    expect(filterManualStockCatalogRows(rows, { search: 'pod device', configurationKey })
+      .map((row) => row.stockConfigId)).toEqual(['c-dev-std'])
+    expect(filterManualStockCatalogRows(rows, { manufacturerId: 'mfg-device', configurationKey })
+      .map((row) => row.stockConfigId)).toEqual(['c-dev-std'])
+    expect(filterManualStockCatalogRows(rows, {
+      quantityOnly: true,
+      quantities: { [rows[1].rowKey]: '7' },
+      configurationKey,
+    }).map((row) => row.stockConfigId)).toEqual(['c-dev-std'])
+    expect(paginateRows(filterManualStockCatalogRows(rows, { configurationKey }), 1, 25)).toHaveLength(2)
+  })
+
+  it('keeps STD selectable and posts the exact Device and Cartridge stock_config_id', () => {
+    const rows = mixedCatalog()
+    expect(isSelectableManualStockConfiguration(rows[0])).toBe(true)
+    expect(isSelectableManualStockConfiguration(rows[1])).toBe(true)
+
+    const items = buildManualStockRpcItems(
+      rows,
+      new Set(rows.map((row) => row.rowKey)),
+      { [rows[0].rowKey]: '5', [rows[1].rowKey]: '3' },
+      { [rows[0].rowKey]: '10', [rows[1].rowKey]: '40' },
+      {},
+    )
+    expect(items.map((item) => [item.variantId, item.stockConfigId])).toEqual([
+      ['v-cart', 'c-cart-20nb'],
+      ['v-dev', 'c-dev-std'],
+    ])
+  })
+
+  it('still rejects 50NB, 50OB and UNCLASSIFIED', () => {
+    for (const configCode of ['50NB', '50OB', 'UNCLASSIFIED']) {
+      const legacy = catalogRow({
+        rowKey: catalogRowKey('v-cart', `c-${configCode}`),
+        stockConfigId: `c-${configCode}`,
+        configCode,
+        configLabel: configCode === 'UNCLASSIFIED' ? 'Legacy / Unclassified' : configCode,
+      })
+      expect(isSelectableManualStockConfiguration(legacy)).toBe(false)
+      expect(() => buildManualStockRpcItems(
+        [legacy],
+        new Set([legacy.rowKey]),
+        { [legacy.rowKey]: '1' },
+        {},
+        {},
+      )).toThrow(/Legacy\/Unclassified/)
+    }
+  })
+
+  it('AddStockView defaults to all and filters only through the effective configuration key', () => {
+    expect(addStockComponent).not.toContain('defaultConfigurationFilterKey')
+    expect(addStockComponent).toContain("setConfigurationKey('all')")
+    expect(addStockComponent).toContain('effectiveConfigurationFilterKey(catalogRows, configurationKey)')
+    expect(addStockComponent).toContain('configurationKey: activeConfigurationKey,')
+    expect(addStockComponent).not.toMatch(/filterManualStockCatalogRows\(catalogRows, \{[^}]*configurationKey,/)
   })
 })

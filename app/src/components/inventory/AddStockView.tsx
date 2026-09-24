@@ -29,7 +29,7 @@ import {
   catalogRowKey,
   configBadgeClass,
   configurationFilterKey,
-  defaultConfigurationFilterKey,
+  effectiveConfigurationFilterKey,
   filterManualStockCatalogRows,
   isHqManualStockAdmin,
   isSelectableManualStockConfiguration,
@@ -261,7 +261,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         }
         return next
       })
-      setConfigurationKey(defaultConfigurationFilterKey(rows))
+      setConfigurationKey('all')
       setPage(1)
     } catch (error: any) {
       toast({ title: 'Catalog error', description: error.message, variant: 'destructive' })
@@ -284,17 +284,23 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]))
   }, [catalogRows])
 
+  // Never let a hidden Configuration control keep filtering the table.
+  const activeConfigurationKey = useMemo(
+    () => effectiveConfigurationFilterKey(catalogRows, configurationKey),
+    [catalogRows, configurationKey],
+  )
+
   const filteredRows = useMemo(
     () => filterManualStockCatalogRows(catalogRows, {
       search,
       productLine,
       manufacturerId: manufacturerFilter,
-      configurationKey,
+      configurationKey: activeConfigurationKey,
       activeOnly,
       quantityOnly,
       quantities,
     }),
-    [catalogRows, search, productLine, manufacturerFilter, configurationKey, activeOnly, quantityOnly, quantities],
+    [catalogRows, search, productLine, manufacturerFilter, activeConfigurationKey, activeOnly, quantityOnly, quantities],
   )
 
   const pageRows = useMemo(
@@ -697,7 +703,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
               </SelectContent>
             </Select>
             {showConfiguration && (
-              <Select value={configurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!selectedWarehouse}>
+              <Select value={activeConfigurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!selectedWarehouse}>
                 <SelectTrigger><SelectValue placeholder="Configuration" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All configurations</SelectItem>

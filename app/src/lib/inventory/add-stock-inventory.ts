@@ -1,5 +1,5 @@
 import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
-import { isLegacyConfigCode } from './canonical-stock-config'
+import { isLegacyConfigCode, shouldShowConfigurationColumn } from './canonical-stock-config'
 
 export interface ExistingStockBalance {
   quantity_on_hand: number
@@ -227,14 +227,19 @@ export function filterManualStockCatalogRows(
   })
 }
 
-export function defaultConfigurationFilterKey(rows: ManualStockCatalogRow[]): string {
-  const celleraRows = rows.filter((row) => row.isCellera)
-  if (celleraRows.some((row) => row.configCode === '20NB' || configurationFilterKey(row) === CELLERA_DEFAULT_CONFIGURATION_KEY)) {
-    const match = celleraRows.find((row) => row.configCode === '20NB')
-      || celleraRows.find((row) => configurationFilterKey(row) === CELLERA_DEFAULT_CONFIGURATION_KEY)
-    if (match) return configurationFilterKey(match)
-  }
-  return 'all'
+// The configuration filter only applies while the Configuration control is
+// actually shown. When every variant has a single canonical configuration
+// (Cellera 20NB, non-vape STD) the control is hidden, and a leftover key such as
+// 20NB would otherwise silently hide every STD row. Also falls back to 'all'
+// when the key no longer matches anything in the loaded catalog.
+export function effectiveConfigurationFilterKey(
+  rows: ManualStockCatalogRow[],
+  configurationKey: string | null | undefined,
+): string {
+  if (!configurationKey || configurationKey === 'all') return 'all'
+  if (!shouldShowConfigurationColumn(rows)) return 'all'
+  if (!rows.some((row) => configurationFilterKey(row) === configurationKey)) return 'all'
+  return configurationKey
 }
 
 export function summarizeManualStockSelection(
