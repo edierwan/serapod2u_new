@@ -97,88 +97,97 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     router.push('/outdoor/checkout')
   }
 
+  const description = String(product.product_description || product.short_description || '').trim()
+
   return (
-    <div className="mx-auto w-full max-w-xl px-4 pb-10 pt-2 sm:px-6">
-      <div className="overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
-        {displayImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={displayImage}
-            src={displayImage}
-            alt={product.product_name}
-            className="mx-auto h-auto w-full max-h-[58vh] object-contain"
-          />
-        ) : (
-          <div className="aspect-square bg-[var(--out-sand)]/30" />
-        )}
-      </div>
-
-      {swatches.length > 0 ? (
-        <div className="mt-5 flex items-center gap-2">
-          {swatches.map((swatch) => {
-            const selectedSwatch = activeHex?.toLowerCase() === swatch.hex.toLowerCase()
-            return (
-              <button
-                key={swatch.hex}
-                type="button"
-                aria-label={swatch.label}
-                onClick={() => {
-                  setActiveHex(swatch.hex)
-                  const next = variantForSwatch(swatch.hex)
-                  if (next) setSelected(next)
-                }}
-                className={`h-4 w-4 rounded-full border ${
-                  selectedSwatch ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)]/20' : 'border-black/10'
-                }`}
-                style={{ background: swatch.hex }}
-              />
-            )
-          })}
+    <div className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-8">
+      <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
+        <div className="overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
+          {displayImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={displayImage}
+              src={displayImage}
+              alt={product.product_name}
+              className="mx-auto h-auto w-full max-h-[58vh] object-contain"
+            />
+          ) : (
+            <div className="aspect-square bg-[var(--out-sand)]/30" />
+          )}
         </div>
-      ) : product.variants.length > 1 ? (
-        <div className="mt-5 flex flex-wrap gap-2">
-          {product.variants.map((v) => (
+
+        <div className="lg:pt-4">
+          {swatches.length > 0 ? (
+            <div className="flex items-center gap-2">
+              {swatches.map((swatch) => {
+                const selectedSwatch = activeHex?.toLowerCase() === swatch.hex.toLowerCase()
+                return (
+                  <button
+                    key={swatch.hex}
+                    type="button"
+                    aria-label={swatch.label}
+                    onClick={() => {
+                      setActiveHex(swatch.hex)
+                      const next = variantForSwatch(swatch.hex)
+                      if (next) setSelected(next)
+                    }}
+                    className={`h-4 w-4 rounded-full border ${
+                      selectedSwatch ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)]/20' : 'border-black/10'
+                    }`}
+                    style={{ background: swatch.hex }}
+                  />
+                )
+              })}
+            </div>
+          ) : product.variants.length > 1 ? (
+            <div className="flex flex-wrap gap-2">
+              {product.variants.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setSelected(v)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected?.id === v.id
+                      ? 'border-[var(--out-bark)] bg-[var(--out-bark)] text-[var(--out-cream)]'
+                      : 'border-[var(--out-line)] text-[var(--out-bark)]'
+                  }`}
+                >
+                  {v.variant_name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex items-start justify-between gap-3">
+            <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">{product.product_name}</h1>
+            {spec ? <p className="pt-2 text-sm text-[var(--out-muted)]">{spec}</p> : null}
+          </div>
+          <p className="mt-1 text-lg font-semibold text-[var(--out-bark)]">
+            {formatPrice(selected?.suggested_retail_price ?? null)}
+          </p>
+          {description ? (
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[var(--out-muted)]">{description}</p>
+          ) : null}
+
+          <div className="mt-6 flex items-center gap-3">
             <button
-              key={v.id}
               type="button"
-              onClick={() => setSelected(v)}
-              className={`rounded-full border px-3 py-1.5 text-sm ${
-                selected?.id === v.id
-                  ? 'border-[var(--out-bark)] bg-[var(--out-bark)] text-[var(--out-cream)]'
-                  : 'border-[var(--out-line)] text-[var(--out-bark)]'
-              }`}
+              onClick={handleBuy}
+              disabled={!selected?.suggested_retail_price || selected.suggested_retail_price <= 0 || adding}
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
             >
-              {v.variant_name}
+              Buy Now
             </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mt-4 flex items-start justify-between gap-3">
-        <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">{product.product_name}</h1>
-        {spec ? <p className="pt-2 text-sm text-[var(--out-muted)]">{spec}</p> : null}
-      </div>
-      <p className="mt-1 text-lg font-semibold text-[var(--out-bark)]">
-        {formatPrice(selected?.suggested_retail_price ?? null)}
-      </p>
-
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleBuy}
-          disabled={!selected?.suggested_retail_price || selected.suggested_retail_price <= 0 || adding}
-          className="inline-flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
-        >
-          Buy Now
-        </button>
-        <div className="inline-flex h-12 items-center rounded-2xl bg-white px-2 text-[var(--out-bark)]">
-          <button type="button" className="p-2" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease">
-            <Minus className="h-4 w-4" />
-          </button>
-          <span className="w-6 text-center text-sm font-semibold">{qty}</span>
-          <button type="button" className="p-2" onClick={() => setQty((q) => q + 1)} aria-label="Increase">
-            <Plus className="h-4 w-4" />
-          </button>
+            <div className="inline-flex h-12 items-center rounded-2xl bg-white px-2 text-[var(--out-bark)]">
+              <button type="button" className="p-2" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease">
+                <Minus className="h-4 w-4" />
+              </button>
+              <span className="w-6 text-center text-sm font-semibold">{qty}</span>
+              <button type="button" className="p-2" onClick={() => setQty((q) => q + 1)} aria-label="Increase">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
