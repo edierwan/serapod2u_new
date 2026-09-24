@@ -27,7 +27,7 @@ function Dots() {
 
 function activeIndex(items: OutdoorNavItem[], pathname: string, collection: string | null) {
   return items.findIndex((item) => {
-    if (item.key === 'new') return pathname === '/outdoor/shop' && collection === 'new'
+    if (pathname === '/outdoor/shop' && collection) return item.key === collection
     return item.href.startsWith('/outdoor/shop/') && pathname === item.href
   })
 }

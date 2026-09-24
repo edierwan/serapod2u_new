@@ -11,6 +11,7 @@ export default async function OutdoorShopPage({ searchParams }: { searchParams: 
   const params = await searchParams
   const search = typeof params.search === 'string' ? params.search : ''
   const category = typeof params.category === 'string' ? params.category : ''
+  const collection = typeof params.collection === 'string' ? params.collection : ''
   const sortRaw = typeof params.sort === 'string' ? params.sort : 'newest'
   const sort = (['newest', 'price_asc', 'price_desc', 'name_asc'].includes(sortRaw)
     ? sortRaw
@@ -32,6 +33,7 @@ export default async function OutdoorShopPage({ searchParams }: { searchParams: 
         categories={categories}
         initialSearch={search}
         initialCategory={category}
+        initialCollection={collection}
         initialSort={sort}
         catalogueLinked={scope.matchedBy !== 'none'}
       />

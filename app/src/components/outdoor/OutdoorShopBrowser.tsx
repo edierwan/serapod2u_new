@@ -16,6 +16,7 @@ export default function OutdoorShopBrowser({
   categories,
   initialSearch = '',
   initialCategory = '',
+  initialCollection = '',
   initialSort = 'newest',
   catalogueLinked = true,
 }: {
@@ -23,11 +24,13 @@ export default function OutdoorShopBrowser({
   categories: StorefrontCategory[]
   initialSearch?: string
   initialCategory?: string
+  initialCollection?: string
   initialSort?: string
   catalogueLinked?: boolean
 }) {
   const [search, setSearch] = useState(initialSearch)
   const [category, setCategory] = useState(initialCategory)
+  const [collection, setCollection] = useState(initialCollection)
   const [sort, setSort] = useState<OutdoorShopSort>(
     SORTS.includes(initialSort as OutdoorShopSort) ? (initialSort as OutdoorShopSort) : 'newest',
   )
@@ -41,10 +44,11 @@ export default function OutdoorShopBrowser({
   const visible = useMemo(() => {
     const matched = products.filter((product) => {
       if (category && product.category_id !== category) return false
+      if (collection && product.outdoorNav !== collection) return false
       return outdoorProductMatchesSearch(product, search)
     })
     return sortOutdoorProducts(matched, sort, newestRank)
-  }, [products, category, search, sort, newestRank])
+  }, [products, category, collection, search, sort, newestRank])
 
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -53,13 +57,15 @@ export default function OutdoorShopBrowser({
     else url.searchParams.delete('search')
     if (category) url.searchParams.set('category', category)
     else url.searchParams.delete('category')
+    if (collection) url.searchParams.set('collection', collection)
+    else url.searchParams.delete('collection')
     if (sort !== 'newest') url.searchParams.set('sort', sort)
     else url.searchParams.delete('sort')
     const next = `${url.pathname}${url.search}`
     if (`${window.location.pathname}${window.location.search}` !== next) {
       window.history.replaceState(null, '', next)
     }
-  }, [search, category, sort])
+  }, [search, category, collection, sort])
 
   const showCategoryFilter = categories.length > 1
 
@@ -118,6 +124,7 @@ export default function OutdoorShopBrowser({
             onClick={() => {
               setSearch('')
               setCategory('')
+              setCollection('')
               setSort('newest')
             }}
             className="mt-4 text-sm font-semibold text-[var(--out-moss)] hover:underline"

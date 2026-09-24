@@ -12,6 +12,29 @@ const COLOR_RULES: Array<{ test: RegExp; hex: string; label: string; file: 'burg
   { test: /grey|gray|silver/i, hex: '#7C878E', label: 'Orange Grey', file: 'grey' },
 ]
 
+export const OUTDOOR_NAV = [
+  { key: 'new', label: 'New in' },
+  { key: 'chair', label: 'Moon Chair' },
+  { key: 'tumbler', label: 'Tumbler' },
+  { key: 'mat', label: 'Camp Mat' },
+] as const
+
+export type OutdoorNavKey = (typeof OUTDOOR_NAV)[number]['key']
+
+export function outdoorNavFromName(name: string): OutdoorNavKey | '' {
+  const n = String(name || '').toLowerCase()
+  if (n.includes('tumbler')) return 'tumbler'
+  if (n.includes('mat') || n.includes('mattress') || n.includes('pad')) return 'mat'
+  if (n.includes('chair') || n.includes('moon')) return 'chair'
+  return ''
+}
+
+export function outdoorNavKey(saved: string, name = ''): OutdoorNavKey | '' {
+  const key = String(saved || '').trim()
+  if (OUTDOOR_NAV.some((item) => item.key === key)) return key as OutdoorNavKey
+  return outdoorNavFromName(name)
+}
+
 export const OUTDOOR_COLOURWAYS: Array<{ hex: string; label: string; file: 'burgundy' | 'pink' | 'grey' }> = [
   { hex: '#76232F', label: 'Burgundy Sand', file: 'burgundy' },
   { hex: '#5E6738', label: 'Matcha Berry', file: 'pink' },

@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
 import { resolveOutdoorCatalogScope } from '@/lib/outdoor/catalog'
 import { emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
-import { outdoorStaticImage } from '@/lib/outdoor/merch'
+import { outdoorNavKey, outdoorStaticImage } from '@/lib/outdoor/merch'
 import { isSupabaseStorageUrl } from '@/lib/utils'
 
 function escapeHtml(value: string) {
@@ -95,7 +95,7 @@ function toEditorProduct(row: any) {
     price: variantPrice(variant),
     color: colorOf(variant),
     imageUrl: previewImage(row.product_name || '', variant),
-    categoryId: row.category_id ? String(row.category_id) : '',
+    nav: outdoorNavKey(String(variant?.attributes?.outdoor_nav || ''), row.product_name || ''),
     colors: visible.map((item: any) => ({
       id: item.id,
       name: colorOf(item),
@@ -158,15 +158,7 @@ export async function GET() {
         products = loaded.filter((item: { id: string }) => !hiddenIds.has(item.id))
       }
     }
-    let categories: Array<{ id: string; name: string }> = []
-    if (scope.categoryIds.length > 0) {
-      const categoryRows = await admin.from('product_categories').select('id, category_name').in('id', scope.categoryIds).order('category_name')
-      categories = (categoryRows.data || []).map((row: { id: string; category_name?: string }) => ({
-        id: String(row.id),
-        name: row.category_name || 'Category',
-      }))
-    }
-    return NextResponse.json({ products, categories, subscribers: count || 0 })
+    return NextResponse.json({ products, subscribers: count || 0 })
   } catch (err) {
     console.error('[outdoor/products GET]', err)
     return NextResponse.json({ error: 'Could not load products.' }, { status: 500 })
@@ -185,7 +177,7 @@ export async function PATCH(request: NextRequest) {
     const color = String(body.color || '').trim().slice(0, 80)
     const description = String(body.description || '').trim().slice(0, 2000)
     const imageUrl = String(body.imageUrl || '').trim().slice(0, 2000)
-    const requestedCategory = String(body.categoryId || '').trim()
+    const nav = outdoorNavKey(String(body.nav || ''), name)
     const price = Number(body.price)
     if (!id || !name || !Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: 'Enter a product name and a price above 0.' }, { status: 400 })
@@ -205,12 +197,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'That product is not on the outdoor shop.' }, { status: 404 })
     }
 
-    const categoryId = scope.categoryIds.includes(requestedCategory) ? requestedCategory : ''
     const { error: productError } = await admin.from('products').update({
       product_name: name,
       product_description: description || null,
       short_description: description.slice(0, 180) || null,
-      ...(categoryId ? { category_id: categoryId } : {}),
     }).eq('id', id)
     if (productError) {
       console.error('[outdoor/products] update', productError)
@@ -226,6 +216,8 @@ export async function PATCH(request: NextRequest) {
     attributes.outdoor_price = rounded
     const customPhoto = imageUrl && !imageUrl.startsWith('/outdoor/') ? imageUrl : ''
     if (customPhoto) attributes.outdoor_image = customPhoto
+    if (nav) attributes.outdoor_nav = nav
+    else delete attributes.outdoor_nav
     const variantPatch: Record<string, unknown> = {
       variant_name: color || variant?.variant_name || 'Default',
       attributes,
@@ -262,6 +254,7 @@ export async function PATCH(request: NextRequest) {
           nextAttributes.outdoor_price = colorAmount
           if (colorName) nextAttributes.color = colorName
           if (customPhoto) nextAttributes.outdoor_image = customPhoto
+          if (nav) nextAttributes.outdoor_nav = nav
           if (hidden) nextAttributes.outdoor_hidden = true
           else delete nextAttributes.outdoor_hidden
           const colorPatch: Record<string, unknown> = {
@@ -289,6 +282,7 @@ export async function PATCH(request: NextRequest) {
               color: colorName,
               outdoor_price: colorAmount,
               ...(customPhoto ? { outdoor_image: customPhoto } : {}),
+              ...(nav ? { outdoor_nav: nav } : {}),
               ...(outdoorOnly ? {} : { outdoor_only_variant: true }),
             },
           })
@@ -335,7 +329,7 @@ export async function POST(request: NextRequest) {
     const color = String(body.color || '').trim().slice(0, 80)
     const description = String(body.description || '').trim().slice(0, 2000)
     const imageUrl = String(body.imageUrl || '').trim().slice(0, 2000)
-    const requestedCategory = String(body.categoryId || '').trim()
+    const nav = outdoorNavKey(String(body.nav || ''), name) || 'new'
     const price = Number(body.price)
     if (!allowedImage(imageUrl)) {
       return NextResponse.json({ error: 'That photo could not be saved.' }, { status: 400 })
@@ -345,7 +339,7 @@ export async function POST(request: NextRequest) {
     }
 
     const scope = await resolveOutdoorCatalogScope()
-    const categoryId = scope.categoryIds.includes(requestedCategory) ? requestedCategory : scope.categoryIds[0]
+    const categoryId = scope.categoryIds[0]
     if (!categoryId) {
       return NextResponse.json({ error: 'Outdoor category is not set, so a new product cannot be added.' }, { status: 400 })
     }
@@ -380,6 +374,7 @@ export async function POST(request: NextRequest) {
       ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { image_url: imageUrl } : {}),
       attributes: {
         ...(color ? { color } : {}),
+        outdoor_nav: nav,
         ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { outdoor_image: imageUrl } : {}),
       },
     })
@@ -411,6 +406,7 @@ export async function POST(request: NextRequest) {
         attributes: {
           color: colorName,
           outdoor_price: colorAmount,
+          outdoor_nav: nav,
           ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { outdoor_image: imageUrl } : {}),
         },
       })

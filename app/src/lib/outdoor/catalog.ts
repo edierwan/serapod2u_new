@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { outdoorFallbackSwatches, outdoorSpecLabel, outdoorStaticImage } from '@/lib/outdoor/merch'
+import { OUTDOOR_NAV, outdoorFallbackSwatches, outdoorSpecLabel, outdoorStaticImage } from '@/lib/outdoor/merch'
 import {
   listProducts,
   listCategories,
@@ -242,17 +242,13 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
   return null
 }
 
-export function outdoorCategoryNavFromProducts(products: StorefrontProduct[]) {
-  const find = (...needles: string[]) =>
-    products.find((p) => needles.some((n) => p.product_name.toLowerCase().includes(n))) || null
-  const hrefFor = (product: StorefrontProduct | null) => (product ? `/outdoor/shop/${product.id}` : '/outdoor/shop')
-
-  return [
-    { key: 'new', label: 'New in', href: '/outdoor/shop?collection=new', icon: 'new' as const },
-    { key: 'chair', label: 'Moon Chair', href: hrefFor(find('chair', 'moonchair')), icon: 'chair' as const },
-    { key: 'tumbler', label: 'Tumbler', href: hrefFor(find('tumbler')), icon: 'tumbler' as const },
-    { key: 'mat', label: 'Camp Mat', href: hrefFor(find('mat', 'mattress', 'pad')), icon: 'mat' as const },
-  ]
+export function outdoorCategoryNavFromProducts(_products: StorefrontProduct[]) {
+  return OUTDOOR_NAV.map((item) => ({
+    key: item.key,
+    label: item.label,
+    href: `/outdoor/shop?collection=${item.key}`,
+    icon: item.key,
+  }))
 }
 
 export async function getOutdoorCategoryNav() {

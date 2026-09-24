@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { outdoorSpecLabel, outdoorSwatchesFromVariants, type OutdoorColorSwatch } from '@/lib/outdoor/merch'
+import { outdoorNavKey, outdoorSpecLabel, outdoorSwatchesFromVariants, type OutdoorColorSwatch } from '@/lib/outdoor/merch'
 import { formatStorefrontError } from '@/lib/storefront/error'
 import { getStorageUrl } from '@/lib/utils'
 
@@ -39,6 +39,7 @@ export interface StorefrontProduct {
   tags: string[]
   colorSwatches?: OutdoorColorSwatch[]
   specLabel?: string | null
+  outdoorNav?: string
 }
 
 export interface StorefrontProductDetail {
@@ -344,6 +345,7 @@ export async function listProducts(params: ListProductsParams = {}) {
       ].filter(Boolean),
       colorSwatches,
       specLabel: outdoorSpecLabel(p.product_name, defaultVariant?.variant_name, defaultVariant?.attributes),
+      outdoorNav: outdoorNavKey(String(defaultVariant?.attributes?.outdoor_nav || ''), p.product_name),
     }
   })
 

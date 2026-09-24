@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { OUTDOOR_COLOURWAYS, outdoorColorFromText } from '@/lib/outdoor/merch'
+import { OUTDOOR_COLOURWAYS, OUTDOOR_NAV, outdoorColorFromText } from '@/lib/outdoor/merch'
 import { getStorageUrl } from '@/lib/utils'
 
 type ColorDraft = {
@@ -13,8 +13,6 @@ type ColorDraft = {
   removed?: boolean
 }
 
-type CategoryOption = { id: string; name: string }
-
 type ProductDraft = {
   id: string
   name: string
@@ -22,7 +20,7 @@ type ProductDraft = {
   color: string
   description: string
   imageUrl: string
-  categoryId: string
+  nav: string
   colors: ColorDraft[]
 }
 
@@ -70,8 +68,7 @@ function ProductSheet({
   description,
   imageUrl,
   colors,
-  categoryId,
-  categories,
+  nav,
   saving,
   submitLabel,
   onName,
@@ -79,7 +76,7 @@ function ProductSheet({
   onColor,
   onDescription,
   onImage,
-  onCategory,
+  onNav,
   onColors,
   onDelete,
   onSubmit,
@@ -91,8 +88,7 @@ function ProductSheet({
   description: string
   imageUrl: string
   colors?: ColorDraft[]
-  categoryId?: string
-  categories?: CategoryOption[]
+  nav?: string
   saving: boolean
   submitLabel: string
   onName: (value: string) => void
@@ -100,7 +96,7 @@ function ProductSheet({
   onColor: (value: string) => void
   onDescription: (value: string) => void
   onImage: (file: File) => void
-  onCategory?: (value: string) => void
+  onNav?: (value: string) => void
   onColors?: (colors: ColorDraft[]) => void
   onDelete?: () => void
   onSubmit: (event: React.FormEvent) => void
@@ -135,12 +131,12 @@ function ProductSheet({
           Name
           <input value={name} onChange={(event) => onName(event.target.value)} required placeholder="Product name" className={`${fieldClass} h-11 text-base`} />
         </label>
-        {categories && categories.length > 0 && onCategory ? (
+        {onNav ? (
           <label className="block text-sm font-medium text-[var(--out-bark)]">
             Category
-            <select value={categoryId || categories[0]?.id || ''} onChange={(event) => onCategory(event.target.value)} className={`${fieldClass} h-11`}>
-              {categories.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
+            <select value={nav || 'new'} onChange={(event) => onNav(event.target.value)} className={`${fieldClass} h-11`}>
+              {OUTDOOR_NAV.map((item) => (
+                <option key={item.key} value={item.key}>{item.label}</option>
               ))}
             </select>
           </label>
@@ -231,13 +227,12 @@ export default function OutdoorAdminClient() {
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [subscribers, setSubscribers] = useState(0)
   const [products, setProducts] = useState<ProductDraft[]>([])
-  const [categories, setCategories] = useState<CategoryOption[]>([])
   const [productName, setProductName] = useState('')
   const [productPrice, setProductPrice] = useState('')
   const [productColor, setProductColor] = useState(OUTDOOR_COLOURWAYS[0].label)
   const [productDescription, setProductDescription] = useState('')
   const [productImage, setProductImage] = useState('')
-  const [productCategory, setProductCategory] = useState('')
+  const [productNav, setProductNav] = useState('new')
   const [newColors, setNewColors] = useState<ColorDraft[]>(() => withWebsiteColors([], ''))
   const [adding, setAdding] = useState(false)
   const [savingId, setSavingId] = useState('')
@@ -260,9 +255,6 @@ export default function OutdoorAdminClient() {
       return
     }
     setSubscribers(data.subscribers || 0)
-    const nextCategories = (data.categories || []).map((item: any) => ({ id: String(item.id), name: item.name || 'Category' }))
-    setCategories(nextCategories)
-    setProductCategory((current) => current || nextCategories[0]?.id || '')
     setProducts((data.products || []).map((item: any) => {
       const price = item.price ? String(item.price) : ''
       const colors = withWebsiteColors((item.colors || []).map((color: any, index: number) => ({
@@ -278,7 +270,7 @@ export default function OutdoorAdminClient() {
         color: colors[0]?.name || item.color || '',
         description: item.description || '',
         imageUrl: item.imageUrl || '',
-        categoryId: item.categoryId || nextCategories[0]?.id || '',
+        nav: item.nav || 'new',
         colors,
       }
     }))
@@ -320,7 +312,7 @@ export default function OutdoorAdminClient() {
           color: productColor,
           description: productDescription,
           imageUrl: productImage.startsWith('blob:') ? '' : productImage,
-          categoryId: productCategory,
+          nav: productNav,
           colors: newColors.filter((item) => item.name.trim()).map((item) => ({
             id: '',
             name: item.name,
@@ -336,7 +328,7 @@ export default function OutdoorAdminClient() {
       setProductColor('')
       setProductDescription('')
       setProductImage('')
-      setProductCategory(categories[0]?.id || '')
+      setProductNav('new')
       setNewColors(withWebsiteColors([], ''))
       setProductColor(OUTDOOR_COLOURWAYS[0].label)
       setAdding(false)
@@ -365,7 +357,7 @@ export default function OutdoorAdminClient() {
           color: product.colors.find((item) => !item.removed && item.name.trim())?.name || product.color,
           description: product.description,
           imageUrl: product.imageUrl.startsWith('blob:') ? '' : product.imageUrl,
-          categoryId: product.categoryId,
+          nav: product.nav,
           colors: product.colors.filter((item) => item.name.trim() || item.id).map((item) => ({
             id: item.id,
             name: item.name,
@@ -453,8 +445,7 @@ export default function OutdoorAdminClient() {
             description={productDescription}
             imageUrl={productImage}
             colors={newColors}
-            categoryId={productCategory}
-            categories={categories}
+            nav={productNav}
             saving={savingId === 'new' || uploading}
             submitLabel="Add product"
             onName={setProductName}
@@ -466,7 +457,7 @@ export default function OutdoorAdminClient() {
               const first = colors.find((item) => !item.removed)
               setProductColor(first?.name || '')
             }}
-            onCategory={setProductCategory}
+            onNav={setProductNav}
             onImage={(file) => {
               const preview = URL.createObjectURL(file)
               setProductImage(preview)
@@ -495,8 +486,7 @@ export default function OutdoorAdminClient() {
             description={product.description}
             imageUrl={product.imageUrl}
             colors={product.colors}
-            categoryId={product.categoryId}
-            categories={categories}
+            nav={product.nav}
             saving={savingId === product.id || uploading}
             submitLabel="Save"
             compact
@@ -505,7 +495,7 @@ export default function OutdoorAdminClient() {
             onColor={(value) => updateDraft(product.id, { color: value })}
             onDescription={(value) => updateDraft(product.id, { description: value })}
             onColors={(colors) => updateDraft(product.id, { colors })}
-            onCategory={(value) => updateDraft(product.id, { categoryId: value })}
+            onNav={(value) => updateDraft(product.id, { nav: value })}
             onDelete={() => void deleteProduct(product)}
             onImage={(file) => {
               const preview = URL.createObjectURL(file)
