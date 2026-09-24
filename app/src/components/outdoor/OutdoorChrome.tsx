@@ -306,7 +306,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
       <section className="px-4 sm:px-8 pb-8">
         <div className="mx-auto max-w-xl rounded-[1.75rem] bg-[var(--out-bark)] px-6 py-8 text-center sm:px-10 sm:py-10">
           <h2 className="font-display text-3xl tracking-tight text-[var(--out-cream)] sm:text-4xl">Get Updates</h2>
-          <p className="mt-2 text-sm text-[var(--out-cream)]/75">
+          <p className="mt-2 text-sm text-[var(--out-cream)]">
             Leave your email for Outdoor product news
           </p>
           <div className="mt-5">
