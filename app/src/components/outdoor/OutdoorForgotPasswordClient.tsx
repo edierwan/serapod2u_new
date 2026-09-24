@@ -11,6 +11,9 @@ function resetError(data: { error?: string; code?: string } | null, fallback: st
   if (data?.code === 'not_registered') {
     return 'No account uses this email. Create an account, or sign in with Google or X.'
   }
+  if (data?.code === 'rate_limited') {
+    return 'Too many codes for this email. Wait 15 minutes, then try again.'
+  }
   return data?.error || fallback
 }
 
@@ -140,10 +143,10 @@ export default function OutdoorForgotPasswordClient() {
           <OutdoorBrandMark className="h-7 w-auto" />
         </Link>
         <h1 className="mt-6 font-display text-3xl tracking-tight text-[var(--out-bark)]">Forgot password</h1>
-        <p className="mt-2 text-sm text-[var(--out-muted)]">
+        <p className="mt-3 text-sm leading-relaxed text-[var(--out-muted)]">
           {step === 'done'
             ? 'Your password is updated. Sign in with the new one.'
-            : 'We email a 4-digit code, then you choose a new password.'}
+            : 'Enter the email on your account. We send a 4-digit code.'}
         </p>
 
         {step === 'email' ? (

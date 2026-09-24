@@ -42,18 +42,30 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const { data: profile } = await admin
+    let profile = (await admin
       .from('users')
-      .select('id')
+      .select('id, is_active')
       .ilike('email', email)
       .limit(1)
-      .maybeSingle()
+      .maybeSingle()).data
 
     if (!profile) {
       const authUserId = await findAuthUserId(email)
       if (authUserId) {
         await ensureUserRow(authUserId, email, { provider: 'email' })
+        profile = (await admin
+          .from('users')
+          .select('id, is_active')
+          .eq('id', authUserId)
+          .maybeSingle()).data
       }
+    }
+
+    if (!profile || profile.is_active === false) {
+      return NextResponse.json({
+        error: 'No account uses this email.',
+        code: 'not_registered',
+      }, { status: 404 })
     }
 
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || null
