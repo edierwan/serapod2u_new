@@ -361,6 +361,7 @@ export async function listProducts(params: ListProductsParams = {}) {
     const defaultAmount = Number(defaultVariant?.suggested_retail_price);
     const colorSwatches = outdoorSwatchesFromVariants(
       activeVariants.map((v: any) => ({
+        id: v.id,
         variant_name: v.variant_name,
         image_url: toStorefrontMediaUrl(v.image_url),
         attributes: v.attributes,

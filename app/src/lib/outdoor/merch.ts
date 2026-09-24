@@ -6,12 +6,15 @@ export type OutdoorColorSwatch = {
   imageUrl: string | null
   price?: number | null
   isDefault?: boolean
+  variantId?: string
 }
 
 const COLOR_RULES: Array<{ test: RegExp; hex: string; label: string; file: 'burgundy' | 'pink' | 'grey' }> = [
   { test: /burgundy|wine|maroon/i, hex: '#76232F', label: 'Burgundy Sand', file: 'burgundy' },
   { test: /matcha|olive|green|pink|blush/i, hex: '#5E6738', label: 'Matcha Berry', file: 'pink' },
   { test: /grey|gray|silver/i, hex: '#7C878E', label: 'Orange Grey', file: 'grey' },
+  { test: /\bblue\b/i, hex: '#1B4F8A', label: 'Blue', file: 'burgundy' },
+  { test: /\bred\b/i, hex: '#B42318', label: 'Red', file: 'burgundy' },
 ]
 
 export const OUTDOOR_NAV = [
@@ -43,6 +46,17 @@ export const OUTDOOR_COLOURWAYS: Array<{ hex: string; label: string; file: 'burg
   { hex: '#7C878E', label: 'Orange Grey', file: 'grey' },
 ]
 
+function hexFromName(name: string) {
+  let hash = 0
+  for (let index = 0; index < name.length; index += 1) hash = (hash * 31 + name.charCodeAt(index)) >>> 0
+  const hue = hash % 360
+  const channel = (offset: number) => {
+    const value = Math.cos((hue + offset) * Math.PI / 180)
+    return Math.round((0.55 + 0.35 * value) * 255).toString(16).padStart(2, '0')
+  }
+  return `#${channel(0)}${channel(120)}${channel(240)}`
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
@@ -64,7 +78,10 @@ export function outdoorStaticImage(productName: string, hexOrFile: string): stri
       ? 'burgundy'
       : raw === 'grey' || raw === '#7c878e' || raw === '#c1c6c8'
         ? 'grey'
-        : 'pink'
+        : raw === 'pink' || raw === '#5e6738'
+          ? 'pink'
+          : null
+  if (!file) return null
   return `/outdoor/products/${kind}-${file}.png`
 }
 
@@ -89,6 +106,7 @@ export function outdoorColorFromText(text: string): { hex: string; label: string
 
 export function outdoorSwatchesFromVariants(
   variants: Array<{
+    id?: string | null
     variant_name?: string | null
     image_url?: string | null
     attributes?: Record<string, unknown> | null
@@ -115,10 +133,19 @@ export function outdoorSwatchesFromVariants(
     const amount = Number(variant.price)
     const price = Number.isFinite(amount) && amount > 0 ? amount : null
     if (!found) {
-      const imageUrl = photo(custom)
-      if (!imageUrl || seen.has(imageUrl)) continue
-      seen.add(imageUrl)
-      out.push({ hex: '#C1C6C8', label: 'Photo', imageUrl, price, isDefault: Boolean(variant.is_default) })
+      const label = String(variant.variant_name || '').trim() || 'Variant'
+      const imageUrl = photo(custom) || photo(String(variant.image_url || '')) || null
+      const key = variant.id || label.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({
+        hex: hexFromName(label),
+        label,
+        imageUrl,
+        price,
+        isDefault: Boolean(variant.is_default),
+        variantId: variant.id || undefined,
+      })
       continue
     }
     const key = found.hex.toLowerCase()
@@ -132,6 +159,7 @@ export function outdoorSwatchesFromVariants(
       imageUrl,
       price,
       isDefault: Boolean(variant.is_default),
+      variantId: variant.id || undefined,
     })
   }
   return out

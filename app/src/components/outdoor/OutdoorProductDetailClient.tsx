@@ -18,9 +18,12 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   const swatches = useMemo(() => {
     const parsed = outdoorSwatchesFromVariants(
       product.variants.map((v) => ({
+        id: v.id,
         variant_name: v.variant_name,
         image_url: v.image_url,
         attributes: v.attributes,
+        price: v.suggested_retail_price,
+        is_default: v.is_default,
       })),
       product.product_name,
     ).map((swatch) => ({
@@ -30,7 +33,9 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           ? swatch.imageUrl
           : outdoorStaticImage(product.product_name, swatch.hex) || swatch.imageUrl,
     }))
-    return parsed.length > 0 ? parsed : outdoorFallbackSwatches(product.product_name)
+    if (parsed.length > 0) return parsed
+    if (product.variants.length > 0) return []
+    return outdoorFallbackSwatches(product.product_name)
   }, [product.product_name, product.variants])
 
   const variantForSwatch = (hex: string | null) => {
@@ -126,15 +131,17 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           {swatches.length > 0 ? (
             <div className="flex items-center gap-2">
               {swatches.map((swatch) => {
-                const selectedSwatch = activeHex?.toLowerCase() === swatch.hex.toLowerCase()
+                const selectedSwatch = swatch.variantId
+                  ? selected?.id === swatch.variantId
+                  : activeHex?.toLowerCase() === swatch.hex.toLowerCase()
                 return (
                   <button
-                    key={swatch.hex}
+                    key={swatch.variantId || `${swatch.hex}-${swatch.label}`}
                     type="button"
                     aria-label={swatch.label}
                     onClick={() => {
                       setActiveHex(swatch.hex)
-                      const next = variantForSwatch(swatch.hex)
+                      const next = product.variants.find((variant) => variant.id === swatch.variantId) || variantForSwatch(swatch.hex)
                       if (next) setSelected(next)
                     }}
                     className={`h-4 w-4 rounded-full border ${
