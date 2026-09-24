@@ -1,32 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getStorageUrl } from '@/lib/utils'
-
-type ProductColor = {
-  id: string
-  name: string
-  price: number
-}
-
-type ProductRow = {
-  id: string
-  name: string
-  price: number
-  description: string
-  imageUrl: string
-  colors: ProductColor[]
-}
-
-function money(amount: number) {
-  if (!Number.isFinite(amount) || amount <= 0) return ''
-  return `RM ${amount.toFixed(2)}`
-}
+import StorefrontProductCard from '@/components/storefront/ProductCard'
+import type { StorefrontProduct } from '@/lib/storefront/products'
+import '@/app/store/store.css'
 
 export default function OutdoorAdminClient() {
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [subscribers, setSubscribers] = useState(0)
-  const [products, setProducts] = useState<ProductRow[]>([])
+  const [products, setProducts] = useState<StorefrontProduct[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -45,14 +27,7 @@ export default function OutdoorAdminClient() {
         return
       }
       setSubscribers(data.subscribers || 0)
-      setProducts((data.products || []).map((item: any) => ({
-        id: item.id,
-        name: item.name || '',
-        price: Number(item.price) || 0,
-        description: item.description || '',
-        imageUrl: item.imageUrl || '',
-        colors: Array.isArray(item.colors) ? item.colors : [],
-      })))
+      setProducts(Array.isArray(data.products) ? data.products : [])
     }
     void load()
   }, [])
@@ -65,37 +40,16 @@ export default function OutdoorAdminClient() {
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--out-muted)]">Admin</p>
       <h1 className="mt-2 font-display text-4xl tracking-tight">Outdoor desk</h1>
       <p className="mt-2 max-w-2xl text-sm text-[var(--out-muted)]">
-        {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. Products are added and edited in the main admin. This page shows the same Outdoor products, with the same name and price.
+        {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. Products are added and edited in the main admin. These are the same cards as the main shop.
       </p>
       {error ? <p className="mt-6 text-sm text-red-600">{error}</p> : null}
-      <div className="mt-10 grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+      <div className="sera-store mt-10 bg-transparent">
         {products.length === 0 ? <p className="text-sm text-[var(--out-muted)]">No outdoor products yet.</p> : null}
-        {products.map((product) => (
-          <article key={product.id} className="w-full">
-            <div className="overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
-              {product.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={getStorageUrl(product.imageUrl) || product.imageUrl} alt="" className="mx-auto h-auto max-h-56 w-full object-contain" />
-              ) : (
-                <div className="flex aspect-square items-center justify-center text-sm text-[var(--out-muted)]">No photo yet</div>
-              )}
-            </div>
-            <div className="mt-4 space-y-2 rounded-[1.6rem] bg-white p-4 sm:p-5">
-              <h2 className="text-lg font-semibold text-[var(--out-bark)]">{product.name}</h2>
-              {money(product.price) ? <p className="text-sm font-medium text-[var(--out-bark)]">From {money(product.price)}</p> : null}
-              {product.colors.length > 0 ? (
-                <ul className="space-y-1 text-sm text-[var(--out-muted)]">
-                  {product.colors.map((color) => (
-                    <li key={color.id || color.name}>
-                      {color.name || 'Variant'}{money(color.price) ? ` · ${money(color.price)}` : ''}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {product.description ? <p className="text-sm leading-relaxed text-[var(--out-muted)]">{product.description}</p> : null}
-            </div>
-          </article>
-        ))}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {products.map((product) => (
+            <StorefrontProductCard key={product.id} product={product} />
+          ))}
+        </div>
       </div>
     </div>
   )
