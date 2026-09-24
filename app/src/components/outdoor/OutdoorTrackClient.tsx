@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
 
 type TrackedOrder = {
@@ -62,14 +63,13 @@ function orderOptionLabel(item: MineOrder) {
 }
 
 export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOrderRef?: string }) {
+  const router = useRouter()
   const directRef = initialOrderRef.trim()
   const [orderRef, setOrderRef] = useState(directRef)
-  const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(Boolean(directRef))
   const [error, setError] = useState('')
   const [order, setOrder] = useState<TrackedOrder | null>(null)
   const [paying, setPaying] = useState(false)
-  const [showForm, setShowForm] = useState(!directRef)
   const [accountMode, setAccountMode] = useState<'loading' | 'guest' | 'in'>('loading')
   const [accountOrders, setAccountOrders] = useState<MineOrder[]>([])
 
@@ -86,9 +86,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || 'Lookup failed')
       setOrder(data.order)
-      setShowForm(false)
     } catch (err: any) {
-      setShowForm(true)
       setError(err.message || 'Lookup failed')
     } finally {
       setLoading(false)
@@ -101,7 +99,8 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
       .then(async (res) => {
         if (cancelled) return
         if (!res.ok) {
-          setAccountMode('guest')
+          const next = `${window.location.pathname}${window.location.search}`
+          router.replace(`/outdoor/login?next=${encodeURIComponent(next)}`)
           return
         }
         const data = await res.json().catch(() => null)
@@ -110,29 +109,24 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
         setAccountMode('in')
       })
       .catch(() => {
-        if (!cancelled) setAccountMode('guest')
+        if (cancelled) return
+        const next = `${window.location.pathname}${window.location.search}`
+        router.replace(`/outdoor/login?next=${encodeURIComponent(next)}`)
       })
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     if (!directRef) return
-    const mail = new URLSearchParams(window.location.search).get('email')?.trim() || ''
-    if (mail) setEmail(mail)
-    void lookup(directRef, mail)
+    void lookup(directRef, '')
     // Load the order from the account link once. The signed-in email is already known.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [directRef])
 
   const signedIn = accountMode === 'in'
-  const waitingForAccount = accountMode === 'loading' && !directRef
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    await lookup(orderRef, email)
-  }
+  const waitingForAccount = accountMode === 'loading'
 
   const activeStep = order ? stepIndex(order.status) : -1
 
@@ -142,10 +136,8 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
         SeraOutdoor
       </p>
       <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Track order</h1>
-      {showForm && !signedIn ? (
-        <p className="mt-2 text-center text-sm text-[var(--out-muted)]">
-          {waitingForAccount ? 'Loading your orders…' : 'Use the order number from your confirmation email.'}
-        </p>
+      {waitingForAccount ? (
+        <p className="mt-2 text-center text-sm text-[var(--out-muted)]">Loading your orders…</p>
       ) : null}
 
       {signedIn ? (
@@ -180,34 +172,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
         </form>
       ) : null}
 
-      {showForm && !signedIn && !waitingForAccount ? (
-      <form className="out-card mt-8 space-y-4 p-5 sm:p-7" onSubmit={submit}>
-        <label className="block text-sm font-medium text-[var(--out-bark)]">
-          Order number
-          <input
-            required
-            value={orderRef}
-            onChange={(e) => setOrderRef(e.target.value)}
-            placeholder="ORD-…"
-            className="out-input"
-          />
-        </label>
-        <label className="block text-sm font-medium text-[var(--out-bark)]">
-          Email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="out-input"
-          />
-        </label>
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <button type="submit" disabled={loading} className="out-btn w-full">
-          {loading ? 'Searching…' : 'Find my order'}
-        </button>
-      </form>
-      ) : loading ? (
+      {loading ? (
         <p className="mt-8 text-center text-sm text-[var(--out-muted)]">Loading this order…</p>
       ) : null}
 
@@ -293,15 +258,6 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
               Courier updates appear here after we ship.
             </p>
           ) : null}
-          {signedIn ? null : (
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="text-xs font-semibold text-[var(--out-moss)] hover:underline"
-          >
-            Track a different order
-          </button>
-          )}
         </div>
       ) : null}
     </div>

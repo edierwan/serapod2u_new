@@ -338,9 +338,9 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
           <div>
             <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--out-cream)]/55 underline">Account</p>
             <ul className="space-y-2.5 text-sm">
-              <li><Link href="/outdoor/track" className="hover:text-[var(--out-moss)]">Track order</Link></li>
               {signedIn ? (
                 <>
+                  <li><Link href="/outdoor/track" className="hover:text-[var(--out-moss)]">Track order</Link></li>
                   <li><Link href="/outdoor/account" className="hover:text-[var(--out-moss)]">My account</Link></li>
                   <li>
                     <button type="button" onClick={() => void signOut()} className="hover:text-[var(--out-moss)]">
