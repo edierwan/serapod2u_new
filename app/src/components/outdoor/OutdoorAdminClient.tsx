@@ -379,11 +379,9 @@ export default function OutdoorAdminClient() {
       <p className="mt-2 text-sm text-[var(--out-muted)]">
         {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. Adding or changing a product emails them automatically.
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Link href="/outdoor/fulfilment" className="inline-flex h-10 items-center rounded-full border border-[var(--out-line)] bg-white px-4 text-sm font-semibold text-[var(--out-bark)]">Follow orders</Link>
-        <Link href="/outdoor/fulfilment?tab=inbox" className="inline-flex h-10 items-center rounded-full border border-[var(--out-line)] bg-white px-4 text-sm font-semibold text-[var(--out-bark)]">Messages</Link>
-        <button type="button" onClick={() => setAdding((open) => !open)} className="inline-flex h-10 items-center rounded-full bg-[var(--out-moss)] px-4 text-sm font-semibold text-white">
-          {adding ? 'Close' : 'Add product'}
+      <div className="mt-4">
+        <button type="button" onClick={() => setAdding((open) => !open)} className="inline-flex h-10 items-center rounded-full border border-[var(--out-line)] bg-white px-4 text-sm font-semibold text-[var(--out-bark)]">
+          {adding ? 'Close' : 'New product'}
         </button>
       </div>
 

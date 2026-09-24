@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
 import { LogOut, Menu, Search, ShoppingBag, User, X } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
@@ -24,6 +24,29 @@ function IconTip({ children }: { children: string }) {
     >
       {children}
     </span>
+  )
+}
+
+function staffTabClass(active: boolean) {
+  return active
+    ? 'inline-flex h-10 items-center rounded-full bg-[var(--out-moss)] px-4 text-sm font-semibold text-white'
+    : 'inline-flex h-10 items-center rounded-full border border-[var(--out-line)] bg-white px-4 text-sm font-semibold text-[var(--out-bark)]'
+}
+
+function StaffTabs() {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const inbox = pathname.startsWith('/outdoor/fulfilment') && searchParams.get('tab') === 'inbox'
+  const orders = pathname.startsWith('/outdoor/fulfilment') && !inbox
+  const products = pathname.startsWith('/outdoor/admin')
+  return (
+    <div className="border-b border-[var(--out-line)] bg-[var(--out-cream)]">
+      <div className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 py-3 sm:px-8">
+        <Link href="/outdoor/admin" className={staffTabClass(products)}>Add product</Link>
+        <Link href="/outdoor/fulfilment" className={staffTabClass(orders)}>Follow orders</Link>
+        <Link href="/outdoor/fulfilment?tab=inbox" className={staffTabClass(inbox)}>Messages</Link>
+      </div>
+    </div>
   )
 }
 
@@ -211,14 +234,9 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
         </div>
       </header>
       {isStaff ? (
-        <div className="bg-[var(--out-ink)] text-[var(--out-cream)]">
-          <div className="mx-auto flex h-9 max-w-6xl items-center gap-4 px-4 text-xs font-semibold sm:px-8">
-            <span className="uppercase tracking-[0.14em] text-[var(--out-cream)]/55">Admin</span>
-            <Link href="/outdoor/admin" className="hover:text-[var(--out-moss)]">Add update</Link>
-            <Link href="/outdoor/fulfilment" className="hover:text-[var(--out-moss)]">Follow orders</Link>
-            <Link href="/outdoor/fulfilment?tab=inbox" className="hover:text-[var(--out-moss)]">Messages</Link>
-          </div>
-        </div>
+        <Suspense fallback={null}>
+          <StaffTabs />
+        </Suspense>
       ) : null}
 
       {open ? (
@@ -243,7 +261,7 @@ export default function OutdoorChrome({ children }: { children: React.ReactNode 
                   {isStaff ? (
                     <>
                       <Link href="/outdoor/admin" onClick={() => setOpen(false)} className="py-1 font-semibold">
-                        Add update
+                        Add product
                       </Link>
                       <Link href="/outdoor/fulfilment" onClick={() => setOpen(false)} className="py-1 font-semibold">
                         Follow orders
