@@ -369,6 +369,38 @@ export async function POST(request: NextRequest) {
       await admin.from('products').delete().eq('id', product.id)
       return NextResponse.json({ error: 'Could not add the product price.' }, { status: 500 })
     }
+
+    const extraColors = Array.isArray(body.colors) ? body.colors.slice(1) : []
+    for (let index = 0; index < extraColors.length; index += 1) {
+      const item = extraColors[index] || {}
+      const colorName = String(item.name || '').trim().slice(0, 80)
+      if (!colorName || item.removed) continue
+      const colorAmountRaw = Number(item.price)
+      const colorAmount = Number.isFinite(colorAmountRaw) && colorAmountRaw > 0
+        ? Math.round(colorAmountRaw * 100) / 100
+        : Math.round(price * 100) / 100
+      const colorInsert = await admin.from('product_variants').insert({
+        product_id: product.id,
+        variant_name: colorName,
+        variant_code: `${code}-${index + 2}`,
+        suggested_retail_price: colorAmount,
+        is_active: true,
+        is_default: false,
+        sort_order: 20 + index,
+        ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { image_url: imageUrl } : {}),
+        attributes: {
+          color: colorName,
+          outdoor_price: colorAmount,
+          ...(imageUrl && !imageUrl.startsWith('/outdoor/') ? { outdoor_image: imageUrl } : {}),
+        },
+      })
+      if (colorInsert.error) {
+        console.error('[outdoor/products] color insert', colorInsert.error)
+        await admin.from('products').delete().eq('id', product.id)
+        return NextResponse.json({ error: 'Could not add that color.' }, { status: 500 })
+      }
+    }
+
     if (imageUrl && !imageUrl.startsWith('/outdoor/')) await rememberProductImage(admin, product.id, imageUrl)
 
     const text = [name, color ? `Color: ${color}` : '', `Price: RM ${price.toFixed(2)}`, description].filter(Boolean).join('\n')

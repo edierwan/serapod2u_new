@@ -56,7 +56,7 @@ function ColorChoice({ value, onPick }: { value: string; onPick: (label: string)
           style={{ background: current && !known ? current.hex : 'conic-gradient(#76232F, #5E6738, #7C878E, #d7c4a3, #76232F)' }}
         />
       </label>
-      <span className="text-sm text-[var(--out-bark)]">{current?.label || value || 'Choose a color'}</span>
+      <span className="text-sm font-semibold text-[var(--out-bark)]">{current?.label || 'Pick a color'}</span>
     </div>
   )
 }
@@ -125,48 +125,47 @@ function ProductSheet({
           Name
           <input value={name} onChange={(event) => onName(event.target.value)} required placeholder="Product name" className={`${fieldClass} h-11 text-base`} />
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[var(--out-bark)]">
-            Price (RM)
-            <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="0.00" className={`${fieldClass} h-11`} />
-          </label>
-          <div className="block text-sm font-medium text-[var(--out-bark)]">
-            Color
-            <ColorChoice value={color} onPick={onColor} />
-          </div>
-        </div>
         <label className="block text-sm font-medium text-[var(--out-bark)]">
-          Description
-          <textarea value={description} onChange={(event) => onDescription(event.target.value)} rows={4} placeholder="Description" className={`${fieldClass} resize-y py-2 leading-relaxed`} />
+          Price (RM)
+          <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="0.00" className={`${fieldClass} h-11`} />
         </label>
         {colors && onColors ? (
-          <details className="rounded-md border border-[var(--out-line)] px-3 py-2">
-            <summary className="cursor-pointer text-sm font-medium text-[var(--out-bark)]">Colors and prices</summary>
+          <div>
+            <p className="text-sm font-medium text-[var(--out-bark)]">Colors</p>
+            <p className="mt-1 text-sm text-[var(--out-muted)]">Pick one color. Press “Add another color” if this product has more.</p>
             <div className="mt-3 space-y-3">
-              {colors.filter((item) => !item.removed).map((item) => (
+              {colors.filter((item) => !item.removed).map((item, index, visible) => (
                 <div key={item.key} className="rounded-xl border border-[var(--out-line)] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <ColorChoice
-                      value={item.name}
-                      onPick={(label) => onColors(colors.map((row) => row.key === item.key ? { ...row, name: label } : row))}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => onColors(colors.map((row) => row.key === item.key ? { ...row, removed: true } : row))}
-                      className="text-xs font-semibold text-red-700"
-                    >
-                      Remove
-                    </button>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[var(--out-bark)]">Color {index + 1}</p>
+                    {visible.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => onColors(colors.map((row) => row.key === item.key ? { ...row, removed: true } : row))}
+                        className="text-sm font-semibold text-red-700"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </div>
-                  <label className="mt-3 block max-w-[8rem] text-xs font-medium text-[var(--out-muted)]">
-                    Price (RM)
+                  <ColorChoice
+                    value={item.name}
+                    onPick={(label) => {
+                      const next = colors.map((row) => row.key === item.key ? { ...row, name: label } : row)
+                      onColors(next)
+                      if (index === 0) onColor(label)
+                    }}
+                  />
+                  <label className="mt-3 block max-w-[10rem] text-sm font-medium text-[var(--out-bark)]">
+                    Price for this color (RM)
                     <input
                       value={item.price}
                       type="number"
                       min="0.01"
                       step="0.01"
+                      placeholder={price || '0.00'}
                       onChange={(event) => onColors(colors.map((row) => row.key === item.key ? { ...row, price: event.target.value } : row))}
-                      className={`${fieldClass} h-10`}
+                      className={`${fieldClass} h-11`}
                     />
                   </label>
                 </div>
@@ -174,20 +173,29 @@ function ProductSheet({
               <button
                 type="button"
                 onClick={() => onColors([...colors, { key: `new-${Date.now()}`, id: '', name: '', price, removed: false }])}
-                className="text-sm font-semibold text-[var(--out-moss)]"
+                className="inline-flex h-11 w-full items-center justify-center rounded-full border border-[var(--out-line)] bg-white text-sm font-semibold text-[var(--out-bark)]"
               >
-                Add a color
+                Add another color
               </button>
             </div>
-          </details>
-        ) : null}
+          </div>
+        ) : (
+          <div className="block text-sm font-medium text-[var(--out-bark)]">
+            Color
+            <ColorChoice value={color} onPick={onColor} />
+          </div>
+        )}
+        <label className="block text-sm font-medium text-[var(--out-bark)]">
+          Description
+          <textarea value={description} onChange={(event) => onDescription(event.target.value)} rows={4} placeholder="Description" className={`${fieldClass} resize-y py-2 leading-relaxed`} />
+        </label>
       </div>
       <button type="submit" disabled={saving} className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40">
         {saving ? 'Saving…' : submitLabel}
       </button>
       {onDelete ? (
-        <button type="button" disabled={saving} onClick={onDelete} className="mt-3 w-full text-center text-xs font-semibold text-red-700 disabled:opacity-40">
-          Delete product
+        <button type="button" disabled={saving} onClick={onDelete} className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full border-2 border-red-700 bg-white text-sm font-semibold text-red-700 disabled:opacity-40">
+          Delete this product
         </button>
       ) : null}
     </form>
@@ -203,6 +211,7 @@ export default function OutdoorAdminClient() {
   const [productColor, setProductColor] = useState('')
   const [productDescription, setProductDescription] = useState('')
   const [productImage, setProductImage] = useState('')
+  const [newColors, setNewColors] = useState<ColorDraft[]>([{ key: 'new-1', id: '', name: '', price: '' }])
   const [adding, setAdding] = useState(false)
   const [savingId, setSavingId] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -276,6 +285,12 @@ export default function OutdoorAdminClient() {
           color: productColor,
           description: productDescription,
           imageUrl: productImage,
+          colors: newColors.filter((item) => item.name.trim()).map((item) => ({
+            id: '',
+            name: item.name,
+            price: Number(item.price || productPrice),
+            removed: false,
+          })),
         }),
       })
       const data = await res.json().catch(() => null)
@@ -285,6 +300,7 @@ export default function OutdoorAdminClient() {
       setProductColor('')
       setProductDescription('')
       setProductImage('')
+      setNewColors([{ key: 'new-1', id: '', name: '', price: '' }])
       setAdding(false)
       setMessage(`Product added. ${emailedNote(data.emailed || 0)}`)
       await load()
@@ -397,12 +413,18 @@ export default function OutdoorAdminClient() {
             color={productColor}
             description={productDescription}
             imageUrl={productImage}
+            colors={newColors}
             saving={savingId === 'new' || uploading}
             submitLabel="Add product"
             onName={setProductName}
             onPrice={setProductPrice}
             onColor={setProductColor}
             onDescription={setProductDescription}
+            onColors={(colors) => {
+              setNewColors(colors)
+              const first = colors.find((item) => !item.removed)
+              setProductColor(first?.name || '')
+            }}
             onImage={(file) => {
               void uploadPhoto(file).then(setProductImage).catch((err: any) => setError(err.message || 'Could not upload the photo'))
             }}
