@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const email = String(body.email || '').trim().slice(0, 254)
     const message = String(body.message || '').trim().slice(0, 4000)
 
-    if (!name || !email.includes('@') || message.length < 5) {
+    if (!name || !email.includes('@') || !message) {
       return NextResponse.json({ error: 'Name, email, and message are required.' }, { status: 400 })
     }
 
