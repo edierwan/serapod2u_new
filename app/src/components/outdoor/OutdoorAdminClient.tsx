@@ -24,44 +24,39 @@ type ProductDraft = {
 
 const fieldClass = 'mt-1.5 w-full rounded-md border border-[var(--out-line)] bg-white px-3 text-[var(--out-bark)] outline-none focus:border-[var(--out-moss)]'
 
-function ColorChoice({ value, onPick }: { value: string; onPick: (label: string) => void }) {
-  const current = outdoorColorFromText(value)
-  const known = current ? OUTDOOR_COLOURWAYS.find((way) => way.hex.toLowerCase() === current.hex.toLowerCase()) : undefined
-  const custom = Boolean(current && !known)
-  return (
-    <div className="mt-2 flex items-center gap-3">
-      <span
-        aria-hidden
-        className={`h-10 w-10 shrink-0 rounded-full border ${current ? 'border-black/10' : 'border-dashed border-[var(--out-line)] bg-white'}`}
-        style={current ? { background: current.hex } : undefined}
-      />
-      <select
-        value={known?.label || (custom ? 'custom' : '')}
-        onChange={(event) => {
-          const next = event.target.value
-          if (!next) onPick('')
-          else if (next === 'custom') onPick(custom && current ? current.hex : '#D7C4A3')
-          else onPick(next)
-        }}
-        className={`${fieldClass} mt-0 h-11`}
-      >
-        <option value="">Pick a color</option>
-        {OUTDOOR_COLOURWAYS.map((way) => (
-          <option key={way.hex} value={way.label}>{way.label}</option>
-        ))}
-        <option value="custom">Custom color</option>
-      </select>
-      {custom ? (
-        <input
-          type="color"
-          aria-label="Custom color"
-          value={current?.hex || '#D7C4A3'}
-          onChange={(event) => onPick(event.target.value.toUpperCase())}
-          className="h-11 w-14 shrink-0 cursor-pointer rounded-md border border-[var(--out-line)] bg-white p-1"
-        />
-      ) : null}
-    </div>
-  )
+function websiteColor(name: string) {
+  const found = outdoorColorFromText(name)
+  if (!found) return null
+  return OUTDOOR_COLOURWAYS.find((way) => way.hex.toLowerCase() === found.hex.toLowerCase()) || null
+}
+
+function withWebsiteColors(saved: ColorDraft[], fallbackPrice: string): ColorDraft[] {
+  const recognized = saved.filter((item) => outdoorColorFromText(item.name))
+  if (recognized.length > 0) {
+    return recognized.map((item) => {
+      const official = websiteColor(item.name)
+      return official ? { ...item, name: official.label } : item
+    })
+  }
+  const unnamed = saved.filter((item) => item.id)
+  return OUTDOOR_COLOURWAYS.map((way, index) => {
+    const donor = unnamed[index]
+    return {
+      key: donor?.id || way.hex,
+      id: donor?.id || '',
+      name: way.label,
+      price: donor?.price || fallbackPrice,
+    }
+  })
+}
+
+function nextColor(colors: ColorDraft[], price: string): ColorDraft {
+  const visible = colors.filter((item) => !item.removed)
+  const missing = OUTDOOR_COLOURWAYS.find((way) => !visible.some((item) => websiteColor(item.name)?.label === way.label))
+  if (missing) {
+    return { key: `add-${missing.hex}-${Date.now()}`, id: '', name: missing.label, price, removed: false }
+  }
+  return { key: `new-${Date.now()}`, id: '', name: '#D7C4A3', price, removed: false }
 }
 
 function ProductSheet({
@@ -137,59 +132,64 @@ function ProductSheet({
         {colors && onColors ? (
           <div>
             <p className="text-sm font-medium text-[var(--out-bark)]">Colors</p>
-            <p className="mt-1 text-sm text-[var(--out-muted)]">Each box is one color. Add another box if the product has more colors.</p>
-            <div className="mt-3 space-y-3">
-              {colors.filter((item) => !item.removed).map((item, index, visible) => (
-                <div key={item.key} className="rounded-xl border border-[var(--out-line)] p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-[var(--out-bark)]">Color {index + 1}</p>
-                    {visible.length > 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => onColors(colors.map((row) => row.key === item.key ? { ...row, removed: true } : row))}
-                        className="text-sm font-semibold text-red-700"
-                      >
-                        Remove
-                      </button>
-                    ) : null}
+            <p className="mt-1 text-sm text-[var(--out-muted)]">The 3 shop colors are already here. Change a price, remove one, or add another.</p>
+            <div className="mt-3 space-y-2">
+              {colors.filter((item) => !item.removed).map((item) => {
+                const official = websiteColor(item.name)
+                const swatch = official || outdoorColorFromText(item.name)
+                return (
+                  <div key={item.key} className="flex items-center gap-2 rounded-2xl border border-[var(--out-line)] px-3 py-2">
+                    <span aria-hidden className="h-9 w-9 shrink-0 rounded-full border border-black/10" style={{ background: swatch?.hex || '#D7C4A3' }} />
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--out-bark)]">{official?.label || 'Custom'}</p>
+                    {official ? null : (
+                      <input
+                        type="color"
+                        aria-label="Custom color"
+                        value={swatch?.hex || '#D7C4A3'}
+                        onChange={(event) => onColors(colors.map((row) => row.key === item.key ? { ...row, name: event.target.value.toUpperCase() } : row))}
+                        className="h-9 w-11 shrink-0 cursor-pointer rounded-md border border-[var(--out-line)] bg-white p-1"
+                      />
+                    )}
+                    <label className="flex items-center gap-1 text-xs font-medium text-[var(--out-muted)]">
+                      RM
+                      <input
+                        aria-label={`Price for ${official?.label || 'custom color'}`}
+                        value={item.price}
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder={price || '0.00'}
+                        onChange={(event) => onColors(colors.map((row) => row.key === item.key ? { ...row, price: event.target.value } : row))}
+                        className="h-10 w-[4.5rem] rounded-md border border-[var(--out-line)] bg-white px-2 text-sm text-[var(--out-bark)] outline-none focus:border-[var(--out-moss)]"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${official?.label || 'custom color'}`}
+                      title="Remove"
+                      onClick={() => {
+                        const next = colors.map((row) => row.key === item.key ? { ...row, removed: true } : row)
+                        onColors(next)
+                        const first = next.find((row) => !row.removed)
+                        onColor(first?.name || '')
+                      }}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg leading-none text-red-700 hover:bg-red-50"
+                    >
+                      ×
+                    </button>
                   </div>
-                  <ColorChoice
-                    value={item.name}
-                    onPick={(label) => {
-                      const next = colors.map((row) => row.key === item.key ? { ...row, name: label } : row)
-                      onColors(next)
-                      if (index === 0) onColor(label)
-                    }}
-                  />
-                  <label className="mt-3 block max-w-[10rem] text-sm font-medium text-[var(--out-bark)]">
-                    Price for this color (RM)
-                    <input
-                      value={item.price}
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder={price || '0.00'}
-                      onChange={(event) => onColors(colors.map((row) => row.key === item.key ? { ...row, price: event.target.value } : row))}
-                      className={`${fieldClass} h-11`}
-                    />
-                  </label>
-                </div>
-              ))}
+                )
+              })}
               <button
                 type="button"
-                onClick={() => onColors([...colors, { key: `new-${Date.now()}`, id: '', name: '', price, removed: false }])}
+                onClick={() => onColors([...colors, nextColor(colors, price)])}
                 className="inline-flex h-11 w-full items-center justify-center rounded-full border border-[var(--out-line)] bg-white text-sm font-semibold text-[var(--out-bark)]"
               >
-                Add another color
+                Add a color
               </button>
             </div>
           </div>
-        ) : (
-          <div className="block text-sm font-medium text-[var(--out-bark)]">
-            Color
-            <ColorChoice value={color} onPick={onColor} />
-          </div>
-        )}
+        ) : null}
         <label className="block text-sm font-medium text-[var(--out-bark)]">
           Description
           <textarea value={description} onChange={(event) => onDescription(event.target.value)} rows={4} placeholder="Description" className={`${fieldClass} resize-y py-2 leading-relaxed`} />
@@ -213,10 +213,10 @@ export default function OutdoorAdminClient() {
   const [products, setProducts] = useState<ProductDraft[]>([])
   const [productName, setProductName] = useState('')
   const [productPrice, setProductPrice] = useState('')
-  const [productColor, setProductColor] = useState('')
+  const [productColor, setProductColor] = useState(OUTDOOR_COLOURWAYS[0].label)
   const [productDescription, setProductDescription] = useState('')
   const [productImage, setProductImage] = useState('')
-  const [newColors, setNewColors] = useState<ColorDraft[]>([{ key: 'new-1', id: '', name: '', price: '' }])
+  const [newColors, setNewColors] = useState<ColorDraft[]>(() => withWebsiteColors([], ''))
   const [adding, setAdding] = useState(false)
   const [savingId, setSavingId] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -238,20 +238,24 @@ export default function OutdoorAdminClient() {
       return
     }
     setSubscribers(data.subscribers || 0)
-    setProducts((data.products || []).map((item: any) => ({
-      id: item.id,
-      name: item.name || '',
-      price: item.price ? String(item.price) : '',
-      color: item.color || '',
-      description: item.description || '',
-      imageUrl: item.imageUrl || '',
-      colors: (item.colors || []).map((color: any, index: number) => ({
+    setProducts((data.products || []).map((item: any) => {
+      const price = item.price ? String(item.price) : ''
+      const colors = withWebsiteColors((item.colors || []).map((color: any, index: number) => ({
         key: color.id || `color-${index}`,
         id: color.id || '',
         name: color.name || '',
         price: color.price ? String(color.price) : '',
-      })),
-    })))
+      })), price)
+      return {
+        id: item.id,
+        name: item.name || '',
+        price,
+        color: colors[0]?.name || item.color || '',
+        description: item.description || '',
+        imageUrl: item.imageUrl || '',
+        colors,
+      }
+    }))
   }
 
   useEffect(() => {
@@ -305,7 +309,8 @@ export default function OutdoorAdminClient() {
       setProductColor('')
       setProductDescription('')
       setProductImage('')
-      setNewColors([{ key: 'new-1', id: '', name: '', price: '' }])
+      setNewColors(withWebsiteColors([], ''))
+      setProductColor(OUTDOOR_COLOURWAYS[0].label)
       setAdding(false)
       setMessage(`Product added. ${emailedNote(data.emailed || 0)}`)
       await load()
@@ -329,7 +334,7 @@ export default function OutdoorAdminClient() {
           id: product.id,
           name: product.name,
           price: Number(product.price),
-          color: product.color,
+          color: product.colors.find((item) => !item.removed && item.name.trim())?.name || product.color,
           description: product.description,
           imageUrl: product.imageUrl,
           colors: product.colors.filter((item) => item.name.trim() || item.id).map((item) => ({
