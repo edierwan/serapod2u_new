@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { OUTDOOR_COLOURWAYS, outdoorColorFromText } from '@/lib/outdoor/merch'
 
 type ColorDraft = {
   key: string
@@ -22,6 +23,43 @@ type ProductDraft = {
 }
 
 const fieldClass = 'mt-1.5 w-full rounded-md border border-[var(--out-line)] bg-white px-3 text-[var(--out-bark)] outline-none focus:border-[var(--out-moss)]'
+
+function ColorChoice({ value, onPick }: { value: string; onPick: (label: string) => void }) {
+  const current = outdoorColorFromText(value)
+  const known = current ? OUTDOOR_COLOURWAYS.some((way) => way.hex.toLowerCase() === current.hex.toLowerCase()) : false
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      {OUTDOOR_COLOURWAYS.map((way) => {
+        const selected = current?.hex.toLowerCase() === way.hex.toLowerCase()
+        return (
+          <button
+            key={way.hex}
+            type="button"
+            aria-label={way.label}
+            title={way.label}
+            onClick={() => onPick(way.label)}
+            className={`h-8 w-8 rounded-full border ${selected ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)] ring-offset-2' : 'border-black/10'}`}
+            style={{ background: way.hex }}
+          />
+        )
+      })}
+      <label title="Custom color" className={`relative h-8 w-8 cursor-pointer overflow-hidden rounded-full border ${current && !known ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)] ring-offset-2' : 'border-black/10'}`}>
+        <span className="sr-only">Custom color</span>
+        <input
+          type="color"
+          value={current?.hex || '#76232F'}
+          onChange={(event) => onPick(event.target.value.toUpperCase())}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+        <span
+          className="block h-full w-full"
+          style={{ background: current && !known ? current.hex : 'conic-gradient(#76232F, #5E6738, #7C878E, #d7c4a3, #76232F)' }}
+        />
+      </label>
+      <span className="text-sm text-[var(--out-bark)]">{current?.label || value || 'Choose a color'}</span>
+    </div>
+  )
+}
 
 function ProductSheet({
   name,
@@ -92,10 +130,10 @@ function ProductSheet({
             Price (RM)
             <input value={price} onChange={(event) => onPrice(event.target.value)} required type="number" min="0.01" step="0.01" placeholder="0.00" className={`${fieldClass} h-11`} />
           </label>
-          <label className="block text-sm font-medium text-[var(--out-bark)]">
+          <div className="block text-sm font-medium text-[var(--out-bark)]">
             Color
-            <input value={color} onChange={(event) => onColor(event.target.value)} placeholder="Color" className={`${fieldClass} h-11`} />
-          </label>
+            <ColorChoice value={color} onPick={onColor} />
+          </div>
         </div>
         <label className="block text-sm font-medium text-[var(--out-bark)]">
           Description
@@ -106,17 +144,22 @@ function ProductSheet({
             <summary className="cursor-pointer text-sm font-medium text-[var(--out-bark)]">Colors and prices</summary>
             <div className="mt-3 space-y-3">
               {colors.filter((item) => !item.removed).map((item) => (
-                <div key={item.key} className="grid grid-cols-[1fr_7rem_auto] items-end gap-2">
-                  <label className="block text-xs font-medium text-[var(--out-muted)]">
-                    Color
-                    <input
+                <div key={item.key} className="rounded-xl border border-[var(--out-line)] p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <ColorChoice
                       value={item.name}
-                      onChange={(event) => onColors(colors.map((row) => row.key === item.key ? { ...row, name: event.target.value } : row))}
-                      className={`${fieldClass} h-10`}
+                      onPick={(label) => onColors(colors.map((row) => row.key === item.key ? { ...row, name: label } : row))}
                     />
-                  </label>
-                  <label className="block text-xs font-medium text-[var(--out-muted)]">
-                    Price
+                    <button
+                      type="button"
+                      onClick={() => onColors(colors.map((row) => row.key === item.key ? { ...row, removed: true } : row))}
+                      className="text-xs font-semibold text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <label className="mt-3 block max-w-[8rem] text-xs font-medium text-[var(--out-muted)]">
+                    Price (RM)
                     <input
                       value={item.price}
                       type="number"
@@ -126,13 +169,6 @@ function ProductSheet({
                       className={`${fieldClass} h-10`}
                     />
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => onColors(colors.map((row) => row.key === item.key ? { ...row, removed: true } : row))}
-                    className="h-10 px-2 text-xs font-semibold text-red-700"
-                  >
-                    Remove
-                  </button>
                 </div>
               ))}
               <button
@@ -343,10 +379,10 @@ export default function OutdoorAdminClient() {
       <p className="mt-2 text-sm text-[var(--out-muted)]">
         {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. Adding or changing a product emails them automatically.
       </p>
-      <div className="mt-4 flex gap-4 text-sm font-semibold">
-        <Link href="/outdoor/fulfilment" className="text-[var(--out-moss)]">Follow orders</Link>
-        <Link href="/outdoor/fulfilment?tab=inbox" className="text-[var(--out-moss)]">Messages</Link>
-        <button type="button" onClick={() => setAdding((open) => !open)} className="text-[var(--out-moss)]">
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href="/outdoor/fulfilment" className="inline-flex h-10 items-center rounded-full border border-[var(--out-line)] bg-white px-4 text-sm font-semibold text-[var(--out-bark)]">Follow orders</Link>
+        <Link href="/outdoor/fulfilment?tab=inbox" className="inline-flex h-10 items-center rounded-full border border-[var(--out-line)] bg-white px-4 text-sm font-semibold text-[var(--out-bark)]">Messages</Link>
+        <button type="button" onClick={() => setAdding((open) => !open)} className="inline-flex h-10 items-center rounded-full bg-[var(--out-moss)] px-4 text-sm font-semibold text-white">
           {adding ? 'Close' : 'Add product'}
         </button>
       </div>
