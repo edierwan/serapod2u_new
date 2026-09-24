@@ -76,15 +76,27 @@ async function rememberProductImage(admin: any, productId: string, imageUrl: str
   if (error) console.error('[outdoor/products] image row', error)
 }
 
+function variantPrice(variant: any) {
+  const custom = Number(variant?.attributes?.outdoor_price)
+  if (Number.isFinite(custom) && custom > 0) return custom
+  return Number(variant?.suggested_retail_price || 0)
+}
+
 function toEditorProduct(row: any) {
-  const variant = pickVariant(row.product_variants)
+  const visible = (row.product_variants || []).filter((variant: any) => !variant?.attributes?.outdoor_hidden)
+  const variant = pickVariant(visible.length > 0 ? visible : row.product_variants)
   return {
     id: row.id,
     name: row.product_name || '',
     description: row.product_description || '',
-    price: Number(variant?.suggested_retail_price || 0),
+    price: variantPrice(variant),
     color: colorOf(variant),
     imageUrl: previewImage(row.product_name || '', variant),
+    colors: visible.map((item: any) => ({
+      id: item.id,
+      name: colorOf(item),
+      price: variantPrice(item),
+    })),
   }
 }
 
@@ -129,10 +141,19 @@ export async function GET() {
 
     const admin: any = createAdminClient()
     const scope = await resolveOutdoorCatalogScope()
-    const [{ count }, products] = await Promise.all([
+    const [{ count }, loaded] = await Promise.all([
       admin.from('outdoor_newsletter_subscribers').select('id', { count: 'exact', head: true }),
       loadOutdoorProducts(admin, scope),
     ])
+    const ids = loaded.map((item: { id: string }) => item.id)
+    let products = loaded
+    if (ids.length > 0) {
+      const hidden = await admin.from('products').select('id').eq('outdoor_hidden', true).in('id', ids)
+      if (!hidden.error) {
+        const hiddenIds = new Set((hidden.data || []).map((row: { id: string }) => row.id))
+        products = loaded.filter((item: { id: string }) => !hiddenIds.has(item.id))
+      }
+    }
     return NextResponse.json({ products, subscribers: count || 0 })
   } catch (err) {
     console.error('[outdoor/products GET]', err)
@@ -181,17 +202,20 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Could not save the product.' }, { status: 500 })
     }
 
+    const rounded = Math.round(price * 100) / 100
+    const outdoorOnly = Boolean(existing.outdoor_only)
     const variant = pickVariant(existing.product_variants)
     const attributes = { ...(variant?.attributes && typeof variant.attributes === 'object' ? variant.attributes : {}) }
     if (color) attributes.color = color
     else delete attributes.color
+    attributes.outdoor_price = rounded
     const customPhoto = imageUrl && !imageUrl.startsWith('/outdoor/') ? imageUrl : ''
     if (customPhoto) attributes.outdoor_image = customPhoto
     const variantPatch: Record<string, unknown> = {
-      variant_name: color || 'Default',
-      suggested_retail_price: Math.round(price * 100) / 100,
+      variant_name: color || variant?.variant_name || 'Default',
       attributes,
     }
+    if (outdoorOnly) variantPatch.suggested_retail_price = rounded
     if (customPhoto) variantPatch.image_url = customPhoto
     const variantWrite = variant
       ? await admin.from('product_variants').update(variantPatch).eq('id', variant.id)
@@ -207,12 +231,54 @@ export async function PATCH(request: NextRequest) {
       console.error('[outdoor/products] variant update', variantWrite.error)
       return NextResponse.json({ error: 'Could not save the product price.' }, { status: 500 })
     }
-    const { error: priceError } = await admin.from('product_variants').update({
-      suggested_retail_price: Math.round(price * 100) / 100,
-    }).eq('product_id', id)
-    if (priceError) {
-      console.error('[outdoor/products] price', priceError)
-      return NextResponse.json({ error: 'Could not save the product price.' }, { status: 500 })
+    const incomingColors = Array.isArray(body.colors) ? body.colors : []
+    if (incomingColors.length > 0) {
+      for (let index = 0; index < incomingColors.length; index += 1) {
+        const item = incomingColors[index] || {}
+        const colorName = String(item.name || '').trim().slice(0, 80)
+        const colorAmountRaw = Number(item.price)
+        const colorAmount = Number.isFinite(colorAmountRaw) && colorAmountRaw > 0
+          ? Math.round(colorAmountRaw * 100) / 100
+          : rounded
+        const hidden = Boolean(item.removed)
+        const match = (existing.product_variants || []).find((row: any) => row.id === item.id)
+        if (match) {
+          const nextAttributes = { ...(match.attributes && typeof match.attributes === 'object' ? match.attributes : {}) }
+          nextAttributes.outdoor_price = colorAmount
+          if (colorName) nextAttributes.color = colorName
+          if (hidden) nextAttributes.outdoor_hidden = true
+          else delete nextAttributes.outdoor_hidden
+          const colorPatch: Record<string, unknown> = {
+            attributes: nextAttributes,
+            variant_name: colorName || match.variant_name || 'Default',
+          }
+          if (outdoorOnly) colorPatch.suggested_retail_price = colorAmount
+          const colorWrite = await admin.from('product_variants').update(colorPatch).eq('id', match.id)
+          if (colorWrite.error) {
+            console.error('[outdoor/products] color', colorWrite.error)
+            return NextResponse.json({ error: 'Could not save a color price.' }, { status: 500 })
+          }
+        } else if (!hidden && colorName) {
+          const colorInsert = await admin.from('product_variants').insert({
+            product_id: id,
+            variant_name: colorName,
+            variant_code: `OUT-${Date.now().toString(36).toUpperCase()}-${index}`,
+            suggested_retail_price: colorAmount,
+            is_active: true,
+            is_default: false,
+            sort_order: 20 + index,
+            attributes: {
+              color: colorName,
+              outdoor_price: colorAmount,
+              ...(outdoorOnly ? {} : { outdoor_only_variant: true }),
+            },
+          })
+          if (colorInsert.error) {
+            console.error('[outdoor/products] color insert', colorInsert.error)
+            return NextResponse.json({ error: 'Could not add that color.' }, { status: 500 })
+          }
+        }
+      }
     }
     if (customPhoto) await rememberProductImage(admin, id, customPhoto)
 
@@ -324,6 +390,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, productId: product.id, emailed: mailed.emailed })
   } catch (err) {
     console.error('[outdoor/products]', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+/** DELETE — hide an outdoor product. Shared catalogue rows stay active for the main store. */
+export async function DELETE(request: NextRequest) {
+  try {
+    const staff = await requireOutdoorStaff()
+    if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const body = await request.json().catch(() => ({}))
+    const id = String(body.id || '').trim()
+    if (!id) return NextResponse.json({ error: 'Choose a product.' }, { status: 400 })
+
+    const admin: any = createAdminClient()
+    const scope = await resolveOutdoorCatalogScope()
+    let existingQuery = await admin.from('products').select('id, product_name, category_id, brand_id, outdoor_only').eq('id', id).maybeSingle()
+    if (existingQuery.error && /outdoor_only/i.test(existingQuery.error.message || '')) {
+      existingQuery = await admin.from('products').select('id, product_name, category_id, brand_id').eq('id', id).maybeSingle()
+    }
+    const existing = existingQuery.data
+    if (existingQuery.error || !existing || !inOutdoorScope(existing, scope)) {
+      return NextResponse.json({ error: 'That product is not on the outdoor shop.' }, { status: 404 })
+    }
+
+    const name = String(existing.product_name || 'Product')
+    let hidden = await admin.from('products').update({ outdoor_hidden: true }).eq('id', id)
+    if (hidden.error && /outdoor_hidden/i.test(hidden.error.message || '')) {
+      if (!existing.outdoor_only) {
+        return NextResponse.json({ error: 'Apply the outdoor_hidden column before deleting a shared product.' }, { status: 500 })
+      }
+      hidden = await admin.from('products').update({ is_active: false }).eq('id', id)
+    } else if (!hidden.error && existing.outdoor_only) {
+      await admin.from('products').update({ is_active: false }).eq('id', id)
+    }
+    if (hidden.error) {
+      console.error('[outdoor/products] delete', hidden.error)
+      return NextResponse.json({ error: 'Could not delete the product.' }, { status: 500 })
+    }
+
+    const text = `${name} is no longer on the Outdoor shop.`
+    const mailed = await emailOutdoorSubscribers(admin, {
+      subject: `SeraOutdoor: ${name} is no longer available`,
+      text,
+      html: `<p>${escapeHtml(text)}</p>`,
+    })
+    await admin.from('outdoor_admin_updates').insert({
+      kind: 'product',
+      title: name,
+      body: text,
+      created_by: staff.userId,
+      emailed_count: mailed.emailed,
+    })
+    return NextResponse.json({ ok: true, emailed: mailed.emailed })
+  } catch (err) {
+    console.error('[outdoor/products DELETE]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

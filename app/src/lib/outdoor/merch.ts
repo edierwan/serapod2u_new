@@ -72,6 +72,7 @@ export function outdoorSwatchesFromVariants(
   const seen = new Set<string>()
   for (const variant of variants) {
     const attrs = asRecord(variant.attributes)
+    if (attrs.outdoor_hidden) continue
     const attrColor = String(attrs.color || attrs.colour || attrs.hex || attrs.Color || '')
     const found = outdoorColorFromText(attrColor) || outdoorColorFromText(String(variant.variant_name || ''))
     const custom = String(attrs.outdoor_image || '').trim()

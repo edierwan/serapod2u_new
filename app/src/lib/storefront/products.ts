@@ -180,7 +180,7 @@ export async function listProducts(params: ListProductsParams = {}) {
 
   const hiddenGroupIds = hiddenGroups?.map(g => g.id) || []
 
-  const runQuery = (excludeOutdoorOnly: boolean) => {
+  const runQuery = (excludeOutdoorOnly: boolean, hideRemoved = false) => {
   // Build query for products with their variants
   let query = supabase
     .from('products')
@@ -213,6 +213,7 @@ export async function listProducts(params: ListProductsParams = {}) {
     .eq('is_active', true)
 
   if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
+  if (hideRemoved) query = query.eq('outdoor_hidden', false)
 
   // Exclude products from hidden groups
   if (hiddenGroupIds.length > 0) {
@@ -251,9 +252,15 @@ export async function listProducts(params: ListProductsParams = {}) {
   return query
   }
 
-  let { data, error, count } = await runQuery(channel !== 'outdoor')
+  let { data, error, count } = await runQuery(channel !== 'outdoor', channel === 'outdoor')
   if (error && channel !== 'outdoor' && /outdoor_only/i.test(error.message || '')) {
     const retry = await runQuery(false)
+    data = retry.data
+    error = retry.error
+    count = retry.count
+  }
+  if (error && channel === 'outdoor' && /outdoor_hidden|outdoor_only/i.test(error.message || '')) {
+    const retry = await runQuery(false, false)
     data = retry.data
     error = retry.error
     count = retry.count
@@ -266,13 +273,22 @@ export async function listProducts(params: ListProductsParams = {}) {
 
   // Transform data
   const products: StorefrontProduct[] = (data || []).map((p: any) => {
-    const activeVariants = (p.product_variants || []).filter((v: any) => v.is_active !== false)
+    const activeVariants = (p.product_variants || []).filter((v: any) => {
+      if (v.is_active === false) return false
+      const attrs = v.attributes || {}
+      if (channel !== 'outdoor' && attrs.outdoor_only_variant) return false
+      if (channel === 'outdoor' && attrs.outdoor_hidden) return false
+      return true
+    })
     const prices = activeVariants
       .map((v: any) => v.suggested_retail_price)
       .filter((price: any) => price != null && price > 0)
     const defaultVariant =
       activeVariants.find((v: any) => v.is_default) || activeVariants[0] || null
-    const editedPrice = Number(defaultVariant?.suggested_retail_price)
+    const outdoorPrice = Number(defaultVariant?.attributes?.outdoor_price)
+    const editedPrice = channel === 'outdoor' && Number.isFinite(outdoorPrice) && outdoorPrice > 0
+      ? outdoorPrice
+      : Number(defaultVariant?.suggested_retail_price)
     const startingPrice = channel === 'outdoor' && Number.isFinite(editedPrice) && editedPrice > 0
       ? editedPrice
       : prices.length > 0 ? Math.min(...prices) : null

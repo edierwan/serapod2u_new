@@ -184,25 +184,41 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
   if (scope.matchedBy === 'none') return null
 
   const supabase: any = createAdminClient()
-  const { data: row } = await supabase
+  let rowQuery = await supabase
     .from('products')
-    .select('category_id, brand_id')
+    .select('category_id, brand_id, outdoor_hidden')
     .eq('id', productId)
     .maybeSingle()
+  if (rowQuery.error && /outdoor_hidden/i.test(rowQuery.error.message || '')) {
+    rowQuery = await supabase.from('products').select('category_id, brand_id').eq('id', productId).maybeSingle()
+  }
+  const row = rowQuery.data
+  if (row?.outdoor_hidden) return null
+
+  const priced = {
+    ...product,
+    variants: product.variants
+      .filter((variant) => !variant.attributes?.outdoor_hidden)
+      .map((variant) => {
+        const custom = Number(variant.attributes?.outdoor_price)
+        if (!Number.isFinite(custom) || custom <= 0) return variant
+        return { ...variant, suggested_retail_price: custom }
+      }),
+  }
 
   if (scope.categoryIds.length > 0) {
-    if (row?.category_id && scope.categoryIds.includes(String(row.category_id))) return product
-    if (isOutdoorName(product.category_name)) return product
+    if (row?.category_id && scope.categoryIds.includes(String(row.category_id))) return priced
+    if (isOutdoorName(product.category_name)) return priced
     return null
   }
 
   if (scope.brandId) {
-    if (row?.brand_id && String(row.brand_id) === scope.brandId) return product
-    if (isOutdoorName(product.brand_name)) return product
+    if (row?.brand_id && String(row.brand_id) === scope.brandId) return priced
+    if (isOutdoorName(product.brand_name)) return priced
     return null
   }
 
-  if (isOutdoorName(product.category_name) || isOutdoorName(product.brand_name)) return product
+  if (isOutdoorName(product.category_name) || isOutdoorName(product.brand_name)) return priced
   return null
 }
 

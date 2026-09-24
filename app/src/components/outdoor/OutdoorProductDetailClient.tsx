@@ -80,9 +80,9 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     swatches.find((s) => s.hex.toLowerCase() === displayHex.toLowerCase())?.imageUrl ||
     gallery[0]
 
-  const productPrice = defaultVariant?.suggested_retail_price && defaultVariant.suggested_retail_price > 0
-    ? defaultVariant.suggested_retail_price
-    : selected?.suggested_retail_price ?? null
+  const productPrice = selected?.suggested_retail_price && selected.suggested_retail_price > 0
+    ? selected.suggested_retail_price
+    : defaultVariant?.suggested_retail_price ?? null
 
   const handleBuy = () => {
     if (!selected || !productPrice || productPrice <= 0 || adding) return
