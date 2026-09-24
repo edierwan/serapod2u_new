@@ -207,6 +207,13 @@ export async function PATCH(request: NextRequest) {
       console.error('[outdoor/products] variant update', variantWrite.error)
       return NextResponse.json({ error: 'Could not save the product price.' }, { status: 500 })
     }
+    const { error: priceError } = await admin.from('product_variants').update({
+      suggested_retail_price: Math.round(price * 100) / 100,
+    }).eq('product_id', id)
+    if (priceError) {
+      console.error('[outdoor/products] price', priceError)
+      return NextResponse.json({ error: 'Could not save the product price.' }, { status: 500 })
+    }
     if (customPhoto) await rememberProductImage(admin, id, customPhoto)
 
     const text = [`Updated: ${name}`, color ? `Color: ${color}` : '', `Price: RM ${price.toFixed(2)}`, description].filter(Boolean).join('\n')

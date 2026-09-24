@@ -270,8 +270,12 @@ export async function listProducts(params: ListProductsParams = {}) {
     const prices = activeVariants
       .map((v: any) => v.suggested_retail_price)
       .filter((price: any) => price != null && price > 0)
-
-    const startingPrice = prices.length > 0 ? Math.min(...prices) : null
+    const defaultVariant =
+      activeVariants.find((v: any) => v.is_default) || activeVariants[0] || null
+    const editedPrice = Number(defaultVariant?.suggested_retail_price)
+    const startingPrice = channel === 'outdoor' && Number.isFinite(editedPrice) && editedPrice > 0
+      ? editedPrice
+      : prices.length > 0 ? Math.min(...prices) : null
 
     const selectedMedia = selectStorefrontProductMedia(p.product_images, activeVariants)
     const firstImage = toStorefrontMediaUrl(selectedMedia.imageUrl)
@@ -285,8 +289,6 @@ export async function listProducts(params: ListProductsParams = {}) {
       else if (animUrl.match(/\.(json|lottie)($|\?)/)) mediaType = 'animation'
     }
 
-    const defaultVariant =
-      activeVariants.find((v: any) => v.is_default) || activeVariants[0] || null
     const colorSwatches = outdoorSwatchesFromVariants(
       activeVariants.map((v: any) => ({
         variant_name: v.variant_name,

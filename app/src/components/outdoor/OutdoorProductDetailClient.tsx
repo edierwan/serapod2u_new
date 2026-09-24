@@ -80,8 +80,12 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     swatches.find((s) => s.hex.toLowerCase() === displayHex.toLowerCase())?.imageUrl ||
     gallery[0]
 
+  const productPrice = defaultVariant?.suggested_retail_price && defaultVariant.suggested_retail_price > 0
+    ? defaultVariant.suggested_retail_price
+    : selected?.suggested_retail_price ?? null
+
   const handleBuy = () => {
-    if (!selected || !selected.suggested_retail_price || selected.suggested_retail_price <= 0 || adding) return
+    if (!selected || !productPrice || productPrice <= 0 || adding) return
     setAdding(true)
     addItem(
       {
@@ -89,7 +93,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
         variantId: selected.id,
         productName: product.product_name,
         variantName: selected.variant_name,
-        price: selected.suggested_retail_price,
+        price: productPrice,
         imageUrl: selected.image_url || gallery[0] || null,
       },
       qty,
@@ -163,7 +167,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             {spec ? <p className="pt-2 text-sm text-[var(--out-muted)]">{spec}</p> : null}
           </div>
           <p className="mt-1 text-lg font-semibold text-[var(--out-bark)]">
-            {formatPrice(selected?.suggested_retail_price ?? null)}
+            {formatPrice(productPrice)}
           </p>
           {description ? (
             <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[var(--out-muted)]">{description}</p>
@@ -173,7 +177,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             <button
               type="button"
               onClick={handleBuy}
-              disabled={!selected?.suggested_retail_price || selected.suggested_retail_price <= 0 || adding}
+              disabled={!productPrice || productPrice <= 0 || adding}
               className="inline-flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
             >
               Buy Now
