@@ -40,6 +40,8 @@ export interface StorefrontProduct {
   /** 'image' | 'video' | 'animation' — resolved from available media */
   media_type: "image" | "video" | "animation";
   starting_price: number | null;
+  /** Price of the default variant. Outdoor cards use this with the photo on screen. */
+  display_price?: number | null;
   variant_count: number;
   tags: string[];
   colorSwatches?: OutdoorColorSwatch[];
@@ -356,11 +358,14 @@ export async function listProducts(params: ListProductsParams = {}) {
       else if (animUrl.match(/\.(json|lottie)($|\?)/)) mediaType = "animation";
     }
 
+    const defaultAmount = Number(defaultVariant?.suggested_retail_price);
     const colorSwatches = outdoorSwatchesFromVariants(
       activeVariants.map((v: any) => ({
         variant_name: v.variant_name,
         image_url: toStorefrontMediaUrl(v.image_url),
         attributes: v.attributes,
+        price: v.suggested_retail_price,
+        is_default: v.is_default,
       })),
       p.product_name,
     );
@@ -380,6 +385,7 @@ export async function listProducts(params: ListProductsParams = {}) {
       animation_url: firstAnimation,
       media_type: mediaType,
       starting_price: startingPrice,
+      display_price: Number.isFinite(defaultAmount) && defaultAmount > 0 ? defaultAmount : startingPrice,
       variant_count: activeVariants.length,
       tags: [
         (p.brands as any)?.brand_name,

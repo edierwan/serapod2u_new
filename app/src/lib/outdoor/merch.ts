@@ -4,6 +4,8 @@ export type OutdoorColorSwatch = {
   hex: string
   label: string
   imageUrl: string | null
+  price?: number | null
+  isDefault?: boolean
 }
 
 const COLOR_RULES: Array<{ test: RegExp; hex: string; label: string; file: 'burgundy' | 'pink' | 'grey' }> = [
@@ -90,12 +92,15 @@ export function outdoorSwatchesFromVariants(
     variant_name?: string | null
     image_url?: string | null
     attributes?: Record<string, unknown> | null
+    price?: number | null
+    is_default?: boolean | null
   }>,
   productName?: string,
 ): OutdoorColorSwatch[] {
   const out: OutdoorColorSwatch[] = []
   const seen = new Set<string>()
-  for (const variant of variants) {
+  const ordered = [...variants].sort((a, b) => Number(Boolean(b.is_default)) - Number(Boolean(a.is_default)))
+  for (const variant of ordered) {
     const attrs = asRecord(variant.attributes)
     if (attrs.outdoor_hidden) continue
     const attrColor = String(attrs.color || attrs.colour || attrs.hex || attrs.Color || '')
@@ -107,11 +112,13 @@ export function outdoorSwatchesFromVariants(
       if (trimmed.startsWith('/outdoor/')) return trimmed
       return getStorageUrl(trimmed) || trimmed
     }
+    const amount = Number(variant.price)
+    const price = Number.isFinite(amount) && amount > 0 ? amount : null
     if (!found) {
       const imageUrl = photo(custom)
       if (!imageUrl || seen.has(imageUrl)) continue
       seen.add(imageUrl)
-      out.push({ hex: '#C1C6C8', label: 'Photo', imageUrl })
+      out.push({ hex: '#C1C6C8', label: 'Photo', imageUrl, price, isDefault: Boolean(variant.is_default) })
       continue
     }
     const key = found.hex.toLowerCase()
@@ -123,6 +130,8 @@ export function outdoorSwatchesFromVariants(
       hex: found.hex,
       label: found.label,
       imageUrl,
+      price,
+      isDefault: Boolean(variant.is_default),
     })
   }
   return out

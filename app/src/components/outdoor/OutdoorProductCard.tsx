@@ -12,8 +12,14 @@ function formatPrice(price: number | null) {
 
 export default function OutdoorProductCard({ product }: { product: StorefrontProduct }) {
   const swatches = product.colorSwatches || []
-  const [active, setActive] = useState(0)
-  const image = swatches[active]?.imageUrl || product.image_url
+  const defaultIndex = swatches.findIndex((swatch) => swatch.isDefault)
+  const [active, setActive] = useState(defaultIndex >= 0 ? defaultIndex : 0)
+  const activeSwatch = swatches[active]
+  const image = activeSwatch?.imageUrl || product.image_url
+  const swatchPrice = Number(activeSwatch?.price)
+  const price = Number.isFinite(swatchPrice) && swatchPrice > 0
+    ? swatchPrice
+    : product.display_price ?? product.starting_price
 
   return (
     <article className="flex h-full flex-col">
@@ -57,7 +63,7 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
           <p className="shrink-0 text-xs text-[var(--out-muted)]">{product.specLabel}</p>
         ) : null}
       </div>
-      <p className="mt-1 px-1 text-sm font-medium text-[var(--out-bark)]">{formatPrice(product.starting_price)}</p>
+      <p className="mt-1 px-1 text-sm font-medium text-[var(--out-bark)]">{formatPrice(price)}</p>
 
       <div className="mt-3 flex items-center gap-2">
         <Link
