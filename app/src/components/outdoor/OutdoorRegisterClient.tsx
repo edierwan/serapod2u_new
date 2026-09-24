@@ -5,15 +5,16 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
 import OutdoorSocialAuth from '@/components/outdoor/OutdoorSocialAuth'
-import { outdoorPublicOrigin, resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
+import { resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 export default function OutdoorRegisterClient() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [step, setStep] = useState<'details' | 'code'>('details')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [info, setInfo] = useState('')
   const [nextPath, setNextPath] = useState('/outdoor')
 
   useEffect(() => {
@@ -33,40 +34,66 @@ export default function OutdoorRegisterClient() {
     void check()
   }, [])
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const sendCode = async () => {
     if (password.length < 8) {
       setError('Password must be at least 8 characters.')
       return
     }
     setLoading(true)
     setError('')
-    setInfo('')
     try {
+      const res = await fetch('/api/outdoor/register/request-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), fullName: fullName.trim() }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || 'Could not send the code')
+      setStep('code')
+    } catch (err: any) {
+      setError(err.message || 'Could not send the code')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const createAccount = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/outdoor/register/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          fullName: fullName.trim(),
+          password,
+          code,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || 'Could not create account')
+
       const supabase = createClient()
-      const { data, error: signError } = await supabase.auth.signUp({
+      const { error: signError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
-        options: {
-          data: { full_name: fullName.trim() },
-          emailRedirectTo: `${outdoorPublicOrigin()}/auth/callback?next=${encodeURIComponent(nextPath)}`,
-        },
       })
-      if (signError) throw new Error(signError.message)
+      if (signError) throw new Error('Account created. Sign in with your email and password.')
 
-      if (!data.session) {
-        setInfo('Check your email to confirm your account, then sign in.')
-        setLoading(false)
-        return
-      }
-
-      const res = await fetch(`/api/auth/post-login-redirect?next=${encodeURIComponent(nextPath)}`)
-      const payload = await res.json().catch(() => null)
+      const redirect = await fetch(`/api/auth/post-login-redirect?next=${encodeURIComponent(nextPath)}`)
+      const payload = await redirect.json().catch(() => null)
       window.location.href = payload?.redirectTo || nextPath
     } catch (err: any) {
       setError(err.message || 'Could not create account')
       setLoading(false)
     }
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (step === 'details') await sendCode()
+    else await createAccount()
   }
 
   return (
@@ -76,8 +103,10 @@ export default function OutdoorRegisterClient() {
           <OutdoorBrandMark className="h-7 w-auto" />
         </Link>
         <h1 className="mt-6 font-display text-3xl tracking-tight text-[var(--out-bark)]">Create account</h1>
-        <p className="mt-2 text-sm text-[var(--out-muted)]">
-          Save your details for faster Outdoor checkout.
+        <p className="mt-3 text-sm leading-relaxed text-[var(--out-muted)]">
+          {step === 'code'
+            ? `Enter the 4-digit code sent to ${email.trim()}.`
+            : 'We email a 4-digit code before the account is created.'}
         </p>
 
         <div className="mt-6">
@@ -100,6 +129,7 @@ export default function OutdoorRegisterClient() {
               required
               autoComplete="name"
               value={fullName}
+              disabled={step === 'code' || loading}
               onChange={(e) => setFullName(e.target.value)}
               className="out-input"
             />
@@ -111,6 +141,7 @@ export default function OutdoorRegisterClient() {
               required
               autoComplete="email"
               value={email}
+              disabled={step === 'code' || loading}
               onChange={(e) => setEmail(e.target.value)}
               className="out-input"
             />
@@ -123,15 +154,39 @@ export default function OutdoorRegisterClient() {
               minLength={8}
               autoComplete="new-password"
               value={password}
+              disabled={step === 'code' || loading}
               onChange={(e) => setPassword(e.target.value)}
               className="out-input"
             />
           </label>
+          {step === 'code' ? (
+            <label className="block text-sm font-medium text-[var(--out-bark)]">
+              Code
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={4}
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className="out-input tracking-[0.3em]"
+              />
+            </label>
+          ) : null}
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {info ? <p className="text-sm text-[var(--out-moss-deep)]">{info}</p> : null}
           <button type="submit" disabled={loading} className="out-btn w-full">
-            {loading ? 'Creating…' : 'Create account'}
+            {loading ? 'Please wait…' : step === 'code' ? 'Create account' : 'Send code'}
           </button>
+          {step === 'code' ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void sendCode()}
+              className="w-full text-sm font-semibold text-[var(--out-moss)] disabled:opacity-50"
+            >
+              Resend code
+            </button>
+          ) : null}
         </form>
 
         <p className="mt-6 text-sm text-[var(--out-muted)]">
