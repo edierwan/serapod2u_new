@@ -14,6 +14,8 @@ describe('outdoor auth return path', () => {
 
   it('does not bounce back to login, register, or a non-Outdoor path', () => {
     expect(sanitizeOutdoorReturnPath('/outdoor/login')).toBe('/outdoor')
+    expect(sanitizeOutdoorReturnPath('/outdoor/unsubscribe?token=abc')).toBe('/outdoor')
+    expect(outdoorAuthHref('login', '/outdoor/unsubscribe', '?token=abc')).toBe('/outdoor/login?next=%2Foutdoor')
     expect(sanitizeOutdoorReturnPath('/dashboard')).toBe('/outdoor')
     expect(outdoorReturnPathFromLocation('/outdoor/login', '?next=%2Foutdoor%2Fcheckout')).toBe('/outdoor/checkout')
   })

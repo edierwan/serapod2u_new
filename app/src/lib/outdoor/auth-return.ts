@@ -12,6 +12,7 @@ function isAuthOrCallbackPath(path: string) {
     pathname === '/outdoor/login' ||
     pathname === '/outdoor/register' ||
     pathname === '/outdoor/forgot-password' ||
+    pathname === '/outdoor/unsubscribe' ||
     pathname === '/auth/callback'
   )
 }
