@@ -153,10 +153,12 @@ export function buildOutdoorProductEmail(input: {
 export function buildOutdoorWelcomeEmail() {
   const origin = outdoorPublicOrigin()
   const shopUrl = `${origin}/outdoor`
+  const logoUrl = `${origin}/outdoor/brand/logo.png`
+  const welcomeImage = `${origin}/outdoor/brand/banners/moonchair.jpg`
   const subject = 'You are subscribed to SeraOutdoor'
   const text = [
-    'Thanks for subscribing.',
-    'We will email you when an Outdoor product is added or updated. Nothing else.',
+    'Welcome to SeraOutdoor.',
+    'We will email you when a product is added or updated.',
     shopUrl,
     '{{unsubscribe_url}}',
   ].join('\n')
@@ -168,19 +170,26 @@ export function buildOutdoorWelcomeEmail() {
       <td align="center" style="padding:28px 12px;">
         <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;">
           <tr>
-            <td style="background:${BARK};padding:22px 28px;">
-              <p style="margin:0;font-family:Georgia, 'Times New Roman', serif;font-size:22px;letter-spacing:0.04em;color:${CREAM};">SeraOutdoor</p>
+            <td align="center" style="background:${BARK};padding:22px 28px;">
+              <img src="${escapeHtml(logoUrl)}" alt="SeraOutdoor" width="210" style="display:block;width:210px;max-width:70%;height:auto;border:0;">
             </td>
           </tr>
           <tr>
-            <td style="padding:28px;">
-              <h1 style="margin:0;font-family:Georgia, 'Times New Roman', serif;font-size:32px;line-height:1.15;font-weight:500;color:${INK};">You are subscribed</h1>
-              <p style="margin:16px 0 0;font-family:Arial, Helvetica, sans-serif;font-size:15px;line-height:1.6;color:${INK};">Thanks for subscribing. We will email you when an Outdoor product is added or updated. Nothing else.</p>
+            <td style="padding:0;background:#ffffff;">
+              <a href="${escapeHtml(shopUrl)}" style="text-decoration:none;">
+                <img src="${escapeHtml(welcomeImage)}" alt="Welcome to SeraOutdoor" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;">
+              </a>
             </td>
           </tr>
           <tr>
-            <td style="padding:0 28px 32px;">
-              <a href="${shopUrl}" style="display:inline-block;background:${MOSS};color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:15px;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:999px;">Visit the shop</a>
+            <td style="padding:28px 28px 8px;">
+              <h1 style="margin:0;font-family:Georgia, 'Times New Roman', serif;font-size:32px;line-height:1.15;font-weight:500;color:${INK};">Welcome</h1>
+              <p style="margin:14px 0 0;font-family:Arial, Helvetica, sans-serif;font-size:15px;line-height:1.6;color:${INK};">You are subscribed. We will email you when a product is added or updated.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 28px 32px;">
+              <a href="${escapeHtml(shopUrl)}" style="display:inline-block;background:${MOSS};color:#ffffff;font-family:Arial, Helvetica, sans-serif;font-size:15px;font-weight:700;text-decoration:none;padding:14px 28px;border-radius:999px;">Visit the shop</a>
             </td>
           </tr>
           <tr>

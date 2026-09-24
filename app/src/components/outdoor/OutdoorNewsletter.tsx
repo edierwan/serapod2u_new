@@ -26,11 +26,7 @@ export default function OutdoorNewsletter({
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || 'Could not subscribe')
-      setDone(data?.already
-        ? 'This email is already subscribed.'
-        : data?.welcomed
-          ? 'You are subscribed. A short welcome is on its way, then only product news. Every email has an unsubscribe link.'
-          : 'You are subscribed. Product news will come to this address.')
+      setDone(data?.already ? 'Already subscribed.' : "You're subscribed.")
     } catch (err: any) {
       setError(err.message || 'Could not subscribe')
     } finally {
@@ -67,7 +63,7 @@ export default function OutdoorNewsletter({
         </button>
       </div>
       {done ? (
-        <p className={`mt-3 text-sm font-medium ${onDark ? 'text-[var(--out-cream)]' : 'text-emerald-700'}`}>
+        <p className={`mt-3 text-sm font-semibold ${onDark ? 'text-[#d5e3b4]' : 'text-[#5E6738]'}`}>
           {done}
         </p>
       ) : null}
