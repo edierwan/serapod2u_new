@@ -424,7 +424,7 @@ export default function OutdoorChrome({
             <h2 className="font-display text-3xl tracking-tight text-[var(--out-cream)] sm:text-4xl">
               Get Updates
             </h2>
-            <p className="mt-2 text-sm text-[var(--out-cream)]/70">
+            <p className="mt-2 text-sm text-[var(--out-cream)]">
               Leave your email for Outdoor product news
             </p>
             <div className="mt-5">
