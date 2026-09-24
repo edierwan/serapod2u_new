@@ -12,7 +12,7 @@ export default function OutdoorShippingPage() {
           heading: 'Shipping coverage',
           body: [
             'We ship within Malaysia using courier partners connected through EasyParcel (once credentials are live).',
-            'At checkout you can choose available courier rates for your postcode and state. Shipping cost is added to the order total before payment.',
+            'Checkout uses one flat delivery rate for every address in Malaysia. When an order qualifies, that rate is shown as free shipping.',
           ],
         },
         {

@@ -3,7 +3,7 @@ export const metadata = { title: 'FAQ' }
 const FAQS = [
   {
     q: 'How do I place an order?',
-    a: 'Browse the Shop, add items to your cart, then complete Checkout with your delivery details and preferred shipping option. You will be redirected to our secure payment gateway.',
+    a: 'Browse the Shop, add items to your cart, then complete Checkout with your delivery details. Shipping is a single flat rate, or free when the order qualifies. You will be redirected to our secure payment gateway.',
   },
   {
     q: 'When is my order marked as paid?',

@@ -1,22 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { Truck } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
 import { MALAYSIA_STATES } from '@/lib/shipping/malaysia-states'
 import { socialAccountLabel } from '@/lib/auth/social-oauth'
+import { OUTDOOR_FREE_SHIPPING_OVER_RM, outdoorCustomerShippingAmount } from '@/lib/outdoor/shipping'
 
 const LOGIN_FOR_CHECKOUT = `/outdoor/login?next=${encodeURIComponent('/outdoor/checkout')}`
-
-type Rate = {
-  serviceId: string
-  courierName: string
-  serviceName: string
-  price: number
-  delivery: string | null
-}
 
 function money(n: number) {
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(n)
@@ -27,10 +21,6 @@ export default function OutdoorCheckoutPage() {
   const { items, subtotal, clearCart, hasItemsWithoutPrice } = useCart()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [rates, setRates] = useState<Rate[]>([])
-  const [ratesMsg, setRatesMsg] = useState('Add your postcode to see courier options.')
-  const [ratesLoading, setRatesLoading] = useState(false)
-  const [selectedRate, setSelectedRate] = useState<Rate | null>(null)
   const [payMethods, setPayMethods] = useState<{ key: string; label: string; isDefault: boolean }[]>([])
   const [payProvider, setPayProvider] = useState('')
   const [accountEmail, setAccountEmail] = useState('')
@@ -44,48 +34,6 @@ export default function OutdoorCheckoutPage() {
     state: 'Selangor',
     postcode: '',
   })
-
-  const loadRates = useCallback(async () => {
-    if (!form.postcode.trim() || !form.state.trim()) return
-    setRatesLoading(true)
-    setRatesMsg('')
-    setSelectedRate(null)
-    try {
-      const res = await fetch('/api/shipping/easyparcel/rates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postcode: form.postcode, state: form.state }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        setRates([])
-        setRatesMsg(data?.error || 'Could not load shipping rates.')
-        return
-      }
-      const list: Rate[] = data?.rates || []
-      setRates(list)
-      if (!data?.configured) {
-        setRatesMsg(data?.message || 'Shipping rates are not available yet. You can still checkout — shipping may be RM 0 until courier is connected.')
-      } else if (list.length === 0) {
-        setRatesMsg(data?.error || 'No rates for this address. Try another postcode.')
-      } else {
-        setSelectedRate(list[0])
-        setRatesMsg('')
-      }
-    } catch {
-      setRates([])
-      setRatesMsg('Could not load shipping rates.')
-    } finally {
-      setRatesLoading(false)
-    }
-  }, [form.postcode, form.state])
-
-  useEffect(() => {
-    if (form.postcode.trim().length >= 5 && form.state) {
-      const t = setTimeout(() => void loadRates(), 450)
-      return () => clearTimeout(t)
-    }
-  }, [form.postcode, form.state, loadRates])
 
   useEffect(() => {
     const supabase = createClient()
@@ -131,17 +79,14 @@ export default function OutdoorCheckoutPage() {
     )
   }
 
-  const shippingCost = selectedRate?.price ?? 0
+  const shippingCost = outdoorCustomerShippingAmount(subtotal)
+  const freeShipping = shippingCost <= 0
   const total = subtotal + shippingCost
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (hasItemsWithoutPrice) {
       setError('Remove items without a valid price before paying.')
-      return
-    }
-    if (rates.length > 0 && !selectedRate) {
-      setError('Select a shipping option.')
       return
     }
     setLoading(true)
@@ -156,13 +101,7 @@ export default function OutdoorCheckoutPage() {
           returnBasePath: '/outdoor',
           salesChannel: 'outdoor',
           paymentProvider: payProvider || undefined,
-          shipping: selectedRate
-            ? {
-                serviceId: selectedRate.serviceId,
-                courierName: `${selectedRate.courierName} — ${selectedRate.serviceName}`,
-                amount: selectedRate.price,
-              }
-            : { amount: 0 },
+          shipping: { amount: shippingCost },
         }),
       })
       const data = await res.json().catch(() => null)
@@ -201,7 +140,9 @@ export default function OutdoorCheckoutPage() {
       </p>
       <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Checkout</h1>
       <p className="mx-auto mt-2 max-w-md text-center text-sm text-[var(--out-muted)]">
-        Where should we send your gear? Then pick a courier and pay securely.
+        {freeShipping
+          ? 'Where should we send your gear? Shipping is free.'
+          : `Where should we send your gear? Delivery is a flat ${money(shippingCost)}.`}
       </p>
 
       <div className="mt-8 grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
@@ -244,46 +185,33 @@ export default function OutdoorCheckoutPage() {
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-xl text-[var(--out-bark)]">Shipping</h2>
-              <button
-                type="button"
-                onClick={() => void loadRates()}
-                disabled={ratesLoading || !form.postcode}
-                className="text-xs font-semibold text-[var(--out-moss)] disabled:opacity-40"
-              >
-                {ratesLoading ? 'Loading…' : 'Refresh rates'}
-              </button>
-            </div>
-            <div className="mt-4 space-y-2">
-              {rates.length > 0 ? (
-                rates.map((r) => {
-                  const active = selectedRate?.serviceId === r.serviceId
-                  return (
-                    <button
-                      key={r.serviceId}
-                      type="button"
-                      onClick={() => setSelectedRate(r)}
-                      className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition-colors ${
-                        active
-                          ? 'border-[var(--out-bark)] bg-[var(--out-ivory)]'
-                          : 'border-[var(--out-bark)]/10 hover:border-[var(--out-bark)]/30'
-                      }`}
-                    >
-                      <div className="flex justify-between gap-3 text-[var(--out-bark)]">
-                        <span className="font-semibold">{r.courierName}</span>
-                        <span className="font-semibold">{money(r.price)}</span>
-                      </div>
-                      <p className="mt-0.5 text-xs text-[var(--out-muted)]">
-                        {r.serviceName}
-                        {r.delivery ? ` · ${r.delivery}` : ''}
-                      </p>
-                    </button>
-                  )
-                })
-              ) : (
-                <p className="rounded-2xl bg-[var(--out-ivory)] px-4 py-3 text-xs text-[var(--out-muted)]">{ratesMsg}</p>
-              )}
+            <h2 className="font-display text-xl text-[var(--out-bark)]">Shipping</h2>
+            <div className="mt-4 overflow-hidden rounded-[1.4rem] border border-[var(--out-bark)]/10 bg-[var(--out-ivory)]">
+              <div className="flex items-center gap-4 px-4 py-4 sm:px-5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--out-bark)] text-[var(--out-cream)]">
+                  <Truck className="h-5 w-5" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-xl leading-none text-[var(--out-bark)]">
+                    {freeShipping ? 'Free shipping' : 'Standard delivery'}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--out-muted)]">
+                    {freeShipping
+                      ? 'We cover delivery anywhere in Malaysia.'
+                      : 'One rate for every address in Malaysia. We arrange the courier.'}
+                  </p>
+                </div>
+                <p className="shrink-0 whitespace-nowrap font-display text-xl text-[var(--out-bark)] sm:text-2xl">
+                  {freeShipping ? 'Free' : money(shippingCost)}
+                </p>
+              </div>
+              {OUTDOOR_FREE_SHIPPING_OVER_RM != null && OUTDOOR_FREE_SHIPPING_OVER_RM > 0 ? (
+                <p className="border-t border-[var(--out-bark)]/10 px-4 py-2.5 text-xs text-[var(--out-bark)] sm:px-5">
+                  {freeShipping
+                    ? 'Free shipping is included on this order.'
+                    : `Free shipping on orders from ${money(OUTDOOR_FREE_SHIPPING_OVER_RM)}.`}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -346,7 +274,7 @@ export default function OutdoorCheckoutPage() {
             </div>
             <div className="flex justify-between">
               <span>Shipping</span>
-              <span>{selectedRate ? money(shippingCost) : '—'}</span>
+              <span>{freeShipping ? 'Free' : money(shippingCost)}</span>
             </div>
             <div className="flex justify-between pt-2 font-display text-xl">
               <span>Total</span>

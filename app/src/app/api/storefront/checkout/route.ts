@@ -3,6 +3,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
+import { outdoorCustomerShippingAmount } from '@/lib/outdoor/shipping'
+import { easyParcelRateCheck, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 
 // NOTE: storefront_orders / storefront_order_items are not in the
 // auto-generated database types yet. After running STOREFRONT_MIGRATION.sql
@@ -49,6 +52,22 @@ interface CheckoutBody {
     referrerDomain?: string
   } | null
   paymentProvider?: string
+}
+
+async function cheapestOutdoorCourier(postcode: string, state: string) {
+  try {
+    if (!(await isEasyParcelConfigured())) return null
+    const quoted = await easyParcelRateCheck({
+      sendCode: String(postcode || '').trim(),
+      sendState: toEasyParcelState(state),
+      sendCountry: 'MY',
+    })
+    if (!quoted.ok || quoted.rates.length === 0) return null
+    return quoted.rates[0]
+  } catch (err) {
+    console.error('[checkout] outdoor courier quote', err)
+    return null
+  }
 }
 
 function cleanAttributionText(value: unknown, max = 300) {
@@ -177,19 +196,17 @@ export async function POST(request: NextRequest) {
       }
       body.customer.email = accountEmail
     }
-    const shippingAmountRaw = Number(body.shipping?.amount ?? 0)
-    const shippingAmount =
-      salesChannel === 'outdoor' && Number.isFinite(shippingAmountRaw) && shippingAmountRaw >= 0
-        ? Math.round(shippingAmountRaw * 100) / 100
-        : 0
-    const shippingServiceId =
-      salesChannel === 'outdoor' && body.shipping?.serviceId
-        ? String(body.shipping.serviceId).slice(0, 80)
-        : null
-    const shippingCourierName =
-      salesChannel === 'outdoor' && body.shipping?.courierName
-        ? String(body.shipping.courierName).slice(0, 120)
-        : null
+    let shippingAmount = 0
+    let shippingServiceId: string | null = null
+    let shippingCourierName: string | null = null
+    if (salesChannel === 'outdoor') {
+      shippingAmount = outdoorCustomerShippingAmount(orderTotal)
+      const quote = await cheapestOutdoorCourier(body.customer.postcode, body.customer.state)
+      if (quote) {
+        shippingServiceId = quote.serviceId.slice(0, 80)
+        shippingCourierName = `${quote.courierName} — ${quote.serviceName}`.slice(0, 120)
+      }
+    }
     const payableTotal = orderTotal + shippingAmount
 
     // ── 3. Generate order reference ──────────────────────────────
