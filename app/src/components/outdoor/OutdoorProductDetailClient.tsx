@@ -85,11 +85,17 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     outdoorSwatchesFromVariants(selected ? [selected] : [])[0]?.hex || swatches[0]?.hex || null
   const [activeHex, setActiveHex] = useState<string | null>(selectedHex)
   const displayHex = String(activeHex || selectedHex || '')
-  const displayImage =
-    swatches.find((s) => s.hex.toLowerCase() === displayHex.toLowerCase())?.imageUrl ||
-    gallery[0] ||
-    product.image_url ||
-    null
+  const activeIndex = swatches.findIndex((swatch) =>
+    swatch.variantId
+      ? selected?.id === swatch.variantId
+      : swatch.hex.toLowerCase() === displayHex.toLowerCase(),
+  )
+  const slideIndex = activeIndex >= 0 ? activeIndex : 0
+  const fallbackImage = gallery[0] || product.image_url || ''
+  const frames = swatches.length > 0
+    ? swatches.map((swatch) => swatch.imageUrl || product.image_url || fallbackImage)
+    : [fallbackImage]
+  const displayImage = frames[slideIndex] || fallbackImage || null
 
   const productPrice = selected?.suggested_retail_price && selected.suggested_retail_price > 0
     ? selected.suggested_retail_price
@@ -117,18 +123,19 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   return (
     <div className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-8">
       <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
-        <div className="overflow-hidden rounded-[1.6rem] bg-white p-4 sm:p-6">
-          {displayImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={displayImage}
-              src={displayImage}
-              alt={product.product_name}
-              className="mx-auto h-auto w-full max-h-[58vh] object-contain"
-            />
-          ) : (
-            <div className="aspect-square bg-[var(--out-sand)]/30" />
-          )}
+        <div className="aspect-square overflow-hidden rounded-[1.6rem] bg-white">
+          <div className="out-carousel" style={{ transform: `translate3d(-${slideIndex * 100}%, 0, 0)` }}>
+            {frames.map((src, frame) => (
+              <div key={`${frame}-${src}`} className="out-carousel-slide p-4 sm:p-6">
+                {src ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt={product.product_name} className="h-full w-full object-contain" />
+                ) : (
+                  <div className="h-full w-full bg-[var(--out-sand)]/30" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="lg:pt-4">
@@ -179,7 +186,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">{product.product_name}</h1>
             {spec ? <p className="pt-2 text-sm text-[var(--out-muted)]">{spec}</p> : null}
           </div>
-          <p className="mt-1 text-lg font-semibold text-[var(--out-bark)]">
+          <p key={productPrice ?? 'ask'} className="out-swap mt-1 text-lg font-semibold text-[var(--out-bark)]">
             {formatPrice(productPrice)}
           </p>
           {description ? (

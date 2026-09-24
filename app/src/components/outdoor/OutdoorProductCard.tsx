@@ -14,8 +14,11 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
   const swatches = product.colorSwatches || []
   const defaultIndex = swatches.findIndex((swatch) => swatch.isDefault)
   const [active, setActive] = useState(defaultIndex >= 0 ? defaultIndex : 0)
-  const activeSwatch = swatches[active]
-  const image = activeSwatch?.imageUrl || product.image_url
+  const index = swatches.length === 0 ? 0 : Math.min(active, swatches.length - 1)
+  const activeSwatch = swatches[index]
+  const frames = swatches.length > 0
+    ? swatches.map((swatch) => swatch.imageUrl || product.image_url || '')
+    : [product.image_url || '']
   const swatchPrice = Number(activeSwatch?.price)
   const price = Number.isFinite(swatchPrice) && swatchPrice > 0
     ? swatchPrice
@@ -24,17 +27,19 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
   return (
     <article className="flex h-full flex-col">
       <Link href={`/outdoor/shop/${product.id}`} className="block">
-        <div className="aspect-[4/5] rounded-[1.35rem] bg-white p-3 sm:p-4 overflow-hidden">
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={image}
-              alt={product.product_name}
-              className="h-full w-full object-contain"
-            />
-          ) : (
-            <div className="h-full w-full rounded-xl bg-[var(--out-sand)]/40" />
-          )}
+        <div className="aspect-[4/5] overflow-hidden rounded-[1.35rem] bg-white">
+          <div className="out-carousel" style={{ transform: `translate3d(-${index * 100}%, 0, 0)` }}>
+            {frames.map((src, frame) => (
+              <div key={`${frame}-${src}`} className="out-carousel-slide p-3 sm:p-4">
+                {src ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt={product.product_name} className="h-full w-full object-contain" />
+                ) : (
+                  <div className="h-full w-full rounded-xl bg-[var(--out-sand)]/40" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </Link>
 
@@ -46,8 +51,8 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
               type="button"
               aria-label={swatch.label}
               onClick={() => setActive(i)}
-              className={`h-3.5 w-3.5 rounded-full border ${
-                i === active ? 'border-[var(--out-bark)] scale-110' : 'border-black/10'
+              className={`h-3.5 w-3.5 rounded-full border transition-transform duration-300 ${
+                i === index ? 'scale-110 border-[var(--out-bark)]' : 'border-black/10'
               }`}
               style={{ background: swatch.hex }}
             />
@@ -63,7 +68,7 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
           <p className="shrink-0 text-xs text-[var(--out-muted)]">{product.specLabel}</p>
         ) : null}
       </div>
-      <p className="mt-1 px-1 text-sm font-medium text-[var(--out-bark)]">{formatPrice(price)}</p>
+      <p key={price ?? 'ask'} className="out-swap mt-1 px-1 text-sm font-medium text-[var(--out-bark)]">{formatPrice(price)}</p>
 
       <div className="mt-3 flex items-center gap-2">
         <Link
