@@ -171,7 +171,7 @@ export function selectStorefrontProductMedia(
 // ── Functions ────────────────────────────────────────────────────
 
 export async function listProducts(params: ListProductsParams = {}) {
-  const { search, category, brandId, sort = 'newest', page = 1, limit = 12, channel = 'store', outdoorOnly = false } = params
+  const { search, category, brandId, sort = 'newest', page = 1, limit = 12, outdoorOnly = false } = params
   const supabase = createAdminClient()
   const offset = (page - 1) * limit
 
@@ -256,14 +256,9 @@ export async function listProducts(params: ListProductsParams = {}) {
   return query
   }
 
-  let { data, error, count } = await runQuery(channel !== 'outdoor', channel === 'outdoor')
-  if (error && channel !== 'outdoor' && /outdoor_only/i.test(error.message || '')) {
-    const retry = await runQuery(false)
-    data = retry.data
-    error = retry.error
-    count = retry.count
-  }
-  if (error && channel === 'outdoor' && /outdoor_hidden|outdoor_only/i.test(error.message || '')) {
+  // Outdoor uses the same master rows as the main store. Desk-only rows stay out of both.
+  let { data, error, count } = await runQuery(true, false)
+  if (error && /outdoor_only/i.test(error.message || '')) {
     const retry = await runQuery(false, false)
     data = retry.data
     error = retry.error
@@ -283,8 +278,7 @@ export async function listProducts(params: ListProductsParams = {}) {
     const activeVariants = (p.product_variants || []).filter((v: any) => {
       if (v.is_active === false) return false
       const attrs = v.attributes || {}
-      if (channel !== 'outdoor' && attrs.outdoor_only_variant) return false
-      if (channel === 'outdoor' && attrs.outdoor_hidden) return false
+      if (attrs.outdoor_only_variant) return false
       return true
     })
     const prices = activeVariants
@@ -292,13 +286,7 @@ export async function listProducts(params: ListProductsParams = {}) {
       .filter((price: any) => price != null && price > 0)
     const defaultVariant =
       activeVariants.find((v: any) => v.is_default) || activeVariants[0] || null
-    const outdoorPrice = Number(defaultVariant?.attributes?.outdoor_price)
-    const editedPrice = channel === 'outdoor' && Number.isFinite(outdoorPrice) && outdoorPrice > 0
-      ? outdoorPrice
-      : Number(defaultVariant?.suggested_retail_price)
-    const startingPrice = channel === 'outdoor' && Number.isFinite(editedPrice) && editedPrice > 0
-      ? editedPrice
-      : prices.length > 0 ? Math.min(...prices) : null
+    const startingPrice = prices.length > 0 ? Math.min(...prices) : null
 
     const selectedMedia = selectStorefrontProductMedia(p.product_images, activeVariants)
     const firstImage = toStorefrontMediaUrl(selectedMedia.imageUrl)

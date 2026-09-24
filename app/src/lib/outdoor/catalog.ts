@@ -147,7 +147,7 @@ export async function listOutdoorProducts(params: {
     } else if (params.sort === 'name_asc') {
       products.sort((a, b) => a.product_name.localeCompare(b.product_name))
     }
-    products = (await withDeskProducts(products, params.sort, limit)).slice(0, limit).map(withOutdoorAppearance)
+    products = products.slice(0, limit).map(withOutdoorAppearance)
     return { products, total: products.length, page: 1, limit, scope }
   }
 
@@ -168,29 +168,14 @@ export async function listOutdoorProducts(params: {
     return isOutdoorName(p.category_name) || isOutdoorName(p.brand_name)
   })
 
-  const visible = await withDeskProducts(products, params.sort, limit)
   return {
-    products: visible.slice(0, limit).map(withOutdoorAppearance),
-    total: visible.length,
+    products: products.slice(0, limit).map(withOutdoorAppearance),
+    total: result.total,
     page: result.page,
     limit: result.limit,
     scope,
   }
 }
-
-async function withDeskProducts(products: StorefrontProduct[], sort: ListSort | undefined, limit: number) {
-  const added = await listProducts({
-    sort: sort || 'newest',
-    page: 1,
-    limit,
-    channel: 'outdoor',
-    outdoorOnly: true,
-  })
-  const seen = new Set(products.map((product) => product.id))
-  return [...added.products.filter((product) => !seen.has(product.id)), ...products]
-}
-
-type ListSort = 'newest' | 'price_asc' | 'price_desc' | 'name_asc'
 
 export async function getOutdoorProductDetail(productId: string): Promise<StorefrontProductDetail | null> {
   const product = await getProductDetail(productId)
@@ -212,20 +197,12 @@ export async function getOutdoorProductDetail(productId: string): Promise<Storef
     rowQuery = await supabase.from('products').select('category_id, brand_id').eq('id', productId).maybeSingle()
   }
   const row = rowQuery.data
-  if (row?.outdoor_hidden) return null
+  if (row?.outdoor_only) return null
 
   const priced = {
     ...product,
-    variants: product.variants
-      .filter((variant) => !variant.attributes?.outdoor_hidden)
-      .map((variant) => {
-        const custom = Number(variant.attributes?.outdoor_price)
-        if (!Number.isFinite(custom) || custom <= 0) return variant
-        return { ...variant, suggested_retail_price: custom }
-      }),
+    variants: product.variants.filter((variant) => !variant.attributes?.outdoor_only_variant),
   }
-
-  if (row?.outdoor_only) return priced
 
   if (scope.categoryIds.length > 0) {
     if (row?.category_id && scope.categoryIds.includes(String(row.category_id))) return priced
