@@ -219,12 +219,10 @@ export async function listProducts(params: ListProductsParams = {}) {
   else if (excludeOutdoorOnly) query = query.eq('outdoor_only', false)
   if (hideRemoved) query = query.eq('outdoor_hidden', false)
 
-  // Exclude products from hidden groups. Outdoor products added from the desk
-  // have no group, and NOT IN drops those null rows.
+  // Exclude products from hidden groups. New Outdoor desk products have no
+  // group, so they are added separately and are not dropped by this filter.
   if (hiddenGroupIds.length > 0) {
-    const hiddenList = hiddenGroupIds.map(id => `"${id}"`).join(',')
-    if (channel === 'outdoor') query = query.or(`group_id.is.null,group_id.not.in.(${hiddenList})`)
-    else query = query.not('group_id', 'in', `(${hiddenList})`)
+    query = query.not('group_id', 'in', `(${hiddenGroupIds.map(id => `"${id}"`).join(',')})`)
   }
 
   // Apply search filter

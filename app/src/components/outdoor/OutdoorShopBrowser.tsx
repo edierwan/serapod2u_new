@@ -31,6 +31,10 @@ export default function OutdoorShopBrowser({
   const [search, setSearch] = useState(initialSearch)
   const [category, setCategory] = useState(initialCategory)
   const [collection, setCollection] = useState(initialCollection)
+
+  useEffect(() => {
+    setCollection(initialCollection)
+  }, [initialCollection])
   const [sort, setSort] = useState<OutdoorShopSort>(
     SORTS.includes(initialSort as OutdoorShopSort) ? (initialSort as OutdoorShopSort) : 'newest',
   )
