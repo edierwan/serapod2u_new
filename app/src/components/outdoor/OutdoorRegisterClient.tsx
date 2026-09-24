@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
+import OutdoorPasswordField from '@/components/outdoor/OutdoorPasswordField'
 import OutdoorSocialAuth from '@/components/outdoor/OutdoorSocialAuth'
+import { outdoorPasswordIssue } from '@/lib/outdoor/password-rule'
 import { resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 export default function OutdoorRegisterClient() {
@@ -35,8 +37,9 @@ export default function OutdoorRegisterClient() {
   }, [])
 
   const sendCode = async () => {
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    const passwordIssue = outdoorPasswordIssue(password)
+    if (passwordIssue) {
+      setError(passwordIssue)
       return
     }
     setLoading(true)
@@ -146,19 +149,18 @@ export default function OutdoorRegisterClient() {
               className="out-input"
             />
           </label>
-          <label className="block text-sm font-medium text-[var(--out-bark)]">
-            Password
-            <input
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              value={password}
-              disabled={step === 'code' || loading}
-              onChange={(e) => setPassword(e.target.value)}
-              className="out-input"
-            />
-          </label>
+          <OutdoorPasswordField
+            label="Password"
+            autoComplete="new-password"
+            value={password}
+            disabled={step === 'code' || loading}
+            onChange={setPassword}
+          />
+          {step === 'details' ? (
+            <p className="-mt-2 text-xs leading-relaxed text-[var(--out-muted)]">
+              At least 8 characters, with a capital letter, a small letter, and a number.
+            </p>
+          ) : null}
           {step === 'code' ? (
             <label className="block text-sm font-medium text-[var(--out-bark)]">
               Code

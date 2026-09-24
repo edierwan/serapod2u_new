@@ -76,6 +76,10 @@
   color: var(--out-bark);
 }
 
+.sera-outdoor .out-input.out-input-plain {
+  margin-top: 0;
+}
+
 .sera-outdoor .out-input:focus {
   outline: none;
   border-color: var(--out-moss);

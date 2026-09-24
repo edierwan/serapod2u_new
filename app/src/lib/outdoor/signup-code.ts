@@ -1,6 +1,7 @@
 import { createHash, randomInt } from 'node:crypto'
 import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
 import { outdoorPublicOrigin } from '@/lib/outdoor/product-email'
+import { outdoorPasswordIssue } from '@/lib/outdoor/password-rule'
 import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
 
 const PURPOSE = 'outdoor_signup'
@@ -112,7 +113,6 @@ export async function sendOutdoorSignupCode(admin: any, emailRaw: string, fullNa
     text: `Your SeraOutdoor verification code is ${code}. It expires in ${OTP_MINUTES} minutes.`,
     html: `<div style="font-family:Arial,sans-serif;background:#f1e6b2;padding:24px"><div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden"><div style="background:#3f1c1f;padding:20px 24px"><img src="${origin}/outdoor/brand/logo.png" alt="SeraOutdoor" width="180" style="display:block;width:180px;height:auto;border:0"></div><div style="padding:24px"><p style="margin:0;color:#2e1416;font-size:16px">Your verification code</p><p style="margin:16px 0 0;font-size:32px;letter-spacing:8px;font-weight:700;color:#3f1c1f">${code}</p><p style="margin:16px 0 0;color:#6d5a52;font-size:14px">Expires in ${OTP_MINUTES} minutes.</p></div></div></div>`,
     fromName: 'SeraOutdoor',
-    fromEmail: 'outdoor@serapod.com',
   })
   if (!sent.success) {
     return { ok: false as const, status: 500, error: 'Could not send the code.' }
@@ -128,8 +128,9 @@ export async function completeOutdoorSignup(admin: any, input: { email: string; 
   if (!email.includes('@') || !/^\d{4}$/.test(code)) {
     return { ok: false as const, status: 400, error: 'Enter the 4-digit code.' }
   }
-  if (password.length < 8) {
-    return { ok: false as const, status: 400, error: 'Password must be at least 8 characters.' }
+  const passwordIssue = outdoorPasswordIssue(password)
+  if (passwordIssue) {
+    return { ok: false as const, status: 400, error: passwordIssue }
   }
 
   const { data: active } = await admin

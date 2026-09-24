@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
+import OutdoorPasswordField from '@/components/outdoor/OutdoorPasswordField'
+import { outdoorPasswordIssue } from '@/lib/outdoor/password-rule'
 import { resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
 type Step = 'email' | 'code' | 'password' | 'done'
@@ -100,8 +102,9 @@ export default function OutdoorForgotPasswordClient() {
   }
 
   const savePassword = async () => {
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    const passwordIssue = outdoorPasswordIssue(password)
+    if (passwordIssue) {
+      setError(passwordIssue)
       return
     }
     if (password !== confirm) {
@@ -218,28 +221,23 @@ export default function OutdoorForgotPasswordClient() {
               void savePassword()
             }}
           >
-            <label className="block text-sm font-medium text-[var(--out-bark)]">
-              New password
-              <input
-                type="password"
-                required
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="out-input"
-              />
-            </label>
-            <label className="block text-sm font-medium text-[var(--out-bark)]">
-              Confirm password
-              <input
-                type="password"
-                required
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(event) => setConfirm(event.target.value)}
-                className="out-input"
-              />
-            </label>
+            <OutdoorPasswordField
+              label="New password"
+              autoComplete="new-password"
+              value={password}
+              disabled={loading}
+              onChange={setPassword}
+            />
+            <p className="-mt-2 text-xs leading-relaxed text-[var(--out-muted)]">
+              At least 8 characters, with a capital letter, a small letter, and a number.
+            </p>
+            <OutdoorPasswordField
+              label="Confirm password"
+              autoComplete="new-password"
+              value={confirm}
+              disabled={loading}
+              onChange={setConfirm}
+            />
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
             <button type="submit" disabled={loading} className="out-btn w-full">
               {loading ? 'Saving…' : 'Update password'}

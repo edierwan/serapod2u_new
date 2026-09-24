@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient, forceCleanStorage, resetClient } from '@/lib/supabase/client'
 import OutdoorBrandMark from '@/components/outdoor/OutdoorBrandMark'
+import OutdoorPasswordField from '@/components/outdoor/OutdoorPasswordField'
 import OutdoorSocialAuth from '@/components/outdoor/OutdoorSocialAuth'
 import { resolveOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 
@@ -102,17 +103,13 @@ export default function OutdoorLoginClient() {
               className="out-input"
             />
           </label>
-          <label className="block text-sm font-medium text-[var(--out-bark)]">
-            Password
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="out-input"
-            />
-          </label>
+          <OutdoorPasswordField
+            label="Password"
+            autoComplete="current-password"
+            value={password}
+            disabled={loading}
+            onChange={setPassword}
+          />
           <div className="flex justify-end">
             <Link
               href={`/outdoor/forgot-password?next=${encodeURIComponent(nextPath)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ''}`}
