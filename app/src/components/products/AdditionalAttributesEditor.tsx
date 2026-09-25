@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,37 +14,21 @@ import {
   type AttributePresetKey,
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
+import {
+  FALLBACK_COLOUR_REFERENCE,
+  hexToRgb,
+  loadColourReferencePalette,
+  nearestColour,
+  normalizeColourHex,
+  type ColourReference,
+} from '@/lib/products/colour-reference'
 
 interface AdditionalAttributesEditorProps {
   value: StructuredAttribute[]
   onChange: (value: StructuredAttribute[]) => void
   disabled?: boolean
   showValidationErrors?: boolean
-}
-
-const COLOUR_NAMES = [
-  'Black', 'White', 'Grey', 'Red', 'Blue', 'Green', 'Brown', 'Beige', 'Sand',
-  'Orange', 'Yellow', 'Pink', 'Purple', 'Burgundy', 'Burgundy Sand', 'Matcha Berry', 'Orange Grey',
-]
-
-const COMMON_COLOUR_HEX: Record<string, string> = {
-  black: '#0D0D0D',
-  white: '#FFFFFF',
-  grey: '#808080',
-  red: '#DC2626',
-  blue: '#2563EB',
-  green: '#16A34A',
-  brown: '#8B5E3C',
-  beige: '#D6C6A5',
-  sand: '#C2B280',
-  orange: '#F97316',
-  yellow: '#EAB308',
-  pink: '#EC4899',
-  purple: '#9333EA',
-  burgundy: '#76232F',
-  'burgundy sand': '#76232F',
-  'matcha berry': '#5E6738',
-  'orange grey': '#7C878E',
+  colourReferenceClient?: any
 }
 
 const UNIT_OPTIONS: Record<string, string[]> = {
@@ -76,9 +60,15 @@ export default function AdditionalAttributesEditor({
   onChange,
   disabled = false,
   showValidationErrors = false,
+  colourReferenceClient,
 }: AdditionalAttributesEditorProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [colourNameMode, setColourNameMode] = useState<'auto' | 'manual'>(() => {
+    const existing = value.find((row) => normalizeAttributeName(row.attribute_name) === 'colour')
+    return !existing || existing.is_draft ? 'auto' : 'manual'
+  })
+  const [colourPalette, setColourPalette] = useState<ColourReference[]>(FALLBACK_COLOUR_REFERENCE)
   const validation = validateStructuredAttributes(value)
 
   const colourIndexes = useMemo(() => value.reduce<number[]>((indexes, row, index) => {
@@ -90,6 +80,15 @@ export default function AdditionalAttributesEditor({
   const colourIndex = value.findIndex((row) => normalizeAttributeName(row.attribute_name) === 'colour')
   const colourHexIndex = value.findIndex((row) => normalizeAttributeName(row.attribute_name) === 'colour hex')
   const firstColourIndex = colourIndexes[0] ?? -1
+
+  useEffect(() => {
+    if (colourIndexes.length === 0) return
+    let active = true
+    loadColourReferencePalette(colourReferenceClient).then((palette) => {
+      if (active) setColourPalette(palette)
+    })
+    return () => { active = false }
+  }, [colourIndexes.length, colourReferenceClient])
 
   const update = (index: number, changes: Partial<StructuredAttribute>) => {
     onChange(value.map((row, rowIndex) => rowIndex === index ? { ...row, ...changes } : row))
@@ -113,20 +112,27 @@ export default function AdditionalAttributesEditor({
     ])
   }
 
-  const updateColourName = (name: string) => {
-    const suggestedHex = COMMON_COLOUR_HEX[normalizeAttributeName(name)]
+  const colourRow = (name: 'Colour' | 'Colour Hex', attributeValue: string, displayOrder: number): StructuredAttribute => ({
+    attribute_name: name,
+    attribute_value: attributeValue,
+    attribute_type: 'TEXT',
+    unit_of_measure: null,
+    display_order: displayOrder,
+    is_draft: true,
+  })
+
+  const updateColourHex = (rawHex: string) => {
+    const displayHex = rawHex.toUpperCase()
+    const rgb = hexToRgb(displayHex)
+    const suggestion = rgb ? nearestColour(rgb, colourPalette)?.colour_name : null
     const next = value.map((row) => {
       const normalized = normalizeAttributeName(row.attribute_name)
-      if (normalized === 'colour') return { ...row, attribute_value: name }
-      if (normalized === 'colour hex' && suggestedHex) return { ...row, attribute_value: suggestedHex }
+      if (normalized === 'colour hex') return { ...row, attribute_value: displayHex }
+      if (normalized === 'colour' && colourNameMode === 'auto' && suggestion) return { ...row, attribute_value: suggestion }
       return row
     })
-    if (colourIndex < 0) {
-      next.push({ attribute_name: 'Colour', attribute_value: name, attribute_type: 'TEXT', unit_of_measure: null, display_order: next.length, is_draft: true })
-    }
-    if (suggestedHex && colourHexIndex < 0) {
-      next.push({ attribute_name: 'Colour Hex', attribute_value: suggestedHex, attribute_type: 'TEXT', unit_of_measure: null, display_order: next.length, is_draft: true })
-    }
+    if (colourHexIndex < 0) next.push(colourRow('Colour Hex', displayHex, next.length))
+    if (colourIndex < 0) next.push(colourRow('Colour', colourNameMode === 'auto' ? suggestion || '' : '', next.length))
     onChange(next)
   }
 
@@ -151,7 +157,7 @@ export default function AdditionalAttributesEditor({
       </div>
 
       <datalist id="common-colour-names">
-        {COLOUR_NAMES.map((name) => <option key={name} value={name} />)}
+        {colourPalette.map((colour) => <option key={colour.hex_code} value={colour.colour_name} />)}
       </datalist>
 
       {value.map((row, index) => {
@@ -161,24 +167,48 @@ export default function AdditionalAttributesEditor({
         if (index === firstColourIndex) {
           const colour = colourIndex >= 0 ? value[colourIndex] : null
           const colourHex = colourHexIndex >= 0 ? value[colourHexIndex] : null
-          const error = showError('colour', colourIndexes)
-          const pickerValue = /^#[0-9a-f]{6}$/i.test(colourHex?.attribute_value || '') ? colourHex!.attribute_value : '#000000'
+          const error = (!showValidationErrors && !touched.colour)
+            ? null
+            : (validation.errors[colourHexIndex] || validation.errors[colourIndex] || null)
+          const validHex = normalizeColourHex(colourHex?.attribute_value || '')
+          const pickerValue = validHex || '#000000'
+          const rgb = validHex ? hexToRgb(validHex) : null
+          const suggestion = rgb ? nearestColour(rgb, colourPalette)?.colour_name || null : null
+          const showSuggestion = colourNameMode === 'manual' && suggestion && normalizeAttributeName(suggestion) !== normalizeAttributeName(colour?.attribute_value || '')
           return (
             <div key="smart-colour" className="space-y-3 rounded-md border border-gray-200 bg-white p-3">
               <div className="flex items-center justify-between">
                 <Label className="font-medium">Colour</Label>
                 <Button type="button" variant="ghost" size="sm" aria-label="Remove Colour" onClick={() => onChange(value.filter((_, rowIndex) => !colourIndexes.includes(rowIndex)))} disabled={disabled} className="text-red-600"><Trash2 className="h-4 w-4" /></Button>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(150px,0.55fr)] sm:items-end">
                 <div className="space-y-1">
                   <Label htmlFor="smart-colour-name" className="text-xs">Colour Name</Label>
-                  <Input id="smart-colour-name" list="common-colour-names" placeholder="Black or Burgundy Sand" value={colour?.attribute_value || ''} onChange={(event) => updateColourName(event.target.value)} onBlur={() => markTouched('colour')} disabled={disabled} />
+                  <Input id="smart-colour-name" list="common-colour-names" placeholder="Black or Burgundy Sand" value={colour?.attribute_value || ''} onChange={(event) => { setColourNameMode('manual'); updateOrAddColourRow('Colour', { attribute_value: event.target.value }) }} onBlur={() => markTouched('colour')} disabled={disabled} />
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="smart-colour-picker" className="text-xs">Colour</Label>
-                  <Input id="smart-colour-picker" aria-label="Colour picker" type="color" value={pickerValue} onChange={(event) => updateOrAddColourRow('Colour Hex', { attribute_value: event.target.value.toUpperCase() })} onBlur={() => markTouched('colour')} disabled={disabled} className="h-10 w-20 cursor-pointer p-1" />
+                  <Input id="smart-colour-picker" aria-label="Colour picker" type="color" value={pickerValue} onChange={(event) => updateColourHex(event.target.value)} onBlur={() => markTouched('colour')} disabled={disabled} className="h-10 w-20 cursor-pointer p-1" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="smart-colour-hex" className="text-xs">HEX</Label>
+                  <Input id="smart-colour-hex" aria-label="Colour HEX" placeholder="#RRGGBB" value={colourHex?.attribute_value || ''} onChange={(event) => updateColourHex(event.target.value)} onBlur={() => markTouched('colour')} disabled={disabled} className="font-mono uppercase" />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-2" aria-label="RGB representation">
+                {(['red', 'green', 'blue'] as const).map((channel) => (
+                  <div key={channel} className="space-y-1">
+                    <Label className="text-[11px] uppercase text-gray-500">{channel[0]}</Label>
+                    <Input aria-label={`${channel} value`} value={rgb?.[channel] ?? ''} readOnly className="h-8 bg-gray-50 text-sm tabular-nums" />
+                  </div>
+                ))}
+              </div>
+              {showSuggestion && (
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span>Suggested: {suggestion}</span>
+                  <Button type="button" variant="outline" size="sm" className="h-7" disabled={disabled} onClick={() => { setColourNameMode('auto'); updateOrAddColourRow('Colour', { attribute_value: suggestion }) }}>Use suggestion</Button>
+                </div>
+              )}
               {error && <p className="text-xs text-red-600">{error}</p>}
             </div>
           )

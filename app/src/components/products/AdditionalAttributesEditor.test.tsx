@@ -41,16 +41,53 @@ describe('AdditionalAttributesEditor smart presets', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Colour' }))
     expect(screen.getByLabelText('Colour Name')).not.toBeNull()
     expect(screen.getByLabelText('Colour picker')).not.toBeNull()
+    expect(screen.getByLabelText('Colour HEX')).not.toBeNull()
     expect(currentRows().map((item) => item.attribute_name)).toEqual(['Colour', 'Colour Hex'])
     expect(currentRows()[1].attribute_value).toBe('#000000')
 
-    fireEvent.change(screen.getByLabelText('Colour Name'), { target: { value: 'Black' } })
-    expect(currentRows()[1].attribute_value).toBe('#0D0D0D')
-    fireEvent.change(screen.getByLabelText('Colour picker'), { target: { value: '#0d0d0d' } })
+    fireEvent.change(screen.getByLabelText('Colour picker'), { target: { value: '#4169e1' } })
     expect(currentRows().map((item) => [item.attribute_name, item.attribute_value])).toEqual([
-      ['Colour', 'Black'],
-      ['Colour Hex', '#0D0D0D'],
+      ['Colour', 'Royal Blue'],
+      ['Colour Hex', '#4169E1'],
     ])
+    expect((screen.getByLabelText('red value') as HTMLInputElement).value).toBe('65')
+    expect((screen.getByLabelText('green value') as HTMLInputElement).value).toBe('105')
+    expect((screen.getByLabelText('blue value') as HTMLInputElement).value).toBe('225')
+  })
+
+  it('keeps picker, HEX, and RGB in sync while the name remains automatic', () => {
+    render(<Harness />)
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Colour' }))
+    fireEvent.change(screen.getByLabelText('Colour HEX'), { target: { value: '#ff0000' } })
+    expect((screen.getByLabelText('Colour HEX') as HTMLInputElement).value).toBe('#FF0000')
+    expect((screen.getByLabelText('Colour picker') as HTMLInputElement).value.toLowerCase()).toBe('#ff0000')
+    expect((screen.getByLabelText('Colour Name') as HTMLInputElement).value).toBe('Red')
+    expect((screen.getByLabelText('red value') as HTMLInputElement).value).toBe('255')
+    expect((screen.getByLabelText('green value') as HTMLInputElement).value).toBe('0')
+  })
+
+  it('preserves a manually edited name when the colour changes and offers the nearest suggestion', () => {
+    render(<Harness />)
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Colour' }))
+    fireEvent.change(screen.getByLabelText('Colour Name'), { target: { value: 'House Blue' } })
+    fireEvent.change(screen.getByLabelText('Colour picker'), { target: { value: '#0000ff' } })
+    expect((screen.getByLabelText('Colour Name') as HTMLInputElement).value).toBe('House Blue')
+    expect(screen.getByText('Suggested: Blue')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Use suggestion' }))
+    expect((screen.getByLabelText('Colour Name') as HTMLInputElement).value).toBe('Blue')
+  })
+
+  it('allows incomplete HEX typing and validates it on blur', () => {
+    render(<Harness />)
+    openMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Colour' }))
+    fireEvent.change(screen.getByLabelText('Colour HEX'), { target: { value: '#12' } })
+    expect((screen.getByLabelText('Colour HEX') as HTMLInputElement).value).toBe('#12')
+    expect(screen.queryByText('HEX must use #RRGGBB.')).toBeNull()
+    fireEvent.blur(screen.getByLabelText('Colour HEX'))
+    expect(screen.getByText('HEX must use #RRGGBB.')).not.toBeNull()
   })
 
   it('loads an existing Colour pair as one smart row and removes both together', () => {

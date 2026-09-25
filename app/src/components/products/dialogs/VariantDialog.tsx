@@ -98,6 +98,7 @@ interface VariantDialogProps {
   onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[]; certificateFile?: File | null }) => void
   canManageStockConfigurations?: boolean
   canManageCertificates?: boolean
+  colourReferenceClient?: any
 }
 
 const MAX_MEDIA = 10
@@ -180,6 +181,7 @@ export default function VariantDialog({
   onSave,
   canManageStockConfigurations = false,
   canManageCertificates = false,
+  colourReferenceClient,
 }: VariantDialogProps) {
   const mkInitial = useCallback(
     (): Partial<Variant> =>
@@ -416,7 +418,7 @@ export default function VariantDialog({
   if (!open) return null
 
   return (
-    <SeraModalOverlay onBackdropClick={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}>
+    <SeraModalOverlay>
       <SeraModalPanel className="overflow-y-auto">
         <SeraModalHeader
           sticky
@@ -474,9 +476,6 @@ export default function VariantDialog({
             <Label htmlFor="name">Variant Name *</Label>
             <Input id="name" placeholder="e.g., Strawberry - 6mg" value={formData.variant_name || ''} onChange={(e) => { setFormData((p) => ({ ...p, variant_name: e.target.value })); if (errors.variant_name) setErrors((p) => ({ ...p, variant_name: '' })) }} className={errors.variant_name ? 'border-red-500' : ''} />
             {errors.variant_name && <p className="text-xs text-red-500">{errors.variant_name}</p>}
-            {variant && isRawHexVariantName(variant.variant_name) && formData.variant_name?.trim() === variant.variant_name.trim() && (
-              <p className="text-xs text-amber-700">This legacy Variant Name is a raw colour hex. It can remain unchanged, but use a readable name if you rename it.</p>
-            )}
           </div>
 
           <div className="space-y-2">
@@ -503,6 +502,7 @@ export default function VariantDialog({
             }}
             disabled={isSaving || isValidatingProductCode}
             showValidationErrors={attributeSaveAttempted}
+            colourReferenceClient={colourReferenceClient}
           />
           {errors.attributes && <p className="text-xs text-red-500">{errors.attributes}</p>}
 

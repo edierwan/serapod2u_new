@@ -113,6 +113,12 @@ export function validateStructuredAttributes(rows: StructuredAttribute[]): Attri
     else if (!value) errors[index] = 'Attribute value is required.'
 
     const normalizedName = normalizeAttributeName(name)
+    const normalizedValue = normalizedName === 'colour hex' && /^#[0-9a-f]{6}$/i.test(value)
+      ? value.toUpperCase()
+      : value
+    if (normalizedName === 'colour hex' && value && !/^#[0-9a-f]{6}$/i.test(value)) {
+      errors[index] = 'HEX must use #RRGGBB.'
+    }
     if (normalizedName) {
       const duplicateIndex = names.get(normalizedName)
       if (duplicateIndex !== undefined) {
@@ -127,7 +133,7 @@ export function validateStructuredAttributes(rows: StructuredAttribute[]): Attri
       attributes.push({
         ...row,
         attribute_name: name,
-        attribute_value: value,
+        attribute_value: normalizedValue,
         attribute_type: ATTRIBUTE_TYPES.includes(row.attribute_type) ? row.attribute_type : 'TEXT',
         unit_of_measure: unit,
         display_order: attributes.length,

@@ -101,7 +101,7 @@ describe('VariantDialog human-readable names and optional attributes', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled())
   })
 
-  it('warns but permits an unchanged legacy hex-only Variant Name', async () => {
+  it('silently permits an unchanged legacy hex-only Variant Name', async () => {
     const onSave = vi.fn()
     successfulValidation()
     const variant = {
@@ -110,9 +110,21 @@ describe('VariantDialog human-readable names and optional attributes', () => {
       base_cost: null, suggested_retail_price: null, is_active: true, is_default: false,
     } as any
     render(<VariantDialog variant={variant} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={onSave} />)
-    expect(screen.getByText(/legacy Variant Name is a raw colour hex/)).not.toBeNull()
+    expect(screen.queryByText(/legacy Variant Name is a raw colour hex/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ variant_name: '#0D0D0D' })))
+  })
+
+  it('does not dismiss when the backdrop is clicked after interacting with text', () => {
+    const onOpenChange = vi.fn()
+    render(<VariantDialog variant={null} products={products} open isSaving={false} onOpenChange={onOpenChange} onSave={vi.fn()} />)
+    const name = screen.getByLabelText(/Variant Name/)
+    fireEvent.mouseDown(name)
+    fireEvent.mouseUp(name)
+    const overlay = document.querySelector('.sera-modal-overlay') as HTMLElement
+    expect(overlay).not.toBeNull()
+    fireEvent.click(overlay)
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
   it('offers but does not automatically apply a structured Variant Name suggestion', () => {

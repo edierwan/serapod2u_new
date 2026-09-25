@@ -1013,6 +1013,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         }] : []}
         onSave={handleSaveVariant}
         isSaving={savingVariant}
+        colourReferenceClient={supabase}
         canManageStockConfigurations={
           userProfile?.organizations?.org_type_code === 'HQ' &&
           [1, 10].includes(Number(userProfile?.roles?.role_level))

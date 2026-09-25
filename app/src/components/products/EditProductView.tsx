@@ -743,6 +743,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
               onChange={setStructuredAttributes}
               disabled={saving}
               showValidationErrors={attributeSaveAttempted}
+              colourReferenceClient={supabase}
             />
           </CardContent>
         </Card>

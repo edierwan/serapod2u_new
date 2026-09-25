@@ -904,6 +904,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               onChange={setStructuredAttributes}
               disabled={loading}
               showValidationErrors={attributeSaveAttempted}
+              colourReferenceClient={supabase}
             />
 
             {/* Action Buttons */}
