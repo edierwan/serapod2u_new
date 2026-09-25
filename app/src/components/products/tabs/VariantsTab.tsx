@@ -31,6 +31,7 @@ import {
   archiveProductVariantAndRefresh,
   variantArchiveSuccessDescription,
 } from '@/lib/products/variant-deletion'
+import { syncStructuredAttributes, type StructuredAttribute } from '@/lib/products/structured-attributes'
 
 interface Product {
   id: string
@@ -47,6 +48,7 @@ interface Variant {
   variant_name: string
   alternative_name: string | null
   attributes: Record<string, any>
+  structured_attributes?: StructuredAttribute[]
   barcode: string | null
   product_code: string | null
   manufacturer_sku: string | null
@@ -131,7 +133,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       setLoading(true)
       const { data, error } = await supabase
         .from('product_variants')
-        .select('*, products(product_name), variant_media(id, type, url, thumbnail_url, sort_order, is_default, file_size, mime_type, duration_ms)')
+        .select('*, products(product_name), product_attributes(id, attribute_name, attribute_value, attribute_type, unit_of_measure, attribute_group, is_searchable, is_filterable, display_order), variant_media(id, type, url, thumbnail_url, sort_order, is_default, file_size, mime_type, duration_ms)')
         .order('variant_name', { ascending: true })
 
       if (error) throw error
@@ -158,6 +160,9 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           image_url: variant.image_url || null,
           animation_url: variant.animation_url || null,
           media,
+          structured_attributes: (variant.product_attributes || [])
+            .sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0)),
+          product_attributes: undefined,
           variant_media: undefined,
           products: undefined,
         }
@@ -266,7 +271,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
       // ── Build DB save data ───────────────────────────
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { mediaItems: _mi, certificateFile: _cf, imageFile: _if, animationFile: _af, imageFiles: _ifs, existingImageUrls: _eu, defaultImageIndex: _di, media: _m, ...dbDataClean } = variantData as any
+      const { mediaItems: _mi, certificateFile: _cf, structured_attributes: structuredAttributes = [], imageFile: _if, animationFile: _af, imageFiles: _ifs, existingImageUrls: _eu, defaultImageIndex: _di, media: _m, ...dbDataClean } = variantData as any
 
       const productId = dbDataClean.product_id || (editingVariant ? editingVariant.product_id : null)
       const variantName = dbDataClean.variant_name || (editingVariant ? editingVariant.variant_name : null)
@@ -323,6 +328,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           }
         }
       }
+
+      await syncStructuredAttributes(supabase, { variantId }, structuredAttributes)
 
       // ── Sync variant_media rows ──────────────────────
       await (supabase as any).from('variant_media').delete().eq('variant_id', variantId)

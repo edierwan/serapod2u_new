@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PRODUCT_CODE_DUPLICATE_MESSAGE } from '@/lib/products/product-code'
 import { ALTERNATIVE_NAME_DUPLICATE_MESSAGE } from '@/lib/products/alternative-name'
 import VariantDialog from './VariantDialog'
@@ -9,6 +9,14 @@ import VariantDialog from './VariantDialog'
 vi.mock('@/components/products/KkmApprovalCertificate', () => ({
   default: ({ variantId }: { variantId?: string }) => <div data-testid="kkm-certificate">{variantId ? 'Existing certificate' : 'New certificate'}</div>,
 }))
+
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  })
+})
 
 const products = [{ id: 'product-1', product_name: 'Cellera Hero', is_active: true, is_vape: true, product_code: 'CEL01' }]
 
@@ -64,6 +72,47 @@ describe('VariantDialog Product Code', () => {
 
     expect(await screen.findByText(PRODUCT_CODE_DUPLICATE_MESSAGE)).not.toBeNull()
     await waitFor(() => expect(onSave).not.toHaveBeenCalled())
+  })
+})
+
+describe('VariantDialog human-readable names and optional attributes', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  const successfulValidation = () => vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: true }) }))
+
+  it('rejects a raw hex name for a new Variant before saving', () => {
+    const onSave = vi.fn()
+    render(<VariantDialog variant={null} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={onSave} />)
+    fireEvent.change(screen.getByLabelText(/Variant Name/), { target: { value: '#0D0D0D' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(screen.getByText(/Use a readable Variant Name/)).not.toBeNull()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it.each(['Black', 'Black / 1L'])('accepts the readable new Variant Name %s', async (name) => {
+    const onSave = vi.fn()
+    successfulValidation()
+    render(<VariantDialog variant={null} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={onSave} />)
+    fireEvent.change(screen.getByLabelText(/Variant Name/), { target: { value: name } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+  })
+
+  it('warns but permits an unchanged legacy hex-only Variant Name', async () => {
+    const onSave = vi.fn()
+    successfulValidation()
+    const variant = {
+      id: 'variant-legacy', product_id: 'product-1', variant_name: '#0D0D0D', alternative_name: null,
+      attributes: {}, structured_attributes: [], barcode: '123', product_code: null, manufacturer_sku: null, manual_sku: null,
+      base_cost: null, suggested_retail_price: null, is_active: true, is_default: false,
+    } as any
+    render(<VariantDialog variant={variant} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={onSave} />)
+    expect(screen.getByText(/legacy Variant Name is a raw colour hex/)).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ variant_name: '#0D0D0D' })))
   })
 })
 

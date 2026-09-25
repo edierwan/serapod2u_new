@@ -118,8 +118,12 @@ export function outdoorSwatchesFromVariants(
   for (const variant of ordered) {
     const attrs = asRecord(variant.attributes)
     if (attrs.outdoor_hidden) continue
-    const attrColor = String(attrs.color || attrs.colour || attrs.hex || attrs.Color || '')
-    const found = outdoorColorFromText(attrColor) || outdoorColorFromText(String(variant.variant_name || ''))
+    const colourLabel = String(attrs.colour || attrs.color || attrs.Color || '').trim()
+    const colourHex = String(attrs.colour_hex || attrs.color_hex || attrs.hex || '').trim()
+    const explicitHex = colourHex.match(/^#([0-9a-f]{6})$/i)
+    const found = explicitHex
+      ? { hex: `#${explicitHex[1].toUpperCase()}`, label: colourLabel || colourHex }
+      : outdoorColorFromText(colourLabel || colourHex) || outdoorColorFromText(String(variant.variant_name || ''))
     const custom = String(attrs.outdoor_image || '').trim()
     const photo = (raw: string) => {
       const trimmed = raw.trim()

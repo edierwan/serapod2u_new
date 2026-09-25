@@ -32,6 +32,12 @@ import { cleanAlternativeName } from '@/lib/products/alternative-name'
 import VariantStockConfigurationsPanel from '@/components/products/VariantStockConfigurationsPanel'
 import KkmApprovalCertificate from '@/components/products/KkmApprovalCertificate'
 import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
+import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
+import {
+  isRawHexVariantName,
+  validateStructuredAttributes,
+  type StructuredAttribute,
+} from '@/lib/products/structured-attributes'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -64,6 +70,7 @@ export interface Variant {
   variant_name: string
   alternative_name: string | null
   attributes: Record<string, any>
+  structured_attributes?: StructuredAttribute[]
   barcode: string | null
   product_code: string | null
   manufacturer_sku: string | null
@@ -219,6 +226,7 @@ export default function VariantDialog({
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [configurationProfile, setConfigurationProfile] = useState<'new_standard' | 'transition'>('new_standard')
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
+  const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>(variant?.structured_attributes || [])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -227,6 +235,7 @@ export default function VariantDialog({
     setErrors({})
     setConfigurationProfile('new_standard')
     setCertificateFile(null)
+    setStructuredAttributes(variant?.structured_attributes || [])
     const items: MediaItem[] = []
     if (variant?.media && variant.media.length > 0) {
       items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
@@ -277,7 +286,12 @@ export default function VariantDialog({
   const validate = (): boolean => {
     const e: Record<string, string> = {}
     if (!(formData.product_id || variant?.product_id)) e.product_id = 'Product is required'
-    if (!formData.variant_name) e.variant_name = 'Name is required'
+    if (!formData.variant_name?.trim()) e.variant_name = 'Name is required'
+    const nameChanged = formData.variant_name?.trim() !== variant?.variant_name?.trim()
+    if (formData.variant_name && isRawHexVariantName(formData.variant_name) && (!variant || nameChanged)) {
+      e.variant_name = 'Use a readable Variant Name (for example, Black) and store the hex under Colour Hex.'
+    }
+    if (!validateStructuredAttributes(structuredAttributes).isValid) e.attributes = 'Please fix the Additional Attributes errors.'
     const productCodeError = validateProductCode(formData.product_code)
     if (productCodeError) e.product_code = productCodeError
     setErrors(e)
@@ -387,6 +401,7 @@ export default function VariantDialog({
       alternative_name: alternativeName,
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
+      structured_attributes: structuredAttributes,
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
       ...(certificateFile ? { certificateFile } : {}),
       ...(isNewCelleraVariant ? { configurationProfile } : {}),
@@ -454,6 +469,9 @@ export default function VariantDialog({
             <Label htmlFor="name">Variant Name *</Label>
             <Input id="name" placeholder="e.g., Strawberry - 6mg" value={formData.variant_name || ''} onChange={(e) => { setFormData((p) => ({ ...p, variant_name: e.target.value })); if (errors.variant_name) setErrors((p) => ({ ...p, variant_name: '' })) }} className={errors.variant_name ? 'border-red-500' : ''} />
             {errors.variant_name && <p className="text-xs text-red-500">{errors.variant_name}</p>}
+            {variant && isRawHexVariantName(variant.variant_name) && formData.variant_name?.trim() === variant.variant_name.trim() && (
+              <p className="text-xs text-amber-700">This legacy Variant Name is a raw colour hex. It can remain unchanged, but use a readable name if you rename it.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -471,6 +489,13 @@ export default function VariantDialog({
             <p className="text-xs text-gray-500">Alternative name commonly used by distributors.</p>
             {errors.alternative_name && <p className="text-xs text-red-500">{errors.alternative_name}</p>}
           </div>
+
+          <AdditionalAttributesEditor
+            value={structuredAttributes}
+            onChange={setStructuredAttributes}
+            disabled={isSaving || isValidatingProductCode}
+          />
+          {errors.attributes && <p className="text-xs text-red-500">{errors.attributes}</p>}
 
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode <span className="text-xs text-gray-500">(Auto-generated)</span></Label>

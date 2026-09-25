@@ -13,6 +13,13 @@ import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Upload } from 'lucide-react'
 import SafeImage from '@/components/shared/SafeImage'
 import { compressProductImage } from '@/lib/utils/imageCompression'
+import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
+import {
+  loadStructuredAttributes,
+  syncStructuredAttributes,
+  validateStructuredAttributes,
+  type StructuredAttribute,
+} from '@/lib/products/structured-attributes'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +46,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [uploadingImage, setUploadingImage] = useState(false)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
+  const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -113,8 +121,9 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         is_vape: data.is_vape || false,
         is_active: data.is_active !== false,
         age_restriction: data.age_restriction || 0,
-        outdoor_store: Boolean(data.outdoor_only)
+        outdoor_store: Boolean((data as any).outdoor_only)
       })
+      setStructuredAttributes(await loadStructuredAttributes(supabase, { productId }))
     } catch (error) {
       console.error('Error fetching product:', error)
       toast({
@@ -379,6 +388,15 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       return
     }
 
+    if (!validateStructuredAttributes(structuredAttributes).isValid) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please fix the Additional Attributes errors before saving.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     const productId = sessionStorage.getItem('selectedProductId')
     if (!productId) return
 
@@ -412,6 +430,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       }
 
       if (error) throw error
+      await syncStructuredAttributes(supabase, { productId }, structuredAttributes)
 
       toast({
         title: 'Success',
@@ -716,6 +735,12 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
               </div>
             </div>
             <p className="text-xs text-gray-500">Outdoor store lists this product on the Outdoor shop only. The main shop will not show it.</p>
+
+            <AdditionalAttributesEditor
+              value={structuredAttributes}
+              onChange={setStructuredAttributes}
+              disabled={saving}
+            />
           </CardContent>
         </Card>
 

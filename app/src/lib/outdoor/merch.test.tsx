@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { outdoorColorFromText, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
+import { mergeStructuredAttributes } from '@/lib/products/structured-attributes'
 
 describe('outdoor merch appearance', () => {
   it('maps named colours to the official Pantone swatches', () => {
@@ -51,5 +52,27 @@ describe('outdoor merch appearance', () => {
   it('reads capacity and chair height from names', () => {
     expect(outdoorSpecLabel('Tumbler 1.2L', null)).toBe('1200ml')
     expect(outdoorSpecLabel('Moonchair', 'Low Burgundy')).toBe('Low')
+  })
+
+  it('prefers structured Colour, Colour Hex, and Capacity attributes', () => {
+    const attributes = mergeStructuredAttributes(
+      { color: 'Red', capacity: '500ml' },
+      [
+        { attribute_name: 'Colour', attribute_value: 'Black', unit_of_measure: null },
+        { attribute_name: 'Colour Hex', attribute_value: '#0D0D0D', unit_of_measure: null },
+        { attribute_name: 'Capacity', attribute_value: '1', unit_of_measure: 'L' },
+      ],
+    )
+    expect(outdoorSwatchesFromVariants([{ variant_name: 'Legacy Red', attributes }])[0]).toMatchObject({
+      hex: '#0D0D0D',
+      label: 'Black',
+    })
+    expect(outdoorSpecLabel('Thermal Bottle', 'Black / 1L', attributes)).toBe('1 L')
+  })
+
+  it('falls back through legacy JSONB and then legacy Variant Name parsing', () => {
+    expect(outdoorSwatchesFromVariants([{ variant_name: 'Ignored', attributes: { color: '#FB0909' } }])[0].hex).toBe('#FB0909')
+    expect(outdoorSwatchesFromVariants([{ variant_name: '#0D0D0D', attributes: {} }])[0].hex).toBe('#0D0D0D')
+    expect(outdoorSpecLabel('Tumbler', 'Legacy', { volume: '750ml' })).toBe('750ml')
   })
 })

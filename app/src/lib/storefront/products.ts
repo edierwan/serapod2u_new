@@ -7,6 +7,7 @@ import {
 } from "@/lib/outdoor/merch";
 import { formatStorefrontError } from "@/lib/storefront/error";
 import { getStorageUrl } from "@/lib/utils";
+import { mergeStructuredAttributes } from "@/lib/products/structured-attributes";
 
 /**
  * Resolve a variant image/media URL to a full public URL.
@@ -254,6 +255,7 @@ export async function listProducts(params: ListProductsParams = {}) {
         is_default,
         sort_order,
         attributes,
+        product_attributes (attribute_name, attribute_value, unit_of_measure, display_order),
         variant_media (type, url, is_default, sort_order)
       )
     `,
@@ -359,12 +361,16 @@ export async function listProducts(params: ListProductsParams = {}) {
     }
 
     const defaultAmount = Number(defaultVariant?.suggested_retail_price);
+    const defaultAttributes = mergeStructuredAttributes(
+      defaultVariant?.attributes,
+      defaultVariant?.product_attributes,
+    );
     const colorSwatches = outdoorSwatchesFromVariants(
       activeVariants.map((v: any) => ({
         id: v.id,
         variant_name: v.variant_name,
         image_url: toStorefrontMediaUrl(v.image_url),
-        attributes: v.attributes,
+        attributes: mergeStructuredAttributes(v.attributes, v.product_attributes),
         price: v.suggested_retail_price,
         is_default: v.is_default,
       })),
@@ -396,10 +402,10 @@ export async function listProducts(params: ListProductsParams = {}) {
       specLabel: outdoorSpecLabel(
         p.product_name,
         defaultVariant?.variant_name,
-        defaultVariant?.attributes,
+        defaultAttributes,
       ),
       outdoorNav: outdoorNavKey(
-        String(defaultVariant?.attributes?.outdoor_nav || ""),
+        String(defaultAttributes.outdoor_nav || ""),
         p.product_name,
       ),
     };
@@ -463,6 +469,7 @@ export async function getProductDetail(
         is_active,
         is_default,
         attributes,
+        product_attributes (attribute_name, attribute_value, unit_of_measure, display_order),
         barcode,
         sort_order,
         variant_media (id, type, url, thumbnail_url, sort_order, is_default)
@@ -550,7 +557,7 @@ export async function getProductDetail(
           base_cost: v.base_cost,
           is_active: v.is_active,
           is_default: v.is_default,
-          attributes: v.attributes,
+          attributes: mergeStructuredAttributes(v.attributes, v.product_attributes),
           barcode: v.barcode,
           sort_order: v.sort_order,
           media,

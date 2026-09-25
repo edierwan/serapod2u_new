@@ -10,6 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { compressProductImage, formatFileSize } from '@/lib/utils/imageCompression'
+import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
+import {
+  syncStructuredAttributes,
+  validateStructuredAttributes,
+  type StructuredAttribute,
+} from '@/lib/products/structured-attributes'
 import { 
   ArrowLeft,
   Package,
@@ -70,6 +76,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null)
   const [checkingName, setCheckingName] = useState(false)
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null)
+  const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -403,7 +410,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm()) {
+    const attributeValidation = validateStructuredAttributes(structuredAttributes)
+    if (!validateForm() || !attributeValidation.isValid) {
       toast({
         title: 'Error',
         description: 'Please fix the errors in the form',
@@ -486,9 +494,12 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
         throw productError
       }
 
+      const productId = productData?.[0]?.id
+      if (!productId) throw new Error('Product was created but its ID was not returned.')
+      await syncStructuredAttributes(supabase, { productId }, structuredAttributes)
+
       // Upload image if provided
       if (imagePreview && productData && productData.length > 0) {
-        const productId = productData[0].id
         const fileName = `product-${productId}-${Date.now()}`
         
         const { error: uploadError } = await supabase
@@ -885,6 +896,12 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               </label>
               <p className="text-xs text-gray-500 ml-7">Show this product on the Outdoor shop only. The main shop will not list it.</p>
             </div>
+
+            <AdditionalAttributesEditor
+              value={structuredAttributes}
+              onChange={setStructuredAttributes}
+              disabled={loading}
+            />
 
             {/* Action Buttons */}
             <div className="flex gap-3 pt-6 border-t">
