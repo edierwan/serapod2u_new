@@ -92,7 +92,7 @@ describe('VariantDialog human-readable names and optional attributes', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it.each(['Black', 'Black / 1L'])('accepts the readable new Variant Name %s', async (name) => {
+  it.each(['Black', 'Black / 1L', 'Mango'])('accepts the readable new Variant Name %s with zero attributes', async (name) => {
     const onSave = vi.fn()
     successfulValidation()
     render(<VariantDialog variant={null} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={onSave} />)
@@ -113,6 +113,23 @@ describe('VariantDialog human-readable names and optional attributes', () => {
     expect(screen.getByText(/legacy Variant Name is a raw colour hex/)).not.toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ variant_name: '#0D0D0D' })))
+  })
+
+  it('offers but does not automatically apply a structured Variant Name suggestion', () => {
+    const variant = {
+      id: 'variant-1', product_id: 'product-1', variant_name: 'My Manual Name', alternative_name: null,
+      attributes: {}, barcode: '123', product_code: null, manufacturer_sku: null, manual_sku: null,
+      base_cost: null, suggested_retail_price: null, is_active: true, is_default: false,
+      structured_attributes: [
+        { attribute_name: 'Colour', attribute_value: 'Black', attribute_type: 'TEXT', unit_of_measure: null, display_order: 0 },
+        { attribute_name: 'Capacity', attribute_value: '1', attribute_type: 'NUMBER', unit_of_measure: 'L', display_order: 1 },
+      ],
+    } as any
+    render(<VariantDialog variant={variant} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={vi.fn()} />)
+    expect((screen.getByLabelText(/Variant Name/) as HTMLInputElement).value).toBe('My Manual Name')
+    expect(screen.getByText('Black / 1L')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Use suggestion' }))
+    expect((screen.getByLabelText(/Variant Name/) as HTMLInputElement).value).toBe('Black / 1L')
   })
 })
 

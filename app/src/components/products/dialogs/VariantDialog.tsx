@@ -35,6 +35,7 @@ import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
 import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
 import {
   isRawHexVariantName,
+  suggestVariantName,
   validateStructuredAttributes,
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
@@ -227,6 +228,7 @@ export default function VariantDialog({
   const [configurationProfile, setConfigurationProfile] = useState<'new_standard' | 'transition'>('new_standard')
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>(variant?.structured_attributes || [])
+  const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -236,6 +238,7 @@ export default function VariantDialog({
     setConfigurationProfile('new_standard')
     setCertificateFile(null)
     setStructuredAttributes(variant?.structured_attributes || [])
+    setAttributeSaveAttempted(false)
     const items: MediaItem[] = []
     if (variant?.media && variant.media.length > 0) {
       items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
@@ -254,6 +257,7 @@ export default function VariantDialog({
   const selectedProduct = products.find((p) => p.id === (formData.product_id || variant?.product_id)) || null
   const isVapeCategory = selectedProduct?.is_vape === true
   const isNewCelleraVariant = !variant && isCelleraVapeVariant(selectedProduct)
+  const variantNameSuggestion = suggestVariantName(structuredAttributes)
 
   const generateBarcode = useCallback(() => {
     if (!formData.product_id || !formData.variant_name) return ''
@@ -284,6 +288,7 @@ export default function VariantDialog({
   }, [formData.product_id, formData.variant_name, variant])
 
   const validate = (): boolean => {
+    setAttributeSaveAttempted(true)
     const e: Record<string, string> = {}
     if (!(formData.product_id || variant?.product_id)) e.product_id = 'Product is required'
     if (!formData.variant_name?.trim()) e.variant_name = 'Name is required'
@@ -492,10 +497,21 @@ export default function VariantDialog({
 
           <AdditionalAttributesEditor
             value={structuredAttributes}
-            onChange={setStructuredAttributes}
+            onChange={(attributes) => {
+              setStructuredAttributes(attributes)
+              if (errors.attributes) setErrors((current) => ({ ...current, attributes: '' }))
+            }}
             disabled={isSaving || isValidatingProductCode}
+            showValidationErrors={attributeSaveAttempted}
           />
           {errors.attributes && <p className="text-xs text-red-500">{errors.attributes}</p>}
+
+          {variantNameSuggestion && variantNameSuggestion !== formData.variant_name?.trim() && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              <span>Suggested Variant Name: <strong>{variantNameSuggestion}</strong></span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setFormData((current) => ({ ...current, variant_name: variantNameSuggestion }))} disabled={isSaving || isValidatingProductCode}>Use suggestion</Button>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode <span className="text-xs text-gray-500">(Auto-generated)</span></Label>

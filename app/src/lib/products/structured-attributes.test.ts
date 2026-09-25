@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   attributeInsertRows,
+  createPresetAttributes,
   emptyStructuredAttribute,
   isRawHexVariantName,
   mergeStructuredAttributes,
+  suggestVariantName,
   validateStructuredAttributes,
   type StructuredAttribute,
 } from './structured-attributes'
@@ -81,5 +83,20 @@ describe('structured Product and Variant attributes', () => {
       capacity: '1 L',
       outdoor_hidden: true,
     })
+  })
+
+  it('creates smart numeric preset metadata without exposing it to the user', () => {
+    expect(createPresetAttributes('capacity')).toEqual([
+      expect.objectContaining({ attribute_name: 'Capacity', attribute_type: 'NUMBER', unit_of_measure: 'ml' }),
+    ])
+    expect(createPresetAttributes('max_load')).toEqual([
+      expect.objectContaining({ attribute_name: 'Max Load', attribute_type: 'NUMBER', unit_of_measure: 'kg' }),
+    ])
+  })
+
+  it('suggests a readable Variant Name from Colour plus Capacity or Size', () => {
+    expect(suggestVariantName([attribute('Colour', 'Black'), attribute('Capacity', '1', 'L')])).toBe('Black / 1L')
+    expect(suggestVariantName([attribute('Colour', 'Burgundy Sand'), attribute('Size', 'Large')])).toBe('Burgundy Sand / Large')
+    expect(suggestVariantName([])).toBeNull()
   })
 })

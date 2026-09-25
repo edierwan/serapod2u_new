@@ -47,6 +47,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
+  const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -378,6 +379,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setAttributeSaveAttempted(true)
     
     if (!formData.product_name || !formData.product_code) {
       toast({
@@ -740,6 +742,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
               value={structuredAttributes}
               onChange={setStructuredAttributes}
               disabled={saving}
+              showValidationErrors={attributeSaveAttempted}
             />
           </CardContent>
         </Card>

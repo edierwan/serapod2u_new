@@ -77,6 +77,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const [checkingName, setCheckingName] = useState(false)
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null)
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
+  const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -409,6 +410,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setAttributeSaveAttempted(true)
 
     const attributeValidation = validateStructuredAttributes(structuredAttributes)
     if (!validateForm() || !attributeValidation.isValid) {
@@ -901,6 +903,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               value={structuredAttributes}
               onChange={setStructuredAttributes}
               disabled={loading}
+              showValidationErrors={attributeSaveAttempted}
             />
 
             {/* Action Buttons */}

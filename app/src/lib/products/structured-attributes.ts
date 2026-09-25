@@ -12,6 +12,8 @@ export interface StructuredAttribute {
   is_searchable?: boolean | null
   is_filterable?: boolean | null
   display_order: number
+  /** Client-only marker for a deliberately added row that is not yet complete. */
+  is_draft?: boolean
 }
 
 export interface AttributeValidationResult {
@@ -22,7 +24,6 @@ export interface AttributeValidationResult {
 
 export const COMMON_ATTRIBUTE_NAMES = [
   'Colour',
-  'Colour Hex',
   'Capacity',
   'Size',
   'Weight',
@@ -32,6 +33,33 @@ export const COMMON_ATTRIBUTE_NAMES = [
   'Volume',
 ] as const
 
+export const ATTRIBUTE_PRESETS = [
+  { key: 'colour', label: 'Colour' },
+  { key: 'capacity', label: 'Capacity' },
+  { key: 'size', label: 'Size' },
+  { key: 'weight', label: 'Weight' },
+  { key: 'material', label: 'Material' },
+  { key: 'max_load', label: 'Max Load' },
+  { key: 'power', label: 'Power' },
+  { key: 'volume', label: 'Volume' },
+] as const
+
+export type AttributePresetKey = (typeof ATTRIBUTE_PRESETS)[number]['key'] | 'custom'
+
+const PRESET_CONFIG: Record<Exclude<AttributePresetKey, 'colour' | 'custom'>, {
+  name: string
+  type: AttributeType
+  unit: string | null
+}> = {
+  capacity: { name: 'Capacity', type: 'NUMBER', unit: 'ml' },
+  size: { name: 'Size', type: 'TEXT', unit: null },
+  weight: { name: 'Weight', type: 'NUMBER', unit: 'g' },
+  material: { name: 'Material', type: 'TEXT', unit: null },
+  max_load: { name: 'Max Load', type: 'NUMBER', unit: 'kg' },
+  power: { name: 'Power', type: 'NUMBER', unit: 'W' },
+  volume: { name: 'Volume', type: 'NUMBER', unit: 'ml' },
+}
+
 export function emptyStructuredAttribute(displayOrder = 0): StructuredAttribute {
   return {
     attribute_name: '',
@@ -40,6 +68,29 @@ export function emptyStructuredAttribute(displayOrder = 0): StructuredAttribute 
     unit_of_measure: null,
     display_order: displayOrder,
   }
+}
+
+export function createPresetAttributes(preset: AttributePresetKey, displayOrder = 0): StructuredAttribute[] {
+  if (preset === 'colour') {
+    return [
+      { ...emptyStructuredAttribute(displayOrder), attribute_name: 'Colour', is_draft: true },
+      {
+        ...emptyStructuredAttribute(displayOrder + 1),
+        attribute_name: 'Colour Hex',
+        attribute_value: '#000000',
+        is_draft: true,
+      },
+    ]
+  }
+  if (preset === 'custom') return [{ ...emptyStructuredAttribute(displayOrder), is_draft: true }]
+  const config = PRESET_CONFIG[preset]
+  return [{
+    ...emptyStructuredAttribute(displayOrder),
+    attribute_name: config.name,
+    attribute_type: config.type,
+    unit_of_measure: config.unit,
+    is_draft: true,
+  }]
 }
 
 export function normalizeAttributeName(name: string) {
@@ -57,7 +108,7 @@ export function validateStructuredAttributes(rows: StructuredAttribute[]): Attri
     const unit = row.unit_of_measure?.trim() || null
 
     // A wholly blank row is only an unfinished UI row and is never persisted.
-    if (!name && !value && !unit) return
+    if (!name && !value && !unit && !row.is_draft) return
     if (!name) errors[index] = 'Attribute name is required.'
     else if (!value) errors[index] = 'Attribute value is required.'
 
@@ -181,4 +232,27 @@ export function mergeStructuredAttributes(
 
 export function isRawHexVariantName(name: string) {
   return /^#[0-9a-f]{6}$/i.test(name.trim())
+}
+
+export function hasAttributePreset(rows: StructuredAttribute[], preset: Exclude<AttributePresetKey, 'custom'>) {
+  const names = new Set(rows.map((row) => normalizeAttributeName(row.attribute_name)))
+  if (preset === 'colour') return names.has('colour') || names.has('colour hex')
+  return names.has(normalizeAttributeName(PRESET_CONFIG[preset].name))
+}
+
+export function suggestVariantName(rows: StructuredAttribute[]) {
+  const byName = new Map(rows.map((row) => [normalizeAttributeName(row.attribute_name), row]))
+  const parts: string[] = []
+  const colour = byName.get('colour')?.attribute_value.trim()
+  if (colour) parts.push(colour)
+
+  const capacity = byName.get('capacity')
+  if (capacity?.attribute_value.trim()) {
+    parts.push(`${capacity.attribute_value.trim()}${capacity.unit_of_measure?.trim() || ''}`)
+  } else {
+    const size = byName.get('size')?.attribute_value.trim()
+    if (size) parts.push(size)
+  }
+
+  return parts.join(' / ') || null
 }
