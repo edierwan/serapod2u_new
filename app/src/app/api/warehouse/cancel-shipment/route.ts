@@ -1,16 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeShipmentSessionActor } from '@/lib/warehouse/shipment-route-guard'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { session_id, user_id } = await request.json()
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser()
 
-    if (!session_id || !user_id) {
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const actorUserId = user.id
+    const { session_id } = await request.json()
+
+    if (!session_id) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
+    }
+
+    const authorization = await authorizeShipmentSessionActor(createAdminClient(), actorUserId, session_id)
+    if (!authorization.allowed) {
+      return NextResponse.json({ error: authorization.message }, { status: authorization.status })
     }
 
     console.log('🔄 Starting shipment cancellation for session:', session_id)
@@ -102,7 +119,7 @@ export async function POST(request: NextRequest) {
           to_org_id: session.warehouse_org_id,
           current_status: 'received_warehouse',
           scanned_at: now,
-          scanned_by: user_id,
+          scanned_by: actorUserId,
           notes: `Shipment cancelled - reverted master ${master.master_code} to warehouse`
         }))
 
@@ -146,7 +163,7 @@ export async function POST(request: NextRequest) {
           to_org_id: session.warehouse_org_id,
           current_status: 'received_warehouse',
           scanned_at: now,
-          scanned_by: user_id,
+          scanned_by: actorUserId,
           notes: `Shipment cancelled - reverted unique code ${qr.code} to warehouse`
         }))
 

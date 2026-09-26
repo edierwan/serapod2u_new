@@ -221,6 +221,14 @@ z_*
 !/app/src/lib/warehouse/shipment-authorization.test.ts
 !/app/src/app/api/warehouse/confirm-shipment/route.security.test.ts
 
+# Phase 0B security containment evidence and regression tests
+!/docs/security/phase0b-*.md
+!/supabase/tests/security/
+!/supabase/tests/security/phase0b/
+!/supabase/tests/security/phase0b/*.sql
+!/app/src/app/api/warehouse/shipment-routes.security.test.ts
+!/app/src/lib/security/phase0b-containment-contract.test.ts
+
 # Vercel
 .vercel
 

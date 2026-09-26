@@ -801,7 +801,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { master_code, master_codes, order_id, warehouse_org_id, user_id } = body || {}
+    const { master_code, master_codes, order_id, warehouse_org_id } = body || {}
 
     const rawInput = Array.isArray(master_codes)
       ? master_codes
@@ -813,7 +813,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'master_code is required' }, { status: 400 })
     }
 
-    const requestingUserId = user_id || user.id
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const requestingUserId = user.id
 
     const results: ReceiveResult[] = []
     const seenCodes = new Set<string>()

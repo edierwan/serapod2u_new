@@ -1,16 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeShipmentSessionActor } from '@/lib/warehouse/shipment-route-guard'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { code, session_id, code_type, user_id } = await request.json()
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser()
 
-    if (!code || !session_id || !user_id) {
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const actorUserId = user.id
+    const { code, session_id, code_type } = await request.json()
+
+    if (!code || !session_id) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       )
+    }
+
+    const authorization = await authorizeShipmentSessionActor(createAdminClient(), actorUserId, session_id)
+    if (!authorization.allowed) {
+      return NextResponse.json({ error: authorization.message }, { status: authorization.status })
     }
 
     // Get the session
@@ -96,7 +113,7 @@ export async function POST(request: NextRequest) {
           to_org_id: session.warehouse_org_id,
           current_status: 'received_warehouse',
           scanned_at: now,
-          scanned_by: user_id,
+          scanned_by: actorUserId,
           notes: `Warehouse unlinked master ${masterCode.master_code} from shipment`
         })
 
@@ -226,7 +243,7 @@ export async function POST(request: NextRequest) {
           to_org_id: session.warehouse_org_id,
           current_status: 'received_warehouse',
           scanned_at: now,
-          scanned_by: user_id,
+          scanned_by: actorUserId,
           notes: `Warehouse unlinked unique code ${uniqueCode.code} from shipment`
         })
 
