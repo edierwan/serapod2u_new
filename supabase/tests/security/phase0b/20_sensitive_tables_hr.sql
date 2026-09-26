@@ -59,8 +59,15 @@ BEGIN
 
   -- Public journey reads that must keep working.
   PERFORM phase0b_test.expect_count('anon reads bank list (public journey)', 'anon', NULL, 'SELECT count(*) FROM public.msia_banks', 0);
-  PERFORM phase0b_test.expect_count('anon reads only ACTIVE journey configs (middleware)', 'anon', NULL,
-    'SELECT count(*) FROM public.journey_configurations', 1);
+  IF to_regprocedure('public.get_qr_security_requirement(text)') IS NULL THEN
+    -- Commit B alone: interim narrow anon read used by middleware.ts.
+    PERFORM phase0b_test.expect_count('anon reads only ACTIVE journey configs (middleware, interim)', 'anon', NULL,
+      'SELECT count(*) FROM public.journey_configurations', 1);
+  ELSE
+    -- Commit C replaces the anon read with get_qr_security_requirement().
+    PERFORM phase0b_test.expect_count('anon has no direct journey config access after commit C', 'anon', NULL,
+      'SELECT count(*) FROM public.journey_configurations', -1);
+  END IF;
 
   -- -------------------------------------------------------------------------
   -- EMPLOYEE SELF (staff_a, level 40, org A)

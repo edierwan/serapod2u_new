@@ -39,74 +39,21 @@ async function handleQRSecurityRedirect(
     }
   );
 
-  // Query qr_codes table with order relationship to find journey
-  const { data: qrRow, error } = await supabase
-    .from("qr_codes")
-    .select("id, code, order_id, company_id")
-    .eq("code", qrCode)
-    .maybeSingle();
+  // Resolve whether this QR's journey requires a security code through a
+  // narrow RPC (same resolution as before: order-linked active journey, then
+  // the company's default/any active journey). Anonymous clients no longer
+  // read qr_codes / journey tables directly. Unknown codes resolve to false.
+  const { data: requiresSecurityCode, error } = await supabase.rpc(
+    "get_qr_security_requirement",
+    { p_code: qrCode }
+  );
 
-  if (error || !qrRow) {
-    // Not a known QR / or DB problem → don't touch, let existing flow handle
+  if (error) {
+    // DB problem → don't touch, let existing flow handle
     return null;
   }
 
-  // Get the company_id from QR code directly (if available) or from order
-  let companyId = qrRow.company_id;
-
-  if (!companyId && qrRow.order_id) {
-    const { data: orderRow } = await supabase
-      .from("orders")
-      .select("company_id")
-      .eq("id", qrRow.order_id)
-      .maybeSingle();
-
-    companyId = orderRow?.company_id;
-  }
-
-  if (!companyId) {
-    return null; // Can't determine company, skip security check
-  }
-
-  // Resolve journey using same logic as verify API:
-  // 1. First check journey_order_links for order-specific journey
-  // 2. Then check for default journey
-  // 3. Finally any active journey
-  let requireSecurity = false;
-
-  if (qrRow.order_id) {
-    // Check order-specific journey first
-    const { data: linkedJourneys } = await supabase
-      .from("journey_order_links")
-      .select("journey_configurations(id, require_security_code, is_active)")
-      .eq("order_id", qrRow.order_id)
-      .order("created_at", { ascending: false });
-
-    if (linkedJourneys && linkedJourneys.length > 0) {
-      for (const link of linkedJourneys) {
-        const config = (link as any).journey_configurations;
-        if (config?.is_active) {
-          requireSecurity = config.require_security_code === true;
-          break;
-        }
-      }
-    }
-  }
-
-  // Fallback to default/any active journey if no order-specific found
-  if (!requireSecurity) {
-    const { data: journeyRow } = await supabase
-      .from("journey_configurations")
-      .select("id, require_security_code")
-      .eq("org_id", companyId)
-      .eq("is_active", true)
-      .order("is_default", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    requireSecurity = journeyRow?.require_security_code === true;
-  }
+  const requireSecurity = requiresSecurityCode === true;
 
   // If journey does NOT require security → do nothing, keep existing behaviour
   if (!requireSecurity) {

@@ -10,7 +10,7 @@ export interface ReferenceUser {
     user_id: string
     full_name: string
     phone: string
-    email: string
+    email?: string | null
     organization_name?: string | null
 }
 

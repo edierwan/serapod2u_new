@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -14,7 +15,8 @@ export async function POST(request: Request) {
 
         // Resolve QR Code ID if only code string is provided
         if (!qr_code_id && qr_code) {
-            const { data: qrData } = await supabase
+            // Resolve the id server-side: anonymous/consumer sessions cannot read qr_codes.
+            const { data: qrData } = await createAdminClient()
                 .from('qr_codes')
                 .select('id')
                 .eq('code', qr_code)
