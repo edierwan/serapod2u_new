@@ -89,3 +89,13 @@ describe('Phase 0B commit B: sensitive tables, views and HR tenant boundaries', 
     expect(migration).toContain('API-accessible tables without RLS remain')
   })
 })
+
+describe('Phase 0B follow-up: points_transactions company scope', () => {
+  const migration = repoFile('supabase/migrations/20260927130000_phase0b_points_company_scope_fix.sql')
+
+  it('resolves the row company (shop org ids, legacy NULL) instead of comparing raw ids', () => {
+    expect(migration).toContain('public.get_company_id(company_id) = public.sa_actor_company_id()')
+    expect(migration).toContain('company_id IS NULL OR public.get_company_id(company_id)')
+    expect(migration).toMatch(/sa_member_redemption_debit_insert[\s\S]*transaction_type = 'redeem'\s+AND points_amount < 0/)
+  })
+})
