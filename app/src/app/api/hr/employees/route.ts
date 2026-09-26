@@ -239,7 +239,7 @@ export async function POST(request: NextRequest) {
             userId = authUser.user.id
 
             // Sync to public.users table
-            const { error: syncError } = await supabase.rpc('sync_user_profile', {
+            const { error: syncError } = await adminClient.rpc('sync_user_profile', {
                 p_user_id: userId,
                 p_email: email.toLowerCase().trim(),
                 p_role_code: role_code,

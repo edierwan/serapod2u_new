@@ -214,6 +214,13 @@ z_*
 **/tests/**
 **/__mocks__/**
 
+# Phase 0A security containment regression tests are implementation artifacts
+!/app/src/lib/actions.security.test.ts
+!/app/src/lib/security/user-profile-updates.test.ts
+!/app/src/lib/security/phase0a-containment-contract.test.ts
+!/app/src/lib/warehouse/shipment-authorization.test.ts
+!/app/src/app/api/warehouse/confirm-shipment/route.security.test.ts
+
 # Vercel
 .vercel
 
