@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeShipmentSessionActor } from '@/lib/warehouse/shipment-route-guard'
 import { loadSession } from '../scan-for-shipment/route'
 import { processBatchShipment } from './batch-processor'
 
@@ -19,8 +21,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       shipment_session_id: sessionId,
-      codes,
-      user_id: overrideUserId
+      codes
     } = body || {}
 
     if (!sessionId) {
@@ -31,13 +32,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'codes array must contain at least one value' }, { status: 400 })
     }
 
+    const authorization = await authorizeShipmentSessionActor(createAdminClient(), user.id, sessionId)
+    if (!authorization.allowed) {
+      return NextResponse.json({ message: authorization.message }, { status: authorization.status })
+    }
+
     const session = await loadSession(supabase, sessionId)
 
     if (session.validation_status === 'approved') {
       return NextResponse.json({ message: 'Shipment session already completed' }, { status: 409 })
     }
 
-    const requestingUserId = overrideUserId || user.id
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const requestingUserId = user.id
     const encoder = new TextEncoder()
 
     // Perform bulk processing

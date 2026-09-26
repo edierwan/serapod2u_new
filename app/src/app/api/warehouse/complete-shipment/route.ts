@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeShipmentSessionActor } from '@/lib/warehouse/shipment-route-guard'
 
 type ScannedQuantities = {
   total_units: number
@@ -42,12 +44,16 @@ export async function POST(request: NextRequest) {
     const {
       shipment_session_id: sessionId,
       approve_discrepancy: approveDiscrepancy = false,
-      approval_notes: approvalNotes,
-      user_id: overrideUserId
+      approval_notes: approvalNotes
     } = body || {}
 
     if (!sessionId) {
       return NextResponse.json({ message: 'shipment_session_id is required' }, { status: 400 })
+    }
+
+    const authorization = await authorizeShipmentSessionActor(createAdminClient(), user.id, sessionId)
+    if (!authorization.allowed) {
+      return NextResponse.json({ message: authorization.message }, { status: authorization.status })
     }
 
     const { data: session, error: sessionError } = await supabase
@@ -91,7 +97,8 @@ export async function POST(request: NextRequest) {
     const hasAnyDiscrepancy = hasShortfalls || hasWarnings
 
     const currentStatus = session.validation_status
-    const requestingUserId = overrideUserId || user.id
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const requestingUserId = user.id
 
     if (currentStatus === 'approved') {
       return NextResponse.json(

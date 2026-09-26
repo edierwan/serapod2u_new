@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeShipmentActor, authorizeShipmentSessionActor } from '@/lib/warehouse/shipment-route-guard'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { session_ids, product_name, user_id } = await request.json()
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const actorUserId = user.id
+    const { session_ids, product_name } = await request.json()
 
     if (!session_ids || !Array.isArray(session_ids) || session_ids.length === 0) {
       return NextResponse.json(
@@ -16,13 +28,6 @@ export async function POST(request: NextRequest) {
     if (!product_name) {
       return NextResponse.json(
         { error: 'product_name is required' },
-        { status: 400 }
-      )
-    }
-
-    if (!user_id) {
-      return NextResponse.json(
-        { error: 'user_id is required' },
         { status: 400 }
       )
     }
@@ -47,6 +52,32 @@ export async function POST(request: NextRequest) {
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
     const realSessionIds = session_ids.filter((id: string) => uuidRegex.test(id))
     const unshippedEntries = session_ids.filter((id: string) => id.startsWith('unshipped-'))
+
+    // Authorize every referenced session / unshipped master before mutating anything.
+    const admin = createAdminClient()
+    for (const sessionId of realSessionIds) {
+      const authorization = await authorizeShipmentSessionActor(admin, actorUserId, sessionId)
+      if (!authorization.allowed) {
+        return NextResponse.json({ error: authorization.message }, { status: authorization.status })
+      }
+    }
+    for (const fakeId of unshippedEntries) {
+      const { data: masterScope } = await admin
+        .from('qr_master_codes')
+        .select('warehouse_org_id, company_id')
+        .eq('id', fakeId.replace('unshipped-', ''))
+        .maybeSingle()
+      if (!masterScope) {
+        continue
+      }
+      const authorization = await authorizeShipmentActor(admin, actorUserId, {
+        warehouse_org_id: masterScope.warehouse_org_id ?? null,
+        company_id: masterScope.company_id ?? null,
+      })
+      if (!authorization.allowed) {
+        return NextResponse.json({ error: authorization.message }, { status: authorization.status })
+      }
+    }
 
     let totalUnlinked = 0
 

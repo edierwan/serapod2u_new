@@ -50,7 +50,8 @@ describe('consumer scan after first warehouse receipt — SQL', () => {
 
   it('is the latest migration touching these functions', () => {
     const later = readdirSync(migrationsDir).filter((f) => f > '20260915120000_consumer_scan_after_first_warehouse_receipt.sql' && f.endsWith('.sql'))
-      .filter((f) => /consumer_(collect_points|claim_gift)/.test(readFileSync(path.join(migrationsDir, f), 'utf-8')))
+      // Only redefinitions count; later grant/search_path hardening (Phase 0B) keeps these bodies.
+      .filter((f) => /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+(public\.)?consumer_(collect_points|claim_gift)\b/i.test(readFileSync(path.join(migrationsDir, f), 'utf-8')))
     expect(later).toEqual([])
   })
 })

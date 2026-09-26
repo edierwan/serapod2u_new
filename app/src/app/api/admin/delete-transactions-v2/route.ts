@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 /**
@@ -137,7 +138,10 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Call the database deletion RPC function
     console.log('\n🗄️ Step 2: Deleting database records...')
-    const { data: result, error: rpcError } = await supabase
+    // Phase 0B: the RPC is service-role only (it TRUNCATEs every transaction
+    // table), so it runs through the admin client after the destructive-ops
+    // guard above has verified environment + Super Admin.
+    const { data: result, error: rpcError } = await createAdminClient()
       .rpc('delete_all_transactions_with_inventory_v3')
 
     if (rpcError) {

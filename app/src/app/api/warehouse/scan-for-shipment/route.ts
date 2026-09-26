@@ -13,6 +13,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeShipmentSessionActor } from '@/lib/warehouse/shipment-route-guard'
 import { parseQRCode, extractMasterCode } from '@/lib/qr-code-utils'
 
 export type CodeType = 'master' | 'unique'
@@ -1221,8 +1223,7 @@ export async function POST(request: NextRequest) {
     const {
       shipment_session_id: sessionId,
       code,
-      code_type: rawCodeType,
-      user_id: overrideUserId
+      code_type: rawCodeType
     } = body || {}
 
     if (!sessionId) {
@@ -1231,6 +1232,11 @@ export async function POST(request: NextRequest) {
 
     if (!code) {
       return NextResponse.json({ message: 'code is required' }, { status: 400 })
+    }
+
+    const authorization = await authorizeShipmentSessionActor(createAdminClient(), user.id, sessionId)
+    if (!authorization.allowed) {
+      return NextResponse.json({ message: authorization.message }, { status: authorization.status })
     }
 
     const session = await loadSession(supabase, sessionId)
@@ -1247,7 +1253,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const requestingUserId = overrideUserId || user.id
+    // Attribution always uses the verified session user; body user_id is ignored.
+    const requestingUserId = user.id
 
     const { result, status } = await processShipmentScan({
       supabase,
