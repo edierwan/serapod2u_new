@@ -47,3 +47,45 @@ describe('Phase 0B commit A: privileged RPC containment contract', () => {
     expect(route).toMatch(/createAdminClient\(\)\s*\n\s*\.rpc\('delete_all_transactions_with_inventory_v3'\)/)
   })
 })
+
+describe('Phase 0B commit B: sensitive tables, views and HR tenant boundaries', () => {
+  const migration = repoFile('supabase/migrations/20260927110000_phase0b_sensitive_tables_hr_rls.sql')
+
+  it('enables RLS and resets API grants on formerly unprotected sensitive tables', () => {
+    for (const table of [
+      'hr_payroll_run_items', 'hr_payroll_runs', 'hr_applicants', 'hr_contracts', 'hr_payslip_access_logs',
+      'otp_challenges', 'points_transactions', 'notifications_outbox', 'qr_validation_reports', 'qr_movements',
+      'shop_requests', 'journey_configurations', 'consumer_activations',
+    ]) {
+      expect(migration, table).toContain(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;`)
+      expect(migration, table).toContain(`REVOKE ALL ON TABLE public.${table} FROM anon, authenticated;`)
+    }
+  })
+
+  it('binds HR tenant checks to the target row instead of comparing the actor to itself', () => {
+    expect(migration).toContain('ALTER POLICY hr_employee_compensation_select ON public.hr_employee_compensation')
+    expect(migration).toContain('u.organization_id = hr_employee_compensation.organization_id')
+    const alterStatements = migration.match(/^ALTER POLICY [\s\S]*?;$/gm) || []
+    expect(alterStatements.length).toBe(51)
+    for (const statement of alterStatements) {
+      expect(statement).not.toContain('u.organization_id = u.organization_id')
+    }
+    expect(migration).toContain('tautological tenant policies remain')
+  })
+
+  it('limits salary lines to the employee and HR managers', () => {
+    expect(migration).toMatch(/CREATE POLICY sa_hr_self_or_manager_read ON public\.hr_payroll_run_items FOR SELECT TO authenticated\s+USING \(organization_id = public\.sa_actor_org_id\(\) AND \(employee_user_id = auth\.uid\(\) OR public\.sa_actor_is_hr_manager\(\)\)\)/)
+    expect(migration).toMatch(/CREATE POLICY sa_hr_manager_insert ON public\.hr_payroll_run_items/)
+  })
+
+  it('never lets non-staff accounts credit points', () => {
+    expect(migration).toContain("transaction_type = 'redeem' AND points_amount < 0")
+    expect(migration).toContain('sa_redeem_items_restrict_non_staff_update')
+  })
+
+  it('removes anonymous view access and fails if any remains', () => {
+    expect(migration).toContain("EXECUTE format('REVOKE ALL ON TABLE %s FROM anon', v.rel);")
+    expect(migration).toContain('anon can still read views')
+    expect(migration).toContain('API-accessible tables without RLS remain')
+  })
+})
