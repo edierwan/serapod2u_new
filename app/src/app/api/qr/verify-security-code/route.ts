@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSecurityMappingCookie } from "@/utils/qrSecurity";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/security/rate-limit";
 
 /**
  * POST /api/qr/verify-security-code
@@ -24,6 +25,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Tokens are alphanumeric; reject LIKE wildcards and oversized input.
+    if (typeof publicToken !== "string" || !/^[A-Za-z0-9]{1,64}$/.test(publicToken) || typeof code !== "string") {
+      return NextResponse.json(
+        { ok: false, error: "Missing data" },
+        { status: 400 }
+      );
+    }
+
+    // The code has only 100 possible values: throttle guessing per token and client.
+    const limit = checkRateLimit(
+      `qr-security-code:${clientIpFromHeaders(request.headers)}:${publicToken}`,
+      15,
+      10 * 60 * 1000,
+    );
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { ok: false, error: "Too many attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+      );
+    }
+
     // Validate code format (must be 2 characters)
     if (code.length !== 2) {
       return NextResponse.json(
@@ -40,10 +62,8 @@ export async function POST(request: NextRequest) {
 
     // 2) Fallback: derive from DB if cookie missing
     if (!expectedCode) {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
+      // Server-side lookup: anonymous clients no longer read qr_codes directly.
+      const supabase = createAdminClient();
 
       // First try: Pattern match for short token (token + 2 more chars at end)
       // Example: if publicToken is "07844050a7", find code ending with "07844050a7??"

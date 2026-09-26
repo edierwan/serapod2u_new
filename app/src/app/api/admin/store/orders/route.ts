@@ -19,10 +19,21 @@ async function getAuthenticatedAdmin(supabase: any) {
     const orgType = (profile.organizations as any)?.org_type_code
     const roleLevel = (profile.roles as any)?.role_level
     // HQ users with role level ≤ 30 (Admin/Manager)
-    if (orgType !== 'HQ' || roleLevel > 30) return null
+    if (orgType !== 'HQ' || roleLevel == null || roleLevel > 30 || !profile.organization_id) return null
 
-    return { userId: user.id, orgId: profile.organization_id }
+    return { userId: user.id, orgId: profile.organization_id as string }
 }
+
+// Storefront orders an HQ admin may see or change: their own organization's
+// orders plus legacy orders created before organization_id existed (NULL),
+// which belong to the single platform storefront. Applied to every read AND
+// write so an order id alone can never bypass tenant filtering.
+const orgScopeFilter = (orgId: string) => `organization_id.eq.${orgId},organization_id.is.null`
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// PostgREST or() filters are comma/parenthesis delimited; keep search text literal.
+const sanitizeSearch = (value: string) => value.replace(/[,()\\*%]/g, ' ').trim().slice(0, 100)
 
 // ── GET /api/admin/store/orders ─────────────────────────────────────
 // List storefront orders for the admin's organization
@@ -50,10 +61,8 @@ export async function GET(request: NextRequest) {
             .from('storefront_orders')
             .select('*, storefront_order_items(*)', { count: 'exact' })
 
-        // Filter by org if the column exists (multi-tenant)
-        if (admin.orgId) {
-            query = query.or(`organization_id.eq.${admin.orgId},organization_id.is.null`)
-        }
+        // Tenant scope (same filter as PUT)
+        query = query.or(orgScopeFilter(admin.orgId))
 
         if (salesChannel === 'outdoor' || salesChannel === 'store') {
             query = query.eq('sales_channel', salesChannel)
@@ -65,9 +74,10 @@ export async function GET(request: NextRequest) {
         }
 
         // Search by order ref, customer name, or email
-        if (search) {
+        const safeSearch = search ? sanitizeSearch(search) : ''
+        if (safeSearch) {
             query = query.or(
-                `order_ref.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%`
+                `order_ref.ilike.%${safeSearch}%,customer_name.ilike.%${safeSearch}%,customer_email.ilike.%${safeSearch}%`
             )
         }
 
@@ -114,6 +124,10 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Missing order id or status' }, { status: 400 })
         }
 
+        if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        }
+
         // Validate status transition
         const validStatuses = [
             'pending_payment', 'paid', 'payment_failed',
@@ -128,16 +142,23 @@ export async function PUT(request: NextRequest) {
         const updateData: Record<string, any> = { status }
         if (notes !== undefined) updateData.admin_notes = notes
 
+        // The tenant scope is part of the UPDATE itself, so an order outside the
+        // admin's scope is indistinguishable from a non-existent one.
         const { data, error } = await adminClient
             .from('storefront_orders')
             .update(updateData)
             .eq('id', id)
+            .or(orgScopeFilter(admin.orgId))
             .select('*')
-            .single()
+            .maybeSingle()
 
         if (error) {
             console.error('[admin/store/orders] PUT error:', error)
             throw error
+        }
+
+        if (!data) {
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 })
         }
 
         return NextResponse.json({ order: data })
