@@ -27,7 +27,11 @@ INSERT INTO public.redeem_items (id, item_name, item_code, company_id, points_re
 INSERT INTO public.points_transactions (company_id, user_id, consumer_phone, transaction_type, points_amount, balance_after) VALUES
   (phase0b_test.org('hq_a'), phase0b_test.uid('consumer'), '+60110000006', 'earn', 50, 50),
   (phase0b_test.org('hq_a'), NULL, '+60119999999', 'earn', 70, 70),
-  (phase0b_test.org('hq_b'), NULL, '+60118888888', 'earn', 90, 90);
+  (phase0b_test.org('hq_b'), NULL, '+60118888888', 'earn', 90, 90),
+  -- Real production shapes: legacy rows without company, and shop-scoped
+  -- redemption rows (ShopCatalogPage writes company_id = the shop org id).
+  (NULL, NULL, '+60116666666', 'MIGRATION', 10, 10),
+  (phase0b_test.org('shop_a'), NULL, '+60110000005', 'redeem', -5, 5);
 INSERT INTO public.qr_validation_reports (company_id, warehouse_org_id, distributor_org_id, created_by, expected_quantities, scanned_quantities)
   VALUES (phase0b_test.org('hq_a'), phase0b_test.org('wh_a1'), phase0b_test.org('dist_a'), phase0b_test.uid('wh_a1'), '{}', '{}');
 INSERT INTO public.journey_configurations (org_id, name, is_active)
@@ -147,13 +151,19 @@ BEGIN
   -- -------------------------------------------------------------------------
   PERFORM phase0b_test.expect_count('consumer sees only own points', 'authenticated', phase0b_test.uid('consumer'),
     'SELECT count(*) FROM public.points_transactions', 1);
-  PERFORM phase0b_test.expect_count('company staff see company points only', 'authenticated', phase0b_test.uid('staff_a'),
-    'SELECT count(*) FROM public.points_transactions', 2);
+  PERFORM phase0b_test.expect_count('company staff see company, shop-scoped and legacy points', 'authenticated', phase0b_test.uid('staff_a'),
+    'SELECT count(*) FROM public.points_transactions', 4);
   PERFORM phase0b_test.expect_count('other company staff see none of company A', 'authenticated', phase0b_test.uid('staff_b'),
     format('SELECT count(*) FROM public.points_transactions WHERE company_id = %L', phase0b_test.org('hq_a')), 0);
   PERFORM phase0b_test.expect_ok('shop records a redemption debit (ShopCatalogPage)', 'authenticated', phase0b_test.uid('shop_a'),
     format('INSERT INTO public.points_transactions (company_id, consumer_phone, transaction_type, points_amount, balance_after, redeem_item_id) VALUES (%L, %L, %L, -100, 0, %L)',
            phase0b_test.org('hq_a'), '+60110000005', 'redeem', '00000000-0000-0000-0000-0000000e0001'));
+  PERFORM phase0b_test.expect_ok('shop redemption with its own shop org as company_id (real ShopCatalogPage shape)', 'authenticated', phase0b_test.uid('shop_a'),
+    format('INSERT INTO public.points_transactions (company_id, consumer_phone, transaction_type, points_amount, balance_after, redeem_item_id) VALUES (%L, %L, %L, -100, 0, %L)',
+           phase0b_test.org('shop_a'), '+60110000005', 'redeem', '00000000-0000-0000-0000-0000000e0001'));
+  PERFORM phase0b_test.expect_denied('shop cannot mint points under its own shop org', 'authenticated', phase0b_test.uid('shop_a'),
+    format('INSERT INTO public.points_transactions (company_id, consumer_phone, transaction_type, points_amount, balance_after) VALUES (%L, %L, %L, 1000, 1000)',
+           phase0b_test.org('shop_a'), '+60110000005', 'earn'));
   PERFORM phase0b_test.expect_denied('shop cannot mint points', 'authenticated', phase0b_test.uid('shop_a'),
     format('INSERT INTO public.points_transactions (company_id, consumer_phone, transaction_type, points_amount, balance_after) VALUES (%L, %L, %L, 1000, 1000)',
            phase0b_test.org('hq_a'), '+60110000005', 'earn'));
