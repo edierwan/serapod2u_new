@@ -1,5 +1,6 @@
 /**
- * update-profile must never silently move a SHOP-linked user to a different SHOP.
+ * Phase 0A: profile self-service must never change authorization organization.
+ * Shop association now requires a separately authorized administrative/provisioning flow.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -52,7 +53,7 @@ async function post(body: Record<string, any>) {
     return { status: response.status, body: await response.json() }
 }
 
-describe('POST /api/user/update-profile — SHOP switching', () => {
+describe('POST /api/user/update-profile — protected organization field', () => {
     beforeEach(() => {
         vi.resetModules()
         vi.clearAllMocks()
@@ -60,42 +61,40 @@ describe('POST /api/user/update-profile — SHOP switching', () => {
         authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
     })
 
-    it('blocks SHOP A -> SHOP B without explicit confirmation (structured 409, nothing written)', async () => {
+    it('blocks SHOP A -> SHOP B and writes nothing', async () => {
         const { user, fake } = setup()
         const result = await post({ organization_id: SHOP_B.id, shop_name: 'Vapor Word (Kepala Batas)' })
 
-        expect(result.status).toBe(409)
+        expect(result.status).toBe(403)
         expect(result.body).toMatchObject({
             success: false,
-            code: 'SHOP_SWITCH_CONFIRMATION_REQUIRED',
-            requiresShopSwitchConfirmation: true,
-            currentShop: { org_id: 'shop-a', org_name: 'Vaporworld Kepala Batas' },
-            requestedShop: { org_id: 'shop-b', org_name: 'Vapor Word' },
+            code: 'PROTECTED_PROFILE_FIELD',
         })
         expect(user.organization_id).toBe(SHOP_A.id)
         expect(user.shop_name).toBe(SHOP_A.org_name)
         expect(fake.updates.filter((update) => update.table === 'users')).toHaveLength(0)
     })
 
-    it('treats a non-true confirm flag as no confirmation', async () => {
+    it('rejects legacy confirmation flags rather than treating them as authority', async () => {
         const { user } = setup()
         const result = await post({ organization_id: SHOP_B.id, confirmShopSwitch: 'true' })
-        expect(result.status).toBe(409)
+        expect(result.status).toBe(403)
         expect(user.organization_id).toBe(SHOP_A.id)
     })
 
-    it('allows an explicitly confirmed SHOP A -> SHOP B switch', async () => {
-        const { user } = setup()
+    it('does not allow an explicitly confirmed self-service switch', async () => {
+        const { user, fake } = setup()
         const result = await post({
             organization_id: SHOP_B.id,
             shop_name: 'Vapor Word (Kepala Batas)',
             confirmShopSwitch: true,
         })
 
-        expect(result.status).toBe(200)
-        expect(result.body.success).toBe(true)
-        expect(user.organization_id).toBe(SHOP_B.id)
-        expect(user.shop_name).toBe('Vapor Word (Kepala Batas)')
+        expect(result.status).toBe(403)
+        expect(result.body.code).toBe('PROTECTED_PROFILE_FIELD')
+        expect(user.organization_id).toBe(SHOP_A.id)
+        expect(user.shop_name).toBe(SHOP_A.org_name)
+        expect(fake.updates.filter((update) => update.table === 'users')).toHaveLength(0)
     })
 
     it('leaves normal profile field updates unaffected for a SHOP-linked user', async () => {
@@ -108,17 +107,17 @@ describe('POST /api/user/update-profile — SHOP switching', () => {
         expect(user.organization_id).toBe(SHOP_A.id)
     })
 
-    it('re-saving the same SHOP needs no confirmation', async () => {
+    it('rejects re-saving the same organization because the field is protected', async () => {
         const { user } = setup()
         const result = await post({ organization_id: SHOP_A.id, shop_name: SHOP_A.org_name })
-        expect(result.status).toBe(200)
+        expect(result.status).toBe(403)
         expect(user.organization_id).toBe(SHOP_A.id)
     })
 
-    it('first-time link (user not yet on any SHOP) needs no confirmation', async () => {
+    it('rejects first-time organization linking through profile self-service', async () => {
         const { user } = setup({ organization_id: null, shop_name: null, organizations: null })
         const result = await post({ organization_id: SHOP_B.id, shop_name: 'Vapor Word (Kepala Batas)' })
-        expect(result.status).toBe(200)
-        expect(user.organization_id).toBe(SHOP_B.id)
+        expect(result.status).toBe(403)
+        expect(user.organization_id).toBeNull()
     })
 })

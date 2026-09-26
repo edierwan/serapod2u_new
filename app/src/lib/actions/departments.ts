@@ -1149,7 +1149,7 @@ export async function createUserForDepartment(
       return { success: false, error: authError?.message || 'Failed to create user' }
     }
 
-    const { error: syncError } = await supabase
+    const { error: syncError } = await adminClient
       .rpc('sync_user_profile', {
         p_user_id: authUser.user.id,
         p_email: payload.email,

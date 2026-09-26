@@ -36,6 +36,10 @@ import {
   logNotificationEvent as logRegistrationNotificationEvent,
   markCodeUsed as markRegistrationCodeUsed,
 } from '@/server/auth/registrationVerificationService'
+import {
+  getDisallowedSelfServiceFields,
+  pickSelfServiceProfileFields,
+} from '@/lib/security/user-profile-updates'
 
 export async function createUserWithAuth(userData: {
   email: string
@@ -60,22 +64,15 @@ export async function createUserWithAuth(userData: {
   join_date?: string | null
   employment_status?: string | null
   can_be_reference?: boolean
-}, callerInfo?: { id: string, role_code: string }) {
+}, _callerInfo?: { id: string, role_code: string }) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: sessionAuthError } = await supabase.auth.getUser()
-    let callerUserId = user?.id
-
     if (sessionAuthError || !user) {
-      if (!callerInfo?.id) {
-        return { success: false, error: 'Unauthorized' }
-      }
-      callerUserId = callerInfo.id
-    }
-
-    if (!callerUserId) {
       return { success: false, error: 'Unauthorized' }
     }
+
+    const callerUserId = user.id
 
     const permissionCheck = await checkPermissionForUser(callerUserId, 'create_users')
     const roleLevel = permissionCheck.context?.role_level
@@ -122,7 +119,7 @@ export async function createUserWithAuth(userData: {
     }
 
     // Step 2: Sync user profile to public.users table using the sync function
-    const { data: syncResult, error: syncError } = await supabase
+    const { data: syncResult, error: syncError } = await adminClient
       .rpc('sync_user_profile', {
         p_user_id: authUser.user.id,
         p_email: userData.email,
@@ -146,9 +143,8 @@ export async function createUserWithAuth(userData: {
       }
     }
 
-    // Step 2b: Set account_scope to 'portal' for business users (those with an org)
-    // sync_user_profile doesn't set account_scope, so it defaults to 'store'.
-    // Without this, admin-created business users can't access /dashboard.
+    // Step 2b: Keep an explicit compatibility write for deployments that have not
+    // yet applied the account-scope-aware sync_user_profile definition.
     if (userData.organization_id) {
       const { error: scopeError } = await adminClient
         .from('users')
@@ -259,7 +255,7 @@ export async function updateUserWithAuth(userId: string, userData: {
   join_date?: string | null
   employment_status?: string | null
   can_be_reference?: boolean
-}, callerInfo?: { id: string, role_code: string }) {
+}, _callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
 
@@ -269,44 +265,40 @@ export async function updateUserWithAuth(userId: string, userData: {
     // Check permissions: Current user must have edit_users OR updating themselves
     const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
 
-    let isAuthorized = false
-    let isSelfUpdate = false
-
-    // If session check fails, try to use caller info passed from client
     if (!currentUser || authError) {
-      console.log('Server action: Session not found via cookies, checking caller info...')
-
-      if (callerInfo) {
-        const permissionCheck = await checkPermissionForUser(callerInfo.id, 'edit_users')
-        const roleLevel = permissionCheck.context?.role_level
-        const hasRoleLevelEditAccess = typeof roleLevel === 'number' && roleLevel <= 30
-        isSelfUpdate = callerInfo.id === userId
-        isAuthorized = isSelfUpdate || permissionCheck.allowed || hasRoleLevelEditAccess
-        console.log('Server action: Caller validated from DB -', { isAuthorized, isSelfUpdate })
-      }
-
-      if (!isAuthorized) {
-        console.log('Server action: Not authorized, no valid session or caller info')
-        return { success: false, error: 'Not authenticated. Please refresh the page and try again.' }
-      }
-    } else {
-      // Session exists - check permissions normally
-      isSelfUpdate = currentUser.id === userId
-      const permissionCheck = await checkPermissionForUser(currentUser.id, 'edit_users')
-      const roleLevel = permissionCheck.context?.role_level
-      const hasRoleLevelEditAccess = typeof roleLevel === 'number' && roleLevel <= 30
-      isAuthorized = isSelfUpdate || permissionCheck.allowed || hasRoleLevelEditAccess
+      return { success: false, error: 'Not authenticated. Please refresh the page and try again.' }
     }
+
+    const isSelfUpdate = currentUser.id === userId
+    const permissionCheck = await checkPermissionForUser(currentUser.id, 'edit_users')
+    const roleLevel = permissionCheck.context?.role_level
+    const hasRoleLevelEditAccess = typeof roleLevel === 'number' && roleLevel <= 30
+    const isAuthorized = isSelfUpdate || permissionCheck.allowed || hasRoleLevelEditAccess
 
     if (!isAuthorized) {
       return { success: false, error: 'Unauthorized' }
     }
 
+    const requestedUpdate = userData as Record<string, unknown>
+    if (isSelfUpdate) {
+      const disallowedFields = getDisallowedSelfServiceFields(requestedUpdate)
+      if (disallowedFields.length > 0) {
+        return {
+          success: false,
+          error: `Self-service cannot update protected fields: ${disallowedFields.join(', ')}`,
+        }
+      }
+    }
+
+    const authorizedUserData = (isSelfUpdate
+      ? pickSelfServiceProfileFields(requestedUpdate)
+      : requestedUpdate) as typeof userData
+
     // Update Auth User metadata (full_name/display_name) - sync to Supabase Auth user_metadata
-    if (userData.full_name !== undefined) {
+    if (authorizedUserData.full_name !== undefined) {
       try {
         const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
-          user_metadata: { full_name: userData.full_name }
+          user_metadata: { full_name: authorizedUserData.full_name }
         })
 
         if (authMetaError) {
@@ -314,7 +306,7 @@ export async function updateUserWithAuth(userId: string, userData: {
           // Don't fail the whole operation for metadata sync failure
           console.warn('Continuing despite metadata sync failure...')
         } else {
-          console.log('✅ Auth user_metadata.full_name synced to:', userData.full_name)
+          console.log('✅ Auth user_metadata.full_name synced to:', authorizedUserData.full_name)
         }
       } catch (metaErr) {
         console.error('Auth metadata update exception:', metaErr)
@@ -324,11 +316,11 @@ export async function updateUserWithAuth(userId: string, userData: {
 
     // Update Auth User (Phone) - handle both setting and clearing phone
     // We make this BLOCKING to ensure consistency between Auth and Database
-    if (userData.phone !== undefined) {
+    if (authorizedUserData.phone !== undefined) {
       try {
-        if (userData.phone && userData.phone.trim()) {
+        if (authorizedUserData.phone && authorizedUserData.phone.trim()) {
           // Setting/updating phone number
-          const phone = normalizePhone(userData.phone) // Returns E.164 with + prefix
+          const phone = normalizePhone(authorizedUserData.phone) // Returns E.164 with + prefix
 
           const { data: authData, error: authError } = await adminClient.auth.admin.updateUserById(userId, {
             phone: phone,
@@ -377,7 +369,7 @@ export async function updateUserWithAuth(userId: string, userData: {
 
     // Update Public User - prepare data for database update
     // Phone is normalized to E.164 format with + prefix for consistency, or null if cleared
-    const updateData: any = { ...userData }
+    const updateData: any = { ...authorizedUserData }
     if (updateData.call_name !== undefined) {
       updateData.call_name = updateData.call_name || null
     }
@@ -603,7 +595,7 @@ export async function signup(formData: FormData) {
   redirect('/dashboard')
 }
 
-export async function deleteUserWithAuth(userId: string, callerInfo?: { id: string, role_code: string }) {
+export async function deleteUserWithAuth(userId: string, _callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
 
@@ -620,13 +612,10 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
     let isAuthorized = false
 
     // Try to get current user from session first
-    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    const { data: { user: currentUser }, error: sessionAuthError } = await supabase.auth.getUser()
 
-    if (currentUser) {
+    if (currentUser && !sessionAuthError) {
       const permissionCheck = await checkPermissionForUser(currentUser.id, 'delete_users')
-      isAuthorized = permissionCheck.allowed
-    } else if (callerInfo) {
-      const permissionCheck = await checkPermissionForUser(callerInfo.id, 'delete_users')
       isAuthorized = permissionCheck.allowed
     }
 
@@ -701,10 +690,10 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
     }
 
     const transferOperations = [
-      { table: 'documents', column: 'created_by', value: currentUser?.id || callerInfo?.id, label: 'documents.created_by' },
+      { table: 'documents', column: 'created_by', value: currentUser?.id, label: 'documents.created_by' },
       { table: 'documents', column: 'acknowledged_by', value: null, label: 'documents.acknowledged_by' },
-      { table: 'document_files', column: 'uploaded_by', value: currentUser?.id || callerInfo?.id, label: 'document_files.uploaded_by' },
-      { table: 'orders', column: 'created_by', value: currentUser?.id || callerInfo?.id, label: 'orders.created_by' },
+      { table: 'document_files', column: 'uploaded_by', value: currentUser?.id, label: 'document_files.uploaded_by' },
+      { table: 'orders', column: 'created_by', value: currentUser?.id, label: 'orders.created_by' },
       { table: 'orders', column: 'approved_by', value: null, label: 'orders.approved_by' },
       { table: 'orders', column: 'updated_by', value: null, label: 'orders.updated_by' },
     ]

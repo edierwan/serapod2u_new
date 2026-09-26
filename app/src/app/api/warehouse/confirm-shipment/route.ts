@@ -2,22 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractMasterCode } from '@/lib/qr-code-utils'
+import { authorizeWarehouseShipment } from '@/lib/warehouse/shipment-authorization'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const supabaseAdmin = createAdminClient()
-    const { session_id, user_id } = await request.json()
+    const { data: { user: authenticatedUser }, error: authError } = await supabase.auth.getUser()
 
-    if (!session_id || !user_id) {
+    if (authError || !authenticatedUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { session_id } = await request.json()
+
+    if (!session_id) {
       return NextResponse.json(
-        { error: 'Missing session_id or user_id' },
+        { error: 'Missing session_id' },
         { status: 400 }
       )
     }
 
     // Get the session
-    const { data: session, error: sessionError } = await supabase
+    const { data: session, error: sessionError } = await supabaseAdmin
       .from('qr_validation_reports')
       .select('*')
       .eq('id', session_id)
@@ -29,6 +36,46 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       )
     }
+
+    const { data: actorProfile, error: actorError } = await supabaseAdmin
+      .from('users')
+      .select(`
+        id,
+        organization_id,
+        is_active,
+        roles:role_code(role_level),
+        organizations!fk_users_organization(org_type_code)
+      `)
+      .eq('id', authenticatedUser.id)
+      .single()
+
+    if (actorError || !actorProfile) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const actorRole = Array.isArray(actorProfile.roles) ? actorProfile.roles[0] : actorProfile.roles
+    const actorOrganization = Array.isArray(actorProfile.organizations)
+      ? actorProfile.organizations[0]
+      : actorProfile.organizations
+    const authorization = authorizeWarehouseShipment(
+      {
+        id: authenticatedUser.id,
+        organization_id: actorProfile.organization_id ?? null,
+        is_active: actorProfile.is_active ?? false,
+        role_level: (actorRole as any)?.role_level ?? null,
+        organization_type: (actorOrganization as any)?.org_type_code ?? null,
+      },
+      {
+        warehouse_org_id: session.warehouse_org_id ?? null,
+        company_id: session.company_id ?? null,
+      },
+    )
+
+    if (!authorization.allowed) {
+      return NextResponse.json({ error: authorization.reason }, { status: 403 })
+    }
+
+    const actorUserId = authenticatedUser.id
 
     // Allow both pending and matched status (matched = warehouse_packed, ready to ship)
     // If already approved, check if this is a duplicate request (same codes already shipped)
@@ -408,7 +455,7 @@ export async function POST(request: NextRequest) {
               .update({
                 status: 'shipped_distributor',
                 shipped_at: shippedAt,
-                shipped_by: user_id,
+                shipped_by: actorUserId,
                 shipped_to_distributor_id: resolvedToOrg,
                 updated_at: shippedAt
               })
@@ -597,7 +644,7 @@ export async function POST(request: NextRequest) {
         console.log('🔄 [CONFIRM] Update payload:', {
           status: 'shipped_distributor',
           shipped_at: shippedAt,
-          shipped_by: user_id,
+          shipped_by: actorUserId,
           shipped_to_distributor_id: resolvedToOrg,
           updated_at: shippedAt
         })
@@ -623,7 +670,7 @@ export async function POST(request: NextRequest) {
           .update({
             status: 'shipped_distributor',
             shipped_at: shippedAt,
-            shipped_by: user_id,
+            shipped_by: actorUserId,
             shipped_to_distributor_id: resolvedToOrg,
             updated_at: shippedAt
           })
@@ -722,7 +769,7 @@ export async function POST(request: NextRequest) {
       .from('qr_validation_reports')
       .update({
         validation_status: 'approved',
-        approved_by: user_id,
+        approved_by: actorUserId,
         approved_at: shippedAt,
         updated_at: shippedAt
       })
@@ -746,7 +793,7 @@ export async function POST(request: NextRequest) {
         .update({ 
           status: 'shipped_distributor',
           updated_at: shippedAt,
-          updated_by: user_id
+          updated_by: actorUserId
         })
         .eq('id', session.source_order_id)
         .eq('status', 'warehouse_packed') // Only update if currently warehouse_packed

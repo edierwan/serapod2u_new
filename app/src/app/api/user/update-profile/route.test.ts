@@ -116,4 +116,46 @@ describe('POST /api/user/update-profile', () => {
     expect(usersUpdate.mock.calls[0][0]).not.toHaveProperty('bank_name')
     expect(organizationUpdate).not.toHaveBeenCalled()
   })
+
+  it('uses the authenticated user when a normal profile client omits userId', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+    userUpdateEq.mockResolvedValue({ error: null })
+
+    const { POST } = await import('./route')
+    const response = await POST(new Request('http://localhost/api/user/update-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: 'Kuala Lumpur' }),
+    }) as any)
+
+    expect(response.status).toBe(200)
+    expect(userUpdateEq).toHaveBeenCalledWith('id', 'user-1')
+  })
+
+  it.each([
+    'role_code',
+    'organization_id',
+    'account_scope',
+    'is_active',
+    'department_id',
+    'manager_user_id',
+    'position_id',
+    'employment_type',
+    'join_date',
+    'employment_status',
+  ])('rejects protected self-service field %s', async (field) => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+
+    const { POST } = await import('./route')
+    const response = await POST(new Request('http://localhost/api/user/update-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1', [field]: 'attacker-value' }),
+    }) as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(403)
+    expect(payload.code).toBe('PROTECTED_PROFILE_FIELD')
+    expect(usersUpdate).not.toHaveBeenCalled()
+  })
 })

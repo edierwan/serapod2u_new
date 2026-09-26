@@ -5,16 +5,20 @@ import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { buildPersonalBankUpdateData, validateMsiaBankAccount } from '@/lib/engagement/personal-bank-details'
-import { getShopOrgReassignmentBlockReason } from '@/lib/auth/employment-org-guard'
+import { getDisallowedSelfServiceFields } from '@/lib/security/user-profile-updates'
 
 /**
  * POST /api/user/update-profile
  * Update user profile (name, phone) with phone sync to Supabase Auth
  * 
  * Body:
- *   userId: string - The user ID to update
+ *   userId?: string - Defaults to the authenticated user. Cross-user profile
+ *     edits require legacy administrator authorization.
  *   full_name?: string - New name
  *   phone?: string - New phone number (will be synced to Supabase Auth)
+ *
+ * Authorization, organization and employment fields are intentionally not
+ * accepted by this profile endpoint.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -32,12 +36,35 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
-    // Explicit intent required to move a user from one SHOP to a different SHOP.
-    const confirmShopSwitch = body?.confirmShopSwitch === true
+    const requestedUserId = typeof body?.userId === 'string' && body.userId.trim()
+      ? body.userId.trim()
+      : authUser.id
+    const {
+      full_name,
+      phone,
+      referral_phone,
+      reference_user_id,
+      address,
+      shop_name,
+      bank_id,
+      bank_account_number,
+      bank_account_holder_name,
+    } = body
+
+    const disallowedFields = getDisallowedSelfServiceFields(body, ['userId'])
+    if (disallowedFields.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'PROTECTED_PROFILE_FIELD',
+          error: `Profile updates cannot modify protected fields: ${disallowedFields.join(', ')}`,
+        },
+        { status: 403 },
+      )
+    }
 
     // Verify user is updating their own profile
-    if (authUser.id !== userId) {
+    if (authUser.id !== requestedUserId) {
       // Check if user is admin
       const { data: userProfile } = await supabase
         .from('users')
@@ -56,6 +83,8 @@ export async function POST(request: NextRequest) {
         )
       }
     }
+
+    const userId = requestedUserId
 
     const updateData: any = {}
 
@@ -236,97 +265,6 @@ export async function POST(request: NextRequest) {
       updateData.shop_name = shop_name?.trim() || null
     }
 
-    if (organization_id !== undefined) {
-      if (organization_id) {
-        const { data: orgData, error: orgError } = await adminClient
-          .from('organizations')
-          .select('id, org_name, branch, org_type_code, is_active')
-          .eq('id', organization_id)
-          .single()
-
-        if (orgError || !orgData) {
-          return NextResponse.json(
-            { success: false, error: 'Selected shop could not be found' },
-            { status: 400 }
-          )
-        }
-
-        if (!orgData.is_active || orgData.org_type_code !== 'SHOP') {
-          return NextResponse.json(
-            { success: false, error: 'Selected organization must be an active shop' },
-            { status: 400 }
-          )
-        }
-
-        const { data: currentUserRow, error: currentUserError } = await adminClient
-          .from('users')
-          .select(`
-            organization_id,
-            role_code,
-            account_scope,
-            roles(role_level),
-            organizations!fk_users_organization(id, org_name, branch, org_type_code)
-          `)
-          .eq('id', userId)
-          .single()
-
-        if (currentUserError) {
-          return NextResponse.json(
-            { success: false, error: 'Failed to resolve current profile state' },
-            { status: 500 }
-          )
-        }
-
-        const shopLinkBlockReason = getShopOrgReassignmentBlockReason({
-          currentOrgTypeCode: (currentUserRow?.organizations as any)?.org_type_code || null,
-          currentRoleCode: currentUserRow?.role_code,
-          currentRoleLevel: (currentUserRow?.roles as any)?.role_level ?? null,
-          currentAccountScope: currentUserRow?.account_scope,
-          nextOrgTypeCode: 'SHOP',
-        })
-
-        if (shopLinkBlockReason) {
-          return NextResponse.json(
-            { success: false, error: shopLinkBlockReason },
-            { status: 400 }
-          )
-        }
-
-        // Never silently re-point a SHOP-linked user to a different SHOP. Switching is
-        // allowed, but only with an explicit confirmShopSwitch=true from the caller.
-        const currentOrg = (currentUserRow?.organizations as any) || null
-        const currentOrganizationId = currentUserRow?.organization_id || null
-        if (
-          currentOrganizationId &&
-          currentOrganizationId !== orgData.id &&
-          currentOrg?.org_type_code === 'SHOP' &&
-          !confirmShopSwitch
-        ) {
-          return NextResponse.json(
-            {
-              success: false,
-              code: 'SHOP_SWITCH_CONFIRMATION_REQUIRED',
-              requiresShopSwitchConfirmation: true,
-              currentShop: {
-                org_id: currentOrganizationId,
-                org_name: currentOrg?.org_name || null,
-                branch: currentOrg?.branch || null,
-              },
-              requestedShop: {
-                org_id: orgData.id,
-                org_name: orgData.org_name || null,
-                branch: orgData.branch || null,
-              },
-              error: 'This profile is already linked to another shop. Please confirm that you want to switch shops.',
-            },
-            { status: 409 }
-          )
-        }
-      }
-
-      updateData.organization_id = organization_id || null
-    }
-
     // Handle referral_phone update
     if (referral_phone !== undefined) {
       const trimmedReferral = referral_phone?.trim() || ''
@@ -357,7 +295,7 @@ export async function POST(request: NextRequest) {
       updateData.referral_phone = null
     }
 
-    if (organization_id !== undefined || referral_phone !== undefined || reference_user_id !== undefined) {
+    if (shop_name !== undefined || referral_phone !== undefined || reference_user_id !== undefined) {
       const { data: existingUser, error: existingUserError } = await adminClient
         .from('users')
         .select(`
@@ -376,9 +314,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const nextOrganizationId = updateData.organization_id !== undefined
-        ? updateData.organization_id
-        : existingUser?.organization_id || null
+      const nextOrganizationId = existingUser?.organization_id || null
       const nextShopName = updateData.shop_name !== undefined
         ? updateData.shop_name
         : existingUser?.shop_name || null
@@ -388,22 +324,7 @@ export async function POST(request: NextRequest) {
 
       let nextOrganizationTypeCode = (existingUser?.organizations as any)?.org_type_code || null
 
-      if (nextOrganizationId && nextOrganizationId !== existingUser?.organization_id) {
-        const { data: organizationData, error: organizationError } = await adminClient
-          .from('organizations')
-          .select('org_type_code')
-          .eq('id', nextOrganizationId)
-          .maybeSingle()
-
-        if (organizationError) {
-          return NextResponse.json(
-            { success: false, error: 'Failed to resolve selected shop' },
-            { status: 500 }
-          )
-        }
-
-        nextOrganizationTypeCode = organizationData?.org_type_code || null
-      } else if (!nextOrganizationId) {
+      if (!nextOrganizationId) {
         nextOrganizationTypeCode = null
       }
 

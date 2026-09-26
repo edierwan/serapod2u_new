@@ -699,8 +699,6 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         address: formData.address?.trim() || null,
         location: formData.location || null,
         shop_name: formData.shop_name?.trim() || null,
-        organization_id: formData.organization_id || null,
-        updated_at: new Date().toISOString()
       }
 
       // If referral module is not enabled, include referral_phone directly (legacy)
