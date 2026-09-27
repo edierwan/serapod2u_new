@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'manufacturing.adjustment.manage')
+    if (saDenied) return saDenied
 
     // fetch user profile
     const { data: userProfile } = await supabase.from('users').select('organization_id, role_code').eq('id', user.id).single()
@@ -50,6 +53,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'manufacturing.adjustment.manage')
+    if (saDenied) return saDenied
 
     const { data: userProfile } = await supabase.from('users').select('id, organization_id, role_code').eq('id', user.id).single()
     if (!userProfile) return NextResponse.json({ error: 'User profile not found' }, { status: 400 })
@@ -94,6 +99,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'manufacturing.adjustment.manage')
+    if (saDenied) return saDenied
 
     const { data: userProfile } = await supabase
       .from('users')
@@ -249,6 +256,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const { data: { user }, error: authErr } = await supabase.auth.getUser()
     if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'manufacturing.adjustment.manage')
+    if (saDenied) return saDenied
 
     const { data: userProfile } = await supabase
       .from('users')

@@ -3,6 +3,10 @@ import { NextRequest } from 'next/server'
 import { createFakeSupabase, type FakeSupabase } from '@/lib/warehouse/test-utils/fake-supabase'
 import { fakePostWarehouseReceipt } from '@/lib/warehouse/test-utils/fake-warehouse-receipt-rpc'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 /**
  * Server-side receive limit — a request that bypasses the Receive screen
  * validation is still rejected. Shaped like staging ORD26000093: Corn 100

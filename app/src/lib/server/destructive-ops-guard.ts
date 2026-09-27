@@ -25,6 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeOperation } from '@/lib/security-access/operation'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -168,13 +169,22 @@ export async function assertDestructiveOpsAllowed(
     .single()
 
   const roleLevel = (profile as any)?.roles?.role_level
-  if (roleLevel !== 1) {
+  // Gate 3 is an S&A decision (platform.data.destructive, a separately
+  // granted privileged permission) with the historical Super Admin rule as
+  // the legacy evaluator. The environment gate above always applies.
+  const saAllowed = await authorizeOperation({
+    actorId: user.id,
+    permission: 'platform.data.destructive',
+    resource: { type: 'destructive_operation', id: operation, organizationId: (await supabase.from('users').select('organization_id').eq('id', user.id).maybeSingle()).data?.organization_id ?? null },
+    legacy: () => roleLevel === 1,
+  }).then(d => d.decision === 'ALLOW').catch(() => false)
+  if (!saAllowed) {
     const entry: AuditEntry = {
       operation,
       user_id: user.id,
       user_email: user.email ?? null,
       allowed: false,
-      reason: `Insufficient role (role_level=${roleLevel})`,
+      reason: `Security & Access denied platform.data.destructive (legacy role_level=${roleLevel})`,
       ip,
       user_agent: userAgent,
     }

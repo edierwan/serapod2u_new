@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { authorize, type LegacyEvaluator } from './authorization'
 import type { AuthorizationDecision, AuthorizationResource } from './types'
 
@@ -58,4 +59,40 @@ export function organizationResource(type: string, organizationId: string | null
 /** Warehouse-scoped resource (organization + warehouse context). */
 export function warehouseResource(type: string, warehouseId: string, extra: Partial<AuthorizationResource> = {}): AuthorizationResource {
   return { type, organizationId: warehouseId, warehouseId, ...extra }
+}
+
+/**
+ * Route guard for a verified user id. The resource organization defaults to
+ * the actor's own organization read from the database (trusted), so a client
+ * can never widen its scope by supplying an organization. Pass
+ * organizationId/warehouseId only when they come from rows the server loaded.
+ */
+export async function guardUserOperation(
+  userId: string,
+  permission: string,
+  options: {
+    legacy?: LegacyEvaluator
+    resourceType?: string
+    organizationId?: string | null
+    warehouseId?: string | null
+    ownerUserId?: string | null
+  } = {},
+): Promise<NextResponse | null> {
+  let organizationId = options.organizationId ?? null
+  if (!organizationId && !options.warehouseId) {
+    const admin = createAdminClient() as any
+    const { data } = await admin.from('users').select('organization_id').eq('id', userId).maybeSingle()
+    organizationId = data?.organization_id ?? null
+  }
+  return guardOperation({
+    actorId: userId,
+    permission,
+    resource: {
+      type: options.resourceType ?? permission.split('.').slice(0, 2).join('_'),
+      organizationId: organizationId ?? options.warehouseId ?? null,
+      ...(options.warehouseId ? { warehouseId: options.warehouseId } : {}),
+      ...(options.ownerUserId ? { ownerUserId: options.ownerUserId } : {}),
+    },
+    legacy: options.legacy ?? (() => true),
+  })
 }

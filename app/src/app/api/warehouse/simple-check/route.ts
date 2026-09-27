@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -34,7 +35,10 @@ export async function GET() {
 
     // Get current user info
     const { data: { user } } = await supabase.auth.getUser()
-    
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'inventory.report.view')
+    if (saDenied) return saDenied
+
     let userInfo = null
     if (user) {
       const { data: profile } = await supabase

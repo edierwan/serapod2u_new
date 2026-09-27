@@ -11,7 +11,7 @@ const ENABLE_VARIANT_SELECT =
   'products!inner(id, product_code, product_name, is_vape, is_active, product_groups(id, group_name, stock_config_profile))'
 
 export async function POST(request: NextRequest) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.stock_config.manage')
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
 
   const { variantIds } = await request.json()

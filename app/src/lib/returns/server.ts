@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 import { isReturnManagerOrgType, computeReturnTotal, type ReturnStatus, RETURN_STATUS_TIMESTAMP_COLUMN, RETURN_SOURCE_ORG_TYPE_CODE, RETURN_SOURCE_LABELS, type ReturnSourceType } from './constants'
 import type { ReturnCaseRow, ReturnCaseItemRow } from './database-extension'
 
@@ -92,7 +93,17 @@ export async function getReturnContext(): Promise<ReturnContext | NextResponse> 
     }
 
     const roleCode = (profile as any)?.role_code ?? null
-    const isManager = roleCode === 'SA' || isReturnManagerOrgType(orgTypeCode)
+    const legacyIsManager = roleCode === 'SA' || isReturnManagerOrgType(orgTypeCode)
+    // Return management is an S&A decision in the actor's own organization;
+    // the historical org-type rule is the legacy evaluator.
+    const isManager = orgId
+        ? await authorizeOperation({
+            actorId: user.id,
+            permission: 'inventory.return.manage',
+            resource: organizationResource('return_case', orgId),
+            legacy: () => legacyIsManager,
+        }).then(d => d.decision === 'ALLOW').catch(() => false)
+        : false
 
     return {
         admin,

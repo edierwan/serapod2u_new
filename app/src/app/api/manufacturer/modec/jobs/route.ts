@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest) {
                 { status: 401 }
             )
         }
+        const saDenied = await guardUserOperation(user.id, 'manufacturing.production.manage')
+        if (saDenied) return saDenied
 
         const searchParams = request.nextUrl.searchParams
         const order_id = searchParams.get('order_id')
@@ -203,6 +206,8 @@ export async function DELETE(request: NextRequest) {
                 { status: 401 }
             )
         }
+        const saDenied = await guardUserOperation(user.id, 'manufacturing.production.manage')
+        if (saDenied) return saDenied
 
         const searchParams = request.nextUrl.searchParams
         const order_id = searchParams.get('order_id')

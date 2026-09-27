@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generatePdfForOrderDocument } from '@/lib/documents/pdf-generation'
@@ -21,6 +22,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
   try {
     const supabase = await createClient()
+    const { data: { user: saUser } } = await supabase.auth.getUser()
+    if (!saUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(saUser.id, 'supply_chain.document.manage')
+    if (saDenied) return saDenied
 
     const { data: order, error: orderError } = await supabase
       .from('orders')

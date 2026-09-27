@@ -1,3 +1,4 @@
+import { serappAllowed } from '@/lib/serapp/sa'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
 
     const orgType = (organization?.org_type_code || '').toUpperCase()
     const canAccept = access.isHqSupport || orgType === 'WH' || orgType === 'HQ'
-    if (!canAccept) {
+    if (!(await serappAllowed(user.id, requester.organization_id, 'warehouse.shipment.manage', canAccept))) {
       return NextResponse.json({
         error: 'Only HQ or Warehouse users can accept Serapp holds.',
       }, { status: 403 })

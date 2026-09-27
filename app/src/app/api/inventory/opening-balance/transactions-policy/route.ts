@@ -67,7 +67,7 @@ const parseCarriedRefs = (value: unknown): TransactionRef[] => {
 
 export async function POST(request: Request) {
   const correlationId = request.headers.get('x-request-id') || crypto.randomUUID()
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.opening_balance.manage')
   if (!context.ok) {
     const category: TransactionsPolicyErrorCategory =
       context.status === 401 || context.status === 403

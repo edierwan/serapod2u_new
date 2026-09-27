@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -62,6 +63,8 @@ export async function POST(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const saDenied = await guardUserOperation(user.id, 'warehouse.receipt.post')
+  if (saDenied) return saDenied
 
   const body = await request.json()
   const { order_id, batch_id, receipt_type, items, idempotency_key, notes } = body

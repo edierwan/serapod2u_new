@@ -5,6 +5,10 @@ import { fakePostWarehouseReceipt } from '@/lib/warehouse/test-utils/fake-wareho
 import { resolveConsumerScanStatus } from '@/lib/consumer/qr-scan-eligibility'
 import { isQrEligibleForCollectPoints } from '@/lib/consumer/collect-points-qr-status'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 /**
  * H2M partial warehouse receiving — end-to-end through the real routes
  * (confirm-receipt → warehouse-receiving-worker → receipt-summary) against an

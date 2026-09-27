@@ -1,8 +1,13 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
+  const { data: { user: saUser } } = await supabase.auth.getUser()
+  if (!saUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const saDenied = await guardUserOperation(saUser.id, 'manufacturing.production.manage')
+  if (saDenied) return saDenied
   const { batch_id } = await request.json()
 
   if (!batch_id) {

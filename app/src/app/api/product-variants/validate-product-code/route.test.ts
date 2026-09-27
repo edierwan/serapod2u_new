@@ -5,6 +5,10 @@ import {
 } from '@/lib/products/product-code'
 import { ALTERNATIVE_NAME_DUPLICATE_MESSAGE } from '@/lib/products/alternative-name'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 const createClientMock = vi.fn()
 const authGetUser = vi.fn()
 const productSingle = vi.fn()

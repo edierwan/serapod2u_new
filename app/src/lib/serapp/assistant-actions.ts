@@ -1,3 +1,4 @@
+import { serappAllowed } from '@/lib/serapp/sa'
 import { validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -339,7 +340,7 @@ export async function runSerappCancelHold(input: {
     roleLevel: null,
   })
 
-  if (!access.isDistributor && !access.isHqSupport) {
+  if (!(await serappAllowed(user.id, requester.organization_id, 'supply_chain.order.cancel', access.isDistributor || access.isHqSupport))) {
     return { ok: false, error: 'Not allowed to cancel Serapp holds.', status: 403 }
   }
 

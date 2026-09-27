@@ -55,7 +55,7 @@ async function loadVariantConfiguration(admin: any, variantId: string) {
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ variantId: string }> }) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.stock_config.manage')
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
   const { variantId } = await params
   const result = await loadVariantConfiguration(context.admin, variantId)
@@ -63,7 +63,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ variantId: string }> }) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.stock_config.manage')
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
   const { variantId } = await params
   const before = await loadVariantConfiguration(context.admin, variantId)

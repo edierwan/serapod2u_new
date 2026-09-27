@@ -24,7 +24,7 @@ const errorResponse = (
 
 export async function POST(request: Request) {
   const correlationId = request.headers.get('x-request-id') || crypto.randomUUID()
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.opening_balance.manage')
   if (!context.ok) {
     const category: H2mPreflightErrorCategory = context.status === 401 || context.status === 403
       ? 'h2m_preflight_unauthorized'

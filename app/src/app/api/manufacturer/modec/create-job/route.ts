@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { parseSpoiledEntries } from '@/lib/qr-parser'
@@ -12,6 +13,8 @@ export async function POST(request: NextRequest) {
         if (userError || !user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
+        const saDenied = await guardUserOperation(user.id, 'manufacturing.production.manage')
+        if (saDenied) return saDenied
 
         const body = await request.json()
         const { order_id, batch_id, spoiled_input } = body

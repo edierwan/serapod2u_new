@@ -1,3 +1,4 @@
+import { serappAllowed } from '@/lib/serapp/sa'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
       organizationId: requester.organization_id,
       roleLevel: null,
     })
-    if (!access.allowed) {
+    if (!(await serappAllowed(user.id, requester.organization_id, 'supply_chain.order.create', access.allowed))) {
       return NextResponse.json({ error: access.reason }, { status: 403 })
     }
 

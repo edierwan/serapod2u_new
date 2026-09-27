@@ -4,6 +4,10 @@ import { createFakeSupabase, makeQrCodes, type FakeSupabase } from '@/lib/wareho
 import { fakePostWarehouseReceipt, type FakeReceiptRpcOptions } from '@/lib/warehouse/test-utils/fake-warehouse-receipt-rpc'
 import { resolveConsumerScanStatus } from '@/lib/consumer/qr-scan-eligibility'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 /**
  * Regression: staging ORD26000024 (ORD-HM-0726-01) — Warehouse Receive failed with
  *   warehouse_receipt_order_item_configuration_missing_or_conflicting: variant 3d13c8ac-…

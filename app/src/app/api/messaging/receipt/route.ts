@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { notifyAfterMessagingInvoice } from '@/lib/messaging/invoice-notify'
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'warehouse.receipt.post')
+    if (saDenied) return saDenied
 
     const { data, error } = await supabase.rpc('messaging_acknowledge_receipt' as any, {
       p_order_id: orderId,

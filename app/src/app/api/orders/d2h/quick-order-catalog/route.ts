@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveQuickOrderCatalog } from '@/lib/orders/quick-order-catalog'
@@ -7,6 +8,8 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'supply_chain.order.create')
+    if (saDenied) return saDenied
 
     const body = await request.json().catch(() => null)
     if (typeof body?.distributorId !== 'string' || !body.distributorId) {

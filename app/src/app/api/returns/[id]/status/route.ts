@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { getReturnContext, loadAccessibleCase, statusTimestampColumn } from '@/lib/returns/server'
 import { RETURN_NEXT_STATUS, canAdvanceStatus, type ReturnStatus } from '@/lib/returns/constants'
@@ -15,6 +16,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params
     const ctx = await getReturnContext()
     if (ctx instanceof NextResponse) return ctx
+    if (!ctx.isManager) {
+        const saDenied = await guardUserOperation(ctx.userId, 'inventory.return.request', { organizationId: ctx.orgId })
+        if (saDenied) return saDenied
+    }
 
     const rc = await loadAccessibleCase(ctx, id)
     if (rc instanceof NextResponse) return rc

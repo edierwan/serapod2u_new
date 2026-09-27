@@ -157,11 +157,11 @@ select public.sa_inject_operation_guard(
   $g$PERFORM public.sa_require_operation('inventory.stock_config.manage', jsonb_build_object('organization_id', public.sa_actor_company_id()), 'product_variant', p_variant_id::text);$g$,
   jsonb_build_array(jsonb_build_array('IF auth\.role\(\) = ''authenticated'' AND NOT public\.is_hq_admin\(\) THEN',
     $r$IF auth.role() = 'authenticated' AND public.sa_legacy_guard_unless_new('inventory.stock_config.manage') AND NOT public.is_hq_admin() THEN$r$)));
+-- Archiving keeps its HQ-admin rule as a workflow constraint (the catalogue
+-- permission is held by role level 20, archiving historically by level 10).
 select public.sa_inject_operation_guard(
   'public.archive_product_variant(uuid)'::regprocedure, 'product.catalog.manage',
-  $g$PERFORM public.sa_require_operation('product.catalog.manage', jsonb_build_object('organization_id', public.sa_actor_company_id()), 'product_variant', p_variant_id::text);$g$,
-  jsonb_build_array(jsonb_build_array('IF NOT public\.is_hq_admin\(\) THEN',
-    $r$IF public.sa_legacy_guard_unless_new('product.catalog.manage') AND NOT public.is_hq_admin() THEN$r$)));
+  $g$PERFORM public.sa_require_operation('product.catalog.manage', jsonb_build_object('organization_id', public.sa_actor_company_id()), 'product_variant', p_variant_id::text);$g$);
 do $cfg$
 begin
   if to_regprocedure('public.enable_variant_stock_configurations_with_profile(uuid,text)') is not null then
@@ -359,7 +359,147 @@ revoke truncate on table public.points_transactions from anon, authenticated;
 revoke truncate on table public.orders, public.documents from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 4. Post-conditions
+-- 4. RLS gates for remaining business tables
+-- ---------------------------------------------------------------------------
+-- Same mechanical, monotonic rewrite as migration B: every policy command
+-- that contains a role/privilege predicate decides through S&A in
+-- NEW_ENFORCED, while tenant and ownership predicates keep applying. A null
+-- read permission leaves SELECT policies untouched (reference data, consumer
+-- and own-record reads stay as they are).
+do $gates$
+declare r record;
+begin
+  for r in select * from (values
+    -- Supply Chain
+    ('orders', null, 'supply_chain.order.create', 'company_id'),
+    ('order_items', null, 'supply_chain.order.create', 'company_id'),
+    ('documents', null, 'supply_chain.document.manage', 'company_id'),
+    ('document_files', null, 'supply_chain.document.manage', 'company_id'),
+    ('document_signatures', null, 'supply_chain.document.manage', 'organization_id'),
+    ('doc_counters', null, 'supply_chain.document.manage', 'company_id'),
+    ('inventory_cutoff_d2h_policies', null, 'inventory.opening_balance.manage', 'warehouse_organization_id'),
+    ('inventory_cutoff_decisions', null, 'inventory.opening_balance.manage', 'organization_id'),
+    ('inventory_cutoff_h2m_policies', null, 'inventory.opening_balance.manage', 'warehouse_organization_id'),
+    ('inventory_cutoff_transactions_policies', null, 'inventory.opening_balance.manage', 'warehouse_organization_id'),
+    ('inventory_opening_cutoffs', 'inventory.opening_balance.manage', 'inventory.opening_balance.manage', 'warehouse_organization_id'),
+    ('inventory_stock_configurations', null, 'inventory.stock_config.manage', 'organization_id'),
+    ('stock_count_sessions', null, 'inventory.stock_count.create', 'warehouse_organization_id'),
+    ('stock_count_session_items', null, 'inventory.stock_count.create', 'organization_id'),
+    ('stock_count_session_scope', null, 'inventory.stock_count.create', 'organization_id'),
+    ('stock_count_classification_allocation_resolutions', null, 'inventory.opening_balance.manage', 'organization_id'),
+    ('stock_adjustments', null, 'manufacturing.adjustment.manage', 'organization_id'),
+    ('stock_adjustment_manufacturer_actions', null, 'manufacturing.adjustment.manage', 'organization_id'),
+    ('qr_batches', null, 'qr.batch.manage', 'company_id'),
+    ('qr_codes', null, 'manufacturing.production.manage', 'company_id'),
+    ('qr_master_codes', null, 'manufacturing.production.manage', 'company_id'),
+    ('qr_movements', null, 'manufacturing.production.manage', 'company_id'),
+    ('qr_prepared_codes', null, 'manufacturing.production.manage', 'organization_id'),
+    ('qr_reverse_jobs', null, 'manufacturing.scan.reverse', 'organization_id'),
+    ('qr_reverse_job_items', null, 'manufacturing.scan.reverse', 'organization_id'),
+    ('qr_validation_reports', null, 'manufacturing.production.manage', 'company_id'),
+    ('return_conditions', null, 'inventory.return.manage', 'organization_id'),
+    ('return_reasons', null, 'inventory.return.manage', 'organization_id'),
+    ('return_settings', null, 'inventory.return.manage', 'organization_id'),
+    ('return_case_status_history', null, 'inventory.return.manage', 'organization_id'),
+    -- Product catalogue
+    ('products', null, 'product.catalog.manage', 'organization_id'),
+    ('product_variants', null, 'product.catalog.manage', 'organization_id'),
+    ('brands', null, 'product.catalog.manage', 'organization_id'),
+    ('product_categories', null, 'product.catalog.manage', 'organization_id'),
+    ('product_groups', null, 'product.catalog.manage', 'organization_id'),
+    ('product_subgroups', null, 'product.catalog.manage', 'organization_id'),
+    ('product_skus', null, 'product.catalog.manage', 'organization_id'),
+    ('product_images', null, 'product.catalog.manage', 'organization_id'),
+    ('product_pricing', null, 'product.catalog.manage', 'organization_id'),
+    ('product_attributes', null, 'product.catalog.manage', 'organization_id'),
+    ('product_colour_reference', null, 'product.catalog.manage', 'organization_id'),
+    ('variant_media', null, 'product.catalog.manage', 'organization_id'),
+    ('variant_kkm_certificates', null, 'product.catalog.manage', 'organization_id'),
+    ('distributor_products', null, 'product.catalog.manage', 'organization_id'),
+    ('distributor_stock_config_eligibility', null, 'inventory.stock_config.manage', 'organization_id'),
+    -- Customer & Growth
+    ('shop_distributors', null, 'customer.shop.manage', 'organization_id'),
+    ('journey_configurations', null, 'customer.campaign.manage', 'org_id'),
+    ('journey_order_links', null, 'customer.campaign.manage', 'organization_id'),
+    ('lucky_draw_campaigns', null, 'customer.campaign.manage', 'company_id'),
+    ('lucky_draw_entries', null, 'customer.campaign.manage', 'company_id'),
+    ('lucky_draw_order_links', null, 'customer.campaign.manage', 'organization_id'),
+    ('short_links', null, 'customer.campaign.manage', 'org_id'),
+    ('marketing_segments', null, 'customer.campaign.manage', 'org_id'),
+    ('master_banner_configs', null, 'customer.campaign.manage', 'org_id'),
+    ('loyalty_programs', null, 'customer.program.manage', 'organization_id'),
+    ('loyalty_program_organization_memberships', null, 'customer.program.manage', 'organization_id'),
+    ('loyalty_program_user_memberships', null, 'customer.program.manage', 'organization_id'),
+    ('ellbow_rewards', null, 'customer.reward.manage', 'organization_id'),
+    ('ellbow_reward_categories', null, 'customer.reward.manage', 'organization_id'),
+    ('ellbow_reward_images', null, 'customer.reward.manage', 'organization_id'),
+    ('ellbow_loyalty_settings', null, 'customer.reward.manage', 'organization_id'),
+    ('ellbow_loyalty_mappings', null, 'customer.program.manage', 'organization_id'),
+    ('points_rules', null, 'customer.reward.manage', 'org_id'),
+    ('redeem_gifts', null, 'customer.reward.manage', 'organization_id'),
+    ('redeem_items', null, 'customer.reward.manage', 'company_id'),
+    ('redemption_policies', null, 'customer.reward.manage', 'org_id'),
+    ('points_transactions', null, 'customer.loyalty.adjust', 'company_id'),
+    ('support_announcements', null, 'customer.support.manage', 'organization_id'),
+    ('support_announcement_deliveries', null, 'customer.support.manage', 'organization_id'),
+    ('support_conversation_notes', null, 'customer.support.manage', 'organization_id'),
+    ('support_conversation_tags', null, 'customer.support.manage', 'organization_id'),
+    ('support_tags', null, 'customer.support.manage', 'organization_id'),
+    ('support_conversations', null, 'customer.support.manage', 'organization_id'),
+    ('support_threads', null, 'customer.support.manage', 'organization_id'),
+    ('support_conversation_messages', null, 'customer.support.manage', 'organization_id'),
+    ('support_messages', null, 'customer.support.manage', 'organization_id'),
+    ('support_thread_reads', null, 'customer.support.manage', 'organization_id'),
+    ('support_conversation_events', null, 'customer.support.manage', 'organization_id'),
+    ('whatsapp_bot_admins', null, 'customer.support.manage', 'organization_id'),
+    ('whatsapp_bot_sessions', null, 'customer.support.manage', 'organization_id'),
+    ('whatsapp_bot_settings', null, 'customer.support.manage', 'organization_id'),
+    ('whatsapp_conversations', null, 'customer.support.manage', 'organization_id'),
+    -- Identity rows of OTHER users (own-profile updates keep their ownership
+    -- policy; Phase 0A still forbids self-changes of access fields).
+    ('users', null, 'hr.employee.manage', 'organization_id'),
+    -- RoadTour
+    ('roadtour_product_catalogs', null, 'roadtour.campaign.manage', 'organization_id'),
+    ('roadtour_product_catalog_items', null, 'roadtour.campaign.manage', 'organization_id'),
+    ('roadtour_product_category_rules', null, 'roadtour.campaign.manage', 'organization_id'),
+    -- E-Commerce
+    ('store_hero_banners', null, 'ecommerce.store.manage', 'org_id'),
+    ('store_hero_config', null, 'ecommerce.store.manage', 'org_id'),
+    ('payment_gateway_settings', 'ecommerce.channel.manage', 'ecommerce.channel.manage', 'organization_id'),
+    -- Platform
+    ('messaging_channel_settings', null, 'platform.settings.manage', 'organization_id'),
+    ('notification_provider_configs', 'platform.settings.manage', 'platform.settings.manage', 'org_id'),
+    ('notification_settings', null, 'platform.settings.manage', 'org_id'),
+    ('org_notification_settings', null, 'platform.settings.manage', 'org_id'),
+    ('ai_provider_settings', null, 'platform.settings.manage', 'organization_id'),
+    ('ai_usage_logs', 'platform.settings.manage', null, 'organization_id'),
+    ('admin_whatsapp_identities', null, 'platform.settings.manage', 'organization_id'),
+    ('tenant_features', null, 'platform.settings.manage', 'organization_id'),
+    ('regions', null, 'platform.settings.manage', 'organization_id'),
+    ('states', null, 'platform.settings.manage', 'organization_id'),
+    ('districts', null, 'platform.settings.manage', 'organization_id'),
+    ('organization_types', null, 'platform.settings.manage', 'organization_id'),
+    ('organizations', null, 'platform.organization.manage', 'id'),
+    ('departments', null, 'hr.settings.manage', 'organization_id'),
+    ('audit_logs', 'security.audit.view', null, 'organization_id'),
+    ('migration_history', 'platform.data.destructive', 'platform.data.destructive', 'organization_id'),
+    -- Payroll integration / HR remainder
+    ('payroll_clearing_accounts', 'finance.payroll_integration.manage', 'finance.payroll_integration.manage', 'company_id'),
+    ('payroll_component_gl_map', 'finance.payroll_integration.manage', 'finance.payroll_integration.manage', 'company_id'),
+    ('payroll_components', null, 'hr.compensation.manage', 'company_id'),
+    ('payroll_payment_batches', 'hr.payroll.view', 'hr.payroll.release', 'company_id'),
+    ('hr_attendance_audit', 'hr.attendance.manage', 'hr.attendance.manage', 'organization_id'),
+    ('hr_kpi_reviews', null, 'hr.performance.manage', 'organization_id'),
+    ('hr_kpi_scorecards', null, 'hr.performance.manage', 'organization_id'),
+    ('hr_delegation_rules', null, 'hr.leave.approve', 'organization_id')
+  ) as t(tbl, read_perm, write_perm, org_col) loop
+    perform public.sa_gate_table(r.tbl, r.read_perm, r.write_perm, r.org_col, false);
+  end loop;
+end
+$gates$;
+
+-- ---------------------------------------------------------------------------
+-- 5. Post-conditions
 -- ---------------------------------------------------------------------------
 do $$
 declare
@@ -376,6 +516,10 @@ begin
 
   if pg_get_functiondef('public.orders_approve(uuid)'::regprocedure) not like '%order-maker-checker%' then
     raise exception 'postcondition: order maker/checker not enforced in orders_approve';
+  end if;
+
+  if (select count(*) from public.sa_policy_rewrites where table_name in ('qr_codes','products','ellbow_rewards','organizations','store_hero_banners')) < 5 then
+    raise exception 'postcondition: business table policies were not gated';
   end if;
 
   if not exists (select 1 from pg_trigger where tgname = 'sa_orders_api_write_guard' and tgrelid = 'public.orders'::regclass)

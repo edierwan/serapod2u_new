@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import ExcelJS from 'exceljs'
@@ -20,6 +21,10 @@ function generateTrackingURL(code: string, type: 'product' | 'master'): string {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const { data: { user: saUser } } = await supabase.auth.getUser()
+    if (!saUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(saUser.id, 'manufacturing.production.manage')
+    if (saDenied) return saDenied
     const searchParams = request.nextUrl.searchParams
     const batchId = searchParams.get('batch_id')
 

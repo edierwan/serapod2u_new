@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStockConfigAdminContext } from '@/lib/server/stock-config-admin'
 
 export async function GET(request: NextRequest) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.stock_config.manage')
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
   const search = String(request.nextUrl.searchParams.get('q') || '').trim().replace(/[%_,().]/g, ' ')
 
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.stock_config.manage')
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
   const { distributorOrgId } = await request.json()
   const { data: distributor } = await context.admin.from('organizations')
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.stock_config.manage')
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
   const distributorOrgId = request.nextUrl.searchParams.get('distributorOrgId')
   if (!distributorOrgId) return NextResponse.json({ error: 'Distributor organization is required' }, { status: 400 })

@@ -1,4 +1,6 @@
 import { authorizeWarehouseShipment, type WarehouseShipmentScope } from './shipment-authorization'
+import { authorizeOperation } from '@/lib/security-access/operation'
+import { resolveWarehouseResourceContext } from '@/lib/security-access/resource-context'
 
 // Minimal structural type so routes can pass either a typed or untyped admin client.
 type AdminClient = { from: (table: string) => any }
@@ -48,7 +50,22 @@ export async function authorizeShipmentActor(
     scope,
   )
 
-  return decision.allowed ? { allowed: true } : { allowed: false, status: 403, message: decision.reason }
+  // S&A decides warehouse.shipment.manage for the shipment's warehouse (a
+  // trusted row); the Phase 0A rule above is the legacy evaluator.
+  if (!scope.warehouse_org_id) return { allowed: false, status: 403, message: 'Warehouse scope is missing' }
+  try {
+    const context = await resolveWarehouseResourceContext(actorProfile.organization_id ?? null, scope.warehouse_org_id)
+    const sa = await authorizeOperation({
+      actorId: actorUserId,
+      permission: 'warehouse.shipment.manage',
+      resource: { type: 'warehouse_shipment', ...context },
+      legacy: () => decision.allowed,
+    })
+    if (sa.decision === 'ALLOW') return { allowed: true }
+    return { allowed: false, status: 403, message: decision.allowed ? 'Forbidden' : (decision as any).reason }
+  } catch {
+    return { allowed: false, status: 403, message: 'Forbidden' }
+  }
 }
 
 /**

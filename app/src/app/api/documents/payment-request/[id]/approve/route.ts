@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -66,12 +67,7 @@ export async function POST(
     const isPowerUser = Boolean(isPowerUserFlag)
     const isHQAdmin = Boolean(isHQAdminFlag)
 
-    if (!isHQOrg || !(isHQAdmin || isPowerUser)) {
-      return NextResponse.json(
-        { error: 'Only HQ Admin or Power User can approve payment requests' },
-        { status: 403 }
-      )
-    }
+    const legacyMayApprove = isHQOrg && (isHQAdmin || isPowerUser)
 
   const { id: requestId } = await context.params
 
@@ -80,7 +76,7 @@ export async function POST(
     // Verify the payment request exists and is pending
     const { data: paymentRequest, error: fetchError } = await adminSupabase
       .from('documents')
-      .select('id, status')
+      .select('id, status, company_id')
       .eq('id', requestId)
       .eq('doc_type', 'PAYMENT_REQUEST')
       .maybeSingle()
@@ -95,6 +91,21 @@ export async function POST(
         { error: 'Payment request not found' },
         { status: 404 }
       )
+    }
+
+    // Approval authority: S&A finance.payment.approve in the request's
+    // company (trusted row). The historical HQ-admin/power-user rule is the
+    // legacy evaluator. approve_payment_request re-checks in the database and
+    // applies the maker/checker rule.
+    const saDenied = await guardUserOperation(user.id, 'finance.payment.approve', {
+      organizationId: (paymentRequest as any).company_id ?? null,
+      resourceType: 'payment_request',
+      legacy: () => legacyMayApprove,
+    })
+    if (saDenied) {
+      return legacyMayApprove
+        ? saDenied
+        : NextResponse.json({ error: 'Only HQ Admin or Power User can approve payment requests' }, { status: 403 })
     }
 
     if (paymentRequestRow.status !== 'pending') {
