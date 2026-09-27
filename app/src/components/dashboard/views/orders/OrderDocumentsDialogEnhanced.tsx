@@ -11,6 +11,7 @@ import AcknowledgeButton from '@/components/documents/AcknowledgeButton'
 import PaymentProofUpload from '@/components/documents/PaymentProofUpload'
 import ManufacturerDocumentUpload from '@/components/documents/ManufacturerDocumentUpload'
 import { type Document, getDisplayDocNo } from '@/lib/document-permissions'
+import { downloadOrderDocument } from '@/lib/storage/order-documents-client'
 
 interface OrderDocumentsDialogEnhancedProps {
   orderId: string
@@ -692,42 +693,8 @@ export default function OrderDocumentsDialogEnhanced({
 
     setDownloading('payment-proof')
     try {
-      console.log('🔍 Downloading payment proof from:', paymentProofUrl)
-
-      // Download the file from Supabase Storage using the download method
-      // This works for both public and private buckets
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('order-documents')
-        .download(paymentProofUrl)
-
-      if (downloadError) {
-        console.error('🔍 Download error:', downloadError)
-        throw new Error(downloadError.message || 'Failed to download payment proof')
-      }
-
-      if (!fileData) {
-        throw new Error('No file data received')
-      }
-
-      console.log('🔍 Downloaded blob size:', fileData.size, 'type:', fileData.type)
-
-      // Extract filename from URL or create a default one
       const downloadDisplayNo = displayOrderNo || orderData?.display_doc_no || orderNo
-      const fileName = paymentProofUrl.split('/').pop() || `payment-proof-${downloadDisplayNo}.pdf`
-
-      // Create download link
-      const blobUrl = window.URL.createObjectURL(fileData)
-      const a = document.createElement('a')
-      a.href = blobUrl
-      a.download = fileName
-      document.body.appendChild(a)
-      a.click()
-
-      // Clean up
-      setTimeout(() => {
-        window.URL.revokeObjectURL(blobUrl)
-        document.body.removeChild(a)
-      }, 100)
+      await downloadOrderDocument(orderId, paymentProofUrl, `payment-proof-${downloadDisplayNo}.pdf`)
 
       // Mark payment proof as reviewed
       setHasReviewedPaymentProof(true)
@@ -760,33 +727,8 @@ export default function OrderDocumentsDialogEnhanced({
 
     setDownloading('balance-proof')
     try {
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('order-documents')
-        .download(balancePaymentProofUrl)
-
-      if (downloadError) {
-        console.error('🔍 Balance proof download error:', downloadError)
-        throw new Error(downloadError.message || 'Failed to download final payment proof')
-      }
-
-      if (!fileData) {
-        throw new Error('No file data received')
-      }
-
       const downloadDisplayNo = displayOrderNo || orderData?.display_doc_no || orderNo
-      const fileName = balancePaymentProofUrl.split('/').pop() || `balance-payment-proof-${downloadDisplayNo}.pdf`
-
-      const blobUrl = window.URL.createObjectURL(fileData)
-      const a = document.createElement('a')
-      a.href = blobUrl
-      a.download = fileName
-      document.body.appendChild(a)
-      a.click()
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(blobUrl)
-        document.body.removeChild(a)
-      }, 100)
+      await downloadOrderDocument(orderId, balancePaymentProofUrl, `balance-payment-proof-${downloadDisplayNo}.pdf`)
 
       setHasReviewedBalanceProof(true)
 
@@ -1256,20 +1198,7 @@ export default function OrderDocumentsDialogEnhanced({
                             onClick={async () => {
                               setDownloading('manufacturer-doc')
                               try {
-                                const { data, error } = await supabase.storage
-                                  .from('order-documents')
-                                  .download(manufacturerDocUrl)
-
-                                if (error) throw error
-
-                                const url = URL.createObjectURL(data)
-                                const a = document.createElement('a')
-                                a.href = url
-                                a.download = manufacturerDocUrl.split('/').pop() || 'proforma-invoice.pdf'
-                                document.body.appendChild(a)
-                                a.click()
-                                document.body.removeChild(a)
-                                URL.revokeObjectURL(url)
+                                await downloadOrderDocument(orderId, manufacturerDocUrl, 'proforma-invoice.pdf')
 
                                 toast({
                                   title: 'Success',
@@ -1484,20 +1413,7 @@ export default function OrderDocumentsDialogEnhanced({
                             onClick={async () => {
                               setDownloading('manufacturer-doc')
                               try {
-                                const { data, error } = await supabase.storage
-                                  .from('order-documents')
-                                  .download(manufacturerDocUrl)
-
-                                if (error) throw error
-
-                                const url = URL.createObjectURL(data)
-                                const a = document.createElement('a')
-                                a.href = url
-                                a.download = manufacturerDocUrl.split('/').pop() || 'proforma-invoice.pdf'
-                                document.body.appendChild(a)
-                                a.click()
-                                document.body.removeChild(a)
-                                URL.revokeObjectURL(url)
+                                await downloadOrderDocument(orderId, manufacturerDocUrl, 'proforma-invoice.pdf')
 
                                 toast({
                                   title: 'Success',
@@ -1624,20 +1540,7 @@ export default function OrderDocumentsDialogEnhanced({
                           onClick={async () => {
                             setDownloading('payment-proof')
                             try {
-                              const { data, error } = await supabase.storage
-                                .from('order-documents')
-                                .download(paymentProofUrl)
-
-                              if (error) throw error
-
-                              const url = URL.createObjectURL(data)
-                              const a = document.createElement('a')
-                              a.href = url
-                              a.download = paymentProofUrl.split('/').pop() || 'payment-proof.pdf'
-                              document.body.appendChild(a)
-                              a.click()
-                              document.body.removeChild(a)
-                              URL.revokeObjectURL(url)
+                              await downloadOrderDocument(orderId, paymentProofUrl, 'payment-proof.pdf')
 
                               toast({
                                 title: 'Success',

@@ -67,7 +67,9 @@ function mergeOrderActor(
     ...existing,
     full_name: existing.full_name || fallback.full_name,
     email: existing.email || fallback.email,
-    signature_url: existing.signature_url || fallback.signature_url,
+    // The fallback comes from the authorized actor route and contains a
+    // temporary delivery URL. Never retain the raw persisted reference.
+    signature_url: fallback.signature_url ?? null,
   }
 }
 
@@ -215,7 +217,9 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       let resolvedCreatedByUser = order.created_by_user as OrderActor | null | undefined
       let resolvedApprovedByUser = order.approved_by_user as OrderActor | null | undefined
 
-      if (!resolvedCreatedByUser || (order.approved_by && !resolvedApprovedByUser)) {
+      // Always hydrate through the server route: direct browser signing is now
+      // owner-scoped and cannot read another actor's sensitive signature.
+      {
         try {
           const actorResponse = await fetch('/api/orders/actors', {
             method: 'POST',

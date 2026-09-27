@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Check, Download } from 'lucide-react'
 import UnifiedDocumentUpload from './UnifiedDocumentUpload'
+import { downloadOrderDocument } from '@/lib/storage/order-documents-client'
 
 interface ManufacturerDocumentUploadProps {
   documentId: string
@@ -36,7 +36,6 @@ export default function ManufacturerDocumentUpload({
   const [fileSize, setFileSize] = useState<number | null>(null)
   const currentFilePathRef = useRef<string | null>(existingFileUrl)
   const { toast } = useToast()
-  const supabase = createClient()
 
   const handleUpload = async (file: File) => {
     try {
@@ -96,21 +95,7 @@ export default function ManufacturerDocumentUpload({
     if (!uploadedUrl) return
 
     try {
-      const { data, error } = await supabase.storage
-        .from('order-documents')
-        .download(uploadedUrl)
-
-      if (error) throw error
-
-      // Create blob URL and trigger download
-      const url = URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = uploadedUrl.split('/').pop() || 'manufacturer-document.pdf'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      await downloadOrderDocument(orderId, uploadedUrl, 'manufacturer-document.pdf')
     } catch (error: any) {
       console.error('Error downloading file:', error)
       toast({

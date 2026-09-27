@@ -12,6 +12,7 @@ import { Upload, X, Check, AlertCircle, Pencil, Eraser, RotateCcw, ImageOff } fr
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { withStorageApiKey } from '@/lib/utils';
+import { userSignaturePath } from '@/lib/storage/documents-bucket';
 
 interface SignatureUploadProps {
   userId: string;
@@ -59,14 +60,14 @@ export default function SignatureUpload({
 
     const resolve = async () => {
       const supabase = createClient();
-      const marker = `/storage/v1/object/public/${SIGNATURE_BUCKET}/`;
-      const idx = signatureUrl.indexOf(marker);
-      const filePath = idx !== -1 ? signatureUrl.slice(idx + marker.length) : null;
+      const filePath = userSignaturePath(signatureUrl, userId);
 
       if (!filePath) {
-        // Already a fully-resolved URL (e.g. external) — just ensure apikey is present.
+        // A profile value is not an authorization mechanism. Refuse paths
+        // outside signatures/<current-user>/ even if the value is editable.
         if (!cancelled) {
-          setDisplayUrl(withStorageApiKey(signatureUrl));
+          setPreviewError(true);
+          setDisplayUrl(null);
           setIsLoadingPreview(false);
         }
         return;
@@ -207,7 +208,7 @@ export default function SignatureUpload({
       const filePath = `signatures/${userId}/${fileName}`;
 
       // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError, data: uploadData } = await supabase.storage
         .from(SIGNATURE_BUCKET)
         .upload(filePath, blob, {
           cacheControl: '3600',
@@ -218,16 +219,12 @@ export default function SignatureUpload({
       if (uploadError) {
         throw uploadError;
       }
+      const storedPath = uploadData?.path || filePath;
 
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from(SIGNATURE_BUCKET).getPublicUrl(filePath);
-
-      // Persist signature URL via server action (admin-backed update avoids client-side RLS pitfalls)
+      // Persist the stable object path, never a permanent public URL.
       const updateResult = await updateUserWithAuth(
         userId,
-        { signature_url: publicUrl },
+        { signature_url: storedPath },
         { id: userId, role_code: 'USER' }
       );
 
@@ -235,12 +232,12 @@ export default function SignatureUpload({
         throw new Error(updateResult.error || 'Failed to update signature URL');
       }
 
-      setSignatureUrl(publicUrl);
+      setSignatureUrl(storedPath);
       setSuccess(true);
       clearCanvas();
 
       if (onSignatureUpdated) {
-        onSignatureUpdated(publicUrl);
+        onSignatureUpdated(storedPath);
       }
 
       // Clear success message after 3 seconds
@@ -283,7 +280,7 @@ export default function SignatureUpload({
       const filePath = `signatures/${userId}/${fileName}`;
 
       // Upload to Supabase Storage
-      const { error: uploadError, data } = await supabase.storage
+      const { error: uploadError, data: uploadData } = await supabase.storage
         .from(SIGNATURE_BUCKET)
         .upload(filePath, file, {
           cacheControl: '3600',
@@ -293,16 +290,12 @@ export default function SignatureUpload({
       if (uploadError) {
         throw uploadError;
       }
+      const storedPath = uploadData?.path || filePath;
 
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from(SIGNATURE_BUCKET).getPublicUrl(filePath);
-
-      // Persist signature URL via server action (admin-backed update avoids client-side RLS pitfalls)
+      // Persist the stable object path, never a permanent public URL.
       const updateResult = await updateUserWithAuth(
         userId,
-        { signature_url: publicUrl },
+        { signature_url: storedPath },
         { id: userId, role_code: 'USER' }
       );
 
@@ -310,11 +303,11 @@ export default function SignatureUpload({
         throw new Error(updateResult.error || 'Failed to update signature URL');
       }
 
-      setSignatureUrl(publicUrl);
+      setSignatureUrl(storedPath);
       setSuccess(true);
 
       if (onSignatureUpdated) {
-        onSignatureUpdated(publicUrl);
+        onSignatureUpdated(storedPath);
       }
 
       // Clear success message after 3 seconds

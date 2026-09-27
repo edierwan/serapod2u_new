@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizeManufacturerWorkflowStatus } from '@/lib/quality-issues'
+import { qualityIssueEvidencePath } from '@/lib/storage/documents-bucket'
 
 /**
  * GET /api/manufacturer/adjustments/[id]
@@ -139,6 +140,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!quantity || quantity <= 0) return NextResponse.json({ error: 'quantity_affected must be > 0' }, { status: 400 })
     if (proofImages.length === 0) {
       return NextResponse.json({ error: 'At least one evidence attachment is required' }, { status: 400 })
+    }
+    if (proofImages.some((reference: string) => !qualityIssueEvidencePath(reference))) {
+      return NextResponse.json({ error: 'Invalid evidence attachment path' }, { status: 400 })
     }
 
     const { data: reason } = await admin

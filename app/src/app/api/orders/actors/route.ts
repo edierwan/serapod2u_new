@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
+import { createDocumentsSignedUrl, userSignaturePath } from '@/lib/storage/documents-bucket'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -109,15 +110,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to load order actors' }, { status: 500 })
     }
 
-    return NextResponse.json({
-      users: (users || []).map(user => ({
+    const deliveredUsers = await Promise.all((users || []).map(async user => {
+      const signaturePath = userSignaturePath(user.signature_url, user.id)
+      const signatureUrl = signaturePath
+        ? await createDocumentsSignedUrl(adminSupabase, signaturePath)
+        : null
+
+      return {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
-        signature_url: user.signature_url,
+        // Never disclose the persisted reference. This temporary URL is only
+        // minted after every requested order passed the organization gate.
+        signature_url: signatureUrl,
         roles: Array.isArray(user.roles) ? (user.roles[0] || null) : (user.roles || null),
-      })),
-    })
+      }
+    }))
+
+    return NextResponse.json({ users: deliveredUsers })
   } catch (error) {
     console.error('Order actor hydration failed:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -15,6 +15,8 @@ import {
   resolvePdfImageSource,
   resolvePdfOrganizationLogoSource
 } from '@/lib/documents/pdf-assets'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { userSignaturePath } from '@/lib/storage/documents-bucket'
 
 /**
  * Extract bucket and path from a Supabase storage public URL.
@@ -28,8 +30,24 @@ function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } 
 }
 
 let _fetchSupabaseClient: SupabaseClient | null = null
+let _fetchAdminClient: SupabaseClient | null = null
 function setFetchSupabaseClient(client: SupabaseClient) {
   _fetchSupabaseClient = client
+  _fetchAdminClient = createAdminClient()
+}
+
+async function fetchUserSignatureAsDataUrl(reference: string, ownerUserId: string): Promise<string | null> {
+  const path = userSignaturePath(reference, ownerUserId)
+  if (!path || !_fetchAdminClient) return null
+
+  const { data, error } = await _fetchAdminClient.storage.from('documents').download(path)
+  if (error || !data) {
+    console.warn('Authorized signature download failed', { ownerUserId, error: error?.message })
+    return null
+  }
+
+  const bytes = Buffer.from(await data.arrayBuffer()).toString('base64')
+  return `data:${data.type || 'image/png'};base64,${bytes}`
 }
 
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
@@ -305,7 +323,7 @@ export async function generatePdfForOrderDocument(
 
       creator = resolvePdfAuditActor(creatorRow)
       if (creator?.signature_url) {
-        creatorSignatureImage = await fetchImageAsDataUrl(creator.signature_url)
+        creatorSignatureImage = await fetchUserSignatureAsDataUrl(creator.signature_url, orderData.created_by)
       }
     } catch (creatorErr) {
       console.warn('Could not fetch order creator for PDF:', creatorErr)
@@ -336,7 +354,7 @@ export async function generatePdfForOrderDocument(
     const resolvedApprover = resolvePdfAuditActor(approver)
     if (resolvedApprover) {
       const approverSignatureImage = resolvedApprover.signature_url
-        ? await fetchImageAsDataUrl(resolvedApprover.signature_url)
+        ? await fetchUserSignatureAsDataUrl(resolvedApprover.signature_url, orderData.approved_by)
         : null
 
       const approvalData = `${orderData.order_no}|${orderData.approved_by}|${orderData.approved_at}`
@@ -469,7 +487,7 @@ export async function generatePdfForOrderDocument(
 
       if (acknowledger) {
         const acknowledgerSignatureImage = acknowledger.signature_url
-          ? await fetchImageAsDataUrl(acknowledger.signature_url)
+          ? await fetchUserSignatureAsDataUrl(acknowledger.signature_url, acknowledgementSource.acknowledged_by)
           : null
 
         const ackData = `${acknowledgementSource.doc_no}|${acknowledgementSource.acknowledged_by}|${acknowledgementSource.acknowledged_at}`
@@ -634,8 +652,8 @@ export async function generatePdfForOrderDocument(
         signaturesData.map(async (sig: any) => ({
           ...sig,
           integrity_hash: sig.signature_hash,
-          signature_image_data: sig.signature_image_url
-            ? await fetchImageAsDataUrl(sig.signature_image_url)
+          signature_image_data: sig.signature_image_url && sig.signer_user_id
+            ? await fetchUserSignatureAsDataUrl(sig.signature_image_url, sig.signer_user_id)
             : null
         }))
       )
@@ -725,7 +743,8 @@ export async function generatePdfForOrderDocument(
       try {
         const arrayBuffer = await pdfBlob.arrayBuffer()
         const buffer = Buffer.from(arrayBuffer)
-        const { error: uploadError } = await supabase.storage
+        const admin = _fetchAdminClient || createAdminClient()
+        const { error: uploadError } = await admin.storage
           .from('order-documents')
           .upload(`${orderId}/${filename}`, buffer, {
             contentType: 'application/pdf',

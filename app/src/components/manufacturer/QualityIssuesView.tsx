@@ -1378,13 +1378,17 @@ function CreateIssueModal({
         if (files.length === 0) return []
         const urls: string[] = []
         for (const f of files) {
-            const ext = f.name.split('.').pop() || 'bin'
-            const fileName = `${userProfile.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
-            const path = `quality_issues/${fileName}`
-            const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { cacheControl: '3600', upsert: false })
-            if (upErr) throw upErr
-            const { data } = supabase.storage.from('documents').getPublicUrl(path)
-            urls.push(data.publicUrl)
+            const form = new FormData()
+            form.set('file', f)
+            const response = await fetch('/api/manufacturer/adjustments/evidence', {
+                method: 'POST',
+                body: form,
+            })
+            const body = await response.json().catch(() => null)
+            if (!response.ok || !body?.path) {
+                throw new Error(body?.error || 'Unable to upload evidence')
+            }
+            urls.push(body.path)
         }
         return urls
     }
@@ -1615,16 +1619,18 @@ function CreateIssueModal({
                         </div>
                         {existingProofImages.length > 0 && (
                             <ul className="mt-2 grid grid-cols-3 gap-2">
-                                {existingProofImages.map((url, index) => (
+                                {existingProofImages.map((url, index) => {
+                                    const authorizedUrl = issueToEdit ? buildIssueEvidenceUrl(issueToEdit.id, index) : '#'
+                                    return (
                                     <li key={`${url}-${index}`} className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
                                         <button type="button" onClick={() => removeExistingProofImage(index)} className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white">
                                             <X className="h-2.5 w-2.5" />
                                         </button>
-                                        <a href={url} target="_blank" rel="noreferrer" className="block">
+                                        <a href={authorizedUrl} target="_blank" rel="noreferrer" className="block">
                                             <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
                                                 {isImageEvidenceUrl(url) ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={url} alt={getEvidenceFileName(url)} className="h-full w-full object-cover" />
+                                                    <img src={authorizedUrl} alt={getEvidenceFileName(url)} className="h-full w-full object-cover" />
                                                 ) : (
                                                     <FileText className="h-5 w-5 text-slate-400" />
                                                 )}
@@ -1635,7 +1641,8 @@ function CreateIssueModal({
                                             </div>
                                         </a>
                                     </li>
-                                ))}
+                                    )
+                                })}
                             </ul>
                         )}
                         {files.length > 0 && (
@@ -1685,4 +1692,3 @@ function CreateIssueModal({
         </Dialog>
     )
 }
-

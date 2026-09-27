@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireSerappActor } from '@/lib/serapp/chat-auth'
 import { getAccessibleConversation } from '@/lib/serapp/conversation-service'
+import { createDocumentsSignedUrl } from '@/lib/storage/documents-bucket'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf']
@@ -65,11 +66,8 @@ export async function POST(
       throw uploadError
     }
 
-    const { data: signed, error: signError } = await admin.storage
-      .from(STORAGE_BUCKET)
-      .createSignedUrl(path, 60 * 60 * 24)
-
-    if (signError) throw signError
+    const signedUrl = await createDocumentsSignedUrl(admin, path)
+    if (!signedUrl) throw new Error('Failed to create attachment delivery URL')
 
     return NextResponse.json({
       ok: true,
@@ -79,7 +77,7 @@ export async function POST(
         name: file.name,
         size: file.size,
         mimeType,
-        url: signed?.signedUrl || null,
+        url: signedUrl,
       },
     })
   } catch (error) {

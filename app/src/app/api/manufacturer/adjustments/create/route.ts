@@ -1,6 +1,7 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { qualityIssueEvidencePath } from '@/lib/storage/documents-bucket'
 
 /**
  * POST /api/manufacturer/adjustments/create
@@ -45,6 +46,9 @@ export async function POST(request: NextRequest) {
         if (!notes) return NextResponse.json({ error: 'notes is required' }, { status: 400 })
         if (!quantity || quantity <= 0) return NextResponse.json({ error: 'quantity_affected must be > 0' }, { status: 400 })
         if (proofImages.length === 0) return NextResponse.json({ error: 'At least one evidence attachment is required' }, { status: 400 })
+        if (proofImages.some((reference) => !qualityIssueEvidencePath(reference))) {
+            return NextResponse.json({ error: 'Invalid evidence attachment path' }, { status: 400 })
+        }
 
         // Fetch caller profile
         const { data: profile, error: profileErr } = await supabase
