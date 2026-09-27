@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { canManageHr, getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,26 +23,38 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         if (runError || !run) return NextResponse.json({ success: false, error: 'Run not found' }, { status: 404 })
         if (run.status !== 'calculated') return NextResponse.json({ success: false, error: 'Can only approve calculated runs' }, { status: 400 })
 
-        const { data: updatedRun, error: updateError } = await supabase
+        // Approval is authorized above by S&A (hr.payroll.approve). The
+        // transition itself runs with the service role so an approver does not
+        // also need payroll-preparation rights on the run rows; direct API
+        // transitions remain guarded in the database. approved_by feeds the
+        // payroll maker/checker monitor (calculated_by vs approver).
+        const admin = createAdminClient() as any
+        const approvedAt = new Date().toISOString()
+        const { data: updatedRun, error: updateError } = await admin
             .from('hr_payroll_runs')
             .update({
                 status: 'approved',
                 is_locked: true,
-                locked_at: new Date().toISOString(),
-                posted_at: new Date().toISOString(),
+                locked_at: approvedAt,
+                approved_by: ctx.userId,
+                approved_at: approvedAt,
+                posted_at: approvedAt,
                 posted_by: ctx.userId
             })
             .eq('id', runId)
+            .eq('organization_id', ctx.organizationId)
+            .eq('status', 'calculated')
             .select()
             .single()
 
         if (updateError) return NextResponse.json({ success: false, error: updateError.message }, { status: 500 })
 
         // Update all items to approved
-        await supabase
+        await admin
             .from('hr_payroll_run_items')
             .update({ status: 'approved' })
             .eq('payroll_run_id', runId)
+            .eq('organization_id', ctx.organizationId)
 
         // Audit
         await supabase.from('hr_payroll_audit').insert({
