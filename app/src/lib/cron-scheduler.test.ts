@@ -52,6 +52,7 @@ const WORKERS = [
   '/api/cron/manufacturer-packing-worker',
   '/api/cron/notification-outbox-worker',
   '/api/cron/sa-decision-retention',
+  '/api/cron/sa-governance-maintenance',
   // SerApp order holds expire on their own schedule.
   '/api/cron/serapp-hold-expiry',
 ]
