@@ -12,6 +12,16 @@ export interface PermissionLabel {
 const ACTIONS: Record<string, string> = {
   view: 'View', create: 'Create', verify: 'Verify', post: 'Post', request: 'Request',
   approve: 'Approve', dispatch: 'Dispatch', receive: 'Receive', assign: 'Assign', manage: 'Manage',
+  prepare: 'Prepare', release: 'Release', adjust: 'Adjust', perform: 'Perform', acknowledge: 'Acknowledge',
+  use: 'Use', cancel: 'Cancel', reverse: 'Reverse', grant: 'Grant', reset: 'Reset', view_sensitive: 'View sensitive',
+  destructive: 'Run destructive',
+}
+
+const MODULE_GROUPS: Record<string, string> = {
+  finance: 'Finance', hr: 'HR & Payroll', supply_chain: 'Supply Chain', inventory: 'Inventory',
+  warehouse: 'Warehouse', manufacturing: 'Manufacturing', qr: 'QR & Traceability', product: 'Product Catalogue',
+  roadtour: 'RoadTour', customer: 'Customer & Growth', ecommerce: 'E-Commerce', platform: 'Platform',
+  reporting: 'Reporting', security: 'Security Administration',
 }
 
 const RESOURCES: Record<string, { noun: string; group: string; resourceType: string }> = {
@@ -20,9 +30,32 @@ const RESOURCES: Record<string, { noun: string; group: string; resourceType: str
   'security.access': { noun: 'Security & Access', group: 'Security Administration', resourceType: 'security_access' },
   'security.role': { noun: 'Business Roles', group: 'Security Administration', resourceType: 'business_role' },
   'security.permission': { noun: 'Permission Catalog', group: 'Security Administration', resourceType: 'permission_catalog' },
+  'security.scope': { noun: 'Scopes', group: 'Security Administration', resourceType: 'scope' },
+  'security.policy': { noun: 'Authority & SoD Policies', group: 'Security Administration', resourceType: 'policy' },
+  'security.audit': { noun: 'Security Audit', group: 'Security Administration', resourceType: 'audit' },
+  'security.access_request': { noun: 'Access Requests', group: 'Security Administration', resourceType: 'access_request' },
+  'security.access_review': { noun: 'Access Reviews', group: 'Security Administration', resourceType: 'access_review' },
+  'security.delegation': { noun: 'Delegations', group: 'Security Administration', resourceType: 'delegation' },
+  'security.service_identity': { noun: 'Service Identities', group: 'Security Administration', resourceType: 'service_identity' },
+  'security.emergency_access': { noun: 'Emergency Access', group: 'Security Administration', resourceType: 'emergency_access' },
+  'finance.report': { noun: 'Financial Reports', group: 'Finance', resourceType: 'finance_report' },
+  'finance.payroll_integration': { noun: 'Payroll GL Integration', group: 'Finance', resourceType: 'payroll_integration' },
+  'hr.payroll': { noun: 'Payroll', group: 'HR & Payroll', resourceType: 'payroll_run' },
+  'hr.self_service': { noun: 'Employee Self-Service', group: 'HR & Payroll', resourceType: 'employee_record' },
+  'hr.module': { noun: 'HR Module', group: 'HR & Payroll', resourceType: 'hr_module' },
+  'finance.module': { noun: 'Finance Module', group: 'Finance', resourceType: 'finance_module' },
+  'supply_chain.order': { noun: 'Orders', group: 'Supply Chain', resourceType: 'order' },
+  'supply_chain.document': { noun: 'Order Documents', group: 'Supply Chain', resourceType: 'document' },
+  'inventory.opening_balance': { noun: 'Opening Balance', group: 'Inventory', resourceType: 'opening_balance' },
+  'inventory.stock_config': { noun: 'Stock Configurations', group: 'Inventory', resourceType: 'stock_config' },
+  'platform.data': { noun: 'Data Maintenance', group: 'Platform', resourceType: 'data_maintenance' },
 }
 
-export const PERMISSION_GROUP_ORDER = ['Stock Count', 'Stock Transfer', 'Security Administration']
+export const PERMISSION_GROUP_ORDER = [
+  'Finance', 'HR & Payroll', 'Supply Chain', 'Stock Count', 'Stock Transfer', 'Inventory', 'Warehouse', 'Manufacturing',
+  'QR & Traceability', 'Product Catalogue', 'RoadTour', 'Customer & Growth', 'E-Commerce', 'Reporting', 'Platform',
+  'Security Administration',
+]
 
 const titleCase = (value: string) => value.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -31,7 +64,7 @@ export function permissionLabel(permissionKey: string): PermissionLabel {
   const known = RESOURCES[`${module}.${resource}`]
   const verb = ACTIONS[action] ?? titleCase(action)
   if (known) return { label: `${verb} ${known.noun}`, group: known.group, resourceType: known.resourceType }
-  return { label: `${verb} ${titleCase(resource)}`, group: titleCase(module) || 'Other', resourceType: resource || 'resource' }
+  return { label: `${verb} ${titleCase(resource)}`, group: MODULE_GROUPS[module] ?? (titleCase(module) || 'Other'), resourceType: resource || 'resource' }
 }
 
 export const RESOURCE_TYPE_LABELS: Record<string, string> = {
@@ -65,6 +98,7 @@ export const REASON_LABELS: Record<string, string> = {
   MISSING_PERMISSION: 'None of the user’s business roles grants this permission.',
   MISSING_CONTEXT: 'The request is missing context the user’s scope needs (for example a warehouse).',
   SCOPE_MISMATCH: 'The user’s role applies to a different organization or warehouse.',
+  ALLOWED_BY_DELEGATION: 'Allowed through an active delegation from someone who currently holds this access.',
   LEGACY_ALLOWED: 'Allowed by the existing (legacy) role permissions.',
   LEGACY_DENIED: 'Denied by the existing (legacy) role permissions.',
   POLICY_ERROR: 'The policy could not be evaluated; access is denied for safety.',

@@ -13,9 +13,9 @@ describe('Security & Access UI contract', () => {
     expect(sidebar.indexOf('label: "Security & Access"')).toBeLessThan(sidebar.indexOf('label: "Settings"'))
   })
   it('shows only implemented top-level sections', () => {
-    for (const label of ['Overview', 'People & Access', 'Roles & Policies', 'Audit & Diagnostics']) expect(view).toContain(label)
-    expect(view).not.toContain('Governance')
-    expect(view).not.toContain('Technical Access')
+    // Governance and Technical Access exist since the Final Wave (access
+    // requests, delegations, reviews, SoD, service identities).
+    for (const label of ['Overview', 'People & Access', 'Roles & Policies', 'Governance', 'Technical Access', 'Audit & Diagnostics']) expect(view).toContain(label)
   })
   it('uses the canonical evaluator in non-mutating explain mode', () => {
     expect(simulator).toContain("import { authorize }")
