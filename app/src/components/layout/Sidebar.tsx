@@ -156,6 +156,17 @@ const secondaryItems: MenuItem[] = [
   },
 
   {
+    id: "security-access",
+    label: "Security & Access",
+    icon: ShieldCheck,
+    description: "Enterprise roles, permissions, scopes, and diagnostics",
+    access: {
+      allowedOrgTypes: ["HQ"],
+      requiredPermission: "manage_authorization",
+    },
+  },
+
+  {
     id: "settings",
     label: "Settings",
     icon: SettingsIcon,
@@ -251,6 +262,7 @@ export default function Sidebar({
     Notifications: t("sidebar.notifications"),
     "My Profile": t("sidebar.myProfile"),
     "User Management": t("sidebar.userManagement"),
+    "Security & Access": "Security & Access",
     Settings: t("sidebar.settings"),
   };
   const tLabel = (label: string) => labelMap[label] || label;
@@ -305,6 +317,9 @@ export default function Sidebar({
     return null;
   };
 
+  const resolveSecurityAccessPath = (id: string) =>
+    id === "security-access" ? "/security-access" : null;
+
   const resolveSupplyChainPath = (id: string) => {
     if (id === "supply-chain") return "/supply-chain";
     return null;
@@ -327,6 +342,7 @@ export default function Sidebar({
       resolveHrPath(id) ||
       resolveFinancePath(id) ||
       resolveSettingsPath(id) ||
+      resolveSecurityAccessPath(id) ||
       resolveSupplyChainPath(id) ||
       resolveCustomerGrowthPath(id) ||
       resolveNotificationsPath(id)
