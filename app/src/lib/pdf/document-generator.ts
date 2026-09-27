@@ -6,6 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import PDFDocument from 'pdfkit';
 import { Readable } from 'stream';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 // Types
 export interface DocumentSignature {
@@ -560,7 +561,7 @@ function formatCurrency(amount: number): string {
  * Upload PDF to Supabase Storage
  */
 export async function uploadSignedPDF(
-  supabase: ReturnType<typeof createClient>,
+  _supabase: ReturnType<typeof createClient>,
   pdfBuffer: Buffer,
   documentType: string,
   documentId: string
@@ -568,7 +569,10 @@ export async function uploadSignedPDF(
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const fileName = `${documentType}/${documentId}/signed_${timestamp}.pdf`;
 
-  const { data, error } = await supabase.storage
+  // This legacy helper currently has no live callers outside the likewise
+  // unused acknowledgement service. Keep it private-bucket safe if revived.
+  const admin = createAdminClient();
+  const { error } = await admin.storage
     .from('documents')
     .upload(fileName, pdfBuffer, {
       contentType: 'application/pdf',
@@ -579,10 +583,5 @@ export async function uploadSignedPDF(
     throw new Error(`Failed to upload PDF: ${error.message}`);
   }
 
-  // Get public URL
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from('documents').getPublicUrl(fileName);
-
-  return publicUrl;
+  return fileName;
 }

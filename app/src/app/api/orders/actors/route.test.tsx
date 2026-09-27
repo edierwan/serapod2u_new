@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requesterRoleLevel: 40,
   orders: [] as any[],
   users: [] as any[],
+  createSignedUrl: vi.fn(),
 }))
 
 function query(result: () => any) {
@@ -40,6 +41,9 @@ vi.mock('@/lib/supabase/admin', () => ({
     from: (table: string) => query(() => table === 'orders'
       ? { data: mocks.orders, error: null }
       : { data: mocks.users, error: null }),
+    storage: {
+      from: () => ({ createSignedUrl: mocks.createSignedUrl }),
+    },
   }),
 }))
 
@@ -56,6 +60,7 @@ describe('order actor organization isolation', () => {
     mocks.requesterRoleLevel = 40
     mocks.orders = [{ id: 'order-1', seller_org_id: 'mfg-1', created_by: 'actor-1', approved_by: null }]
     mocks.users = [{ id: 'actor-1', email: 'actor@example.com', full_name: 'Actor', signature_url: null, roles: { role_level: 40 } }]
+    mocks.createSignedUrl.mockReset()
   })
 
   it('allows a Manufacturer user to resolve actors for its own order', async () => {
@@ -76,5 +81,43 @@ describe('order actor organization isolation', () => {
     mocks.orders = [{ id: 'order-1', seller_org_id: 'other-mfg', created_by: 'actor-1', approved_by: null }]
     const response = await POST(request())
     expect(response.status).toBe(200)
+  })
+
+  it('returns a short-lived signature only after order authorization', async () => {
+    mocks.users = [{
+      id: 'actor-1',
+      email: 'actor@example.com',
+      full_name: 'Actor',
+      signature_url: 'signatures/actor-1/signature.png',
+      roles: { role_level: 40 },
+    }]
+    mocks.createSignedUrl.mockResolvedValue({
+      data: { signedUrl: 'http://storage.test/object/sign/documents/signatures/actor-1/signature.png?token=short' },
+      error: null,
+    })
+
+    const response = await POST(request())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(mocks.createSignedUrl).toHaveBeenCalledWith('signatures/actor-1/signature.png', 300)
+    expect(body.users[0].signature_url).toContain('token=short')
+  })
+
+  it('does not sign a user-editable reference outside the actor owner path', async () => {
+    mocks.users = [{
+      id: 'actor-1',
+      email: 'actor@example.com',
+      full_name: 'Actor',
+      signature_url: 'signatures/another-user/signature.png',
+      roles: { role_level: 40 },
+    }]
+
+    const response = await POST(request())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(mocks.createSignedUrl).not.toHaveBeenCalled()
+    expect(body.users[0].signature_url).toBeNull()
   })
 })

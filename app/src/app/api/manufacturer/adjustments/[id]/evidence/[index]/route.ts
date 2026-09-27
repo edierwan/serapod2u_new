@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import {
-  extractEvidenceStoragePath,
   getEvidenceFileName,
   normalizeManufacturerWorkflowStatus,
 } from '@/lib/quality-issues'
+import { qualityIssueEvidencePath } from '@/lib/storage/documents-bucket'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,7 +84,7 @@ export async function GET(
       return NextResponse.json({ error: 'Evidence file not found' }, { status: 404 })
     }
 
-    const storagePath = extractEvidenceStoragePath(evidenceReference, EVIDENCE_BUCKET)
+    const storagePath = qualityIssueEvidencePath(evidenceReference)
     if (!storagePath) {
       return NextResponse.json({ error: 'Invalid evidence storage path' }, { status: 400 })
     }

@@ -8,7 +8,6 @@ import SignatureUpload from './SignatureUpload'
 
 const createSignedUrlMock = vi.fn()
 const uploadMock = vi.fn()
-const getPublicUrlMock = vi.fn()
 const updateUserWithAuthMock = vi.fn()
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -17,7 +16,6 @@ vi.mock('@/lib/supabase/client', () => ({
       from: () => ({
         createSignedUrl: createSignedUrlMock,
         upload: uploadMock,
-        getPublicUrl: getPublicUrlMock,
       }),
     },
   }),
@@ -33,7 +31,6 @@ describe('SignatureUpload', () => {
   beforeEach(() => {
     createSignedUrlMock.mockReset()
     uploadMock.mockReset()
-    getPublicUrlMock.mockReset()
     updateUserWithAuthMock.mockReset()
     updateUserWithAuthMock.mockResolvedValue({ success: true })
   })
@@ -100,7 +97,6 @@ describe('SignatureUpload', () => {
         error: null,
       })
     uploadMock.mockResolvedValue({ error: null, data: { path: 'signatures/u1/new.png' } })
-    getPublicUrlMock.mockReturnValue({ data: { publicUrl: `${PUBLIC_URL_PREFIX}signatures/u1/new.png` } })
 
     const user = userEvent.setup()
     render(<SignatureUpload userId="u1" currentSignatureUrl={null} />)
@@ -116,7 +112,7 @@ describe('SignatureUpload', () => {
 
     await waitFor(() => expect(updateUserWithAuthMock).toHaveBeenCalledWith(
       'u1',
-      { signature_url: `${PUBLIC_URL_PREFIX}signatures/u1/new.png` },
+      { signature_url: 'signatures/u1/new.png' },
       { id: 'u1', role_code: 'USER' }
     ))
 

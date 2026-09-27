@@ -62,7 +62,9 @@ export async function GET(request: NextRequest) {
             console.log('📄 Serving cached PDF:', cachedPdf.file_name)
 
             // Download from storage
-            const { data: pdfBlob, error: downloadError } = await supabase.storage
+            const { createAdminClient } = await import('@/lib/supabase/admin')
+            const admin = createAdminClient()
+            const { data: pdfBlob, error: downloadError } = await admin.storage
               .from('order-documents')
               .download(cachedPdf.file_url)
 

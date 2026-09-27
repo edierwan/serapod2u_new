@@ -207,21 +207,6 @@ export default function DHReceiptDialog({
 
         const receiptDocNo = docNo || `RCT-DH-${Date.now()}`
 
-        // Upload attachment if provided
-        let attachmentUrl: string | null = null
-        if (receipt.attachmentFile) {
-          const fileName = `${orderId}/${receiptDocNo}-${receipt.attachmentFile.name}`
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('order-documents')
-            .upload(fileName, receipt.attachmentFile)
-
-          if (uploadError) {
-            console.error('Error uploading attachment:', uploadError)
-          } else {
-            attachmentUrl = uploadData?.path || null
-          }
-        }
-
         // Create receipt document
         const { data: receiptDoc, error: receiptError } = await supabase
           .from('documents')
@@ -242,7 +227,7 @@ export default function DHReceiptDialog({
               payment_method: receipt.paymentMethod,
               payment_date: receipt.date,
               reference: receipt.reference,
-              attachment_url: attachmentUrl,
+              attachment_url: null,
               is_partial: remainingBalance > 0,
               total_paid_to_date: totalPaidPreviously + amount,
               order_total: orderTotal,
@@ -256,6 +241,27 @@ export default function DHReceiptDialog({
         if (receiptError) {
           console.error('Error creating receipt:', receiptError)
           throw receiptError
+        }
+
+        if (receipt.attachmentFile) {
+          const form = new FormData()
+          form.append('file', receipt.attachmentFile)
+          form.append('documentId', receiptDoc.id)
+          form.append('kind', 'receipt-attachment')
+          const uploadResponse = await fetch(`/api/documents/order/${encodeURIComponent(orderId)}/file`, {
+            method: 'POST', body: form,
+          })
+          const uploadResult = await uploadResponse.json()
+          if (!uploadResponse.ok || !uploadResult?.fileUrl) {
+            throw new Error(uploadResult?.error || 'Failed to upload receipt attachment')
+          }
+          const { error: attachmentUpdateError } = await supabase
+            .from('documents')
+            .update({
+              payload: { ...(receiptDoc.payload || {}), attachment_url: uploadResult.fileUrl }
+            })
+            .eq('id', receiptDoc.id)
+          if (attachmentUpdateError) throw attachmentUpdateError
         }
 
         // Log for finance/AR tracking - receipt already has all needed info in payload

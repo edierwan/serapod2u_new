@@ -4,9 +4,9 @@ import { useState } from 'react'
 import { Check } from 'lucide-react'
 import UnifiedDocumentUpload from './UnifiedDocumentUpload'
 import { useToast } from '@/components/ui/use-toast'
-import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { downloadOrderDocument } from '@/lib/storage/order-documents-client'
 
 type PaymentProofVariant = 'invoice' | 'balance'
 
@@ -89,73 +89,20 @@ export default function PaymentProofUpload({
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(existingFileUrl)
   const [fileSize, setFileSize] = useState<number | null>(null)
   const { toast } = useToast()
-  const supabase = createClient()
-
   const handleUpload = async (file: File) => {
     try {
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError || !user) {
-        throw new Error('User not authenticated')
-      }
-
-      // If replacing existing file, delete old file from storage and database
-      if (existingFileUrl || uploadedUrl) {
-        const oldFileUrl = existingFileUrl || uploadedUrl
-        
-        // Delete old file from storage
-        const { error: deleteStorageError } = await supabase.storage
-          .from('order-documents')
-          .remove([oldFileUrl!])
-
-        if (deleteStorageError) {
-          console.warn('Warning: Could not delete old file from storage:', deleteStorageError)
-        }
-
-        // Delete old file record from database
-        const { error: deleteDbError } = await supabase
-          .from('document_files')
-          .delete()
-          .eq('document_id', documentId)
-
-        if (deleteDbError) {
-          console.warn('Warning: Could not delete old file record:', deleteDbError)
-        }
-      }
-
-      // Generate user-friendly file name organized by orderId
-      const fileExt = file.name.split('.').pop()?.toLowerCase()
-      const friendlyName = variant === 'balance' 
-        ? `balance-payment-proof.${fileExt}`
-        : `deposit-payment-proof.${fileExt}`
-      const storagePath = `${orderId}/${friendlyName}`
-
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('order-documents')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: true // Allow replacing existing proof
-        })
-
-      if (uploadError) throw uploadError
-
-      const fileUrl = uploadData.path
-
-      // Save file reference in document_files table
-      const { error: dbError } = await supabase
-        .from('document_files')
-        .insert({
-          document_id: documentId,
-          file_url: fileUrl,
-          file_name: file.name,
-          file_size: file.size,
-          mime_type: file.type,
-          company_id: companyId,
-          uploaded_by: user.id
-        } as any)
-
-      if (dbError) throw dbError
+      const form = new FormData()
+      form.append('file', file)
+      form.append('documentId', documentId)
+      form.append('kind', variant === 'balance' ? 'balance-payment-proof' : 'deposit-payment-proof')
+      const oldPath = uploadedUrl || existingFileUrl
+      if (oldPath) form.append('existingFileUrl', oldPath)
+      const response = await fetch(`/api/documents/order/${encodeURIComponent(orderId)}/file`, {
+        method: 'POST', body: form,
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.fileUrl) throw new Error(result?.error || 'Failed to upload payment proof')
+      const fileUrl = result.fileUrl
 
       setUploadedUrl(fileUrl)
       setFileSize(file.size)
@@ -183,21 +130,7 @@ export default function PaymentProofUpload({
     if (!uploadedUrl) return
 
     try {
-      const { data, error } = await supabase.storage
-        .from('order-documents')
-        .download(uploadedUrl)
-
-      if (error) throw error
-
-      // Create blob URL and trigger download
-      const url = URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = uploadedUrl.split('/').pop() || 'payment-proof.pdf'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      await downloadOrderDocument(orderId, uploadedUrl, 'payment-proof.pdf')
     } catch (error: any) {
       console.error('Error downloading file:', error)
       toast({

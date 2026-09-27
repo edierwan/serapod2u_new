@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'crypto'
+import { ORDER_DOCUMENT_MAX_BYTES, orderDocumentPath, safeOrderDocumentFileName } from '@/lib/storage/order-documents-bucket'
 
 export async function POST(request: Request) {
   try {
@@ -45,6 +46,12 @@ export async function POST(request: Request) {
 
     if (!fileToUpload) {
       return NextResponse.json({ error: 'File is required' }, { status: 400 })
+    }
+    if (fileToUpload.size > ORDER_DOCUMENT_MAX_BYTES) {
+      return NextResponse.json({ error: 'File exceeds the 10MB limit' }, { status: 413 })
+    }
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(fileToUpload.type)) {
+      return NextResponse.json({ error: 'Only PDF and image files are allowed' }, { status: 415 })
     }
 
     const supabase = await createClient()
@@ -123,23 +130,20 @@ export async function POST(request: Request) {
       ? fileToUpload.name.split('.').pop()?.toLowerCase()
       : undefined
     
-    // Generate friendly filename using order_no and doc_no
+    // Generate a collision-resistant filename under the authorized order.
     const orderNo = (document as any)?.orders?.order_no || 'order'
-    const docNo = (document as any)?.doc_no || documentId.substring(0, 8)
     const orderId = (document as any)?.order_id || 'unknown'
     
     // Create a clean, friendly filename: {orderId}/{orderNo}-PI.{ext}
     // PI = Proforma Invoice (manufacturer's document)
-    const friendlyFileName = displayFileName 
-      ? displayFileName.replace(/[^a-zA-Z0-9.-]/g, '_')
-      : `${orderNo}-PI${fileExtension ? `.${fileExtension}` : ''}`
+    const friendlyFileName = `${safeOrderDocumentFileName(orderNo)}-PI-${randomUUID()}${fileExtension ? `.${fileExtension}` : ''}`
     const storagePath = `${orderId}/${friendlyFileName}`
 
     const { data: uploadData, error: uploadError } = await admin.storage
       .from('order-documents')
       .upload(storagePath, fileBuffer, {
         cacheControl: '3600',
-        upsert: true, // Allow overwrite if file exists (e.g., replacing PI)
+        upsert: false,
         contentType: fileToUpload.type || 'application/octet-stream'
       })
 
@@ -160,33 +164,34 @@ export async function POST(request: Request) {
       })
 
     if (insertError) {
+      await admin.storage.from('order-documents').remove([uploadData.path])
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
     if (replaceExisting) {
-      if (existingFileUrl) {
-        const { error: removeError } = await admin.storage
-          .from('order-documents')
-          .remove([existingFileUrl])
-
-        if (removeError) {
-          console.warn('Warning: Could not remove existing storage object', removeError)
+      const validatedExistingPath = existingFileUrl ? orderDocumentPath(existingFileUrl, orderId) : null
+      if (validatedExistingPath) {
+        const { data: existingFile } = await admin.from('document_files')
+          .select('document_id')
+          .eq('document_id', documentId)
+          .eq('file_url', validatedExistingPath)
+          .maybeSingle()
+        if (existingFile) {
+          const { error: cleanupError } = await admin.from('document_files')
+            .delete()
+            .eq('document_id', documentId)
+            .eq('file_url', validatedExistingPath)
+          if (cleanupError) {
+            console.warn('Warning: Could not remove previous document metadata', cleanupError)
+          } else {
+            const { error: removeError } = await admin.storage
+              .from('order-documents')
+              .remove([validatedExistingPath])
+            if (removeError) {
+              console.warn('Warning: Could not remove existing storage object', removeError)
+            }
+          }
         }
-      }
-
-      let cleanupQuery = admin
-        .from('document_files')
-        .delete()
-        .eq('document_id', documentId)
-
-      if (uploadData.path) {
-        cleanupQuery = cleanupQuery.neq('file_url', uploadData.path)
-      }
-
-      const { error: cleanupError } = await cleanupQuery
-
-      if (cleanupError) {
-        console.warn('Warning: Could not remove previous document metadata', cleanupError)
       }
     }
 

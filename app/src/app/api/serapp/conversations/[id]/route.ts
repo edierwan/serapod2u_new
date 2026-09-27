@@ -9,6 +9,11 @@ import {
   updateConversationSession,
   archiveConversation,
 } from '@/lib/serapp/conversation-service'
+import {
+  createDocumentsSignedUrl,
+  documentsObjectPath,
+  isDocumentsPathUnder,
+} from '@/lib/storage/documents-bucket'
 
 export async function GET(
   request: Request,
@@ -59,14 +64,17 @@ export async function GET(
     const hydratedMessages = await Promise.all((messages || []).map(async (msg) => {
       const attachment = (msg as any).attachment_json
       if (!attachment?.bucket || !attachment?.path) return msg
-      const { data: signed } = await admin.storage
-        .from(String(attachment.bucket))
-        .createSignedUrl(String(attachment.path), 60 * 60 * 12)
+      const path = documentsObjectPath(String(attachment.path))
+      const signedUrl = attachment.bucket === 'documents' && isDocumentsPathUnder(path, `serapp-chat/${id}/`)
+        ? await createDocumentsSignedUrl(admin, path)
+        : null
       return {
         ...msg,
         attachment_json: {
           ...attachment,
-          url: signed?.signedUrl || attachment.url || null,
+          // Never fall back to a persisted public URL or sign an arbitrary
+          // attachment_json bucket/path.
+          url: signedUrl,
         },
       }
     }))
