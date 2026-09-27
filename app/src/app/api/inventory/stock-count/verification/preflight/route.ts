@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -17,6 +18,8 @@ export async function GET(request: NextRequest) {
         const friendly = stockCountVerificationError('authentication_required', { stage: 'preflight' })
         return NextResponse.json({ ok: false, error: friendly.message, code: friendly.code, stage: 'preflight' }, { status: friendly.status })
     }
+    const saDenied = await guardUserOperation(user.id, 'inventory.stock_count.view')
+    if (saDenied) return saDenied
     const sessionId = request.nextUrl.searchParams.get('sessionId')
     if (!sessionId) {
         const friendly = stockCountVerificationError('stock_count_not_found', { stage: 'preflight' })

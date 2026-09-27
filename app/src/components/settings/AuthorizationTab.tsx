@@ -30,6 +30,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from '@/components/ui/use-toast'
 import {
     getAuthorizationDepartments,
+    getLegacyAuthorizationStatus,
     resetDepartmentPermissionOverrides,
     saveRolePermissions,
     searchAuthorizationUsers,
@@ -304,6 +305,10 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
     )
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    // Security & Access is the canonical authorization source; once legacy
+    // stores are locked this editor is read-only (the server refuses writes).
+    const [legacyReadOnly, setLegacyReadOnly] = useState(false)
+    useEffect(() => { getLegacyAuthorizationStatus().then(s => setLegacyReadOnly(s.readOnly)).catch(() => undefined) }, [])
     const [roles, setRoles] = useState<Role[]>([])
     const [selectedRole, setSelectedRole] = useState<number>(40) // Default to User level
     const [rolePermissions, setRolePermissions] = useState<Record<number, Record<string, boolean>>>({})
@@ -821,8 +826,14 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                 <div>
                                     <CardTitle>Authorization Management</CardTitle>
                                     <CardDescription>
-                                        Configure role-based access control for all system features
+                                        Legacy role permissions and department overrides (compatibility input). Enterprise access is administered in{' '}
+                                        <a href="/security-access" className="font-medium text-[var(--sera-orange)] underline">Security &amp; Access</a>.
                                     </CardDescription>
+                                    {legacyReadOnly && (
+                                        <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                            Read-only: Security &amp; Access is now the only writable authorization source. These values remain for history and compatibility reporting.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -844,7 +855,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                         <Button
                                             size="sm"
                                             onClick={savePermissions}
-                                            disabled={saving || !hasChanges}
+                                            disabled={legacyReadOnly || saving || !hasChanges}
                                             className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                                         >
                                             <Save className="w-4 h-4 mr-2" />
@@ -876,7 +887,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                         <Button
                                             size="sm"
                                             onClick={saveDepartmentOverrides}
-                                            disabled={deptSaving || !hasDeptChanges}
+                                            disabled={legacyReadOnly || deptSaving || !hasDeptChanges}
                                             className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                                         >
                                             <Save className="w-4 h-4 mr-2" />

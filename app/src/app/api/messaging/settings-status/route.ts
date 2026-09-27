@@ -1,3 +1,4 @@
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -28,7 +29,7 @@ async function assertHqSettingsAccess(supabase: Awaited<ReturnType<typeof create
   const roleLevel = Number(roles?.role_level || 999)
   const hqOrgId = requester?.organization_id as string | undefined
 
-  if (orgType !== 'HQ' || roleLevel > 20 || !hqOrgId) {
+  if (!hqOrgId || !(await userAllowed(user.id, 'platform.settings.manage', () => orgType === 'HQ' && roleLevel <= 20, { organizationId: hqOrgId }))) {
     return { error: NextResponse.json({ error: 'HQ settings access required.' }, { status: 403 }) }
   }
 

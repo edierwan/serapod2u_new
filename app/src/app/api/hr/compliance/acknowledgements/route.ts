@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageHr, getHrAuthContext } from '@/lib/server/hrAccess'
+import { canManageHr, getHrAuthContext, hrCan, hrSelfCan } from '@/lib/server/hrAccess'
 
 export async function GET() {
     try {
@@ -48,6 +48,12 @@ export async function POST(request: NextRequest) {
         const body = await request.json()
         const policyId = String(body.policy_id || '').trim()
         const employeeUserId = String(body.employee_user_id || ctx.userId || '').trim()
+        // Acknowledging for oneself is self-service; for someone else it is
+        // HR policy administration.
+        const mayAcknowledge = employeeUserId === ctx.userId
+            ? await hrSelfCan(ctx)
+            : await hrCan(ctx, 'hr.policy.manage')
+        if (!mayAcknowledge) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         if (!policyId || !employeeUserId) {
             return NextResponse.json({ success: false, error: 'Policy and employee are required' }, { status: 400 })
         }

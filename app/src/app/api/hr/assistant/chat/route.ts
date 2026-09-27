@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getHrAuthContext } from '@/lib/server/hrAccess'
+import { getHrAuthContext, hrSelfCan } from '@/lib/server/hrAccess'
 import { resolveHrRole, type Viewer, type HrRole } from '@/lib/server/hr/assistant/policy'
 import { routeIntent, detectLang, getCasualResponse, type Lang } from '@/lib/server/hr/assistant/intentRouter'
 import { executeTool, type ToolResult, type ToolName } from '@/lib/server/hr/assistant/tools'
@@ -56,6 +56,9 @@ export async function POST(request: NextRequest) {
     if (!ctx.organizationId) {
       return res(400, { error: 'Organization not found' })
     }
+    // The HR assistant answers within the caller's own HR access; using it
+    // requires an active employee identity (self-service baseline).
+    if (!(await hrSelfCan(ctx))) return res(403, { error: 'Forbidden' })
 
     // Rate limit
     if (rateLimited(ctx.userId)) {

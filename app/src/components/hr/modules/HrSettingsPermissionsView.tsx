@@ -81,6 +81,7 @@ export default function HrSettingsPermissionsView() {
     const [groups, setGroups] = useState<AccessGroup[]>([])
     const [users, setUsers] = useState<OrgUser[]>([])
     const [isAdmin, setIsAdmin] = useState(false)
+    const [readOnly, setReadOnly] = useState(false)
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
 
     // Create group dialog
@@ -113,6 +114,7 @@ export default function HrSettingsPermissionsView() {
             setGroups(data.groups || [])
             setUsers(data.users || [])
             setIsAdmin(data.isAdmin)
+            setReadOnly(Boolean(data.readOnly))
             // Auto-expand first group
             if (data.groups?.length > 0 && !expandedGroup) {
                 setExpandedGroup(data.groups[0].id)
@@ -320,8 +322,15 @@ export default function HrSettingsPermissionsView() {
                                 HR Permissions & Access Groups
                             </CardTitle>
                             <CardDescription>
-                                Create access groups, assign HR permissions, and manage team members.
+                                HR access groups are informational. HR authorization is decided by{' '}
+                                <a href="/security-access" className="font-medium underline">Security &amp; Access</a>{' '}
+                                (HR, payroll and compensation permissions).
                             </CardDescription>
+                            {readOnly && (
+                                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                    Read-only: access is granted, reviewed and revoked in Security &amp; Access.
+                                </div>
+                            )}
                         </div>
                         {isAdmin && (
                             <div className="flex items-center gap-2">

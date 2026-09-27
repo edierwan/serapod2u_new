@@ -1,3 +1,4 @@
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 /**
  * WhatsApp Send Endpoint
  * 
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     const isAdmin = userData.role === 'admin' || userData.role === 'super_admin' || userData.is_super_admin
-    if (!isAdmin) {
+    if (!(await userAllowed(user.id, 'customer.support.manage', () => Boolean(isAdmin)))) {
       return NextResponse.json({ ok: false, error: 'Admin access required' }, { status: 403 })
     }
 

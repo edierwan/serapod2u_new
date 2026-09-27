@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getKpiAuthContext, isKpiHrManager } from '@/lib/server/kpi/access'
+import { getKpiAuthContext, isKpiHrManager, kpiCan } from '@/lib/server/kpi/access'
 import { kpiAudit } from '@/lib/server/kpi/audit'
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -15,7 +15,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         .eq('id', id).eq('organization_id', auth.data.organizationId).single()
     if (!review) return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
 
-    const isManager = review.manager_user_id === auth.data.userId || isKpiHrManager(auth.data)
+    const isManager = review.manager_user_id === auth.data.userId
+        || await kpiCan(auth.data, 'hr.performance.manage', () => isKpiHrManager(auth.data))
     if (!isManager) return NextResponse.json({ success: false, error: 'Only the manager may record manager review' }, { status: 403 })
 
     const update: any = {

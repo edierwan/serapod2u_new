@@ -1,3 +1,5 @@
+import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -6,11 +8,16 @@ export const dynamic = 'force-dynamic'
 // TEMPORARY TEST ENDPOINT - Remove after debugging
 export async function GET() {
   const supabase = await createClient()
+  // Temporary diagnostic endpoint: destructive-ops administrators only.
+  const { data: { user: actor } } = await supabase.auth.getUser()
+  if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const saDenied = await guardUserOperation(actor.id, 'platform.data.destructive', { legacy: () => legacyRoleLevelAtMost(actor.id, 1) })
+  if (saDenied) return saDenied
   const warehouseOrgId = 'dc711574-65ac-4137-a931-69df4ec73dc6'
   const startIso = '2015-11-01T00:00:00.000Z'
   const endIso = '2025-11-01T23:59:59.999Z'
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('qr_master_codes')
     .select(`
       id,

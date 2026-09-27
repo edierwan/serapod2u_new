@@ -1,3 +1,4 @@
+import { hrSelfCan } from '@/lib/server/hrAccess'
 /**
  * POST /api/hr/assistant/chat/stream
  *
@@ -117,6 +118,9 @@ export async function POST(request: NextRequest) {
         sseEvent('error', { error: 'Organization not found' }),
         { status: 400, headers: sseHeaders() },
       )
+    }
+    if (!(await hrSelfCan(ctx))) {
+      return new Response(sseEvent('error', { error: 'Forbidden' }), { status: 403, headers: sseHeaders() })
     }
 
     // Rate limit
