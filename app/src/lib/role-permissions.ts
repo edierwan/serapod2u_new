@@ -1,3 +1,5 @@
+import { legacyRoleLevel } from '@/lib/security-access/legacy-aliases'
+
 export type RolePermissionMap = Record<string, boolean>
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<number, string[]> = {
@@ -59,14 +61,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<number, string[]> = {
 }
 
 export function resolveRoleLevel(roleLevel?: number, roleCode?: string | null): number | undefined {
-    if (typeof roleLevel === 'number' && Number.isFinite(roleLevel)) return roleLevel
-
-    const normalized = String(roleCode || '').trim().toUpperCase()
-    if (!normalized) return undefined
-    if (normalized === 'SUPERADMIN' || normalized === 'SUPER' || normalized === 'SA' || normalized === 'SUPER_ADMIN') return 1
-    if (normalized === 'HQ_ADMIN' || normalized === 'HQ' || normalized === 'ADMIN' || normalized === 'ADMIN_HQ') return 10
-    if (normalized === 'POWER_USER' || normalized === 'POWER') return 20
-    return undefined
+    return legacyRoleLevel(roleLevel, roleCode) ?? undefined
 }
 
 export function buildDefaultPermissionMap(roleLevel?: number): RolePermissionMap {
