@@ -104,6 +104,27 @@ describe('order actor organization isolation', () => {
     expect(body.users[0].signature_url).toContain('token=short')
   })
 
+  it('returns an authorized actor historical flat-path signature', async () => {
+    mocks.users = [{
+      id: 'actor-1',
+      email: 'actor@example.com',
+      full_name: 'Actor',
+      signature_url: 'signatures/actor-1_1763485672062.png',
+      roles: { role_level: 40 },
+    }]
+    mocks.createSignedUrl.mockResolvedValue({
+      data: { signedUrl: 'http://storage.test/object/sign/documents/signatures/actor-1_1763485672062.png?token=short' },
+      error: null,
+    })
+
+    const response = await POST(request())
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(mocks.createSignedUrl).toHaveBeenCalledWith('signatures/actor-1_1763485672062.png', 300)
+    expect(body.users[0].signature_url).toContain('token=short')
+  })
+
   it('does not sign a user-editable reference outside the actor owner path', async () => {
     mocks.users = [{
       id: 'actor-1',
