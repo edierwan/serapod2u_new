@@ -1,6 +1,7 @@
+import { hrSelfCan } from '@/lib/server/hrAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getAttendanceAuthContext, canManageAttendance } from '@/lib/server/attendanceAccess'
+import { getAttendanceAuthContext, canManageAttendance, attendanceCan } from '@/lib/server/attendanceAccess'
 
 export async function GET(request: NextRequest) {
     try {
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url)
         const status = searchParams.get('status')
-        const isManager = await canManageAttendance(ctx)
+        const isManager = await attendanceCan(ctx, 'hr.attendance.manage')
 
         let query = supabase
             .from('hr_attendance_corrections')
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
         if (!ctxResult.success || !ctxResult.data) return NextResponse.json({ success: false, error: ctxResult.error }, { status: 401 })
         const ctx = ctxResult.data
         if (!ctx.organizationId) return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
+        if (!(await hrSelfCan(ctx))) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
 
         const body = await request.json()
         if (!body.entry_id || !body.reason) return NextResponse.json({ success: false, error: 'entry_id and reason are required' }, { status: 400 })

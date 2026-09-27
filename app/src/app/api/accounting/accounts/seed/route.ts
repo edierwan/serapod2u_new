@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { STARTER_COA_TEMPLATE, DEFAULT_COA_TEMPLATE } from '@/types/accounting'
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user is HQ Admin (role_level <= 20)
     const roleLevel = (userData.roles as any)?.role_level || 999
-    if (roleLevel > 20) {
+    if (!(await financeAllowed(user.id, 'finance.account.manage', () => roleLevel <= 20, userData.organization_id))) {
       return NextResponse.json(
         { error: 'Insufficient permissions. HQ Admin required.' },
         { status: 403 }

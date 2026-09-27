@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getHrAuthContext, canManageHr } from '@/lib/server/hrAccess'
+import { getHrAuthContext, canManageHr, hrCan } from '@/lib/server/hrAccess'
 import { runHrAudit } from '@/lib/ai/hrAudit'
 
 export async function GET(_request: NextRequest) {
@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const ctx = authResult.data
-    const allowed = await canManageHr(ctx)
+    const allowed = await hrCan(ctx, 'hr.ai.use')
     if (!allowed) {
       return NextResponse.json(
         { success: false, error: 'Insufficient permissions' },

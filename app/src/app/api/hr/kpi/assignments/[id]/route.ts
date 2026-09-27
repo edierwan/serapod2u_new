@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getKpiAuthContext, canManageTargets } from '@/lib/server/kpi/access'
+import { getKpiAuthContext, canManageTargets, kpiCan } from '@/lib/server/kpi/access'
 import { kpiAudit } from '@/lib/server/kpi/audit'
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -8,7 +8,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const supabase = (await createClient()) as any
     const auth = await getKpiAuthContext(supabase)
     if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })
-    if (!(await canManageTargets(auth.data))) {
+    if (!(await kpiCan(auth.data, 'hr.performance.manage', () => canManageTargets(auth.data)))) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
     const body = await req.json().catch(() => ({}))
@@ -33,7 +33,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     const supabase = (await createClient()) as any
     const auth = await getKpiAuthContext(supabase)
     if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })
-    if (!(await canManageTargets(auth.data))) {
+    if (!(await kpiCan(auth.data, 'hr.performance.manage', () => canManageTargets(auth.data)))) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
     const { data, error } = await supabase.from('hr_kpi_assignments')

@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -14,6 +15,10 @@ export async function GET(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const { data: financeActor } = await (supabase as any).from('users').select('organization_id').eq('id', user.id).maybeSingle()
+    if (!(await financeAllowed(user.id, 'finance.module.view', () => true, financeActor?.organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Get user's company_id

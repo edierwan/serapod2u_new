@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -25,7 +26,7 @@ export async function PUT(
       .eq('id', user.id)
       .single()
 
-    if (!userData || userData.roles.role_level > 20) {
+    if (!userData || !(await financeAllowed(user.id, 'finance.settings.manage', () => userData.roles.role_level <= 20, userData.organization_id))) {
       return NextResponse.json({ error: 'Forbidden - HQ Admin only' }, { status: 403 })
     }
 

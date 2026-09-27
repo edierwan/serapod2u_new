@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -137,7 +138,8 @@ export async function POST(request: NextRequest) {
         }
 
         const roleLevel = caller.roles?.role_level ?? 99
-        if (roleLevel > 20) {
+        if (!(await hrCan({ userId: user.id, organizationId: caller.organization_id, roleCode: null, roleLevel },
+            'hr.employee.manage', () => roleLevel <= 20))) {
             return NextResponse.json({ success: false, error: 'Insufficient permissions. Manager level or above required.' }, { status: 403 })
         }
 

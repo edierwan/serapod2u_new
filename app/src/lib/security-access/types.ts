@@ -18,6 +18,8 @@ export interface AuthorizationResource {
   departmentId?: string | null
   warehouseId?: string | null
   ownerUserId?: string | null
+  /** Generic typed-scope attributes (territory, campaign, program, ...) from trusted data. */
+  attributes?: Record<string, string>
 }
 
 export interface AuthorizationContext {
@@ -52,6 +54,7 @@ export interface ResolvedScope {
 
 export type AuthorizationReasonCode =
   | 'ALLOWED_BY_ASSIGNMENT'
+  | 'ALLOWED_BY_DELEGATION'
   | 'ACCOUNT_INACTIVE'
   | 'MISSING_MEMBERSHIP'
   | 'MISSING_ASSIGNMENT'

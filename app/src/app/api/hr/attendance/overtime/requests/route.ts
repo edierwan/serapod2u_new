@@ -1,6 +1,7 @@
+import { hrSelfCan } from '@/lib/server/hrAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getAttendanceAuthContext, canManageAttendance } from '@/lib/server/attendanceAccess'
+import { getAttendanceAuthContext, canManageAttendance, attendanceCan } from '@/lib/server/attendanceAccess'
 
 // ─── GET  /api/hr/attendance/overtime/requests ── list OT requests
 // ─── POST /api/hr/attendance/overtime/requests ── create/update OT requests
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
             .range((page - 1) * limit, page * limit - 1)
 
         // Managers see all, employees see their own
-        const isManager = canManageAttendance(ctx)
+        const isManager = await attendanceCan(ctx, 'hr.attendance.manage')
         if (!isManager) {
             query = query.eq('employee_id', ctx.userId)
         } else if (employee_id) {
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
         if (!ctx.organizationId) {
             return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
         }
+        if (!(await hrSelfCan(ctx))) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
 
         const body = await request.json()
         const { action } = body // submit, approve, reject, cancel
@@ -173,7 +175,7 @@ async function handleApproveReject(supabase: any, ctx: any, body: any, status: '
     }
 
     // Only managers can approve/reject
-    if (!canManageAttendance(ctx)) {
+    if (!await attendanceCan(ctx, 'hr.attendance.manage')) {
         return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
     }
 
@@ -242,7 +244,7 @@ async function handleCancel(supabase: any, ctx: any, body: any) {
     }
 
     // Only the requester can cancel, and only if not already approved
-    if (existingRequest.employee_id !== ctx.userId && !canManageAttendance(ctx)) {
+    if (existingRequest.employee_id !== ctx.userId && !await attendanceCan(ctx, 'hr.attendance.manage')) {
         return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
     }
 

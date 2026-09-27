@@ -9,13 +9,22 @@ import { auditClassFor, auditWriteFailureIsFatal, authoritativeOutcome, consults
 import type {
   AuditSensitivity,
   AuthorizationDecision,
+  AuthorizationResource,
   AuthorizationDecisionValue,
   AuthorizationReasonCode,
   AuthorizationRequest,
   MigrationMode,
 } from './types'
 
-const POLICY_VERSION = 'sa-wave1-v1'
+const POLICY_VERSION = 'sa-final-v1'
+
+/**
+ * Legacy decision supplied by the caller: the module's existing check
+ * (canManageHr, role_level thresholds, organization-type rules, ...). It is
+ * evaluated exactly as before so LEGACY_ENFORCED/SHADOW keep today's behaviour,
+ * and it is never consulted once the permission is LEGACY_RETIRED.
+ */
+export type LegacyEvaluator = () => boolean | Promise<boolean>
 
 const legacyPermissionFor = (permission: string) => ({
   'inventory.stock_count.view': 'view_inventory',
@@ -93,9 +102,10 @@ async function auditSensitivity(permission: string): Promise<AuditSensitivity> {
   return !error && data?.audit_sensitivity === 'ordinary' ? 'ordinary' : 'security_sensitive'
 }
 
-async function legacyDecisionFor(request: AuthorizationRequest, mode: MigrationMode): Promise<AuthorizationDecisionValue | null> {
+async function legacyDecisionFor(request: AuthorizationRequest, mode: MigrationMode, evaluator?: LegacyEvaluator): Promise<AuthorizationDecisionValue | null> {
   if (!consultsLegacy(mode)) return null
   try {
+    if (evaluator) return (await evaluator()) ? 'ALLOW' : 'DENY'
     const legacy = await checkPermissionForUser(request.actorId, legacyPermissionFor(request.permission))
     return legacy.allowed ? 'ALLOW' : 'DENY'
   } catch (error) {
@@ -106,7 +116,51 @@ async function legacyDecisionFor(request: AuthorizationRequest, mode: MigrationM
   }
 }
 
-export async function authorize(request: AuthorizationRequest, options: { log?: boolean } = {}): Promise<AuthorizationDecision> {
+/** Resource context for the database evaluator (keys mirror sa_scope_matches). */
+export function databaseContext(resource: AuthorizationResource): Record<string, unknown> {
+  return {
+    ...(resource.organizationId ? { organization_id: resource.organizationId } : {}),
+    ...(resource.warehouseId ? { warehouse_id: resource.warehouseId } : {}),
+    ...(resource.departmentId ? { department_id: resource.departmentId } : {}),
+    ...(resource.ownerUserId ? { owner_user_id: resource.ownerUserId } : {}),
+    ...(resource.attributes && Object.keys(resource.attributes).length ? { attributes: resource.attributes } : {}),
+  }
+}
+
+const EVALUATOR_UNAVAILABLE = new Set(['PGRST202', '42883', 'PGRST205'])
+
+type NewEvaluation = ReturnType<typeof evaluateNewPolicy> | {
+  decision: AuthorizationDecisionValue; reasonCode: AuthorizationReasonCode; matchedAssignments: any[]; resolvedScopes: any[]
+}
+
+/**
+ * Canonical new-model decision: the database evaluator
+ * (public.sa_evaluate_permission — the same function the RLS/RPC backstops
+ * use, including hierarchy-aware scopes and non-transitive delegation). The
+ * in-process evaluator is used only while the Final Wave migration is not yet
+ * applied in an environment (code-before-migration rollout).
+ */
+async function evaluateNew(request: AuthorizationRequest, actorActive: boolean): Promise<NewEvaluation> {
+  const admin = createAdminClient() as any
+  const { data, error } = await admin.rpc('sa_evaluate_permission', {
+    p_actor: request.actorId, p_permission: request.permission, p_context: databaseContext(request.resource), p_include_delegation: true,
+  })
+  if (!error && data && typeof data === 'object' && (data.decision === 'ALLOW' || data.decision === 'DENY')) {
+    return {
+      decision: data.decision,
+      reasonCode: data.reason_code as AuthorizationReasonCode,
+      matchedAssignments: Array.isArray(data.matched_assignments) ? data.matched_assignments : [],
+      resolvedScopes: Array.isArray(data.resolved_scopes) ? data.resolved_scopes : [],
+    }
+  }
+  if (error && !EVALUATOR_UNAVAILABLE.has(error.code)) throw new Error('policy_evaluation_failed')
+  return evaluateNewPolicy(request, { actorActive, ...(await loadNewPolicy(request)) })
+}
+
+export async function authorize(
+  request: AuthorizationRequest,
+  options: { log?: boolean; legacy?: LegacyEvaluator } = {},
+): Promise<AuthorizationDecision> {
   const decisionId = randomUUID()
   const shouldLog = options.log !== false && !request.context?.explainOnly
   const [mode, actorActive, sensitivity] = await Promise.all([
@@ -114,12 +168,12 @@ export async function authorize(request: AuthorizationRequest, options: { log?: 
     isActiveSecurityAccessAccount(request.actorId),
     shouldLog ? auditSensitivity(request.permission) : Promise.resolve<AuditSensitivity>('security_sensitive'),
   ])
-  const legacyDecision = await legacyDecisionFor(request, mode)
-  let evaluated: ReturnType<typeof evaluateNewPolicy> | {
-    decision: 'DENY'; reasonCode: 'POLICY_ERROR'; matchedAssignments: []; resolvedScopes: []
-  }
+  const legacyDecision = await legacyDecisionFor(request, mode, options.legacy)
+  let evaluated: NewEvaluation
   try {
-    evaluated = evaluateNewPolicy(request, { actorActive, ...(await loadNewPolicy(request)) })
+    evaluated = actorActive
+      ? await evaluateNew(request, actorActive)
+      : { decision: 'DENY', reasonCode: 'ACCOUNT_INACTIVE', matchedAssignments: [], resolvedScopes: [] }
   } catch {
     evaluated = { decision: 'DENY', reasonCode: 'POLICY_ERROR', matchedAssignments: [], resolvedScopes: [] }
   }
@@ -183,8 +237,8 @@ export async function authorize(request: AuthorizationRequest, options: { log?: 
  * (see enforcement.ts). In NEW_ENFORCED / LEGACY_RETIRED a new-engine DENY
  * throws; there is no fallback to a legacy ALLOW.
  */
-export async function requireAuthorization(request: AuthorizationRequest): Promise<AuthorizationDecision> {
-  const decision = await authorize(request)
+export async function requireAuthorization(request: AuthorizationRequest, options: { legacy?: LegacyEvaluator } = {}): Promise<AuthorizationDecision> {
+  const decision = await authorize(request, { legacy: options.legacy })
   if (decision.decision !== 'ALLOW') throw new AuthorizationDeniedError(decision.decisionId, decision.reasonCode)
   return decision
 }

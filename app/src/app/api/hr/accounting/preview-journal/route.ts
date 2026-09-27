@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -27,6 +28,10 @@ export async function POST(request: NextRequest) {
             p_org_id: userData.organization_id,
         })
         if (!companyId) return NextResponse.json({ error: 'Company not found' }, { status: 404 })
+        if (!(await hrCan({ userId: user.id, organizationId: userData.organization_id, roleCode: null, roleLevel: (userData.roles as any)?.role_level ?? null },
+            'finance.payroll_integration.manage', () => true))) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+        }
 
         const body = await request.json()
         const { payroll_run_id, posting_date } = body

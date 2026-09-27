@@ -2,6 +2,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 /**
  * Server-only context helper for Finance pages.
@@ -59,9 +60,16 @@ export async function getFinancePageContext() {
         checkPermissionForUser(user.id, 'view_settings'),
     ])
 
-    const canViewFinance =
+    const legacyCanViewFinance =
         viewSettings.allowed ||
         (roles?.role_level != null && roles.role_level <= 40)
+    // Module entry is an S&A decision in the user's own company.
+    const canViewFinance = await authorizeOperation({
+        actorId: user.id,
+        permission: 'finance.module.view',
+        resource: organizationResource('finance_company', organizationId),
+        legacy: () => legacyCanViewFinance,
+    }).then(d => d.decision === 'ALLOW').catch(() => false)
 
     return { user, userProfile: transformedUserProfile, canViewFinance }
 }

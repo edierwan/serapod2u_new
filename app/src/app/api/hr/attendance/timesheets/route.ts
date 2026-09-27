@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getAttendanceAuthContext, canManageAttendance } from '@/lib/server/attendanceAccess'
+import { getAttendanceAuthContext, canManageAttendance, attendanceCan } from '@/lib/server/attendanceAccess'
 
 export async function GET(request: NextRequest) {
     try {
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         let userIds: string[] = []
 
         if (scope === 'team') {
-            const isManager = await canManageAttendance(ctx)
+            const isManager = await attendanceCan(ctx, 'hr.attendance.manage')
             const { data: directReports } = await supabase
                 .from('users')
                 .select('id')

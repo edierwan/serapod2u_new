@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -56,6 +57,9 @@ export async function GET() {
         const supabase = await createClient() as any
         const ctx = await getOrgContext(supabase)
         if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        if (!(await financeAllowed(ctx.user.id, 'finance.module.view', () => true, ctx.orgId))) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        }
 
         const { companyId } = ctx
 
@@ -374,7 +378,7 @@ export async function POST(request: Request) {
         const supabase = await createClient() as any
         const ctx = await getOrgContext(supabase)
         if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        if (ctx.roleLevel > 20) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+        if (!(await financeAllowed(ctx.user.id, 'finance.settings.manage', () => ctx.roleLevel <= 20, ctx.orgId))) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
         const body = await request.json()
         const { action } = body

@@ -1,5 +1,8 @@
 import 'server-only'
+import { NextResponse } from 'next/server'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
+import type { LegacyEvaluator } from '@/lib/security-access/authorization'
 
 export interface HrAuthContext {
     userId: string
@@ -126,3 +129,48 @@ export const getHrAccessDecision = async (ctx: HrAuthContext) => {
         }
     }
 }
+
+/**
+ * S&A decision for an HR operation in the caller's own organization (the
+ * verified profile's organization — never a request parameter). The legacy
+ * evaluator is the module's historical check and decides only in
+ * LEGACY_ENFORCED/SHADOW; in NEW_ENFORCED/LEGACY_RETIRED the S&A decision is
+ * authoritative. Any evaluation failure denies.
+ */
+export const hrCan = async (
+    ctx: Pick<HrAuthContext, 'userId' | 'organizationId' | 'roleCode' | 'roleLevel'>,
+    permission: string,
+    legacy: LegacyEvaluator = () => canManageHr(ctx as HrAuthContext),
+): Promise<boolean> => {
+    try {
+        const decision = await authorizeOperation({
+            actorId: ctx.userId,
+            permission,
+            resource: organizationResource('hr_organization', ctx.organizationId),
+            legacy,
+        })
+        return decision.decision === 'ALLOW'
+    } catch {
+        return false
+    }
+}
+
+/** Employee self-service on the caller's own record (own_record scope). */
+export const hrSelfCan = async (
+    ctx: Pick<HrAuthContext, 'userId' | 'organizationId'>,
+    permission = 'hr.self_service.use',
+): Promise<boolean> => {
+    try {
+        const decision = await authorizeOperation({
+            actorId: ctx.userId,
+            permission,
+            resource: organizationResource('hr_employee_record', ctx.organizationId, { ownerUserId: ctx.userId }),
+            legacy: () => true,
+        })
+        return decision.decision === 'ALLOW'
+    } catch {
+        return false
+    }
+}
+
+export const hrForbidden = () => NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })

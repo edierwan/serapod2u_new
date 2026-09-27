@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -33,6 +34,10 @@ export async function GET() {
         const ctx = await getAuthAndCompany(supabase)
         if ('error' in ctx) {
             return NextResponse.json({ error: ctx.error }, { status: ctx.status })
+        }
+        if (!(await hrCan({ userId: ctx.user.id, organizationId: ctx.userData.organization_id, roleCode: null, roleLevel: ctx.roleLevel },
+            'finance.payroll_integration.manage', () => true))) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
         }
 
         // Get clearing accounts
@@ -87,7 +92,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: ctx.error }, { status: ctx.status })
         }
 
-        if (ctx.roleLevel > 20) {
+        if (!(await hrCan({ userId: ctx.user.id, organizationId: ctx.userData.organization_id, roleCode: null, roleLevel: ctx.roleLevel },
+            'finance.payroll_integration.manage', () => ctx.roleLevel <= 20))) {
             return NextResponse.json({ error: 'HQ Admin required' }, { status: 403 })
         }
 

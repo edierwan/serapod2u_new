@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageHr, getHrAuthContext } from '@/lib/server/hrAccess'
+import { canManageHr, getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 
 export async function GET(request: NextRequest) {
     try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
         }
 
         let includeDisabled = request.nextUrl.searchParams.get('include_disabled') === '1'
-        if (includeDisabled && !(await canManageHr(ctxResult.data))) {
+        if (includeDisabled && !(await hrCan(ctxResult.data, 'hr.employee.manage'))) {
             includeDisabled = false
         }
 
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Code and name are required' }, { status: 400 })
         }
 
-        if (!(await canManageHr(ctx))) {
+        if (!(await hrCan(ctx, 'hr.employee.manage'))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 

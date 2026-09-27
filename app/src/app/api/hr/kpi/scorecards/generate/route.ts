@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getKpiAuthContext, canGenerateScorecards } from '@/lib/server/kpi/access'
+import { getKpiAuthContext, canGenerateScorecards, kpiCan } from '@/lib/server/kpi/access'
 import { kpiAudit } from '@/lib/server/kpi/audit'
 import { computeAchievementPct, computeWeightedScore, classifyStatus, computeGrade } from '@/lib/server/kpi/score'
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const supabase = (await createClient()) as any
     const auth = await getKpiAuthContext(supabase)
     if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })
-    if (!(await canGenerateScorecards(auth.data))) {
+    if (!(await kpiCan(auth.data, 'hr.performance.manage', () => canGenerateScorecards(auth.data)))) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
     const body = await req.json().catch(() => ({}))

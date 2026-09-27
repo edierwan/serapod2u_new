@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageHr, getHrAuthContext } from '@/lib/server/hrAccess'
+import { canManageHr, getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 
 export async function GET() {
     try {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Employee is required' }, { status: 400 })
         }
 
-        const isManager = await canManageHr(ctx)
+        const isManager = await hrCan(ctx, 'hr.payroll.view')
         if (!isManager && employeeUserId !== ctx.userId) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
