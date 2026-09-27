@@ -25,5 +25,7 @@ describe('legacy signature private access migration', () => {
     expect(sql).toContain("id in ('documents', 'order-documents') and public")
     expect(sql).toContain("polname = 'documents_signature_select_own'")
     expect(sql).toContain("p.polroles = array['authenticated'::regrole::oid]")
+    expect(sql).toContain('p.polqual is not null')
+    expect(sql).not.toMatch(/select\s+pg_get_expr/i)
   })
 })
