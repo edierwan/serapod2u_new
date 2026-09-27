@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getHrAuthContext, canManageHr } from '@/lib/server/hrAccess'
+import { getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 import { getProviderSettings, getActiveProviderForOrg } from '@/lib/server/ai/providerSettings'
 import { encryptSecret, buildTokenHint } from '@/lib/server/ai/secrets'
 
@@ -23,7 +23,7 @@ export async function GET() {
     }
 
     // Must be admin
-    const isAdmin = await canManageHr(ctx)
+    const isAdmin = await hrCan(ctx, 'platform.settings.manage')
     if (!isAdmin) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No organization' }, { status: 400 })
     }
 
-    const isAdmin = await canManageHr(ctx)
+    const isAdmin = await hrCan(ctx, 'platform.settings.manage')
     if (!isAdmin) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }

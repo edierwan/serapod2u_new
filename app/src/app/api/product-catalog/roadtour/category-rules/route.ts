@@ -18,7 +18,7 @@ export async function PATCH(request: Request) {
     if (!productCategoryId) throw new EllbowApiError('product_category_id is required', 400)
     if (!MODES.includes(mode)) throw new EllbowApiError('Invalid inclusion_mode', 400)
 
-    const ctx = await getRoadtourCatalogContext({ initialize: true })
+    const ctx = await getRoadtourCatalogContext({ initialize: true, permission: 'roadtour.campaign.manage' })
     const { supabase, organizationId, program, catalog } = ctx
 
     // Reject changing a Vape category to anything other than excluded.

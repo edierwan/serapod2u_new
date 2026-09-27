@@ -1,3 +1,4 @@
+import { userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -19,7 +20,8 @@ async function getAuthenticatedAdmin(supabase: any) {
     const orgType = (profile.organizations as any)?.org_type_code
     const roleLevel = (profile.roles as any)?.role_level
     // HQ users with role level ≤ 30 (Admin/Manager)
-    if (orgType !== 'HQ' || roleLevel == null || roleLevel > 30 || !profile.organization_id) return null
+    // S&A decides for the admin's organization; the HQ level<=30 rule is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'ecommerce.order.manage', () => orgType === 'HQ' && roleLevel != null && roleLevel <= 30 && !!profile.organization_id, { organizationId: profile.organization_id }))) return null
 
     return { userId: user.id, orgId: profile.organization_id as string }
 }

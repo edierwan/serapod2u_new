@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { summarizeShopUserPointsReporting } from '@/lib/reporting/shop-user-points'
@@ -15,6 +16,8 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.consumer.view')
+    if (saDenied) return saDenied
 
     const admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

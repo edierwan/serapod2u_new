@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { normalizePhoneE164 } from '@/utils/phone'
@@ -27,6 +28,8 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const { searchParams } = new URL(req.url)
     const orgId = await resolveOrgId(supabase, user.id, searchParams.get('org_id'))
@@ -56,6 +59,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const body = await req.json().catch(() => ({})) as Record<string, any>
     const orgId = await resolveOrgId(supabase, user.id, body.org_id)

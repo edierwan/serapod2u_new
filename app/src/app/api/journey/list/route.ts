@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 /**
  * GET /api/journey/list
  * List all journey configurations for the user's organization
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Get user profile to find organization_id
     const { data: profile, error: profileError } = await supabase

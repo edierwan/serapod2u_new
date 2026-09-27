@@ -1,3 +1,4 @@
+import { userAllowed, guardUserOperation } from '@/lib/security-access/operation'
 /**
  * POST /api/module-assistant/chat
  *
@@ -125,6 +126,9 @@ export async function POST(request: NextRequest) {
 
         if (!profile?.organization_id) {
             return res(400, { error: 'Organization not found' })
+        }
+        if (!(await userAllowed(user.id, 'hr.ai.use', () => true, { organizationId: profile.organization_id }))) {
+            return res(403, { error: 'Forbidden' })
         }
 
         const userId = profile.id as string

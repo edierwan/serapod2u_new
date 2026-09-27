@@ -5,7 +5,7 @@ const VERIFICATION_MODES = ['manual', 'automatic']
 
 export async function GET() {
   try {
-    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true })
+    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true, permission: 'customer.reward.manage' })
     const { data, error } = await supabase.from('ellbow_rewards')
       .select('*, category:ellbow_reward_categories(id,name), images:ellbow_reward_images(*)')
       .eq('organization_id', organizationId).eq('loyalty_program_id', program.id)
@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true })
+    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true, permission: 'customer.reward.manage' })
     const { data: category } = await supabase.from('ellbow_reward_categories').select('id')
       .eq('id', body.category_id).eq('organization_id', organizationId).eq('loyalty_program_id', program.id).maybeSingle()
     if (!category) throw new EllbowApiError('Invalid Ellbow category', 400)

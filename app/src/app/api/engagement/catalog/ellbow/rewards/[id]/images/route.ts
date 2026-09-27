@@ -6,7 +6,7 @@ const ALLOWED_TYPES = new Map([['image/jpeg', 'jpg'], ['image/png', 'png'], ['im
 export async function POST(request: Request, { params }: Context) {
   try {
     const { id } = await params
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program) throw new EllbowApiError('Ellbow reward not found', 404)
     const { data: reward } = await supabase.from('ellbow_rewards').select('id')
       .eq('id', id).eq('organization_id', organizationId).eq('loyalty_program_id', program.id).maybeSingle()
@@ -36,7 +36,7 @@ export async function PATCH(request: Request, { params }: Context) {
   try {
     const { id } = await params
     const body = await request.json() as { images?: Array<{ id: string; sort_order: number; is_default: boolean }> }
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program || !Array.isArray(body.images) || body.images.length > 5) throw new EllbowApiError('Invalid image order', 400)
     if (body.images.filter(image => image.is_default).length !== 1) throw new EllbowApiError('Exactly one default image is required', 400)
     const { data: existing } = await supabase.from('ellbow_reward_images').select('id')

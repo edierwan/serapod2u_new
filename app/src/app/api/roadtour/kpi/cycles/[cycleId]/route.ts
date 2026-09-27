@@ -9,7 +9,7 @@ const ALLOWED_SCOPES = new Set(['all_campaigns', 'selected_campaigns'])
 /** Full cycle detail: cycle + teams (with members) + incentive rules. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ cycleId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { cycleId } = await params
         const cycle = await loadCycleForUpdate(ctx, cycleId)
@@ -42,7 +42,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 /** Update draft-editable cycle settings (scope, toggles). Month/event of an existing cycle cannot change. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ cycleId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { cycleId } = await params
         const cycle = await loadCycleForUpdate(ctx, cycleId)
@@ -82,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 /** Delete a cycle (drafts only) — teams, members, and rules cascade. */
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ cycleId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { cycleId } = await params
         const cycle = await loadCycleForUpdate(ctx, cycleId)

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EllbowApiError } from '@/lib/server/ellbow-catalog'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 /**
  * RoadTour Product Catalog server logic.
@@ -199,7 +200,7 @@ export interface RoadtourCatalogContext {
  * the catalog and default category rules idempotently. organization_id is taken
  * from the user profile, never from the client.
  */
-export async function getRoadtourCatalogContext({ initialize = false }: { initialize?: boolean } = {}): Promise<RoadtourCatalogContext> {
+export async function getRoadtourCatalogContext({ initialize = false, permission = 'roadtour.campaign.manage' }: { initialize?: boolean; permission?: string } = {}): Promise<RoadtourCatalogContext> {
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new EllbowApiError('Unauthorized', 401)
@@ -210,7 +211,18 @@ export async function getRoadtourCatalogContext({ initialize = false }: { initia
     .eq('id', user.id)
     .single()
   const role = Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles
-  if (profileError || !profile?.is_active || !role || Number(role.role_level) > 40) {
+  const legacyAllowed = !profileError && !!profile?.is_active && !!role && Number(role.role_level) <= 40
+  // S&A decides in the actor's organization; the historical staff rule is
+  // the legacy evaluator.
+  const allowed = profile?.organization_id
+    ? await authorizeOperation({
+        actorId: user.id,
+        permission,
+        resource: organizationResource('loyalty_program', profile.organization_id),
+        legacy: () => legacyAllowed,
+      }).then(d => d.decision === 'ALLOW').catch(() => false)
+    : false
+  if (!allowed) {
     throw new EllbowApiError('Forbidden', 403)
   }
   const organizationId = profile.organization_id as string

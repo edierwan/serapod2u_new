@@ -23,7 +23,7 @@ async function loadRule(ctx: any, ruleId: string) {
 /** Update an incentive rule. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ ruleId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { ruleId } = await params
         const rule = await loadRule(ctx, ruleId)
@@ -96,7 +96,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 /** Delete an incentive rule. */
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ ruleId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { ruleId } = await params
         const rule = await loadRule(ctx, ruleId)

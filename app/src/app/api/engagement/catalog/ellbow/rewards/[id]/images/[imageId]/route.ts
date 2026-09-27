@@ -5,7 +5,7 @@ type Context = { params: Promise<{ id: string; imageId: string }> }
 export async function DELETE(_request: Request, { params }: Context) {
   try {
     const { id, imageId } = await params
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program) throw new EllbowApiError('Ellbow image not found', 404)
     const { data: image } = await supabase.from('ellbow_reward_images').select('*')
       .eq('id', imageId).eq('reward_id', id).eq('organization_id', organizationId).eq('loyalty_program_id', program.id).maybeSingle()

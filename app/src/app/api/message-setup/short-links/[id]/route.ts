@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
@@ -15,6 +16,8 @@ export async function GET(
     if (authError || !user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Get short link with click stats
     const { data: shortLink, error } = await supabase
@@ -75,6 +78,8 @@ export async function PATCH(
     if (authError || !user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Verify admin access
     const { data: userProfile } = await supabase
@@ -140,6 +145,8 @@ export async function DELETE(
     if (authError || !user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Verify admin access
     const { data: userProfile } = await supabase

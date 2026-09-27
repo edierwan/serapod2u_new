@@ -93,6 +93,10 @@ vi.mock('@supabase/supabase-js', () => ({
 
 import { GET } from './route'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 const SHOP_ORG_COUNT = 279
 
 beforeEach(() => {

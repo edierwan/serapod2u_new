@@ -10,12 +10,12 @@ const ALLOWED_STATUS = new Set<KpiPerformanceStatus>(['achieved', 'on_track', 'a
 
 export async function GET(request: NextRequest) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.report.view')
         if (ctx instanceof NextResponse) return ctx
 
         const { searchParams } = new URL(request.url)
         const orgId = String(searchParams.get('org_id') || ctx.profile.organization_id || '').trim()
-        const denied = assertOrgAccess(ctx, orgId)
+        const denied = await assertOrgAccess(ctx, orgId)
         if (denied) return denied
 
         const kpiMonth = String(searchParams.get('kpi_month') || '').trim()

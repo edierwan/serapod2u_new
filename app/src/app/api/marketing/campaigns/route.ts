@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +11,8 @@ export async function POST(req: NextRequest) {
     if (authError || !user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Check if user has marketing access (simplified: check if admin/manager role)
     // In real app, check `user.role_code` or permissions table
@@ -99,6 +102,8 @@ export async function GET(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     const { searchParams } = new URL(req.url);
     const orgId = searchParams.get('orgId');

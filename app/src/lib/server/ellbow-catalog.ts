@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 export const ELLBOW_CATEGORY_NAMES = [
   'Pet Food', 'Pet Accessories', 'Gifts', 'Cashback', 'Vouchers', 'Points', 'Other',
@@ -9,7 +10,7 @@ export class EllbowApiError extends Error {
   constructor(message: string, public status: number) { super(message) }
 }
 
-export async function getEllbowContext({ initialize = false }: { initialize?: boolean } = {}) {
+export async function getEllbowContext({ initialize = false, permission = 'customer.reward.manage' }: { initialize?: boolean; permission?: string } = {}) {
   const supabase = await createClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) throw new EllbowApiError('Unauthorized', 401)
@@ -20,7 +21,18 @@ export async function getEllbowContext({ initialize = false }: { initialize?: bo
     .eq('id', user.id)
     .single()
   const role = Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles
-  if (profileError || !profile?.is_active || !role || Number(role.role_level) > 40) {
+  const legacyAllowed = !profileError && !!profile?.is_active && !!role && Number(role.role_level) <= 40
+  // S&A decides in the actor's organization; the historical staff rule is
+  // the legacy evaluator.
+  const allowed = profile?.organization_id
+    ? await authorizeOperation({
+        actorId: user.id,
+        permission,
+        resource: organizationResource('loyalty_program', profile.organization_id),
+        legacy: () => legacyAllowed,
+      }).then(d => d.decision === 'ALLOW').catch(() => false)
+    : false
+  if (!allowed) {
     throw new EllbowApiError('Forbidden', 403)
   }
 

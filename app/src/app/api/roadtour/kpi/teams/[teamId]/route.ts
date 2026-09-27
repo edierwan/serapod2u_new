@@ -18,7 +18,7 @@ async function loadTeam(ctx: any, teamId: string) {
 /** Update a team; when members or target change, member targets are re-distributed. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ teamId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { teamId } = await params
         const team = await loadTeam(ctx, teamId)
@@ -112,7 +112,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 /** Delete a team (members cascade). Blocked while frozen. */
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ teamId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { teamId } = await params
         const team = await loadTeam(ctx, teamId)

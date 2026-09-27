@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest) {
         await writer.close()
         return
       }
+      const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+      if (saDenied) return saDenied
 
       // Check admin role
       const { data: userData, error: userError } = await supabaseAdmin

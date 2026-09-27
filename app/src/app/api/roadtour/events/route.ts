@@ -1,3 +1,4 @@
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { isRoadtourCategorySelectable, type RoadtourProductCategory } from '@/lib/roadtour/experience-registry'
@@ -28,9 +29,9 @@ export async function POST(request: NextRequest) {
             .eq('id', user.id)
             .single()
         if (profileError || !profile) return NextResponse.json({ success: false, error: 'User profile not found.' }, { status: 404 })
-        if (!Number.isFinite(roleLevel(profile.roles)) || roleLevel(profile.roles) > 20) {
-            return NextResponse.json({ success: false, error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
-        }
+        // Authority is decided below for the target organization (S&A); the
+        // historical level/organization rule is the legacy evaluator.
+        const legacyLevelOk = Number.isFinite(roleLevel(profile.roles)) && roleLevel(profile.roles) <= 20
 
         const body = await request.json()
         const orgId = String(body?.org_id || '').trim()
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
         if (!ALLOWED_STATUSES.has(status) || !ALLOWED_DUPLICATE_POLICIES.has(duplicatePolicy) || !ALLOWED_POINT_RELEASE_RULES.has(pointReleaseRule)) {
             return NextResponse.json({ success: false, error: 'Invalid RoadTour Event configuration.' }, { status: 400 })
         }
-        if (roleLevel(profile.roles) !== 1 && orgId !== profile.organization_id) {
+        if (!(await authorizeOperation({ actorId: user.id, permission: 'roadtour.campaign.manage', resource: organizationResource('roadtour_event', orgId), legacy: () => legacyLevelOk && (roleLevel(profile.roles) === 1 || orgId === profile.organization_id) }).then(d => d.decision === 'ALLOW').catch(() => false))) {
             return NextResponse.json({ success: false, error: 'Access denied for this organization.' }, { status: 403 })
         }
         if (!productCategoryId) return NextResponse.json({ success: false, error: 'Product category is required.' }, { status: 400 })

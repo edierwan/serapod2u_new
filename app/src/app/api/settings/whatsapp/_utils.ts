@@ -6,6 +6,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { userAllowed } from '@/lib/security-access/operation'
 
 // Default tenant ID for Serapod2u
 const DEFAULT_TENANT_ID = 'serapod2u';
@@ -158,6 +159,13 @@ export async function sendWhatsAppMessage(
  * Check if user is an admin
  */
 export async function isAdminUser(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  // Platform integration settings are an S&A decision
+  // (platform.settings.manage) in the admin's organization; the historical
+  // admin-role rule below is the legacy evaluator.
+  return userAllowed(userId, 'platform.settings.manage', () => legacyIsAdminUser(supabase, userId))
+}
+
+async function legacyIsAdminUser(supabase: SupabaseClient, userId: string): Promise<boolean> {
   const { data: userProfile } = await supabase
     .from('users')
     .select(`

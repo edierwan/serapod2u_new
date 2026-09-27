@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -69,6 +70,8 @@ export async function GET(_request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+    if (saDenied) return saDenied
     if (!await canViewSmsMonitor(supabase, user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -222,6 +225,8 @@ export async function PATCH(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+    if (saDenied) return saDenied
     if (!await canViewSmsMonitor(supabase, user.id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

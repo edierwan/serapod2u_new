@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { autoDistributeTarget } from '@/lib/roadtour/kpi'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 const roleLevel = (relation: any) => Number(Array.isArray(relation) ? relation[0]?.role_level : relation?.role_level)
 
@@ -10,13 +11,15 @@ export interface KpiAdminContext {
     admin: any
     profile: { id: string; organization_id: string | null; roles: any }
     isGlobalAdmin: boolean
+    /** S&A permission this context was authorized for. */
+    permission: string
 }
 
 /**
  * Authorize the caller as a RoadTour admin (HQ Admin level, role_level <= 20),
  * mirroring the guard used by /api/roadtour/events.
  */
-export async function requireKpiAdmin(): Promise<KpiAdminContext | NextResponse> {
+export async function requireKpiAdmin(permission: string = 'roadtour.kpi.manage'): Promise<KpiAdminContext | NextResponse> {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
@@ -29,16 +32,34 @@ export async function requireKpiAdmin(): Promise<KpiAdminContext | NextResponse>
         .single()
     if (profileError || !profile) return NextResponse.json({ success: false, error: 'User profile not found.' }, { status: 404 })
     const level = roleLevel(profile.roles)
-    if (!Number.isFinite(level) || level > 20) {
+    // S&A decides in the actor's own organization; role level <= 20 is the
+    // legacy evaluator.
+    const allowed = await authorizeOperation({
+        actorId: user.id,
+        permission,
+        resource: organizationResource('roadtour_kpi', profile.organization_id),
+        legacy: () => Number.isFinite(level) && level <= 20,
+    }).then(d => d.decision === 'ALLOW').catch(() => false)
+    if (!allowed) {
         return NextResponse.json({ success: false, error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
     }
-    return { admin, profile, isGlobalAdmin: level === 1 }
+    return { admin, profile, isGlobalAdmin: level === 1, permission }
 }
 
-/** Enforce org access: global admins may target any org, others only their own. */
-export function assertOrgAccess(ctx: KpiAdminContext, orgId: string): NextResponse | null {
+/**
+ * Enforce access to the TARGET organization: an S&A decision for that
+ * organization (its hierarchy decides coverage). Legacy: global admins
+ * (role level 1) could target any organization, others only their own.
+ */
+export async function assertOrgAccess(ctx: KpiAdminContext, orgId: string): Promise<NextResponse | null> {
     if (!orgId) return NextResponse.json({ success: false, error: 'Organization is required.' }, { status: 400 })
-    if (!ctx.isGlobalAdmin && orgId !== ctx.profile.organization_id) {
+    const allowed = await authorizeOperation({
+        actorId: ctx.profile.id,
+        permission: ctx.permission,
+        resource: organizationResource('roadtour_kpi', orgId),
+        legacy: () => ctx.isGlobalAdmin || orgId === ctx.profile.organization_id,
+    }).then(d => d.decision === 'ALLOW').catch(() => false)
+    if (!allowed) {
         return NextResponse.json({ success: false, error: 'Access denied for this organization.' }, { status: 403 })
     }
     return null

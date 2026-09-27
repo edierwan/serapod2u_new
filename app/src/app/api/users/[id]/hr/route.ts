@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageHr, getHrAuthContext } from '@/lib/server/hrAccess'
+import { getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 
 const EMPLOYMENT_TYPES = new Set(['Full-time', 'Part-time', 'Contract', 'Intern'])
 const EMPLOYMENT_STATUSES = new Set(['active', 'resigned', 'terminated'])
@@ -21,7 +21,7 @@ export async function PATCH(
             return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
         }
 
-        if (!(await canManageHr(ctx))) {
+        if (!(await hrCan(ctx, 'hr.employee.manage'))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 

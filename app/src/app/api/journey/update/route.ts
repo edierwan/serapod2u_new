@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 /**
  * PATCH /api/journey/update
  * Update an existing journey configuration
@@ -21,6 +22,8 @@ export async function PATCH(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Get user profile with relationships
     const { data: profile, error: profileError } = await supabase

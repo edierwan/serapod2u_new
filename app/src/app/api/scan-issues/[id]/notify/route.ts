@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
@@ -19,6 +20,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const supabase = await createServerClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const body = await req.json().catch(() => ({})) as Record<string, any>
     const templateKey = String(body.template_key || 'issue_acknowledgement')

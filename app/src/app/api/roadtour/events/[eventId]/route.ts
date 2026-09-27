@@ -1,3 +1,4 @@
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -55,11 +56,7 @@ async function resolveAuthorizedEventAccess(eventId: string) {
     }
 
     const roleLevel = extractRoleLevel(profile.roles)
-    if (typeof roleLevel !== 'number' || roleLevel > 20) {
-        return {
-            response: NextResponse.json({ success: false, error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 }),
-        }
-    }
+    const legacyLevelOk = typeof roleLevel === 'number' && roleLevel <= 20
 
     const { data: eventRow, error: eventError } = await adminClient
         .from('roadtour_runs')
@@ -79,7 +76,7 @@ async function resolveAuthorizedEventAccess(eventId: string) {
         }
     }
 
-    if (roleLevel !== 1 && eventRow.org_id !== profile.organization_id) {
+    if (!(await authorizeOperation({ actorId: authUser.id, permission: 'roadtour.campaign.manage', resource: organizationResource('roadtour_event', eventRow.org_id), legacy: () => legacyLevelOk && (roleLevel === 1 || eventRow.org_id === profile.organization_id) }).then(d => d.decision === 'ALLOW').catch(() => false))) {
         return {
             response: NextResponse.json({ success: false, error: 'Access denied for this RoadTour Event.' }, { status: 403 }),
         }
@@ -272,12 +269,7 @@ export async function DELETE(
         }
 
         const roleLevel = extractRoleLevel(profile.roles)
-        if (typeof roleLevel !== 'number' || roleLevel > 20) {
-            return NextResponse.json(
-                { success: false, error: 'Insufficient permissions. HQ Admin required.' },
-                { status: 403 },
-            )
-        }
+        const legacyLevelOk = typeof roleLevel === 'number' && roleLevel <= 20
 
         const { data: eventRow, error: eventError } = await adminClient
             .from('roadtour_runs')
@@ -299,7 +291,7 @@ export async function DELETE(
             )
         }
 
-        if (roleLevel !== 1 && eventRow.org_id !== profile.organization_id) {
+        if (!(await authorizeOperation({ actorId: authUser.id, permission: 'roadtour.campaign.manage', resource: organizationResource('roadtour_event', eventRow.org_id), legacy: () => legacyLevelOk && (roleLevel === 1 || eventRow.org_id === profile.organization_id) }).then(d => d.decision === 'ALLOW').catch(() => false))) {
             return NextResponse.json(
                 { success: false, error: 'Access denied for this RoadTour Event.' },
                 { status: 403 },

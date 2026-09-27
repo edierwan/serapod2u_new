@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -71,6 +72,8 @@ export async function POST(request: NextRequest) {
             { status: 401 }
         )
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Get user's organization and role
     const { data: userData, error: userError } = await supabase
@@ -153,6 +156,8 @@ export async function PUT(request: NextRequest) {
             { status: 401 }
         )
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     // Get user's organization and role
     const { data: userData, error: userError } = await supabase

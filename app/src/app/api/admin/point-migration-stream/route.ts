@@ -1,6 +1,8 @@
+import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
 
@@ -378,6 +380,14 @@ async function processRowOptimized(
 }
 
 export async function POST(request: NextRequest) {
+    // Authorize before streaming starts (bulk user + points import).
+    {
+        const authClient = await createServerClient();
+        const { data: { user: actor } } = await authClient.auth.getUser();
+        if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        const saDenied = await guardUserOperation(actor.id, 'customer.loyalty.adjust', { legacy: () => legacyRoleLevelAtMost(actor.id, 20) });
+        if (saDenied) return saDenied;
+    }
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({

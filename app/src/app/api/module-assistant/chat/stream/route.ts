@@ -1,3 +1,4 @@
+import { userAllowed } from '@/lib/security-access/operation'
 /**
  * POST /api/module-assistant/chat/stream
  *
@@ -139,6 +140,9 @@ export async function POST(request: NextRequest) {
       .single()
     if (!profile?.organization_id) {
       return new Response(sseEvent('error', { error: 'Organization not found' }), { status: 400, headers: sseHeaders() })
+    }
+    if (!(await userAllowed(user.id, 'hr.ai.use', () => true, { organizationId: profile.organization_id }))) {
+      return new Response(sseEvent('error', { error: 'Forbidden' }), { status: 403, headers: sseHeaders() })
     }
     const userId = profile.id as string
     const orgId = profile.organization_id as string

@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { normalizePhoneE164 } from '@/utils/phone'
@@ -22,6 +23,8 @@ export async function GET(
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
+        const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+        if (saDenied) return saDenied
 
         // Use 'as any' since table may not be in generated types yet
         const { data: admin, error } = await (supabase
@@ -55,6 +58,8 @@ export async function PATCH(
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
+        const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+        if (saDenied) return saDenied
 
         // Get user's org for RLS check
         const { data: userData } = await supabase
@@ -118,6 +123,8 @@ export async function DELETE(
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
+        const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+        if (saDenied) return saDenied
 
         // Get user's org
         const { data: userData } = await supabase

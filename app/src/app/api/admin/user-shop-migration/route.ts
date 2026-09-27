@@ -1,3 +1,4 @@
+import { userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -23,7 +24,7 @@ async function requireAdmin(request: NextRequest) {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !['SA', 'HQ', 'POWER_USER'].includes(profile.role_code)) {
+  if (!profile || !(await userAllowed(user.id, 'customer.shop.manage', () => ['SA', 'HQ', 'POWER_USER'].includes(profile.role_code), { organizationId: profile.organization_id }))) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
   return { user, profile, admin }

@@ -7,7 +7,7 @@ const VERIFICATION_MODES = ['manual', 'automatic']
 export async function GET(_request: Request, { params }: Context) {
   try {
     const { id } = await params
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program) throw new EllbowApiError('Ellbow Loyalty is not initialized', 404)
     const { data, error } = await supabase.from('ellbow_rewards')
       .select('*, category:ellbow_reward_categories(id,name), images:ellbow_reward_images(*)')
@@ -22,7 +22,7 @@ export async function PATCH(request: Request, { params }: Context) {
   try {
     const { id } = await params
     const body = await request.json()
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program) throw new EllbowApiError('Ellbow reward not found', 404)
     const { data: category } = await supabase.from('ellbow_reward_categories').select('id')
       .eq('id', body.category_id).eq('organization_id', organizationId).eq('loyalty_program_id', program.id).maybeSingle()
@@ -49,7 +49,7 @@ export async function PATCH(request: Request, { params }: Context) {
 export async function DELETE(_request: Request, { params }: Context) {
   try {
     const { id } = await params
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program) throw new EllbowApiError('Ellbow reward not found', 404)
     const { data: images } = await supabase.from('ellbow_reward_images').select('storage_path')
       .eq('reward_id', id).eq('organization_id', organizationId).eq('loyalty_program_id', program.id)

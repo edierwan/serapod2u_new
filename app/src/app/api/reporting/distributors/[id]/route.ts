@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { format, parseISO, subMonths, startOfMonth } from 'date-fns'
@@ -19,6 +20,8 @@ export async function GET(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'reporting.analytics.view')
+    if (saDenied) return saDenied
 
     // Org info
     const { data: org } = await supabase

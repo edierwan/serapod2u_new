@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile } from 'fs/promises'
 import path from 'path'
@@ -12,6 +13,8 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
+    if (saDenied) return saDenied
 
     // Check if user is Super Admin (role_level 1)
     const { data: userData, error: userError } = await supabase

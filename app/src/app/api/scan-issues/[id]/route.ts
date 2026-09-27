@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -11,6 +12,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const { data, error } = await supabase
         .from('consumer_scan_issues')
@@ -27,6 +30,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const body = await req.json().catch(() => ({})) as Record<string, any>
     const update: Record<string, any> = {}

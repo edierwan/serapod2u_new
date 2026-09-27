@@ -2,7 +2,7 @@ import { apiErrorResponse, EllbowApiError, getEllbowContext, nonNegativeInteger 
 
 export async function GET() {
   try {
-    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true })
+    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true, permission: 'customer.reward.manage' })
     const { data, error } = await supabase.from('ellbow_loyalty_settings').select('*')
       .eq('organization_id', organizationId).eq('loyalty_program_id', program.id).single()
     if (error) throw error
@@ -16,7 +16,7 @@ export async function PUT(request: Request) {
     if (!['single', 'dual'].includes(body.claim_mode)) throw new EllbowApiError('Invalid claim mode', 400)
     const pointValue = Number(body.point_value_rm)
     if (!Number.isFinite(pointValue) || pointValue < 0) throw new EllbowApiError('Point value must be non-negative', 400)
-    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true })
+    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true, permission: 'customer.reward.manage' })
     const payload = {
       active: Boolean(body.active), claim_mode: body.claim_mode,
       staff_points_per_scan: nonNegativeInteger(body.staff_points_per_scan, 'Staff points'),

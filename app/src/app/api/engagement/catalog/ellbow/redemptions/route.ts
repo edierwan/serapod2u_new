@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const { supabase } = await getEllbowContext()
+    const { supabase } = await getEllbowContext({ permission: 'customer.redemption.manage' })
     const body = await request.json()
     if (!body.id || !body.status) throw new EllbowApiError('Redemption id and status are required', 400)
     const { data, error } = await supabase.rpc('ellbow_update_redemption_status', { p_redemption_id: body.id, p_status: body.status, p_notes: body.notes || null })

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (productIds.length === 0) throw new EllbowApiError('product_ids is required', 400)
     if (productIds.length > 500) throw new EllbowApiError('Too many products in one request', 400)
 
-    const ctx = await getRoadtourCatalogContext({ initialize: true })
+    const ctx = await getRoadtourCatalogContext({ initialize: true, permission: 'roadtour.campaign.manage' })
     const { supabase, organizationId, program, catalog } = ctx
 
     // Resolve which of the requested products are Vape (never includable).

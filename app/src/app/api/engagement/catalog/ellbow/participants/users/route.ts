@@ -6,7 +6,7 @@ const participantTypes = new Set(['organization_user', 'shop_staff', 'consumer']
 
 export async function GET(request: Request) {
   try {
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.program.manage' })
     if (!program) throw new EllbowApiError('Ellbow Loyalty is not initialized', 404)
 
     const url = new URL(request.url)
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { supabase } = await getEllbowContext()
+    const { supabase } = await getEllbowContext({ permission: 'customer.program.manage' })
     const body = await request.json()
     const userId = String(body?.user_id || '').trim()
     const participantType = String(body?.participant_type || '').trim()
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const { supabase } = await getEllbowContext()
+    const { supabase } = await getEllbowContext({ permission: 'customer.program.manage' })
     const body = await request.json()
     const membershipId = typeof body?.membership_id === 'string' ? body.membership_id.trim() : ''
     if (!membershipId) return POST(request)

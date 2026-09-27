@@ -1,3 +1,4 @@
+import { userAllowed } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { DEFAULT_DISTRIBUTOR_FULFILLMENT_WAREHOUSE_SETTING_KEY } from '@/lib/orders/hq-fulfillment-warehouses'
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
       console.error('Failed to verify HQ admin:', adminError)
       return NextResponse.json({ error: 'Unable to verify admin permissions.' }, { status: 500 })
     }
-    if (!isHqAdmin) {
+    if (!(await userAllowed(user.id, 'platform.organization.manage', () => Boolean(isHqAdmin)))) {
       return NextResponse.json(
         { error: 'Only HQ Admin can update the default fulfillment warehouse.' },
         { status: 403 },

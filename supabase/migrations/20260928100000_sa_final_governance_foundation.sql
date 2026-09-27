@@ -258,7 +258,7 @@ insert into sa_final_catalog values
  ('ecommerce.store.manage','ecommerce','store','manage','Manage storefront configuration and banners','ordinary',20,'{}'::text[],'{}'::text[],false),
  ('ecommerce.order.manage','ecommerce','order','manage','Manage storefront orders and fulfilment','security_sensitive',20,'{}'::text[],'{}'::text[],false),
  ('ecommerce.channel.manage','ecommerce','channel','manage','Manage e-commerce channel connections (metadata only)','security_sensitive',1,'{}'::text[],'{}'::text[],false),
- ('platform.settings.manage','platform','settings','manage','Manage platform integrations, notification providers and AI settings','security_sensitive',10,'{}'::text[],'{}'::text[],false),
+ ('platform.settings.manage','platform','settings','manage','Manage platform integrations, notification providers and AI settings','security_sensitive',20,'{}'::text[],'{}'::text[],false),
  ('platform.organization.manage','platform','organization','manage','Import, configure and remove organizations','security_sensitive',10,'{}'::text[],'{}'::text[],false),
  ('platform.user.manage','platform','user','manage','Administer user profiles, credentials resets and phone changes','security_sensitive',30,'{}'::text[],array['edit_users','create_users']::text[],false),
  ('platform.data.destructive','platform','data','destructive','Run destructive data maintenance (environment-gated)','security_sensitive',1,'{}'::text[],'{}'::text[],false),

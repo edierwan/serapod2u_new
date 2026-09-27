@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 /**
  * POST /api/journey/auto-create
  * Automatically create a journey when warehouse receives an order
@@ -25,6 +26,8 @@ export async function POST(request: NextRequest) {
       console.error('[Auto-Journey] Auth error:', authError)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     const body = await request.json()
     const { order_id } = body

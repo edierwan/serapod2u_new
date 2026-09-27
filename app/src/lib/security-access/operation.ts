@@ -96,3 +96,19 @@ export async function guardUserOperation(
     legacy: options.legacy ?? (() => true),
   })
 }
+
+/**
+ * Boolean form of guardUserOperation for routes that keep their own
+ * response shape: replaces an inline legacy check (`isAdmin`, role level,
+ * org type) with the S&A decision, the old expression becoming the legacy
+ * evaluator. Any failure denies.
+ */
+export async function userAllowed(
+  userId: string,
+  permission: string,
+  legacy: LegacyEvaluator,
+  options: { organizationId?: string | null; warehouseId?: string | null; resourceType?: string } = {},
+): Promise<boolean> {
+  const denied = await guardUserOperation(userId, permission, { ...options, legacy }).catch(() => 'error' as const)
+  return denied === null
+}

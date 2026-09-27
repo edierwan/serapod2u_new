@@ -7,6 +7,10 @@ import {
 import { ALL_DISTRIBUTORS, ALL_STATUS, resolveDistributorReportPeriod } from '@/lib/reporting/distributor-analytics'
 import { malaysiaDateOf } from '@/lib/orders/order-date'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 /**
  * Distributor dashboard drill-downs through the real routes:
  * GET /api/reporting/distributor-analytics (headline) and

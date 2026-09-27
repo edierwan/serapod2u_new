@@ -1,3 +1,5 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
+import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -8,6 +10,15 @@ export const dynamic = 'force-dynamic'
  * Call: GET /api/debug/supabase-check
  */
 export async function GET(request: Request) {
+  // Diagnostic endpoint exposes identity/role internals: destructive-ops
+  // administrators only.
+  {
+    const authClient = await createClient()
+    const { data: { user: actor } } = await authClient.auth.getUser()
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const saDenied = await guardUserOperation(actor.id, 'platform.data.destructive', { legacy: () => legacyRoleLevelAtMost(actor.id, 1) })
+    if (saDenied) return saDenied
+  }
   try {
     const { searchParams } = new URL(request.url)
     const testReporting = searchParams.get('testReporting') === 'true'
