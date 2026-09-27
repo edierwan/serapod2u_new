@@ -8,7 +8,8 @@
 --   createdb sa_final -T <schema_only_template>
 --   for m in 20260927140000_sa_wave1_foundation 20260927150000_sa_wave1_readiness \
 --            20260928100000_sa_final_governance_foundation 20260928110000_sa_final_finance_hr_lifecycle \
---            20260928120000_sa_final_modules_supply_chain 20260928130000_sa_final_legacy_retirement_support; do
+--            20260928120000_sa_final_modules_supply_chain 20260928130000_sa_final_legacy_retirement_support \
+--            20260928150000_documents_payment_request_read_boundary; do
 --     psql -d sa_final -v ON_ERROR_STOP=1 -1 -f supabase/migrations/$m.sql || exit 1; done
 --   for f in supabase/tests/security/sa_final_wave/*.sql; do
 --     psql -X -v ON_ERROR_STOP=1 -d sa_final -f "$f" || exit 1; done
