@@ -3252,12 +3252,18 @@ export default function PremiumLoyaltyTemplate({
                 updateData.shop_name = newShopName.trim() || null
             }
 
-            if (!isShopUser && newLinkedOrganizationId !== userLinkedOrganizationId) {
-                updateData.organization_id = newLinkedOrganizationId
-            }
+            // Shop affiliation is not a profile field: it is linked through the
+            // dedicated consumer shop-link operation before the profile is saved.
+            const shopLinkChanged = !isShopUser && newLinkedOrganizationId !== userLinkedOrganizationId
 
             if (!isShopUser && newShopName.trim() && !newLinkedOrganizationId) {
                 setProfileSaveError('Please select a valid shop organization before saving.')
+                setSavingProfile(false)
+                return
+            }
+
+            if (shopLinkChanged && !newLinkedOrganizationId) {
+                setProfileSaveError('Please select the shop you want to switch to.')
                 setSavingProfile(false)
                 return
             }
@@ -3338,41 +3344,57 @@ export default function PremiumLoyaltyTemplate({
                 }
             }
 
-            if (Object.keys(updateData).length === 0 && !referralPhoneChanged) {
+            if (Object.keys(updateData).length === 0 && !referralPhoneChanged && !shopLinkChanged) {
                 setProfileSaveError('No changes to save')
                 setSavingProfile(false)
                 return
             }
 
-            // Call API to update profile (this will sync phone with Supabase Auth)
-            const submitProfileUpdate = (extra: Record<string, unknown> = {}) => fetch('/api/user/update-profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: targetUserId,
-                    ...updateData,
-                    ...extra,
+            if (shopLinkChanged && newLinkedOrganizationId) {
+                const linkShop = (confirmShopSwitch: boolean) => fetch('/api/consumer/link-shop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ organization_id: newLinkedOrganizationId, ...(confirmShopSwitch ? { confirmShopSwitch: true } : {}) }),
                 })
-            })
 
-            let response = await submitProfileUpdate()
-            let data = await response.json()
+                let linkResponse = await linkShop(false)
+                let linkData = await linkResponse.json()
 
-            // Server refuses to silently move a SHOP-linked profile to another shop.
-            if (response.status === 409 && data?.requiresShopSwitchConfirmation) {
-                const currentShopLabel = data.currentShop?.org_name || 'your current shop'
-                const requestedShopLabel = data.requestedShop?.org_name || 'the selected shop'
-                if (!window.confirm(`Your profile is linked to ${currentShopLabel}. Switch to ${requestedShopLabel}?`)) {
-                    setProfileSaveError('Shop was not changed.')
-                    setSavingProfile(false)
-                    return
+                // The server never silently moves a shop-linked profile to another shop.
+                if (linkResponse.status === 409 && linkData?.requiresShopSwitchConfirmation) {
+                    const currentShopLabel = linkData.currentShop?.org_name || 'your current shop'
+                    const requestedShopLabel = linkData.requestedShop?.org_name || 'the selected shop'
+                    if (!window.confirm(`Your profile is linked to ${currentShopLabel}. Switch to ${requestedShopLabel}?`)) {
+                        setProfileSaveError('Shop was not changed.')
+                        setSavingProfile(false)
+                        return
+                    }
+                    linkResponse = await linkShop(true)
+                    linkData = await linkResponse.json()
                 }
-                response = await submitProfileUpdate({ confirmShopSwitch: true })
-                data = await response.json()
+
+                if (!linkResponse.ok || !linkData?.success) {
+                    throw new Error(linkData?.error || 'Failed to link the selected shop')
+                }
+                updateData.organization_id = newLinkedOrganizationId
             }
 
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to update profile')
+            // Profile fields only (this also syncs phone with Supabase Auth).
+            const { organization_id: _linkedOrganizationId, ...profileFields } = updateData
+            if (Object.keys(profileFields).length > 0) {
+                const response = await fetch('/api/user/update-profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: targetUserId,
+                        ...profileFields,
+                    })
+                })
+                const data = await response.json()
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to update profile')
+                }
             }
 
             if (referralPhoneChanged) {

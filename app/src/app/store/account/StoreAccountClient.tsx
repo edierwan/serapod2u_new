@@ -102,21 +102,38 @@ export default function StoreAccountClient() {
     setIsSaving(true)
     setMessage(null)
 
+    // Send only what changed: the profile endpoint validates a shop name
+    // against the linked shop, so re-sending an untouched free-text shop name
+    // would block unrelated edits (name, phone, address).
+    const changes: Record<string, string | null> = {}
+    if (fullName.trim() !== profile.fullName) changes.full_name = fullName.trim()
+    if (phone.trim() !== profile.phone) changes.phone = phone.trim()
+    if (address.trim() !== profile.address) changes.address = address.trim()
+    if (shopName.trim() !== (profile.shop_name || '')) changes.shop_name = shopName.trim() || null
+
+    if (Object.keys(changes).length === 0) {
+      setMessage({ type: 'success', text: 'No changes to save.' })
+      setIsSaving(false)
+      return
+    }
+
     try {
       const res = await fetch('/api/user/update-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: fullName.trim(),
-          phone: phone.trim(),
-          address: address.trim(),
-          shop_name: shopName.trim() || null,
-        }),
+        body: JSON.stringify(changes),
       })
 
       const data = await res.json()
 
       if (data.success) {
+        setProfile({
+          ...profile,
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          address: address.trim(),
+          shop_name: shopName.trim(),
+        })
         setMessage({ type: 'success', text: 'Profile updated successfully!' })
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to update profile.' })

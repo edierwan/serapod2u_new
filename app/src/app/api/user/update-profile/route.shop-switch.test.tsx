@@ -120,4 +120,35 @@ describe('POST /api/user/update-profile — protected organization field', () =>
         expect(result.status).toBe(403)
         expect(user.organization_id).toBeNull()
     })
+
+    it.each([
+        { role_code: 'SA' }, { role_level: 1 }, { account_scope: 'portal' }, { is_active: false },
+        { employment_status: 'active' }, { employment_type: 'Full-time' }, { department_id: 'dept-1' },
+        { manager_user_id: 'user-2' }, { can_be_reference: true },
+    ])('keeps authority and employment fields protected (%o)', async (field) => {
+        const { user, fake } = setup()
+        const result = await post({ full_name: 'Changed', ...field })
+        expect(result.status).toBe(403)
+        expect(result.body.code).toBe('PROTECTED_PROFILE_FIELD')
+        expect(user.full_name).toBe('Tan')
+        expect(user.role_code).toBe('GUEST')
+        expect(user.account_scope).toBe('store')
+        expect(fake.updates.filter((update) => update.table === 'users')).toHaveLength(0)
+    })
+
+    it('saves the shop name once the shop was linked through /api/consumer/link-shop', async () => {
+        const { user } = setup({ organization_id: SHOP_B.id, organizations: { ...SHOP_B } })
+        const result = await post({ shop_name: 'Vapor Word (Kepala Batas)', full_name: 'Tan Kee Wei' })
+        expect(result.status).toBe(200)
+        expect(user.shop_name).toBe('Vapor Word (Kepala Batas)')
+        expect(user.organization_id).toBe(SHOP_B.id)
+    })
+
+    it('lets an unlinked consumer with a free-text shop name edit other profile fields', async () => {
+        const { user } = setup({ organization_id: null, organizations: null, shop_name: 'Kedai Lama' })
+        const result = await post({ full_name: 'Tan Kee Wei', phone: undefined })
+        expect(result.status).toBe(200)
+        expect(user.full_name).toBe('Tan Kee Wei')
+        expect(user.shop_name).toBe('Kedai Lama')
+    })
 })
