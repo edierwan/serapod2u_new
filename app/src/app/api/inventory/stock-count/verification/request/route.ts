@@ -12,6 +12,7 @@ import {
     mapStockCountDatabaseError,
     stockCountVerificationError,
 } from '@/lib/inventory/stock-count-verification-errors'
+import { authorize } from '@/lib/security-access/authorization'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +47,22 @@ export async function POST(request: NextRequest) {
             }))
         }
         const { organizationId: orgId, recipients, session } = preflight
+        // Wave 1 pilot: SHADOW mode preserves the legacy/preflight outcome.
+        // Failure to write diagnostics must never break the established flow.
+        try {
+            await authorize({
+                actorId: user.id,
+                permission: 'inventory.stock_count.verify',
+                resource: {
+                    type: 'stock_count', id: sessionId,
+                    organizationId: orgId,
+                    warehouseId: session.warehouse_organization_id,
+                },
+                context: { correlationId: request.headers.get('x-request-id') },
+            })
+        } catch (shadowError: any) {
+            console.error('[sa-shadow] stock count verify evaluation failed', { sessionId, message: shadowError?.message })
+        }
         if (session.count_type === 'opening_balance_cutoff') {
             const { data: cutoff, error: cutoffError } = await (supabase as any)
                 .from('inventory_opening_cutoffs')
