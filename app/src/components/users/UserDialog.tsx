@@ -523,6 +523,9 @@ export default function UserDialog({
                   </SelectContent>
                 </Select>
                 {errors.role_code && <p className="text-xs text-red-500">{errors.role_code}</p>}
+                <p className="text-xs text-gray-500">
+                  Identity classification. Business access (Finance, HR, Supply Chain, …) is granted and reviewed in Security &amp; Access.
+                </p>
               </div>
 
               <div className="space-y-2">

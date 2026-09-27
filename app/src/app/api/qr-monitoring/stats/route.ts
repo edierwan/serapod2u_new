@@ -1,3 +1,6 @@
+import { createClient as createSessionClient } from '@/lib/supabase/server'
+import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -13,6 +16,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
  */
 export async function GET(request: NextRequest) {
   try {
+    {
+      const sessionClient = await createSessionClient()
+      const { data: { user: actor } } = await sessionClient.auth.getUser()
+      if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      // Service-role read: authorize explicitly (it previously served any
+      // signed-in account).
+      const saDenied = await guardUserOperation(actor.id, 'qr.batch.manage', { legacy: () => legacyRoleLevelAtMost(actor.id, 50) })
+      if (saDenied) return saDenied
+    }
     const supabaseAdmin = createAdminClient() as any
 
     // Fetch all three views in parallel

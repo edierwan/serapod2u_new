@@ -3,6 +3,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkPermissionForUser, computeEffectivePermissions, getUserPermissionContext } from '@/lib/server/permissions'
+import { legacyAuthorizationReadOnly, LEGACY_STORE_READ_ONLY_RESPONSE } from '@/lib/security-access/legacy-stores'
+
+/**
+ * Legacy role-permission and department-override editors are a second
+ * authorization store. Once Security & Access is the only writable source
+ * (legacy_authorization.read_only), these actions refuse to write; the
+ * database enforces the same switch.
+ */
+export async function getLegacyAuthorizationStatus() {
+    return { readOnly: await legacyAuthorizationReadOnly(), managedIn: '/security-access' }
+}
 
 export interface DepartmentAuthorizationRecord {
     id: string
@@ -87,6 +98,10 @@ export async function getAuthorizationDepartments() {
 
 export async function updateDepartmentPermissionOverrides(departmentId: string, overrides: { allow: string[]; deny: string[] }) {
     try {
+        const cleared = !overrides?.allow?.length && !overrides?.deny?.length
+        if (!cleared && await legacyAuthorizationReadOnly()) {
+            return { success: false, error: LEGACY_STORE_READ_ONLY_RESPONSE.error }
+        }
         const supabase = await createClient()
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError || !user) {
@@ -136,6 +151,9 @@ export async function resetDepartmentPermissionOverrides(departmentId: string) {
 
 export async function saveRolePermissions(updates: { roleId: string; permissions: Record<string, boolean> }[]) {
     try {
+        if (await legacyAuthorizationReadOnly()) {
+            return { success: false, error: LEGACY_STORE_READ_ONLY_RESPONSE.error }
+        }
         const supabase = await createClient()
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         if (authError || !user) {

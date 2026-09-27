@@ -1,3 +1,6 @@
+import { createClient as createSessionClient } from '@/lib/supabase/server'
+import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -15,6 +18,15 @@ const STALE_THRESHOLD_MS = 3 * 60 * 1000 // 3 minutes
  * - Stale detection
  */
 export async function GET(request: NextRequest) {
+  {
+    const sessionClient = await createSessionClient()
+    const { data: { user: actor } } = await sessionClient.auth.getUser()
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Service-role read: authorize explicitly (it previously served any
+    // signed-in account).
+    const saDenied = await guardUserOperation(actor.id, 'inventory.report.view', { legacy: () => legacyRoleLevelAtMost(actor.id, 40) })
+    if (saDenied) return saDenied
+  }
   const searchParams = request.nextUrl.searchParams
   const batchId = searchParams.get('batch_id')
   const orderId = searchParams.get('order_id')
