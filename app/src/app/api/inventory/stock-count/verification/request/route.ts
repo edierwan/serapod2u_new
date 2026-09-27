@@ -12,7 +12,8 @@ import {
     mapStockCountDatabaseError,
     stockCountVerificationError,
 } from '@/lib/inventory/stock-count-verification-errors'
-import { authorize } from '@/lib/security-access/authorization'
+import { isAuthorizationDenied, requireAuthorization } from '@/lib/security-access/authorization'
+import { resolveWarehouseResourceContext } from '@/lib/security-access/resource-context'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,22 +48,6 @@ export async function POST(request: NextRequest) {
             }))
         }
         const { organizationId: orgId, recipients, session } = preflight
-        // Wave 1 pilot: SHADOW mode preserves the legacy/preflight outcome.
-        // Failure to write diagnostics must never break the established flow.
-        try {
-            await authorize({
-                actorId: user.id,
-                permission: 'inventory.stock_count.verify',
-                resource: {
-                    type: 'stock_count', id: sessionId,
-                    organizationId: orgId,
-                    warehouseId: session.warehouse_organization_id,
-                },
-                context: { correlationId: request.headers.get('x-request-id') },
-            })
-        } catch (shadowError: any) {
-            console.error('[sa-shadow] stock count verify evaluation failed', { sessionId, message: shadowError?.message })
-        }
         if (session.count_type === 'opening_balance_cutoff') {
             const { data: cutoff, error: cutoffError } = await (supabase as any)
                 .from('inventory_opening_cutoffs')
@@ -131,6 +116,28 @@ export async function POST(request: NextRequest) {
             high_impact: Math.abs(summary.estimated_adjustment_value) >= 10_000 || Math.abs(summary.net_quantity_adjustment) >= 1_000,
         }, code)
         const metadata = { user_agent: request.headers.get('user-agent')?.slice(0, 500) || null, forwarded_for_present: Boolean(request.headers.get('x-forwarded-for')) }
+        // S&A enforcement contract, immediately before the first mutation.
+        // SHADOW: legacy/preflight outcome controls (already ALLOW here) and the
+        // new decision is recorded. NEW_ENFORCED: a new-engine DENY stops here;
+        // the database backstop rejects any path that skipped this call.
+        try {
+            await requireAuthorization({
+                actorId: user.id,
+                permission: 'inventory.stock_count.verify',
+                resource: {
+                    type: 'stock_count', id: sessionId,
+                    ...(await resolveWarehouseResourceContext(orgId, session.warehouse_organization_id)),
+                },
+                context: { correlationId: request.headers.get('x-request-id') },
+            })
+        } catch (authorizationError) {
+            if (isAuthorizationDenied(authorizationError)) {
+                return jsonError(stockCountVerificationError('permission_denied', {
+                    stage: 'request', reference: authorizationError.decisionId,
+                }))
+            }
+            throw authorizationError
+        }
         const { data: prepared, error: prepareError } = await (supabase as any).rpc('prepare_stock_count_verification', {
             p_session_id: sessionId, p_organization_id: orgId, p_code_hash: codeHash,
             p_recipient_summary: maskedRecipients, p_request_metadata: metadata,

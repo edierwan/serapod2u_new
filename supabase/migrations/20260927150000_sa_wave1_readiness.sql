@@ -15,6 +15,16 @@
 --        unless the row is ORDINARY_SHADOW, older than 90 days, and the delete
 --        happens inside the retention function. service_role loses direct
 --        UPDATE/DELETE/TRUNCATE on the decision table.
+--   B. Database backstop for inventory.stock_count.verify enforcement
+--      * While the permission is NEW_ENFORCED or LEGACY_RETIRED, creating a
+--        Stock Count verification request or consuming one into 'posted'
+--        requires a fresh (120 s) authoritative ALLOW decision written by the
+--        server enforcement helper for the same actor and Stock Count. This
+--        closes the direct-RPC path (prepare/verify_and_post are executable by
+--        authenticated) without rewriting the Stock Count functions.
+--      * In LEGACY_ENFORCED / SHADOW the trigger is a no-op: current Stock
+--        Count behavior is unchanged.
+--
 -- This migration does NOT change any migration mode. inventory.stock_count.verify
 -- stays SHADOW until a separately approved cutover.
 --
@@ -24,6 +34,9 @@
 -- that failure and the business operation continues.
 --
 -- Rollback (run as the migration owner, in one transaction):
+--   drop trigger if exists sa_stock_count_verify_enforcement on public.stock_count_verification_requests;
+--   drop function if exists public.sa_enforce_stock_count_verify();
+--   drop function if exists public.sa_has_recent_enforced_allow(uuid,text,text,text);
 --   drop function if exists public.sa_decision_retention_status();
 --   drop function if exists public.sa_purge_ordinary_shadow_decisions(integer);
 --   drop trigger if exists sa_authorization_decisions_audit_class on public.sa_authorization_decisions;
@@ -44,6 +57,8 @@
 --   alter table public.sa_permissions drop column if exists audit_sensitivity;
 --   grant all on table public.sa_authorization_decisions to service_role;
 --   alter function public.sa_save_business_role(uuid,uuid,text,text,text,text[]) set search_path = '';
+-- Rolling back while inventory.stock_count.verify is NEW_ENFORCED removes the
+-- database backstop; set the mode back to SHADOW first.
 
 -- ---------------------------------------------------------------------------
 -- A0. Phase 0 invariant: every SECURITY DEFINER function pins a search_path
@@ -281,6 +296,73 @@ revoke all on function public.sa_decision_retention_status() from public, anon, 
 grant execute on function public.sa_decision_retention_status() to service_role;
 
 -- ---------------------------------------------------------------------------
+-- B. Database backstop for inventory.stock_count.verify
+-- ---------------------------------------------------------------------------
+-- True when the server enforcement helper recorded an authoritative S&A ALLOW
+-- for this exact actor, permission and resource within the last 120 seconds.
+-- Decision rows can only be written by service_role (Wave 1 revoked all direct
+-- anon/authenticated access), so a client cannot manufacture one.
+create or replace function public.sa_has_recent_enforced_allow(
+  p_actor_id uuid, p_permission_key text, p_resource_type text, p_resource_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, pg_temp
+as $$
+  select exists (
+    select 1 from public.sa_authorization_decisions d
+    where d.actor_id = p_actor_id
+      and d.permission_key = p_permission_key
+      and d.resource_type = p_resource_type
+      and d.resource_id = p_resource_id
+      and d.decision = 'ALLOW'
+      and d.new_decision = 'ALLOW'
+      and d.migration_mode in ('NEW_ENFORCED','LEGACY_RETIRED')
+      and d.occurred_at >= now() - interval '120 seconds'
+  )
+$$;
+revoke all on function public.sa_has_recent_enforced_allow(uuid,text,text,text) from public, anon, authenticated;
+
+create or replace function public.sa_enforce_stock_count_verify()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, pg_temp
+as $$
+declare
+  v_mode text;
+  v_actor uuid;
+begin
+  select m.mode into v_mode from public.sa_migration_modes m
+  where m.permission_key = 'inventory.stock_count.verify';
+  if coalesce(v_mode, 'LEGACY_ENFORCED') not in ('NEW_ENFORCED','LEGACY_RETIRED') then
+    return new; -- LEGACY_ENFORCED / SHADOW: legacy controls, behavior unchanged
+  end if;
+
+  if tg_op = 'INSERT' then
+    v_actor := new.requesting_user_id;             -- OTP challenge issued
+  elsif new.status = 'posted' and old.status is distinct from 'posted' then
+    v_actor := coalesce(new.verified_by, auth.uid()); -- OTP challenge consumed
+  else
+    return new; -- expiry / invalidation / attempt counting stay unrestricted
+  end if;
+
+  if v_actor is null or not public.sa_has_recent_enforced_allow(
+       v_actor, 'inventory.stock_count.verify', 'stock_count', new.session_id::text) then
+    raise exception 'sa_authorization_required' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+revoke all on function public.sa_enforce_stock_count_verify() from public, anon, authenticated;
+drop trigger if exists sa_stock_count_verify_enforcement on public.stock_count_verification_requests;
+create trigger sa_stock_count_verify_enforcement
+before insert or update of status on public.stock_count_verification_requests
+for each row execute function public.sa_enforce_stock_count_verify();
+comment on trigger sa_stock_count_verify_enforcement on public.stock_count_verification_requests is
+  'S&A backstop: in NEW_ENFORCED/LEGACY_RETIRED, issuing or consuming a Stock Count verification requires a fresh server-side S&A ALLOW. No-op in LEGACY_ENFORCED/SHADOW.';
+
+-- ---------------------------------------------------------------------------
 -- Post-conditions
 -- ---------------------------------------------------------------------------
 do $$
@@ -305,5 +387,9 @@ begin
   if (select count(*) from public.sa_permissions where audit_sensitivity = 'ordinary'
       and permission_key not like 'inventory.%') > 0 then
     raise exception 'postcondition: only reviewed Supply Chain permissions may be ordinary';
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'sa_stock_count_verify_enforcement'
+                 and tgrelid = 'public.stock_count_verification_requests'::regclass) then
+    raise exception 'postcondition: stock count verify enforcement trigger missing';
   end if;
 end $$;

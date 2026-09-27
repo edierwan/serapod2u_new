@@ -238,6 +238,8 @@ export function mapStockCountDatabaseError(
         [/canceling statement due to lock timeout/i, 'posting_conflict'],
         [/deadlock detected/i, 'posting_conflict'],
         ['permission_lost', 'permission_denied'],
+        // Security & Access database backstop (NEW_ENFORCED without a fresh S&A ALLOW).
+        ['sa_authorization_required', 'permission_denied'],
         ['stock_count_active_warehouse_required', 'invalid_warehouse'],
         ['stock_count_legacy_initial_read_only', 'invalid_count_data'],
         ['inventory_opening_balance_already_posted', 'already_posted'],
