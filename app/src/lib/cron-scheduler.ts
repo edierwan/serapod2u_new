@@ -26,6 +26,9 @@ const CRON_JOBS: CronJob[] = [
   { path: '/api/cron/qr-generation-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/manufacturer-packing-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/notification-outbox-worker', schedule: '*/1 * * * *' },
+  // Security & Access: bounded retention of ordinary shadow authorization
+  // decisions (90 days). Daily; the database function is idempotent.
+  { path: '/api/cron/sa-decision-retention', schedule: '17 3 * * *' },
   // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release
   // stock. Opt-in: see serappHoldExpiryEnabled.
   {

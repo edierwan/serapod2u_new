@@ -26,7 +26,9 @@ export async function GET() {
       return NextResponse.json({ schemaReady: false, error: 'Wave 1 schema has not been applied in this environment.', metrics: {}, modes: [], decisions: [], permissions: [], roles: [], people: [] })
     }
     const [{ count: memberships }, { count: assignments }, { data: modes }, { data: decisions }, { data: permissions }, { data: roles }, { data: people }] = results
-    return NextResponse.json({ schemaReady: true, metrics: { businessIdentities: memberships || 0, activeAssignments: assignments || 0, shadowMismatches: (decisions || []).filter((d: any) => !['MATCH_ALLOW','MATCH_DENY'].includes(d.comparison)).length }, modes: modes || [], decisions: decisions || [], permissions: permissions || [], roles: roles || [], people: people || [] })
+    // Readiness-migration diagnostics are optional: absent before it is applied.
+    const { data: retention, error: retentionError } = await admin.rpc('sa_decision_retention_status')
+    return NextResponse.json({ schemaReady: true, metrics: { businessIdentities: memberships || 0, activeAssignments: assignments || 0, shadowMismatches: (decisions || []).filter((d: any) => !['MATCH_ALLOW','MATCH_DENY'].includes(d.comparison)).length }, modes: modes || [], decisions: decisions || [], permissions: permissions || [], roles: roles || [], people: people || [], retention: retentionError ? null : retention })
   } catch (error) {
     return NextResponse.json({ schemaReady: false, error: 'Wave 1 schema has not been applied in this environment.', metrics: {}, modes: [], decisions: [], permissions: [], roles: [], people: [] })
   }

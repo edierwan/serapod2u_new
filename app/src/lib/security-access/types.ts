@@ -74,7 +74,22 @@ export interface AuthorizationDecision {
   migrationMode: MigrationMode
   legacyDecision: AuthorizationDecisionValue | null
   newDecision: AuthorizationDecisionValue
+  auditClass?: AuditClass
 }
+
+/** Explicit catalog attribute (sa_permissions.audit_sensitivity). */
+export type AuditSensitivity = 'ordinary' | 'security_sensitive'
+
+/**
+ * Write-time retention class (sa_authorization_decisions.audit_class).
+ * Only ORDINARY_SHADOW is ever purged automatically (after 90 days).
+ * UNCLASSIFIED exists only on rows written before the readiness migration.
+ */
+export type AuditClass =
+  | 'ORDINARY_SHADOW'
+  | 'ENFORCED_DECISION'
+  | 'SECURITY_SENSITIVE'
+  | 'POLICY_ERROR'
 
 export type ShadowComparison =
   | 'MATCH_ALLOW'
