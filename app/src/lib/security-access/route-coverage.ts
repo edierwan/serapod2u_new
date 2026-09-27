@@ -140,6 +140,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "consumer/collect-points": { kind: 'CONSUMER', reason: "Consumer loyalty/scan experience (consumer identity, not enterprise RBAC)" },
   "consumer/collect-points-auth": { kind: 'CONSUMER', reason: "Consumer loyalty/scan experience (consumer identity, not enterprise RBAC)" },
   "consumer/feedback": { kind: 'CONSUMER', reason: "Consumer loyalty/scan experience (consumer identity, not enterprise RBAC)" },
+  "consumer/link-shop": { kind: 'CONSUMER', reason: "Consumer shop affiliation for the signed-in store account only (session actor, active SHOP target, no role/scope change); never enterprise access" },
   "consumer/lucky-draw-entry": { kind: 'CONSUMER', reason: "Consumer loyalty/scan experience (consumer identity, not enterprise RBAC)" },
   "consumer/points-history": { kind: 'CONSUMER', reason: "Consumer loyalty/scan experience (consumer identity, not enterprise RBAC)" },
   "consumer/products": { kind: 'CONSUMER', reason: "Consumer loyalty/scan experience (consumer identity, not enterprise RBAC)" },
