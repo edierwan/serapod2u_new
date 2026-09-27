@@ -74,6 +74,8 @@ export interface AuthorizationDecision {
   migrationMode: MigrationMode
   legacyDecision: AuthorizationDecisionValue | null
   newDecision: AuthorizationDecisionValue
+  /** New-engine reason, reported for explanation only; never used to decide. */
+  newReasonCode?: AuthorizationReasonCode
   auditClass?: AuditClass
 }
 
