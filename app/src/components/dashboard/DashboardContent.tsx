@@ -98,6 +98,7 @@ import EmailDeliveryMonitor from '@/components/settings/EmailDeliveryMonitor'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
 import AuthorizationTab from '@/components/settings/AuthorizationTab'
+import SecurityAccessView from '@/components/security-access/SecurityAccessView'
 import DangerZoneTab from '@/components/settings/DangerZoneTab'
 import AiProviderSettingsCard from '@/modules/hr/components/AiProviderSettingsCard'
 import AiUsageDashboard from '@/modules/settings/components/AiUsageDashboard'
@@ -482,6 +483,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       router.push('/users')
       return
     }
+    if (view === 'security-access') {
+      setCurrentView(view)
+      router.push('/security-access')
+      return
+    }
     if (view === 'user-profile') {
       const targetId =
         (typeof window !== 'undefined' ? sessionStorage.getItem('selectedUserId') : null) ||
@@ -708,6 +714,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <MyProfileViewNew userProfile={userProfile} />
       case 'users':
         return <UsersView userProfile={userProfile} />
+      case 'security-access':
+        return <SecurityAccessView userProfile={userProfile} />
       case 'user-profile':
         return (
           <UserProfileWrapper
