@@ -9,6 +9,7 @@ import {
     STOCK_COUNT_POST_PERMISSION,
     stockCountVerificationError,
 } from '@/lib/inventory/stock-count-verification-errors'
+import { authorize } from '@/lib/security-access/authorization'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,6 +67,20 @@ export async function POST(request: NextRequest) {
         const permission = await checkPermissionForUser(user.id, STOCK_COUNT_POST_PERMISSION)
         if (!permission.allowed || !permission.context?.organization_id) {
             return jsonError(stockCountVerificationError('permission_denied', { stage: 'verify' }))
+        }
+        try {
+            await authorize({
+                actorId: user.id,
+                permission: 'inventory.stock_count.post',
+                resource: {
+                    type: 'stock_count', id: sessionId,
+                    organizationId: permission.context.organization_id,
+                    warehouseId: accessibleSession.warehouse_organization_id,
+                },
+                context: { correlationId: requestIdForAudit },
+            })
+        } catch (shadowError: any) {
+            console.error('[sa-shadow] stock count post evaluation failed', { sessionId, requestId: requestIdForAudit, message: shadowError?.message })
         }
         const codeHash = hashStockCountCode(String(code), permission.context.organization_id, sessionId, user.id)
         const postingFunction = accessibleSession.count_type === 'opening_balance_cutoff'

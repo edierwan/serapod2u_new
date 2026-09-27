@@ -499,6 +499,19 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
     }
   }
 
+  const recordTransferShadowDecision = async (id: string, action: 'request' | 'approve' | 'dispatch' | 'receive') => {
+    try {
+      await fetch('/api/security-access/pilot/transfer-shadow', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ transferId: id, action }),
+      })
+    } catch (error) {
+      // Shadow diagnostics are deliberately fail-open while legacy/RPC
+      // authorization remains authoritative in Wave 1.
+      console.warn('[sa-shadow] transfer diagnostic unavailable', error)
+    }
+  }
+
   const runConfirmedAction = async () => {
     const action = confirmAction
     setConfirmAction(null)
@@ -526,6 +539,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
           setTransferId(data.id)
           setTransferNo(data.transfer_no)
         }
+        await recordTransferShadowDecision(id!, 'request')
         const { data, error } = await supabase.rpc('submit_stock_transfer_for_approval', {
           p_transfer_id: id,
           p_actor_id: userProfile.id,
@@ -535,6 +549,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
         toast({ title: 'Submitted', description: `${data.transfer_no} is pending approval. Stock is reserved, not deducted.` })
       } else if (action === 'approve') {
         if (!transferId) throw new Error('Open a pending transfer first')
+        await recordTransferShadowDecision(transferId, 'approve')
         const { data, error } = await supabase.rpc('approve_stock_transfer', {
           p_transfer_id: transferId,
           p_actor_id: userProfile.id,
@@ -548,6 +563,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
         await printTransferNote(data)
       } else if (action === 'dispatch') {
         if (!transferId) throw new Error('Open a ready-to-dispatch transfer first')
+        await recordTransferShadowDecision(transferId, 'dispatch')
         const { data, error } = await supabase.rpc('dispatch_stock_transfer', {
           p_transfer_id: transferId,
           p_actor_id: userProfile.id,
@@ -560,6 +576,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
         })
       } else if (action === 'receive') {
         if (!transferId) throw new Error('Open an in-transit transfer first')
+        await recordTransferShadowDecision(transferId, 'receive')
         const { data, error } = await supabase.rpc('receive_stock_transfer', {
           p_transfer_id: transferId,
           p_actor_id: userProfile.id,
