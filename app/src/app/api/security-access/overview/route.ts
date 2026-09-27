@@ -7,6 +7,32 @@ import { isEnforcementReady } from '@/lib/security-access/readiness'
 
 export const dynamic = 'force-dynamic'
 
+const DIRECTORY_ORG_TYPES = ['HQ', 'WH', 'DIST', 'MFG']
+
+// Display-only lookups so administrators see names instead of UUIDs. Every
+// query is read-only and optional: a failure leaves the page usable.
+async function loadDirectory(admin: any, differenceDecisions: any[]) {
+  const [recent, scopeOrgs] = await Promise.all([
+    admin.from('sa_authorization_decisions').select('id,occurred_at,actor_id,permission_key,resource_type,resource_id,decision,reason_code,migration_mode,legacy_decision,new_decision,comparison,resolved_scopes,matched_assignments,correlation_id,policy_version').order('occurred_at', { ascending: false }).limit(100),
+    admin.from('sa_scope_definitions').select('organization_id').not('organization_id', 'is', null),
+  ])
+  const scopeOrgIds = Array.from(new Set((scopeOrgs.data || []).map((s: any) => s.organization_id)))
+  const orgFilter = `org_type_code.in.(${DIRECTORY_ORG_TYPES.join(',')})${scopeOrgIds.length ? `,id.in.(${scopeOrgIds.join(',')})` : ''}`
+  const recentDecisions = recent.error ? [] : recent.data || []
+  const actorIds = Array.from(new Set([...recentDecisions, ...differenceDecisions].map((d: any) => d.actor_id).filter(Boolean)))
+  const [organizations, actors] = await Promise.all([
+    admin.from('organizations').select('id,org_name,org_type_code,parent_org_id').eq('is_active', true).or(orgFilter).order('org_name').limit(1000),
+    actorIds.length
+      ? admin.from('users').select('id,full_name,email,role_code,organization_id').in('id', actorIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  return {
+    recentDecisions,
+    organizations: organizations.error ? [] : organizations.data || [],
+    actors: actors.error ? [] : actors.data || [],
+  }
+}
+
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -29,7 +55,8 @@ export async function GET() {
     const [{ count: memberships }, { count: assignments }, { data: modes }, { data: decisions }, { data: permissions }, { data: roles }, { data: people }] = results
     // Readiness-migration diagnostics are optional: absent before it is applied.
     const { data: retention, error: retentionError } = await admin.rpc('sa_decision_retention_status')
-    return NextResponse.json({ schemaReady: true, metrics: { businessIdentities: memberships || 0, activeAssignments: assignments || 0, shadowMismatches: (decisions || []).filter((d: any) => !['MATCH_ALLOW','MATCH_DENY'].includes(d.comparison)).length }, modes: (modes || []).map((m: any) => ({ ...m, enforcementReady: isEnforcementReady(m.permission_key) })), decisions: decisions || [], permissions: permissions || [], roles: roles || [], people: people || [], retention: retentionError ? null : retention })
+    const directory = await loadDirectory(admin, decisions || []).catch(() => ({ recentDecisions: [], organizations: [], actors: [] }))
+    return NextResponse.json({ schemaReady: true, metrics: { businessIdentities: memberships || 0, activeAssignments: assignments || 0, shadowMismatches: (decisions || []).filter((d: any) => !['MATCH_ALLOW','MATCH_DENY'].includes(d.comparison)).length }, modes: (modes || []).map((m: any) => ({ ...m, enforcementReady: isEnforcementReady(m.permission_key) })), decisions: decisions || [], permissions: permissions || [], roles: roles || [], people: people || [], retention: retentionError ? null : retention, ...directory })
   } catch (error) {
     return NextResponse.json({ schemaReady: false, error: 'Wave 1 schema has not been applied in this environment.', metrics: {}, modes: [], decisions: [], permissions: [], roles: [], people: [] })
   }

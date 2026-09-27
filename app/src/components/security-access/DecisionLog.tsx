@@ -1,0 +1,121 @@
+'use client'
+
+import { Fragment, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { comparisonLabel, modeLabel, permissionLabel, reasonLabel, resourceTypeLabel, type DirectoryOrganization } from '@/lib/security-access/labels'
+
+interface DecisionLogProps {
+  decisions: any[]
+  actors: any[]
+  people: any[]
+  organizations: DirectoryOrganization[]
+}
+
+const DIFFERENCE = (comparison: string) => !['MATCH_ALLOW', 'MATCH_DENY'].includes(comparison)
+
+export default function DecisionLog({ decisions, actors, people, organizations }: DecisionLogProps) {
+  const [filter, setFilter] = useState<'all' | 'differences'>('all')
+  const [open, setOpen] = useState<string | null>(null)
+  const orgById = useMemo(() => new Map(organizations.map(o => [o.id, o.org_name])), [organizations])
+  const userById = useMemo(() => {
+    const map = new Map<string, { name: string; role?: string }>()
+    for (const p of people) map.set(p.id, { name: p.full_name || p.email, role: p.role_code })
+    for (const a of actors) map.set(a.id, { name: a.full_name || a.email, role: a.role_code })
+    return map
+  }, [people, actors])
+  const rows = filter === 'differences' ? decisions.filter(d => DIFFERENCE(d.comparison)) : decisions
+
+  const place = (d: any) => {
+    const scopes: any[] = Array.isArray(d.resolved_scopes) ? d.resolved_scopes : []
+    const shown = (scopes.some(s => s.matched) ? scopes.filter(s => s.matched) : scopes)
+      .map(s => `${s.scopeType === 'warehouse' ? 'Warehouse' : 'Org'}: ${orgById.get(s.scopeValue) ?? 'Unlisted'}`)
+    return Array.from(new Set(shown)).join(' · ') || '—'
+  }
+  const pill = (value: string | null) => value
+    ? <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${value === 'ALLOW' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{value}</span>
+    : <span className="text-xs text-gray-400">—</span>
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+        <div>
+          <h2 className="font-semibold">Authorization Decisions</h2>
+          <p className="text-sm text-gray-500">Most recent recorded decisions. Legacy and new Security & Access outcomes side by side.</p>
+        </div>
+        <div className="flex rounded-lg border p-0.5 text-xs font-medium">
+          {(['all', 'differences'] as const).map(f => (
+            <button key={f} type="button" onClick={() => setFilter(f)} className={`rounded-md px-3 py-1.5 ${filter === f ? 'bg-gray-950 text-white' : 'text-gray-600'}`}>
+              {f === 'all' ? 'All' : 'Differences only'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="p-6 text-sm text-gray-500">{filter === 'differences' ? 'No differences between legacy and new decisions.' : 'No decisions recorded yet.'}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="w-8 px-3 py-2" />
+                <th className="px-3 py-2">Time</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Action</th>
+                <th className="px-3 py-2">Resource</th><th className="px-3 py-2">Organization / Warehouse</th>
+                <th className="px-3 py-2">Legacy</th><th className="px-3 py-2">New S&A</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Mode</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map(d => {
+                const user = userById.get(d.actor_id)
+                const cmp = comparisonLabel(d.comparison)
+                const expanded = open === d.id
+                return (
+                  <Fragment key={d.id}>
+                    <tr className="cursor-pointer align-top hover:bg-gray-50" onClick={() => setOpen(expanded ? null : d.id)} aria-expanded={expanded}>
+                      <td className="px-3 py-2 text-gray-400">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-600">{new Date(d.occurred_at).toLocaleString()}</td>
+                      <td className="px-3 py-2"><div>{user?.name ?? 'Unknown user'}</div>{user?.role && <div className="text-xs text-gray-500">{user.role}</div>}</td>
+                      <td className="px-3 py-2"><div>{permissionLabel(d.permission_key).label}</div><div className="font-mono text-[11px] text-gray-400">{d.permission_key}</div></td>
+                      <td className="px-3 py-2">{resourceTypeLabel(d.resource_type)}</td>
+                      <td className="px-3 py-2 text-gray-700">{place(d)}</td>
+                      <td className="px-3 py-2">{pill(d.legacy_decision)}</td>
+                      <td className="px-3 py-2">{pill(d.new_decision)}</td>
+                      <td className="px-3 py-2"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${cmp.tone}`}>{cmp.label}</span></td>
+                      <td className="px-3 py-2"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${modeLabel(d.migration_mode).tone}`}>{modeLabel(d.migration_mode).label}</span></td>
+                    </tr>
+                    {expanded && (
+                      <tr className="bg-gray-50/60">
+                        <td />
+                        <td colSpan={9} className="px-3 pb-4 pt-1">
+                          <p className="text-sm text-gray-700">{reasonLabel(d.reason_code)}</p>
+                          <dl className="mt-2 grid gap-2 font-mono text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                            <Tech term="Decision ID" value={d.id} />
+                            <Tech term="Actor ID" value={d.actor_id} />
+                            <Tech term="Resource ID" value={d.resource_id} />
+                            <Tech term="Reason code" value={d.reason_code} />
+                            <Tech term="Correlation ID" value={d.correlation_id} />
+                            <Tech term="Policy version" value={d.policy_version} />
+                            <Tech term="Assignment IDs" value={(Array.isArray(d.matched_assignments) ? d.matched_assignments : []).map((a: any) => a.assignmentId).join(', ')} />
+                            <Tech term="Scope values" value={(Array.isArray(d.resolved_scopes) ? d.resolved_scopes : []).map((s: any) => `${s.scopeType}:${s.scopeValue}`).join(', ')} />
+                          </dl>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function Tech({ term, value }: { term: string; value?: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt className="font-sans text-[11px] uppercase tracking-wide text-gray-400">{term}</dt>
+      <dd className="break-all">{value || '—'}</dd>
+    </div>
+  )
+}

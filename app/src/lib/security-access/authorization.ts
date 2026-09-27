@@ -141,6 +141,7 @@ export async function authorize(request: AuthorizationRequest, options: { log?: 
     migrationMode: mode,
     legacyDecision,
     newDecision: evaluated.decision,
+    newReasonCode: evaluated.reasonCode,
     ...(shouldLog ? { auditClass } : {}),
   }
 
