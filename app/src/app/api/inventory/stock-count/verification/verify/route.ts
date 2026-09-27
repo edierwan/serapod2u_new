@@ -9,7 +9,8 @@ import {
     STOCK_COUNT_POST_PERMISSION,
     stockCountVerificationError,
 } from '@/lib/inventory/stock-count-verification-errors'
-import { authorize } from '@/lib/security-access/authorization'
+import { authorize, isAuthorizationDenied, requireAuthorization } from '@/lib/security-access/authorization'
+import { resolveWarehouseResourceContext } from '@/lib/security-access/resource-context'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,15 +69,35 @@ export async function POST(request: NextRequest) {
         if (!permission.allowed || !permission.context?.organization_id) {
             return jsonError(stockCountVerificationError('permission_denied', { stage: 'verify' }))
         }
+        const resource = {
+            type: 'stock_count', id: sessionId,
+            ...(await resolveWarehouseResourceContext(permission.context.organization_id, accessibleSession.warehouse_organization_id)),
+        }
+        // Consuming the OTP completes the verification: enforce
+        // inventory.stock_count.verify through the S&A contract before the
+        // atomic verify-and-post RPC. A new-engine DENY in NEW_ENFORCED stops
+        // here; the database backstop rejects any path that skipped this call.
+        try {
+            await requireAuthorization({
+                actorId: user.id,
+                permission: 'inventory.stock_count.verify',
+                resource,
+                context: { correlationId: requestIdForAudit },
+            })
+        } catch (authorizationError) {
+            if (isAuthorizationDenied(authorizationError)) {
+                return jsonError(stockCountVerificationError('permission_denied', {
+                    stage: 'verify', reference: authorizationError.decisionId,
+                }))
+            }
+            throw authorizationError
+        }
+        // inventory.stock_count.post remains SHADOW: diagnostic only.
         try {
             await authorize({
                 actorId: user.id,
                 permission: 'inventory.stock_count.post',
-                resource: {
-                    type: 'stock_count', id: sessionId,
-                    organizationId: permission.context.organization_id,
-                    warehouseId: accessibleSession.warehouse_organization_id,
-                },
+                resource,
                 context: { correlationId: requestIdForAudit },
             })
         } catch (shadowError: any) {

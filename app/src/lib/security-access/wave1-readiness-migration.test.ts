@@ -35,4 +35,10 @@ describe('S&A Wave 1 readiness migration contract', () => {
     expect(executable).not.toContain("set search_path = ''")
     expect(executable).toContain('least(greatest(coalesce(p_batch_limit, 5000), 1), 50000)')
   })
+
+  it('adds the stock count verify backstop that is inert outside NEW_ENFORCED/LEGACY_RETIRED', () => {
+    expect(executable).toContain("coalesce(v_mode, 'LEGACY_ENFORCED') not in ('NEW_ENFORCED','LEGACY_RETIRED')")
+    expect(executable).toContain('before insert or update of status on public.stock_count_verification_requests')
+    expect(executable).toContain("interval '120 seconds'")
+  })
 })
