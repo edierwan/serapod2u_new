@@ -243,25 +243,39 @@ export default function DHReceiptDialog({
           throw receiptError
         }
 
+        // The receipt already exists at this point. An attachment failure must
+        // not abort the batch: a retry would record the same payment twice.
         if (receipt.attachmentFile) {
-          const form = new FormData()
-          form.append('file', receipt.attachmentFile)
-          form.append('documentId', receiptDoc.id)
-          form.append('kind', 'receipt-attachment')
-          const uploadResponse = await fetch(`/api/documents/order/${encodeURIComponent(orderId)}/file`, {
-            method: 'POST', body: form,
-          })
-          const uploadResult = await uploadResponse.json()
-          if (!uploadResponse.ok || !uploadResult?.fileUrl) {
-            throw new Error(uploadResult?.error || 'Failed to upload receipt attachment')
-          }
-          const { error: attachmentUpdateError } = await supabase
-            .from('documents')
-            .update({
-              payload: { ...(receiptDoc.payload || {}), attachment_url: uploadResult.fileUrl }
+          try {
+            const form = new FormData()
+            form.append('file', receipt.attachmentFile)
+            form.append('documentId', receiptDoc.id)
+            form.append('kind', 'receipt-attachment')
+            const uploadResponse = await fetch(`/api/documents/order/${encodeURIComponent(orderId)}/file`, {
+              method: 'POST', body: form,
             })
-            .eq('id', receiptDoc.id)
-          if (attachmentUpdateError) throw attachmentUpdateError
+            const uploadResult = await uploadResponse.json().catch(() => null)
+            if (!uploadResponse.ok || !uploadResult?.fileUrl) {
+              throw new Error(uploadResult?.error || 'Failed to upload receipt attachment')
+            }
+            const existingPayload = receiptDoc.payload && typeof receiptDoc.payload === 'object' && !Array.isArray(receiptDoc.payload)
+              ? receiptDoc.payload as Record<string, unknown>
+              : {}
+            const { error: attachmentUpdateError } = await supabase
+              .from('documents')
+              .update({
+                payload: { ...existingPayload, attachment_url: uploadResult.fileUrl }
+              })
+              .eq('id', receiptDoc.id)
+            if (attachmentUpdateError) throw attachmentUpdateError
+          } catch (attachmentError: any) {
+            console.error('Receipt attachment upload failed:', attachmentError)
+            toast({
+              title: 'Receipt saved without attachment',
+              description: `${receiptDocNo}: ${attachmentError?.message || 'The attachment could not be uploaded.'} Upload it again from the order documents.`,
+              variant: 'destructive',
+            })
+          }
         }
 
         // Log for finance/AR tracking - receipt already has all needed info in payload
