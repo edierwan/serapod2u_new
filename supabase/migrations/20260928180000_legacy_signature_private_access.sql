@@ -38,8 +38,6 @@ comment on policy documents_signature_select_own_legacy on storage.objects is
 
 -- Fail rather than silently weakening the private-storage boundary.
 do $$
-declare
-  legacy_expression text;
 begin
   if exists (
     select 1 from storage.buckets
@@ -48,23 +46,20 @@ begin
     raise exception 'postcondition: document storage buckets must remain private';
   end if;
 
-  select pg_get_expr(p.polqual, p.polrelid)
-  into legacy_expression
-  from pg_policy p
-  where p.polrelid = 'storage.objects'::regclass
-    and p.polname = 'documents_signature_select_own_legacy'
-    and p.polcmd = 'r'
-    and p.polroles = array['authenticated'::regrole::oid];
-
-  if legacy_expression is null then
-    raise exception 'postcondition: authenticated legacy signature SELECT policy is missing';
-  end if;
-
-  if legacy_expression not like '%auth.uid()%'
-     or legacy_expression not like '%signatures/%'
-     or legacy_expression not like '%[0-9]+%'
-     or legacy_expression not like '%bucket_id%documents%' then
-    raise exception 'postcondition: legacy signature policy is not owner/path scoped';
+  -- Validate stable catalog attributes rather than matching pg_get_expr()
+  -- output text, whose qualification/parentheses vary between PostgreSQL and
+  -- Supabase Storage versions. The exact owner/path predicate is defined by
+  -- the CREATE POLICY statement above and is contract-tested in source.
+  if not exists (
+    select 1
+    from pg_policy p
+    where p.polrelid = 'storage.objects'::regclass
+      and p.polname = 'documents_signature_select_own_legacy'
+      and p.polcmd = 'r'
+      and p.polroles = array['authenticated'::regrole::oid]
+      and p.polqual is not null
+  ) then
+    raise exception 'postcondition: authenticated legacy signature SELECT policy is missing or malformed';
   end if;
 
   if not exists (
