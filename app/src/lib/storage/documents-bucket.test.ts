@@ -23,12 +23,28 @@ describe('documents bucket references', () => {
     expect(documentsObjectPath('quality_issues\\secret.pdf')).toBeNull()
   })
 
-  it('owner-scopes signatures and type-scopes quality evidence', () => {
+  it('owner-scopes current nested signatures and type-scopes quality evidence', () => {
     expect(userSignaturePath('signatures/u1/a.png', 'u1')).toBe('signatures/u1/a.png')
     expect(userSignaturePath('signatures/u2/a.png', 'u1')).toBeNull()
+    expect(userSignaturePath('signatures/u1/nested/a.png', 'u1')).toBeNull()
     expect(userSignaturePath('quality_issues/u1/a.png', 'u1')).toBeNull()
     expect(qualityIssueEvidencePath('quality_issues/u1/a.png')).toBe('quality_issues/u1/a.png')
     expect(qualityIssueEvidencePath('signatures/u1/a.png')).toBeNull()
+  })
+
+  it('allows only the owning user to resolve a historical flat signature', () => {
+    const legacy = 'signatures/u1_1763485672062.png'
+    expect(userSignaturePath(legacy, 'u1')).toBe(legacy)
+    expect(userSignaturePath(`https://storage.test/storage/v1/object/public/documents/${legacy}`, 'u1'))
+      .toBe(legacy)
+    expect(userSignaturePath(legacy, 'u2')).toBeNull()
+  })
+
+  it('rejects malformed or owner-prefix-confusable legacy signature paths', () => {
+    expect(userSignaturePath('signatures/u1_extra.png', 'u1')).toBeNull()
+    expect(userSignaturePath('signatures/u1_1763485672062.png/extra', 'u1')).toBeNull()
+    expect(userSignaturePath('signatures/u10_1763485672062.png', 'u1')).toBeNull()
+    expect(userSignaturePath('signatures/u1_1763485672062.png', 'u')).toBeNull()
   })
 
   it('creates a short-lived URL with the storage gateway API key', async () => {

@@ -70,10 +70,30 @@ export function isDocumentsPathUnder(path: string | null, prefix: string): path 
   return Boolean(path && prefix.endsWith('/') && path.startsWith(prefix) && path.length > prefix.length)
 }
 
-/** Signature images live at signatures/<owner user id>/<file>. */
+/**
+ * Signature images use `signatures/<owner user id>/<file>` for every new
+ * upload. Historical objects used `signatures/<owner user id>_<timestamp>.<ext>`.
+ * Accept only those two exact, owner-derived shapes so a persisted profile
+ * value cannot be changed to sign or download another user's object.
+ */
 export function userSignaturePath(reference: string | null | undefined, ownerUserId: string): string | null {
   const path = documentsObjectPath(reference)
-  return isDocumentsPathUnder(path, `signatures/${ownerUserId}/`) ? path : null
+  const owner = String(ownerUserId ?? '').trim()
+  if (!path || !/^[A-Za-z0-9-]+$/.test(owner)) return null
+
+  const nestedPrefix = `signatures/${owner}/`
+  if (path.startsWith(nestedPrefix)) {
+    const filename = path.slice(nestedPrefix.length)
+    return filename && /^[A-Za-z0-9._-]+$/.test(filename) ? path : null
+  }
+
+  const legacyPrefix = `signatures/${owner}_`
+  if (path.startsWith(legacyPrefix)) {
+    const legacyFilename = path.slice(legacyPrefix.length)
+    return /^[0-9]+\.[A-Za-z0-9]+$/.test(legacyFilename) ? path : null
+  }
+
+  return null
 }
 
 /** Historical and current quality evidence lives below quality_issues/. */
