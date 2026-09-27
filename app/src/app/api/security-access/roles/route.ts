@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { requireAuthorization } from '@/lib/security-access/authorization'
-import { isActiveSecurityAccessAccount } from '@/lib/security-access/active-account'
+import { requireSecurityActor } from '@/lib/security-access/admin-api'
 
 const schema = z.object({
   id: z.string().uuid().nullable().optional(),
@@ -14,15 +11,13 @@ const schema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!(await isActiveSecurityAccessAccount(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const actor = await requireSecurityActor('security.role.manage')
+  if (actor instanceof NextResponse) return actor
+  const user = { id: actor.userId }
   const parsed = schema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid role', issues: parsed.error.flatten() }, { status: 400 })
   try {
-    await requireAuthorization({ actorId: user.id, permission: 'security.role.assign', resource: { type: 'business_role', id: parsed.data.id }, context: { correlationId: request.headers.get('x-request-id') } })
-    const admin = createAdminClient() as any
+    const admin = actor.admin
     const { data, error } = await admin.rpc('sa_save_business_role', {
       p_actor_id: user.id, p_role_id: parsed.data.id || null, p_role_key: parsed.data.roleKey,
       p_name: parsed.data.name, p_description: parsed.data.description, p_permission_keys: parsed.data.permissionKeys,

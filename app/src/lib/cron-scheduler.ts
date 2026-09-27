@@ -29,6 +29,10 @@ const CRON_JOBS: CronJob[] = [
   // Security & Access: bounded retention of ordinary shadow authorization
   // decisions (90 days). Daily; the database function is idempotent.
   { path: '/api/cron/sa-decision-retention', schedule: '17 3 * * *' },
+  // Security & Access governance: expire time-boxed access, delegations and
+  // stale requests every 15 minutes; the worker re-syncs the Joiner/Mover/
+  // Leaver lifecycle once a day (contract end dates, missed triggers).
+  { path: '/api/cron/sa-governance-maintenance', schedule: '*/15 * * * *' },
   // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release
   // stock. Opt-in: see serappHoldExpiryEnabled.
   {

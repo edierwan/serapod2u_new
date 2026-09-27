@@ -1,15 +1,13 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isActiveAccountRecord } from './active-account'
 
 const root = process.cwd()
-const routes = [
-  'src/app/api/security-access/overview/route.ts',
-  'src/app/api/security-access/simulate/route.ts',
-  'src/app/api/security-access/roles/route.ts',
-  'src/app/api/security-access/pilot/transfer-shadow/route.ts',
-]
+const apiRoot = resolve(root, 'src/app/api/security-access')
+const routes = (readdirSync(apiRoot, { recursive: true }) as string[])
+  .filter(file => file.endsWith('route.ts'))
+  .map(file => resolve(apiRoot, file))
 
 describe('Security & Access active-account gate', () => {
   it('allows only an explicit active record and fails closed', () => {
@@ -19,11 +17,18 @@ describe('Security & Access active-account gate', () => {
     expect(isActiveAccountRecord({ is_active: true }, new Error('lookup failed'))).toBe(false)
   })
 
-  it('is applied explicitly to every Security & Access API family', () => {
+  it('the shared administration helper applies the gate before any decision', () => {
+    const helper = readFileSync(resolve(root, 'src/lib/security-access/admin-api.ts'), 'utf8')
+    expect(helper).toContain('await isActiveSecurityAccessAccount(user.id)')
+  })
+
+  it('is applied to every Security & Access API route', () => {
+    expect(routes.length).toBeGreaterThanOrEqual(11)
     for (const route of routes) {
-      const source = readFileSync(resolve(root, route), 'utf8')
-      expect(source).toContain("import { isActiveSecurityAccessAccount }")
-      expect(source).toContain('await isActiveSecurityAccessAccount(user.id)')
+      const source = readFileSync(route, 'utf8')
+      const gated = source.includes('await isActiveSecurityAccessAccount(user.id)')
+        || /require(Security|SelfService)Actor\(/.test(source)
+      expect(gated, route).toBe(true)
     }
   })
 })
