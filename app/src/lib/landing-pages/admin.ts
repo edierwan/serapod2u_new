@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { userAllowed } from '@/lib/security-access/operation'
 
 export class LandingPageApiError extends Error {
   status: number
@@ -56,7 +57,9 @@ export async function requireLandingPageAdmin() {
     throw new LandingPageApiError('User organization is required.', 403)
   }
 
-  if (organization?.org_type_code !== 'HQ' || roleLevel > 30) {
+  // Landing pages are campaign content: S&A customer.campaign.manage in the
+  // admin's organization, with the HQ level<=30 rule as the legacy evaluator.
+  if (!(await userAllowed(user.id, 'customer.campaign.manage', () => organization?.org_type_code === 'HQ' && roleLevel <= 30, { organizationId }))) {
     throw new LandingPageApiError('Insufficient permissions for Landing Pages.', 403)
   }
 

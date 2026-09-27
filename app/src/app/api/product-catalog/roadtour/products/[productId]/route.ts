@@ -27,7 +27,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
   try {
     const { productId } = await params
     const body = await request.json()
-    const ctx = await getRoadtourCatalogContext({ initialize: true })
+    const ctx = await getRoadtourCatalogContext({ initialize: true, permission: 'roadtour.campaign.manage' })
     const { supabase, organizationId, program, catalog } = ctx
 
     const { isVape } = await loadOwnedProduct(supabase, productId)
@@ -73,7 +73,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
 export async function DELETE(_request: Request, { params }: { params: Promise<{ productId: string }> }) {
   try {
     const { productId } = await params
-    const ctx = await getRoadtourCatalogContext({ initialize: true })
+    const ctx = await getRoadtourCatalogContext({ initialize: true, permission: 'roadtour.campaign.manage' })
     const { supabase, organizationId, program, catalog } = ctx
     const { error } = await supabase
       .from('roadtour_product_catalog_items')

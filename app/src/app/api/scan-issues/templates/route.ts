@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -10,6 +11,8 @@ export async function GET(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const { searchParams } = new URL(req.url)
     const orgId = searchParams.get('org_id')
@@ -32,6 +35,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const body = await req.json().catch(() => ({})) as Record<string, any>
     if (!body.template_key || !body.template_name || !body.body || !body.recipient_type) {
@@ -58,6 +63,8 @@ export async function PATCH(req: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+    const saDenied = await guardUserOperation(user.id, 'customer.support.manage')
+    if (saDenied) return saDenied
 
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')

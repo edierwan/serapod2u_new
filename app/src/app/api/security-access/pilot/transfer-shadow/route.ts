@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { authorize } from '@/lib/security-access/authorization'
 import { isActiveSecurityAccessAccount } from '@/lib/security-access/active-account'
+import { resolveWarehouseResourceContext } from '@/lib/security-access/resource-context'
 
 const schema = z.object({
   transferId: z.string().uuid(),
@@ -25,10 +26,13 @@ export async function POST(request: NextRequest) {
   if (!transfer || !actorProfile?.organization_id) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const warehouseId = parsed.data.action === 'receive' ? transfer.to_organization_id : transfer.from_organization_id
   try {
+    // Same trusted context as the database backstop: the transfer's warehouse
+    // and its organization ancestry (never the actor's organization alone).
+    const context = await resolveWarehouseResourceContext(actorProfile.organization_id, warehouseId)
     const decision = await authorize({
       actorId: user.id,
       permission: `inventory.transfer.${parsed.data.action}`,
-      resource: { type: 'stock_transfer', id: transfer.id, organizationId: actorProfile.organization_id, warehouseId },
+      resource: { type: 'stock_transfer', id: transfer.id, ...context },
       context: { correlationId: request.headers.get('x-request-id') },
     })
     // SHADOW result is diagnostic only. Do not reveal assignment details here.

@@ -2,7 +2,7 @@ import { apiErrorResponse, EllbowApiError, getEllbowContext, requiredText } from
 
 export async function GET() {
   try {
-    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true })
+    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true, permission: 'customer.reward.manage' })
     const { data, error } = await supabase.from('ellbow_reward_categories').select('*')
       .eq('organization_id', organizationId).eq('loyalty_program_id', program.id).order('sort_order')
     if (error) throw error
@@ -13,7 +13,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true })
+    const { supabase, organizationId, program } = await getEllbowContext({ initialize: true, permission: 'customer.reward.manage' })
     const { count } = await supabase.from('ellbow_reward_categories').select('*', { count: 'exact', head: true })
       .eq('organization_id', organizationId).eq('loyalty_program_id', program.id)
     const { data, error } = await supabase.from('ellbow_reward_categories').insert({
@@ -29,7 +29,7 @@ export async function PATCH(request: Request) {
   try {
     const body = await request.json()
     if (!body.id) throw new EllbowApiError('Category id is required', 400)
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.reward.manage' })
     if (!program) throw new EllbowApiError('Ellbow category not found', 404)
     const payload: Record<string, unknown> = {}
     if (body.name !== undefined) payload.name = requiredText(body.name, 'Category name', 80)

@@ -1,3 +1,4 @@
+import { userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { isAdminUser } from '@/app/api/settings/whatsapp/_utils'
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
         }
 
         const isAdmin = await isAdminUser(supabase as any, user.id)
-        if (!isAdmin) {
+        if (!(await userAllowed(user.id, 'roadtour.campaign.manage', () => isAdmin))) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 

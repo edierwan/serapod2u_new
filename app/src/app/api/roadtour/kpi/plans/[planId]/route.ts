@@ -14,7 +14,7 @@ const monthToDate = (kpiMonth: string) => `${kpiMonth}-01`
 /** Full plan detail: plan + its config cycle + teams (with members) + rules. */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ planId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { planId } = await params
         const plan = await loadPlanForUpdate(ctx, planId)
@@ -34,7 +34,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 /** Update plan-level settings: effective window, reporting scope, leader bonus, name, status. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ planId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { planId } = await params
         const plan = await loadPlanForUpdate(ctx, planId)
@@ -94,7 +94,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 /** Delete a draft plan and its config cycle (teams/members/rules cascade with the cycle). */
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ planId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { planId } = await params
         const plan = await loadPlanForUpdate(ctx, planId)

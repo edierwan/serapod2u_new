@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 /**
  * GET /api/ai/metrics
  *
@@ -23,6 +24,8 @@ export async function GET(_request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+    if (saDenied) return saDenied
 
     // Check admin role — look for SUPER_ADMIN or HR_MANAGER in any org
     const { data: membership } = await supabase

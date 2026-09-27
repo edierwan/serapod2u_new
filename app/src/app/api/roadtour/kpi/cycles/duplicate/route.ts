@@ -15,12 +15,12 @@ export const dynamic = 'force-dynamic'
  */
 export async function POST(request: NextRequest) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
 
         const body = await request.json()
         const orgId = String(body?.org_id || ctx.profile.organization_id || '').trim()
-        const denied = assertOrgAccess(ctx, orgId)
+        const denied = await assertOrgAccess(ctx, orgId)
         if (denied) return denied
 
         const runId = String(body?.roadtour_run_id || '').trim()

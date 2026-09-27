@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
  */
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ cycleId: string }> }) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
         const { cycleId } = await params
         const cycle = await loadCycleForUpdate(ctx, cycleId)

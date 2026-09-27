@@ -1,3 +1,4 @@
+import { userAllowed, guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     const roleCode = userProfile?.role_code
     const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
     
-    if (!isAdmin) {
+    if (!(await userAllowed(authUser.id, 'platform.organization.manage', () => isAdmin))) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized - Admin access required' },
         { status: 403 }

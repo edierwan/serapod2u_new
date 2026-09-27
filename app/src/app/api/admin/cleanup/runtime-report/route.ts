@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type {
@@ -27,6 +28,8 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
+    if (saDenied) return saDenied
 
     // Get user profile to check role
     const { data: userProfile, error: profileError } = await supabase

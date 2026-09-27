@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getHrAuthContext, canManageHr } from '@/lib/server/hrAccess'
+import { getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No organization' }, { status: 400 })
     }
 
-    const isAdmin = await canManageHr(ctx)
+    const isAdmin = await hrCan(ctx, 'platform.settings.manage')
     if (!isAdmin) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }

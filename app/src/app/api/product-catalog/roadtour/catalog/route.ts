@@ -19,7 +19,7 @@ import {
  */
 export async function GET() {
   try {
-    const ctx = await getRoadtourCatalogContext({ initialize: true })
+    const ctx = await getRoadtourCatalogContext({ initialize: true, permission: 'roadtour.campaign.manage' })
     const { supabase, organizationId, program, catalog } = ctx
 
     const [assortment, { data: categories, error: catError }, { data: rules, error: ruleError }] = await Promise.all([

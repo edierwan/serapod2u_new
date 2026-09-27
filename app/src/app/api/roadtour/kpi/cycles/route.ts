@@ -13,12 +13,12 @@ const ALLOWED_SCOPES = new Set(['all_campaigns', 'selected_campaigns'])
 /** List KPI cycles for an org (optionally scoped to an event / month), with nested teams, members, and rules. */
 export async function GET(request: NextRequest) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
 
         const { searchParams } = new URL(request.url)
         const orgId = String(searchParams.get('org_id') || ctx.profile.organization_id || '').trim()
-        const denied = assertOrgAccess(ctx, orgId)
+        const denied = await assertOrgAccess(ctx, orgId)
         if (denied) return denied
 
         const runId = String(searchParams.get('roadtour_run_id') || '').trim()
@@ -74,12 +74,12 @@ export async function GET(request: NextRequest) {
 /** Create a draft KPI cycle. Period is always derived from kpi_month — never client-supplied. */
 export async function POST(request: NextRequest) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
 
         const body = await request.json()
         const orgId = String(body?.org_id || ctx.profile.organization_id || '').trim()
-        const denied = assertOrgAccess(ctx, orgId)
+        const denied = await assertOrgAccess(ctx, orgId)
         if (denied) return denied
 
         const runId = String(body?.roadtour_run_id || '').trim()

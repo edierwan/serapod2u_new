@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -40,6 +41,8 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       )
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.redemption.manage')
+    if (saDenied) return saDenied
 
     // Get user's organization
     const { data: userProfile, error: profileError } = await supabaseAdmin

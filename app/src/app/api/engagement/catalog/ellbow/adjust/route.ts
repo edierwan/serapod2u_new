@@ -2,7 +2,7 @@ import { apiErrorResponse, EllbowApiError, getEllbowContext } from '@/lib/server
 
 export async function POST(request: Request) {
   try {
-    const { supabase } = await getEllbowContext()
+    const { supabase } = await getEllbowContext({ permission: 'customer.loyalty.adjust' })
     const body = await request.json()
     if (!body.owner_user_id || !['consumer','shop_staff'].includes(body.wallet_lane)) throw new EllbowApiError('Invalid wallet adjustment target', 400)
     if (!String(body.reason || '').trim()) throw new EllbowApiError('Adjustment reason is required', 400)

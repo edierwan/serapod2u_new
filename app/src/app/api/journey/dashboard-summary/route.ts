@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { addTrendDays, buildTrendSeries, resolveTrendWindow } from '@/lib/journey/engagement-trend'
@@ -22,6 +23,8 @@ export async function GET(_req: NextRequest) {
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+        if (saDenied) return saDenied
 
         const { data: profile } = await supabase
             .from('users')

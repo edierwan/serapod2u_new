@@ -22,6 +22,7 @@ export const operationModule = {
     (await legacyAllows(req)) ? null : NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }),
   guardUserOperation: async (_userId: string, _permission: string, options: Req = {}) =>
     (await legacyAllows(options)) ? null : NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }),
+  userAllowed: async (_userId: string, _permission: string, legacy: () => boolean | Promise<boolean>) => Boolean(await legacy()),
   organizationResource: (type: string, organizationId: string | null | undefined, extra = {}) => ({ type, organizationId: organizationId ?? null, ...extra }),
   warehouseResource: (type: string, warehouseId: string, extra = {}) => ({ type, organizationId: warehouseId, warehouseId, ...extra }),
 }

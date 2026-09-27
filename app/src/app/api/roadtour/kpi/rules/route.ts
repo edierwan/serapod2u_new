@@ -12,7 +12,7 @@ const ALLOWED_BONUS_TYPES = new Set(['cash', 'other'])
 /** Create an incentive rule inside a KPI cycle. */
 export async function POST(request: NextRequest) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.kpi.manage')
         if (ctx instanceof NextResponse) return ctx
 
         const body = await request.json()

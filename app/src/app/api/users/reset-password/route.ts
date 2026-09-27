@@ -1,3 +1,4 @@
+import { userAllowed, guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (currentUserLevel !== 10) {
+    if (!(await userAllowed(authUser.id, 'platform.user.manage', () => currentUserLevel === 10))) {
       return NextResponse.json(
         { success: false, error: 'Forbidden - Password reset requires role level 10' },
         { status: 403 }

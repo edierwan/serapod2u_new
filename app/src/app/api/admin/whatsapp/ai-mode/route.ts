@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -11,6 +12,8 @@ export async function GET(request: NextRequest) {
         if (authError || !user) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
+        const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+        if (saDenied) return saDenied
 
         // Get user's organization from users table
         const { data: userRecord } = await supabase
@@ -60,6 +63,8 @@ export async function POST(request: NextRequest) {
         if (authError || !user) {
             return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
         }
+        const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
+        if (saDenied) return saDenied
 
         // Get user's organization from users table
         const { data: userRecord } = await supabase

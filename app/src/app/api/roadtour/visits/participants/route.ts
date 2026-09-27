@@ -10,12 +10,12 @@ export const dynamic = 'force-dynamic'
 /** POST rather than GET so a page of visit ids is not carried in the URL. */
 export async function POST(request: NextRequest) {
     try {
-        const ctx = await requireKpiAdmin()
+        const ctx = await requireKpiAdmin('roadtour.visit.manage')
         if (ctx instanceof NextResponse) return ctx
 
         const body = await request.json().catch(() => null)
         const orgId = String(body?.org_id || ctx.profile.organization_id || '').trim()
-        const denied = assertOrgAccess(ctx, orgId)
+        const denied = await assertOrgAccess(ctx, orgId)
         if (denied) return denied
 
         const visitIds: string[] = Array.isArray(body?.visit_ids)

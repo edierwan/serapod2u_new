@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
@@ -10,6 +11,8 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
 
     try {
         const formData = await request.formData()

@@ -153,7 +153,7 @@ export const FINAL_WAVE_CATALOG: readonly CatalogEntry[] = [
   e('ecommerce.channel.manage', 'Manage e-commerce channel connections (metadata only)', S, SUPER_ADMIN),
 
   // ── Platform administration ─────────────────────────────────────────
-  e('platform.settings.manage', 'Manage platform integrations, notification providers and AI settings', S, HQ_ADMIN),
+  e('platform.settings.manage', 'Manage platform integrations, notification providers and AI settings', S, ADMIN),
   e('platform.organization.manage', 'Import, configure and remove organizations', S, HQ_ADMIN),
   e('platform.user.manage', 'Administer user profiles, credentials resets and phone changes', S, { maxRoleLevel: 30, legacyPermissions: ['edit_users', 'create_users'] }),
   e('platform.data.destructive', 'Run destructive data maintenance (environment-gated)', S, SUPER_ADMIN),

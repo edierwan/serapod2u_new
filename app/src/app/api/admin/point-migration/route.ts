@@ -1,3 +1,5 @@
+import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
@@ -393,7 +395,11 @@ export async function POST(request: NextRequest) {
     // Get the current authenticated user
     const supabase = await createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const createdBy = user?.id;
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Bulk user + points import: any signed-in account could run it before.
+    const saDenied = await guardUserOperation(user.id, 'customer.loyalty.adjust', { legacy: () => legacyRoleLevelAtMost(user.id, 20) });
+    if (saDenied) return saDenied;
+    const createdBy = user.id;
 
     const formData = await request.formData();
     const file = formData.get("file") as File;

@@ -1,3 +1,4 @@
+import { userAllowed } from '@/lib/security-access/operation'
 /**
  * RoadTour Send QR using the organization's configured notification route.
  * 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
         }
 
         const isAdmin = await isAdminUser(supabase, user.id)
-        if (!isAdmin) {
+        if (!(await userAllowed(user.id, 'roadtour.campaign.manage', () => isAdmin))) {
             return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
         }
 

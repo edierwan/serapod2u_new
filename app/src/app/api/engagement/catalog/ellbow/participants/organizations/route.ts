@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.program.manage' })
     if (!program) throw new EllbowApiError('Ellbow Loyalty is not initialized', 404)
 
     const url = new URL(request.url)
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { supabase } = await getEllbowContext()
+    const { supabase } = await getEllbowContext({ permission: 'customer.program.manage' })
     const body = await request.json()
     const memberOrganizationId = String(body?.member_organization_id || '').trim()
     const status = body?.status === 'inactive' ? 'inactive' : 'active'

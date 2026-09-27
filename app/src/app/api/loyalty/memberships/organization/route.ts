@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -15,6 +16,8 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.program.manage')
+    if (saDenied) return saDenied
 
     const body = await request.json()
     const organizationId = typeof body?.organizationId === 'string' ? body.organizationId.trim() : ''

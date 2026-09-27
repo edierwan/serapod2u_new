@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { validateTemplate } from '@/lib/template-safety';
@@ -11,6 +12,8 @@ export async function GET(request: Request) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+  if (saDenied) return saDenied
 
   // Get user's org
   const { data: userProfile } = await supabase
@@ -52,6 +55,8 @@ export async function POST(request: Request) {
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+  if (saDenied) return saDenied
 
   const { data: userProfile } = await supabase
     .from('users')

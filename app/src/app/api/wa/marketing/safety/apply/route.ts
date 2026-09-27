@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 // POST - Apply Safety Settings
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
@@ -18,6 +19,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
     
     // Get user's organization_id
     // Note: Using 'any' cast until types are regenerated after migration
@@ -81,6 +84,8 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
+    if (saDenied) return saDenied
     
     // Get user's organization_id
     const { data: profile } = await (supabase as any)

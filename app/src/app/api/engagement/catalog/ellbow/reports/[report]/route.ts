@@ -4,7 +4,7 @@ type Context = { params: Promise<{ report: string }> }
 export async function GET(request: Request, { params }: Context) {
   try {
     const { report } = await params
-    const { supabase, organizationId, program } = await getEllbowContext()
+    const { supabase, organizationId, program } = await getEllbowContext({ permission: 'customer.consumer.view' })
     if (!program) throw new EllbowApiError('Ellbow Loyalty is not initialized', 404)
     const url = new URL(request.url); const search = String(url.searchParams.get('search') || '').trim(); const status = url.searchParams.get('status')
     if (report === 'shops') {

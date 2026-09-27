@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
-    const { supabase, organizationId } = await getEllbowContext()
+    const { supabase, organizationId } = await getEllbowContext({ permission: 'customer.program.manage' })
     const url = new URL(request.url)
     const target = url.searchParams.get('target')
     const search = String(url.searchParams.get('search') || '').trim()

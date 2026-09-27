@@ -43,6 +43,10 @@ vi.mock('@/lib/supabase/server', () => ({
 
 import { GET } from './route'
 
+// S&A in legacy mode: this suite tests the route's own rules.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+
 const scanStats: Record<string, any> = {
     'order-1': { total_qr_codes: 1_262_760, unique_consumer_scans: 90_331, redemptions: 0, lucky_draw_entries: 0, points_collected_count: 88_000 },
     'order-2': { total_qr_codes: 110_000, unique_consumer_scans: 11_249, redemptions: 500, lucky_draw_entries: 0, points_collected_count: 10_856 },
