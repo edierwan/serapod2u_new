@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getHrAuthContext } from '@/lib/server/hrAccess'
+import { getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -10,6 +10,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         if (!ctxResult.success || !ctxResult.data) return NextResponse.json({ success: false, error: ctxResult.error }, { status: 401 })
         const ctx = ctxResult.data
         if (!ctx.organizationId) return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
+        if (!(await hrCan(ctx, 'hr.payroll.view', () => true))) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
 
         // Verify run belongs to org
         const { data: run } = await supabase

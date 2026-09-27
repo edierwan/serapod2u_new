@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getAttendanceAuthContext, canManageAttendance } from '@/lib/server/attendanceAccess'
+import { getAttendanceAuthContext, canManageAttendance, attendanceCan } from '@/lib/server/attendanceAccess'
 
 export async function GET() {
     try {
@@ -15,7 +15,7 @@ export async function GET() {
             return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
         }
 
-        if (!(await canManageAttendance(ctx))) {
+        if (!(await attendanceCan(ctx, 'hr.attendance.manage'))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 

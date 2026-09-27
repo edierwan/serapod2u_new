@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { GLAccountInsert, GLAccountUpdate, GLAccountsFilters } from '@/types/accounting'
@@ -26,6 +27,10 @@ export async function GET(request: NextRequest) {
     
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const { data: financeActor } = await (supabase as any).from('users').select('organization_id').eq('id', user.id).maybeSingle()
+    if (!(await financeAllowed(user.id, 'finance.ledger.view', () => true, financeActor?.organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // Get user's company_id
@@ -150,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user is HQ Admin (role_level <= 20)
     const roleLevel = (userData.roles as any)?.role_level || 999
-    if (roleLevel > 20) {
+    if (!(await financeAllowed(user.id, 'finance.account.manage', () => roleLevel <= 20, userData.organization_id))) {
       return NextResponse.json(
         { error: 'Insufficient permissions. HQ Admin required.' },
         { status: 403 }

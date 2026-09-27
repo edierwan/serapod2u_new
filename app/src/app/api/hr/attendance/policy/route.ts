@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageAttendance, getAttendanceAuthContext } from '@/lib/server/attendanceAccess'
+import { canManageAttendance, getAttendanceAuthContext, attendanceCan } from '@/lib/server/attendanceAccess'
 
 const DEFAULT_POLICY = {
     workdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
@@ -71,7 +71,7 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
         }
 
-        if (!(await canManageAttendance(ctx))) {
+        if (!(await attendanceCan(ctx, 'hr.attendance.manage'))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 

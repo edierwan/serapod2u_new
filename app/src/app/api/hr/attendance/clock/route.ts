@@ -1,3 +1,4 @@
+import { hrSelfCan } from '@/lib/server/hrAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getAttendanceAuthContext } from '@/lib/server/attendanceAccess'
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
         if (!ctx.organizationId) {
             return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
         }
+        if (!(await hrSelfCan(ctx))) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
 
         const body = await request.json()
         const action = String(body.action || '')

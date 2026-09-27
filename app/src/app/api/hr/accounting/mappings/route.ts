@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -24,7 +25,8 @@ export async function POST(request: NextRequest) {
         if (!userData) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
         const roleLevel = (userData.roles as any)?.role_level || 999
-        if (roleLevel > 20) {
+        if (!(await hrCan({ userId: user.id, organizationId: userData.organization_id, roleCode: null, roleLevel },
+            'finance.payroll_integration.manage', () => roleLevel <= 20))) {
             return NextResponse.json({ error: 'HQ Admin required' }, { status: 403 })
         }
 
@@ -133,6 +135,10 @@ export async function GET() {
 
         if (!userData?.organization_id) {
             return NextResponse.json({ error: 'User has no organization' }, { status: 400 })
+        }
+        if (!(await hrCan({ userId: user.id, organizationId: userData.organization_id, roleCode: null, roleLevel: null },
+            'finance.payroll_integration.manage', () => true))) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
         }
 
         const { data: companyId } = await supabase.rpc('get_company_id', {

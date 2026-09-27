@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageHr, getHrAuthContext } from '@/lib/server/hrAccess'
+import { canManageHr, getHrAuthContext, hrCan, hrSelfCan } from '@/lib/server/hrAccess'
 
 export async function GET() {
     try {
@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
         if (!ctxResult.success || !ctxResult.data) {
             return NextResponse.json({ success: false, error: ctxResult.error }, { status: 401 })
         }
+        if (!(await hrSelfCan(ctxResult.data))) {
+            return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
+        }
 
         const ctx = ctxResult.data
         if (!ctx.organizationId) {
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'Employee and change payload are required' }, { status: 400 })
         }
 
-        const isManager = await canManageHr(ctx)
+        const isManager = await hrCan(ctx, 'hr.employee.manage')
         const status = isManager && body.status ? body.status : 'pending'
 
         const { data, error } = await supabase

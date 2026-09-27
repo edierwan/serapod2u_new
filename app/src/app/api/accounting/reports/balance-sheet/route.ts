@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -21,6 +22,9 @@ export async function GET(request: Request) {
 
     if (!userData?.organization_id) {
       return NextResponse.json({ error: 'User has no organization' }, { status: 400 })
+    }
+    if (!(await financeAllowed(user.id, 'finance.report.view_sensitive', () => true, userData.organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const orgId = userData.organization_id

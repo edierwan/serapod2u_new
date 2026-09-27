@@ -1,5 +1,6 @@
 import 'server-only'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { hrCan } from '@/lib/server/hrAccess'
 
 export interface AttendanceAuthContext {
     userId: string
@@ -46,3 +47,7 @@ export const canManageAttendance = async (ctx: AttendanceAuthContext) => {
 
     return manageOrgChart.allowed || editOrgSettings.allowed
 }
+
+/** S&A-aware attendance management check (legacy: canManageAttendance). */
+export const attendanceCan = (ctx: AttendanceAuthContext, permission = 'hr.attendance.manage') =>
+    hrCan(ctx, permission, () => canManageAttendance(ctx))

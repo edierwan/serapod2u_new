@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -25,6 +26,9 @@ export async function GET(request: NextRequest) {
 
     if (!userData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    if (!(await financeAllowed(user.id, 'finance.ledger.view', () => true, (userData as any).organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { data: companyId } = await supabase
@@ -89,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     const roleLevel = (userData.roles as any)?.role_level || 999
-    if (roleLevel > 20) {
+    if (!(await financeAllowed(user.id, 'finance.settings.manage', () => roleLevel <= 20, userData.organization_id))) {
       return NextResponse.json({ error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
     }
 
@@ -187,7 +191,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const roleLevel = (userData.roles as any)?.role_level || 999
-    if (roleLevel > 20) {
+    if (!(await financeAllowed(user.id, 'finance.settings.manage', () => roleLevel <= 20, userData.organization_id))) {
       return NextResponse.json({ error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
     }
 
@@ -250,7 +254,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const roleLevel = (userData.roles as any)?.role_level || 999
-    if (roleLevel > 20) {
+    if (!(await financeAllowed(user.id, 'finance.settings.manage', () => roleLevel <= 20, userData.organization_id))) {
       return NextResponse.json({ error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
     }
 

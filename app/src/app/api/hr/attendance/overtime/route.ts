@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getAttendanceAuthContext, canManageAttendance } from '@/lib/server/attendanceAccess'
+import { getAttendanceAuthContext, canManageAttendance, attendanceCan } from '@/lib/server/attendanceAccess'
 
 // ─── GET /api/hr/attendance/overtime ──────────────────────────
 // Returns overtime policy + rules + presets for the org.
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         if (!ctx.organizationId) {
             return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
         }
-        if (!(await canManageAttendance(ctx))) {
+        if (!(await attendanceCan(ctx, 'hr.attendance.manage'))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 

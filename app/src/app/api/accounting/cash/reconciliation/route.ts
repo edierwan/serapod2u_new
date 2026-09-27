@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -21,6 +22,9 @@ export async function GET(request: Request) {
 
     if (!userData?.organization_id) {
       return NextResponse.json({ error: 'User has no organization' }, { status: 400 })
+    }
+    if (!(await financeAllowed(user.id, 'finance.cash.view', () => true, userData.organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const orgId = userData.organization_id
@@ -91,6 +95,9 @@ export async function POST(request: Request) {
     if (!userData?.organization_id) {
       return NextResponse.json({ error: 'User has no organization' }, { status: 400 })
     }
+    if (!(await financeAllowed(user.id, 'finance.reconciliation.perform', () => true, userData.organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const body = await request.json()
     const { bank_account_id, period_start, period_end, statement_balance, notes } = body
@@ -157,6 +164,9 @@ export async function PATCH(request: Request) {
 
     if (!userData?.organization_id) {
       return NextResponse.json({ error: 'User has no organization' }, { status: 400 })
+    }
+    if (!(await financeAllowed(user.id, 'finance.reconciliation.perform', () => true, userData.organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const body = await request.json()

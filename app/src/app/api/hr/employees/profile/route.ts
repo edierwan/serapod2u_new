@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -37,8 +38,9 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'user_id required' }, { status: 400 })
         }
 
-        // Check permission: own profile or manager
-        if (userId !== user.id && roleLevel > 20) {
+        // Check permission: own profile or HR employee administration (S&A)
+        if (userId !== user.id && !(await hrCan({ userId: user.id, organizationId: caller.organization_id, roleCode: caller.role_code, roleLevel },
+            'hr.employee.manage', () => roleLevel <= 20))) {
             return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
         }
 
@@ -124,8 +126,9 @@ export async function PUT(request: NextRequest) {
         }
 
         // Only managers can edit other profiles, employees can edit their own limited fields
-        const isManager = roleLevel <= 20
         const isSelf = user_id === user.id
+        const isManager = await hrCan({ userId: user.id, organizationId: caller.organization_id, roleCode: caller.role_code, roleLevel },
+            'hr.employee.manage', () => roleLevel <= 20)
 
         if (!isManager && !isSelf) {
             return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
@@ -192,7 +195,8 @@ export async function POST(request: NextRequest) {
             const { data: rd } = await supabase.from('roles').select('role_level').eq('role_code', callerPost.role_code).maybeSingle()
             if (rd) postRoleLevel = rd.role_level
         }
-        if (postRoleLevel > 20) {
+        if (!(await hrCan({ userId: user.id, organizationId: callerPost.organization_id, roleCode: callerPost.role_code, roleLevel: postRoleLevel },
+            'hr.employee.manage', () => postRoleLevel <= 20))) {
             return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 })
         }
 

@@ -1,5 +1,7 @@
 import 'server-only'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { hrCan } from '@/lib/server/hrAccess'
+import type { LegacyEvaluator } from '@/lib/security-access/authorization'
 
 export interface KpiAuthContext {
     userId: string
@@ -96,3 +98,7 @@ export async function canViewAllReports(ctx: KpiAuthContext) {
     const r = await checkPermissionForUser(ctx.userId, 'kpi.view_reports_all')
     return r.allowed
 }
+
+/** S&A-aware KPI/performance check; the legacy evaluator is the historical gate. */
+export const kpiCan = (ctx: KpiAuthContext, permission: string, legacy: LegacyEvaluator) =>
+    hrCan(ctx, permission, legacy)

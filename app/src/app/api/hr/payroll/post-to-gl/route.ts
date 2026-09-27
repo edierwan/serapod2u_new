@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -24,7 +25,8 @@ export async function POST(request: NextRequest) {
         }
 
         const roleLevel = (userData.roles as any)?.role_level || 999
-        if (roleLevel > 20) {
+        if (!(await hrCan({ userId: user.id, organizationId: userData.organization_id, roleCode: null, roleLevel },
+            'hr.payroll.release', () => roleLevel <= 20))) {
             return NextResponse.json({ error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
         }
 
@@ -80,7 +82,8 @@ export async function DELETE(request: NextRequest) {
         }
 
         const roleLevel = (userData.roles as any)?.role_level || 999
-        if (roleLevel > 20) {
+        if (!(await hrCan({ userId: user.id, organizationId: userData.organization_id, roleCode: null, roleLevel },
+            'hr.payroll.release', () => roleLevel <= 20))) {
             return NextResponse.json({ error: 'Insufficient permissions. HQ Admin required.' }, { status: 403 })
         }
 

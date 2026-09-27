@@ -1,3 +1,4 @@
+import { hrCan } from '@/lib/server/hrAccess'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { seedPermissionsCatalog, seedTemplateGroups } from '@/lib/server/hr/seedPermissions'
@@ -406,7 +407,8 @@ export async function POST(request: Request) {
         const supabase = await createClient() as any
         const ctx = await getOrgContext(supabase)
         if (!ctx) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        if (ctx.roleLevel > 20) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+        if (!(await hrCan({ userId: ctx.user.id, organizationId: ctx.orgId, roleCode: null, roleLevel: ctx.roleLevel },
+            'hr.settings.manage', () => ctx.roleLevel <= 20))) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
         const body = await request.json()
         const { action } = body

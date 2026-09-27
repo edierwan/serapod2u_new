@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getKpiAuthContext, canApproveReview, isKpiHrManager } from '@/lib/server/kpi/access'
+import { getKpiAuthContext, canApproveReview, isKpiHrManager, kpiCan } from '@/lib/server/kpi/access'
 import { kpiAudit } from '@/lib/server/kpi/audit'
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const auth = await getKpiAuthContext(supabase)
     if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })
 
-    const allowed = isKpiHrManager(auth.data) || (await canApproveReview(auth.data))
+    const allowed = isKpiHrManager(auth.data) || (await kpiCan(auth.data, 'hr.performance.manage', () => canApproveReview(auth.data)))
     if (!allowed) return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json().catch(() => ({}))

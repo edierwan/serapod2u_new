@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getAttendanceAuthContext, canManageAttendance } from '@/lib/server/attendanceAccess'
+import { getAttendanceAuthContext, canManageAttendance, attendanceCan } from '@/lib/server/attendanceAccess'
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -10,7 +10,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         if (!ctxResult.success || !ctxResult.data) return NextResponse.json({ success: false, error: ctxResult.error }, { status: 401 })
         const ctx = ctxResult.data
         if (!ctx.organizationId) return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 400 })
-        if (!(await canManageAttendance(ctx))) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
+        if (!(await attendanceCan(ctx, 'hr.attendance.manage'))) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
 
         const { data: ts } = await supabase
             .from('hr_timesheets')

@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getHrAuthContext, canManageHr } from '@/lib/server/hrAccess'
+import { getHrAuthContext, canManageHr, hrCan } from '@/lib/server/hrAccess'
 import { runHrAudit, buildAuditContextForAi } from '@/lib/ai/hrAudit'
 import { sendToAi, buildOfflineResponse, HR_SYSTEM_INSTRUCTION } from '@/lib/ai/aiGateway'
 import { resolveProviderConfig } from '@/lib/server/ai/providerSettings'
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ctx = authResult.data
-    const allowed = await canManageHr(ctx)
+    const allowed = await hrCan(ctx, 'hr.ai.use')
     if (!allowed) {
       return NextResponse.json(
         { success: false, error: 'Insufficient permissions' },

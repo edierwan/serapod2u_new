@@ -1,7 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { getHrAccessDecision } from '@/lib/server/hrAccess'
+import { getHrAccessDecision, hrCan } from '@/lib/server/hrAccess'
 
 const shouldShowHrAccessDiagnostic = () => {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || ''
@@ -57,12 +57,17 @@ export async function getHrPageContext() {
         roles
     }
 
-    const hrAccess = await getHrAccessDecision({
+    const hrCtx = {
         userId: user.id,
         organizationId,
         roleCode: userProfile.role_code ?? null,
         roleLevel: roles?.role_level ?? null,
-    })
+    }
+    const legacyAccess = await getHrAccessDecision(hrCtx)
+    // Module entry is an S&A decision (hr.module.view); the historical HR
+    // entry rule is the legacy evaluator.
+    const allowed = await hrCan(hrCtx, 'hr.module.view', () => legacyAccess.allowed)
+    const hrAccess = { ...legacyAccess, allowed }
 
     const hrUnauthorizedReason =
         !hrAccess.allowed && shouldShowHrAccessDiagnostic()

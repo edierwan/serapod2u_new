@@ -1,3 +1,4 @@
+import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -22,6 +23,9 @@ export async function GET() {
 
     if (!userData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    if (!(await financeAllowed(user.id, 'finance.ledger.view', () => true, (userData as any).organization_id))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { data: companyId } = await supabase.rpc('get_company_id', {
@@ -84,7 +88,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    if (userData.roles.role_level > 20) {
+    if (!(await financeAllowed(user.id, 'finance.settings.manage', () => userData.roles.role_level <= 20, userData.organization_id))) {
       return NextResponse.json({ error: 'Forbidden - HQ Admin only' }, { status: 403 })
     }
 

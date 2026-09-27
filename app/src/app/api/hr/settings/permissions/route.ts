@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { seedPermissionsCatalog, seedTemplateGroups } from '@/lib/server/hr/seedPermissions'
+import { hrCan } from '@/lib/server/hrAccess'
+import { legacyAuthorizationReadOnly, LEGACY_STORE_READ_ONLY_RESPONSE } from '@/lib/security-access/legacy-stores'
 
 async function getCompanyContext(supabase: any) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -58,11 +60,16 @@ export async function GET() {
             .eq('is_active', true)
             .order('full_name')
 
+        const readOnly = await legacyAuthorizationReadOnly()
         return NextResponse.json({
             permissions: permissions || [],
             groups: groups || [],
             users: orgUsers || [],
-            isAdmin: ctx.roleLevel <= 20,
+            isAdmin: !readOnly && ctx.roleLevel <= 20,
+            // HR access groups are not an authorization source: runtime HR
+            // authorization is decided by Security & Access.
+            readOnly,
+            managedIn: '/security-access',
         })
     } catch (error) {
         console.error('Error fetching HR permissions:', error)
@@ -79,7 +86,9 @@ export async function POST(request: Request) {
         const supabase = await createClient() as any
         const ctx = await getCompanyContext(supabase)
         if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
-        if (ctx.roleLevel > 20) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+        if (await legacyAuthorizationReadOnly()) return NextResponse.json(LEGACY_STORE_READ_ONLY_RESPONSE, { status: 410 })
+        if (!(await hrCan({ userId: ctx.user.id, organizationId: ctx.orgId, roleCode: null, roleLevel: ctx.roleLevel },
+            'hr.settings.manage', () => ctx.roleLevel <= 20))) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
         const body = await request.json()
         const { action } = body
@@ -167,7 +176,9 @@ export async function DELETE(request: Request) {
         const supabase = await createClient() as any
         const ctx = await getCompanyContext(supabase)
         if ('error' in ctx) return NextResponse.json({ error: ctx.error }, { status: ctx.status })
-        if (ctx.roleLevel > 20) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+        if (await legacyAuthorizationReadOnly()) return NextResponse.json(LEGACY_STORE_READ_ONLY_RESPONSE, { status: 410 })
+        if (!(await hrCan({ userId: ctx.user.id, organizationId: ctx.orgId, roleCode: null, roleLevel: ctx.roleLevel },
+            'hr.settings.manage', () => ctx.roleLevel <= 20))) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
         const { searchParams } = new URL(request.url)
         const type = searchParams.get('type')
