@@ -1,7 +1,7 @@
 import type { AuthorizationDecisionValue, AuthorizationReasonCode, ShadowComparison } from './types'
 
 export function shadowComparisonFor(
-  legacyDecision: AuthorizationDecisionValue,
+  legacyDecision: AuthorizationDecisionValue | null,
   newDecision: AuthorizationDecisionValue,
   newReasonCode: AuthorizationReasonCode,
 ): ShadowComparison {
@@ -9,8 +9,11 @@ export function shadowComparisonFor(
   if (newReasonCode === 'MISSING_ASSIGNMENT') return 'MISSING_ASSIGNMENT'
   if (newReasonCode === 'MISSING_CONTEXT') return 'MISSING_CONTEXT'
   if (newReasonCode === 'POLICY_ERROR') return 'POLICY_ERROR'
-  if (legacyDecision === 'ALLOW' && newDecision === 'ALLOW') return 'MATCH_ALLOW'
-  if (legacyDecision === 'DENY' && newDecision === 'DENY') return 'MATCH_DENY'
-  if (legacyDecision === 'ALLOW') return 'LEGACY_ALLOW_NEW_DENY'
+  // Legacy not consulted (LEGACY_RETIRED) or unavailable while it is only
+  // diagnostic: the row records the new decision alone; legacy_decision is NULL.
+  const legacy = legacyDecision ?? newDecision
+  if (legacy === 'ALLOW' && newDecision === 'ALLOW') return 'MATCH_ALLOW'
+  if (legacy === 'DENY' && newDecision === 'DENY') return 'MATCH_DENY'
+  if (legacy === 'ALLOW') return 'LEGACY_ALLOW_NEW_DENY'
   return 'LEGACY_DENY_NEW_ALLOW'
 }
