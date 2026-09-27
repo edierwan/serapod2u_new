@@ -5,9 +5,9 @@
  * API-role write path). Only these may be NEW_ENFORCED / LEGACY_RETIRED.
  *
  * Must equal public.sa_enforcement_readiness
- * (20260928130000_sa_final_legacy_retirement_support.sql); readiness.test.ts
- * keeps the two in lock-step, and sa_set_migration_mode() refuses any other
- * permission.
+ * (20260928130000_sa_final_legacy_retirement_support.sql); the lock-step test
+ * (catalog-migration.test.ts) keeps the two aligned, and
+ * sa_set_migration_mode() refuses any other permission.
  */
 export const ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [
   'inventory.stock_count.verify',
@@ -88,6 +88,22 @@ export const ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [
   'roadtour.report.view',
   'ecommerce.store.manage',
   'ecommerce.order.manage',
+  'ecommerce.channel.manage',
+  'customer.campaign.manage',
+  'customer.support.manage',
+  'customer.consumer.view',
+  'manufacturing.production.manage',
+  'manufacturing.scan.reverse',
+  'roadtour.campaign.manage',
+  'roadtour.visit.manage',
+  'platform.settings.manage',
+  'platform.organization.manage',
+  'platform.user.manage',
+  'platform.data.destructive',
+  'reporting.analytics.view',
+  'inventory.report.view',
+  'inventory.stock_count.view',
+  'inventory.transfer.view',
 ]
 
 export function isEnforcementReady(permissionKey: string): boolean {

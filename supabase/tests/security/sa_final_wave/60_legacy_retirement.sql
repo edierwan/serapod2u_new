@@ -2,7 +2,7 @@
 BEGIN;
 
 SELECT saf.expect_raise('NEW_ENFORCED requires enforcement readiness',
-  $$SELECT public.sa_set_migration_mode(null, 'reporting.analytics.view', 'NEW_ENFORCED', 'attempt without wiring')$$, 'sa_not_enforcement_ready');
+  $$SELECT public.sa_set_migration_mode(null, 'inventory.stock_count.create', 'NEW_ENFORCED', 'attempt without wiring')$$, 'sa_not_enforcement_ready');
 SELECT saf.expect_raise('LEGACY_RETIRED requires NEW_ENFORCED first',
   $$SELECT public.sa_set_migration_mode(null, 'hr.payroll.view', 'LEGACY_RETIRED', 'skip a stage')$$, 'sa_retire_requires_new_enforced');
 SELECT saf.expect_raise('mode changes need a reason',
@@ -47,5 +47,35 @@ SELECT saf.expect_err('HR access groups read-only', 'service_role', null,
   format($$INSERT INTO public.hr_access_groups(organization_id, name) VALUES (%L, 'Payroll team')$$, saf.org('hq_a')), 'legacy_authorization_store_read_only');
 SELECT saf.expect_ok('user profile edits unaffected', 'service_role', null,
   $$UPDATE public.users SET full_name = 'Renamed' WHERE id = '00000000-0000-0000-0000-000000000005'$$);
+
+-- After the lock a legacy role code grants nothing (no escalation through
+-- users.role_code); existing lifecycle access is kept; a role change only
+-- removes the old compatibility access.
+UPDATE public.users SET role_code = 'SA' WHERE id = saf.uid('emp_a2');
+SELECT saf.expect_eq('locked: role_code change to SA grants no compatibility access',
+  (SELECT count(*) FROM public.sa_role_assignments a JOIN public.sa_business_roles br ON br.id = a.role_id
+    WHERE a.user_id = saf.uid('emp_a2') AND a.status = 'active' AND br.source = 'legacy')::int, 0);
+SELECT saf.expect_eq('locked: self-service baseline kept',
+  saf.decide(saf.uid('emp_a2'), 'hr.self_service.use', jsonb_build_object('organization_id', saf.org('hq_a'), 'owner_user_id', saf.uid('emp_a2'))), 'ALLOW:ALLOWED_BY_ASSIGNMENT');
+SELECT saf.expect_eq('locked: escalated role code has no Finance authority',
+  saf.decide(saf.uid('emp_a2'), 'finance.journal.post', saf.ctx('hq_a')), 'DENY:MISSING_PERMISSION');
+INSERT INTO auth.users (id, email) VALUES ('00000000-0000-0000-0000-000000000061', 'lockedjoiner@saf.test');
+INSERT INTO public.users (id, email, role_code, organization_id, is_active, full_name, account_scope, employment_type, employment_status)
+VALUES ('00000000-0000-0000-0000-000000000061', 'lockedjoiner@saf.test', 'HQ', saf.org('hq_a'), true, 'Locked Joiner', 'portal', 'Full-time', 'active');
+SELECT saf.expect_eq('locked: joiner gets baseline only',
+  (SELECT string_agg(br.role_key, ',') FROM public.sa_role_assignments a JOIN public.sa_business_roles br ON br.id = a.role_id
+    WHERE a.user_id = '00000000-0000-0000-0000-000000000061' AND a.status = 'active'), 'employee-self-service');
+
+-- Newly gated business tables decide through S&A in NEW_ENFORCED.
+INSERT INTO public.roadtour_runs(id, org_id, name, status, start_date, end_date) VALUES ('00000000-0000-0000-0000-0000000f0301', saf.org('hq_a'), 'SAF Run', 'active', current_date, current_date + 30);
+SELECT saf.set_mode('roadtour.campaign.manage', 'NEW_ENFORCED');
+DELETE FROM public.sa_business_role_permissions WHERE role_id = saf.role('legacy-hq')
+  AND permission_id = (SELECT id FROM public.sa_permissions WHERE permission_key = 'roadtour.campaign.manage');
+SELECT saf.try_as('authenticated', saf.uid('hq_a'), $$UPDATE public.roadtour_runs SET name = 'renamed' WHERE id = '00000000-0000-0000-0000-0000000f0301'$$);
+SELECT saf.expect_eq('NEW: legacy HQ role code no longer edits RoadTour runs without S&A',
+  (SELECT name FROM public.roadtour_runs WHERE id = '00000000-0000-0000-0000-0000000f0301'), 'SAF Run');
+SELECT saf.expect_ok('NEW: S&A holder edits RoadTour runs', 'authenticated', saf.uid('pu_a'),
+  $$UPDATE public.roadtour_runs SET name = 'renamed' WHERE id = '00000000-0000-0000-0000-0000000f0301'$$);
+SELECT saf.expect_eq('NEW: edit applied', (SELECT name FROM public.roadtour_runs WHERE id = '00000000-0000-0000-0000-0000000f0301'), 'renamed');
 
 ROLLBACK;

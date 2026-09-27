@@ -13,6 +13,20 @@ import {
 } from '@/lib/engagement/registration-link-selection'
 import { normalizePhoneE164, samePhone } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { userAllowed } from '@/lib/security-access/operation'
+
+/** Organization of an existing user (trusted row), for S&A target scoping. */
+const NO_ORGANIZATION_MATCH = '00000000-0000-0000-0000-000000000000'
+async function targetUserOrganization(userId: string): Promise<string | null> {
+  try {
+    const admin = createAdminClient() as any
+    const { data, error } = await admin.from('users').select('organization_id').eq('id', userId).maybeSingle()
+    if (error) return NO_ORGANIZATION_MATCH // fail closed under S&A; legacy mode unaffected
+    return data?.organization_id ?? null
+  } catch {
+    return NO_ORGANIZATION_MATCH
+  }
+}
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
 import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
@@ -77,7 +91,10 @@ export async function createUserWithAuth(userData: {
     const permissionCheck = await checkPermissionForUser(callerUserId, 'create_users')
     const roleLevel = permissionCheck.context?.role_level
     const hasRoleLevelCreateAccess = typeof roleLevel === 'number' && roleLevel <= 30
-    if (!permissionCheck.allowed && !hasRoleLevelCreateAccess) {
+    // User administration is an S&A decision for the organization the new
+    // user joins (a consumer without an organization: the admin's own).
+    if (!(await userAllowed(callerUserId, 'platform.user.manage', () => permissionCheck.allowed || hasRoleLevelCreateAccess,
+      { organizationId: (userData as any).organization_id ?? null }))) {
       return { success: false, error: 'Forbidden' }
     }
 
@@ -273,7 +290,8 @@ export async function updateUserWithAuth(userId: string, userData: {
     const permissionCheck = await checkPermissionForUser(currentUser.id, 'edit_users')
     const roleLevel = permissionCheck.context?.role_level
     const hasRoleLevelEditAccess = typeof roleLevel === 'number' && roleLevel <= 30
-    const isAuthorized = isSelfUpdate || permissionCheck.allowed || hasRoleLevelEditAccess
+    const isAuthorized = isSelfUpdate || await userAllowed(currentUser.id, 'platform.user.manage',
+      () => permissionCheck.allowed || hasRoleLevelEditAccess, { organizationId: await targetUserOrganization(userId) })
 
     if (!isAuthorized) {
       return { success: false, error: 'Unauthorized' }
@@ -616,7 +634,8 @@ export async function deleteUserWithAuth(userId: string, _callerInfo?: { id: str
 
     if (currentUser && !sessionAuthError) {
       const permissionCheck = await checkPermissionForUser(currentUser.id, 'delete_users')
-      isAuthorized = permissionCheck.allowed
+      isAuthorized = await userAllowed(currentUser.id, 'platform.user.manage', () => permissionCheck.allowed,
+        { organizationId: await targetUserOrganization(userId) })
     }
 
     if (!isAuthorized) {

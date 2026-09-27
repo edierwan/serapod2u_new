@@ -147,6 +147,9 @@ declare
     '(public\.)?is_super_admin\(\)',
     '(public\.)?is_power_user\(\)',
     '(public\.)?is_admin\(\)',
+    '(public\.)?is_support_admin\(\)',
+    '(public\.)?return_current_user_is_manager\(\)',
+    '(public\.)?(is_landing_page_admin|is_org_admin_or_super|is_roadtour_org_admin)\((?:[^()]|\([^()]*\))*\)',
     '(public\.)?has_role_level\(\d+\)',
     '\((\w+\.)?role_level\s*(<=|<|=|>=|>)\s*\d+\)',
     '\((\w+\.)?role_code\s*=\s*''[A-Za-z_]+''::text\)',
@@ -166,7 +169,9 @@ begin
   end if;
   -- No privilege predicate may survive (join conditions such as
   -- u.role_code = r.role_code are structural and allowed).
-  if v ~* 'role_level(\(\))?\s*(<=|<|=|>=|>)|role_code\s*=\s*''|role_code\s*=\s*any|is_hq_admin|is_super_admin|is_power_user|is_admin\(|has_role_level|sa_actor_is_' then
+  -- Generic: any remaining admin/manager/staff/role-level helper call means a
+  -- privilege predicate this rewrite does not understand → refuse.
+  if v ~* 'role_level(\(\))?\s*(<=|<|=|>=|>)|role_code\s*=\s*''|role_code\s*=\s*any|has_role_level|sa_actor_is_|is_power_user|is_super_admin|(is_[a-z_]*admin[a-z_]*|[a-z_]*_is_manager|[a-z_]*role_level)\s*\(' then
     return null;
   end if;
   return v;
@@ -624,6 +629,8 @@ begin
   if v_prev.id is null then
     insert into public.sa_role_assignments(user_id, role_id, membership_id, status, effective_until, assignment_reason, source)
     values (p_user, p_role, p_membership, 'active', p_until, p_reason, 'derived') returning id into v_id;
+    perform public.sa_log_access_change(null, 'assignment.derived', p_user, 'sa_role_assignment', v_id::text,
+      jsonb_build_object('role_id', p_role, 'membership_id', p_membership, 'effective_until', p_until), p_reason, 'system');
   else
     v_id := v_prev.id;
     -- Never resurrect or extend an assignment an administrator ended/granted
@@ -631,6 +638,10 @@ begin
     if v_prev.source in ('backfill','derived') then
       update public.sa_role_assignments set status = 'active', ended_reason = null, effective_until = p_until, updated_at = now()
       where id = v_id and (status <> 'active' or effective_until is distinct from p_until);
+      if found and v_prev.status <> 'active' then
+        perform public.sa_log_access_change(null, 'assignment.derived', p_user, 'sa_role_assignment', v_id::text,
+          jsonb_build_object('role_id', p_role, 'membership_id', p_membership, 'reactivated', true), p_reason, 'system');
+      end if;
     end if;
   end if;
   insert into public.sa_assignment_scopes(assignment_id, scope_id) values (v_id, p_scope) on conflict do nothing;
