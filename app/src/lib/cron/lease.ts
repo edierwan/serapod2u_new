@@ -21,6 +21,7 @@ export const WORKER_NAMES = {
   qrGeneration: 'qr-generation-worker',
   manufacturerPacking: 'manufacturer-packing-worker',
   notificationOutbox: 'notification-outbox-worker',
+  saDecisionRetention: 'sa-decision-retention',
 } as const
 
 export type WorkerName = (typeof WORKER_NAMES)[keyof typeof WORKER_NAMES]

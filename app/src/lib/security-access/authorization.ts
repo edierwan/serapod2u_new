@@ -4,7 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { evaluateNewPolicy, type PolicyAssignment, type PolicyMembership } from './policy'
 import { shadowComparisonFor } from './comparison'
-import type { AuthorizationDecision, AuthorizationRequest, MigrationMode } from './types'
+import { auditClassFor } from './enforcement'
+import type { AuditSensitivity, AuthorizationDecision, AuthorizationRequest, MigrationMode } from './types'
 
 const POLICY_VERSION = 'sa-wave1-v1'
 
@@ -65,6 +66,13 @@ async function migrationMode(permission: string): Promise<MigrationMode> {
   return data?.mode ?? 'LEGACY_ENFORCED'
 }
 
+// Unknown, missing, or unreadable sensitivity is treated as protected.
+async function auditSensitivity(permission: string): Promise<AuditSensitivity> {
+  const admin = createAdminClient() as any
+  const { data, error } = await admin.from('sa_permissions').select('audit_sensitivity').eq('permission_key', permission).maybeSingle()
+  return !error && data?.audit_sensitivity === 'ordinary' ? 'ordinary' : 'security_sensitive'
+}
+
 export async function authorize(request: AuthorizationRequest, options: { log?: boolean } = {}): Promise<AuthorizationDecision> {
   const decisionId = randomUUID()
   const mode = await migrationMode(request.permission)
@@ -97,6 +105,8 @@ export async function authorize(request: AuthorizationRequest, options: { log?: 
   }
 
   if (options.log !== false && !request.context?.explainOnly) {
+    const comparison = shadowComparisonFor(legacyDecision, evaluated.decision, evaluated.reasonCode)
+    const auditClass = auditClassFor({ mode, sensitivity: await auditSensitivity(request.permission), comparison, reasonCode: result.reasonCode })
     const admin = createAdminClient() as any
     await admin.from('sa_authorization_decisions').insert({
       id: decisionId,
@@ -111,7 +121,8 @@ export async function authorize(request: AuthorizationRequest, options: { log?: 
       migration_mode: mode,
       legacy_decision: legacyDecision,
       new_decision: evaluated.decision,
-      comparison: shadowComparisonFor(legacyDecision, evaluated.decision, evaluated.reasonCode),
+      comparison,
+      audit_class: auditClass,
       correlation_id: request.context?.correlationId ?? request.context?.requestId ?? null,
       policy_version: POLICY_VERSION,
     })
