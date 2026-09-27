@@ -187,6 +187,87 @@ select r.id, p.id from public.sa_business_roles r cross join public.sa_permissio
 where r.role_key = 'warehouse-manager' and p.permission_key like 'inventory.%'
 on conflict do nothing;
 
+-- Guarded compatibility backfill. account_scope is only an experience
+-- classifier here: it is used to exclude store/consumer identities, never to
+-- authorize an action. Legacy remains authoritative while these rows provide
+-- meaningful SHADOW parity data.
+insert into public.sa_organization_memberships(user_id,organization_id,membership_type,is_primary,status)
+select u.id,u.organization_id,'legacy_portal',true,'active'
+from public.users u
+where u.account_scope='portal' and u.organization_id is not null and u.is_active=true
+on conflict (user_id,organization_id,membership_type) do nothing;
+
+insert into public.sa_business_roles(role_key,name,description,source,status)
+select distinct
+  'legacy-' || trim(both '-' from lower(regexp_replace(u.role_code,'[^a-zA-Z0-9]+','-','g'))),
+  'Legacy ' || u.role_code,
+  'Compatibility-only role generated from the existing role table. Not a target-state business role.',
+  'legacy','active'
+from public.users u
+where u.account_scope='portal' and u.organization_id is not null and u.is_active=true
+  and u.role_code is not null and u.role_code ~ '[a-zA-Z0-9]'
+on conflict (role_key) do nothing;
+
+with legacy_map(legacy_permission,canonical_permission) as (values
+  ('view_inventory','inventory.stock_count.view'),
+  ('view_inventory','inventory.transfer.view'),
+  ('adjust_stock','inventory.stock_count.create'),
+  ('adjust_stock','inventory.transfer.request'),
+  ('adjust_stock','inventory.transfer.approve'),
+  ('post_stock_count','inventory.stock_count.verify'),
+  ('post_stock_count','inventory.stock_count.post'),
+  ('ship_goods','inventory.transfer.dispatch'),
+  ('receive_goods','inventory.transfer.receive')
+), legacy_grants as (
+  select role_code,m.canonical_permission
+  from (
+    select r.role_code,k.permission_key
+    from public.roles r
+    cross join lateral jsonb_object_keys(case when jsonb_typeof(r.permissions)='object' then r.permissions else '{}'::jsonb end) k(permission_key)
+    where coalesce((r.permissions->>k.permission_key)::boolean,false)=true
+    union
+    select r.role_code,k.permission_key
+    from public.roles r
+    cross join lateral jsonb_array_elements_text(case when jsonb_typeof(r.permissions)='array' then r.permissions else '[]'::jsonb end) k(permission_key)
+  ) legacy_keys
+  join legacy_map m on m.legacy_permission=legacy_keys.permission_key
+  union
+  select r.role_code,p.permission_key from public.roles r cross join public.sa_permissions p
+  where r.role_level=1 and p.permission_key like 'inventory.%'
+)
+insert into public.sa_business_role_permissions(role_id,permission_id)
+select br.id,p.id
+from legacy_grants g
+join public.sa_business_roles br on br.role_key='legacy-' || trim(both '-' from lower(regexp_replace(g.role_code,'[^a-zA-Z0-9]+','-','g')))
+join public.sa_permissions p on p.permission_key=g.canonical_permission
+on conflict do nothing;
+
+insert into public.sa_role_assignments(user_id,role_id,membership_id,status,assignment_reason)
+select u.id,br.id,m.id,'active','Wave 1 guarded legacy compatibility backfill'
+from public.users u
+join public.sa_organization_memberships m on m.user_id=u.id and m.organization_id=u.organization_id and m.membership_type='legacy_portal'
+join public.sa_business_roles br on br.role_key='legacy-' || trim(both '-' from lower(regexp_replace(u.role_code,'[^a-zA-Z0-9]+','-','g')))
+where u.account_scope='portal' and u.organization_id is not null and u.is_active=true
+on conflict (user_id,role_id,membership_id) do nothing;
+
+insert into public.sa_scope_definitions(organization_id,scope_type,scope_value,display_name,resource_metadata)
+select o.id,
+  case when o.org_type_code='WH' then 'warehouse' else 'organization' end,
+  o.id::text,o.org_name,
+  jsonb_build_object('compatibility_source','users.organization_id','org_type_code',o.org_type_code)
+from public.organizations o
+where exists (select 1 from public.sa_organization_memberships m where m.organization_id=o.id and m.membership_type='legacy_portal')
+on conflict do nothing;
+
+insert into public.sa_assignment_scopes(assignment_id,scope_id)
+select a.id,s.id
+from public.sa_role_assignments a
+join public.sa_organization_memberships m on m.id=a.membership_id and m.membership_type='legacy_portal'
+join public.sa_scope_definitions s on s.organization_id=m.organization_id
+  and s.scope_value=m.organization_id::text
+  and s.scope_type=case when exists(select 1 from public.organizations o where o.id=m.organization_id and o.org_type_code='WH') then 'warehouse' else 'organization' end
+on conflict do nothing;
+
 insert into public.sa_migration_modes(permission_key,mode,legacy_permission_key,notes)
 select permission_key,
   case when permission_key like 'inventory.%' then 'SHADOW' else 'LEGACY_ENFORCED' end,
