@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -25,6 +26,8 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'product.catalog.manage')
+    if (saDenied) return saDenied
 
     let body: { productId?: unknown; productCode?: unknown; alternativeName?: unknown; variantId?: unknown }
     try {

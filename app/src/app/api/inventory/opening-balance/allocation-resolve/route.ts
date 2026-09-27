@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const correlationId = request.headers.get('x-request-id') || crypto.randomUUID()
   const headers = { ...noStoreHeaders, 'X-Request-ID': correlationId }
 
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.opening_balance.manage')
   if (!context.ok) {
     return NextResponse.json({ error: context.error, correlationId }, { status: context.status, headers })
   }

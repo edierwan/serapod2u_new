@@ -119,6 +119,7 @@ insert into public.sa_enforcement_readiness(permission_key, route_wiring, databa
  ('inventory.opening_balance.manage', true, 'rpc_guard', null, 'Opening balance cut-off RPCs + routes.'),
  ('inventory.stock_config.manage', true, 'rpc_guard', null, 'Stock configuration RPCs + routes.'),
  ('inventory.return.manage', true, 'rpc_guard', null, 'Return routes (server) + return inventory RPC; tables workflow-only.'),
+ ('inventory.return.request', true, 'read_only', null, 'Shop return requests (server routes; return tables are workflow-only for API roles).'),
  ('warehouse.receipt.post', true, 'rpc_guard', null, 'post_warehouse_receipt + receiving routes.'),
  ('warehouse.shipment.manage', true, 'rpc_guard', null, 'Shipment RPCs + shipment routes + order shipped transition.'),
  ('qr.batch.manage', true, 'rpc_guard', null, 'QR batch routes + mark printed RPC.'),

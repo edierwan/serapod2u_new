@@ -37,7 +37,7 @@ const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' }
  * configuration predicate and performs no table writes.
  */
 export async function POST(request: Request) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('inventory.opening_balance.manage')
   if (!context.ok) {
     return NextResponse.json(
       { error: context.error },

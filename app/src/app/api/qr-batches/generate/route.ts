@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateQRBatch } from '@/lib/qr-generator'
@@ -30,6 +31,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
+    const saDenied = await guardUserOperation(user.id, 'qr.batch.manage')
+    if (saDenied) return saDenied
 
     // 1. Fetch order with all details
     const { data: order, error: orderError } = await supabase

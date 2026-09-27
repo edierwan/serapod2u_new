@@ -120,7 +120,8 @@ export const FINAL_WAVE_CATALOG: readonly CatalogEntry[] = [
   e('inventory.adjustment.post', 'Post manual stock additions, adjustments and reversals', S, { maxRoleLevel: 30, legacyPermissions: ['adjust_stock', 'manage_inventory'] }),
   e('inventory.opening_balance.manage', 'Run inventory opening balance and classification cut-offs', S, HQ_ADMIN),
   e('inventory.stock_config.manage', 'Manage variant stock configurations', O, HQ_ADMIN),
-  e('inventory.return.manage', 'Create, update and receive return cases', O, STAFF),
+  e('inventory.return.request', 'Request a product return for the own organization', O, { maxRoleLevel: 40, roleCodes: ['SHOP'] }),
+  e('inventory.return.manage', 'Manage, receive and report on return cases (non-shop organizations)', O, { maxRoleLevel: 30, roleCodes: ['USER'] }),
   e('inventory.report.view', 'View inventory movements and stock reports', O, STAFF),
   e('warehouse.receipt.post', 'Receive goods into a warehouse', O, { maxRoleLevel: 40, legacyPermissions: ['receive_goods', 'manage_inventory'] }),
   e('warehouse.shipment.manage', 'Start, scan, confirm, complete and cancel warehouse shipments', O, { maxRoleLevel: 40, legacyPermissions: ['ship_goods', 'manage_inventory'] }),
@@ -128,7 +129,7 @@ export const FINAL_WAVE_CATALOG: readonly CatalogEntry[] = [
   e('manufacturing.adjustment.manage', 'Manage manufacturer quality adjustments', O, STAFF),
   e('manufacturing.scan.reverse', 'Reverse or delete production scan history', S, STAFF),
   e('qr.batch.manage', 'Generate, process and download QR batches', O, STAFF),
-  e('product.catalog.manage', 'Manage products, variants and product documents', O, HQ_ADMIN),
+  e('product.catalog.manage', 'Manage products, variants and product documents', O, ADMIN),
 
   // ── RoadTour ─────────────────────────────────────────────────────────
   e('roadtour.campaign.manage', 'Manage RoadTour events, settings and QR distribution', O, MANAGER),

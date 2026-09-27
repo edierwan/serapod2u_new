@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -13,6 +14,8 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       )
     }
+    const saDenied = await guardUserOperation(user.id, 'manufacturing.scan.reverse')
+    if (saDenied) return saDenied
 
     const { searchParams } = new URL(request.url)
     const job_id = searchParams.get('job_id')

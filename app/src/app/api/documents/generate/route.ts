@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { generatePdfForOrderDocument, type DocumentGenerateType } from '@/lib/documents/pdf-generation'
 
@@ -16,6 +17,17 @@ export async function GET(request: NextRequest) {
         { error: 'Missing orderId or type parameter' },
         { status: 400 }
       )
+    }
+
+    // Document generation reads order financials: authenticated S&A decision
+    // first (the PDF helpers below read through the caller's RLS).
+    {
+      const { createClient: createAuthClient } = await import('@/lib/supabase/server')
+      const authClient = await createAuthClient()
+      const { data: { user: actor } } = await authClient.auth.getUser()
+      if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      const saDenied = await guardUserOperation(actor.id, 'supply_chain.document.manage')
+      if (saDenied) return saDenied
     }
 
     // Try to serve cached PDF first (unless nocache=true)

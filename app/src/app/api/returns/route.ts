@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { getReturnContext, buildReturnItemRows, validateReturnSource, validateReturnWarehouse, RETURN_ORG_SELECT } from '@/lib/returns/server'
 import { decorateCase } from '@/lib/returns/compute'
@@ -82,6 +83,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     const ctx = await getReturnContext()
     if (ctx instanceof NextResponse) return ctx
+
+    if (!ctx.isManager) {
+        const saDenied = await guardUserOperation(ctx.userId, 'inventory.return.request', { organizationId: ctx.orgId })
+        if (saDenied) return saDenied
+    }
 
     const body = await request.json().catch(() => ({}))
 

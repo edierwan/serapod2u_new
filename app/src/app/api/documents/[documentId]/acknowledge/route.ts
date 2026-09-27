@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -117,12 +118,24 @@ export async function POST(
       order: (order as any) ?? null
     })
 
-    if (!decision.allowed) {
-      const status = decision.reason === 'not_pending' ? 409 : 403
+    // Workflow validity (pending state) stays with the module; authority is
+    // the S&A decision for the organization the document is issued to (a
+    // trusted row), with the historical rule as the legacy evaluator.
+    if (!decision.allowed && decision.reason === 'not_pending') {
       return NextResponse.json(
         { error: describeAcknowledgementDenial(decision.reason), reason: decision.reason },
-        { status }
+        { status: 409 }
       )
+    }
+    const saDenied = await guardUserOperation(user.id, 'supply_chain.document.acknowledge', {
+      organizationId: (document as any).issued_to_org_id ?? null,
+      resourceType: 'document',
+      legacy: () => decision.allowed,
+    })
+    if (saDenied) {
+      return decision.allowed
+        ? saDenied
+        : NextResponse.json({ error: describeAcknowledgementDenial(decision.reason), reason: decision.reason }, { status: 403 })
     }
 
     const docType = String((document as any).doc_type).toUpperCase() as AcknowledgeableDocType

@@ -73,6 +73,7 @@ export const ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [
   'inventory.opening_balance.manage',
   'inventory.stock_config.manage',
   'inventory.return.manage',
+  'inventory.return.request',
   'warehouse.receipt.post',
   'warehouse.shipment.manage',
   'qr.batch.manage',

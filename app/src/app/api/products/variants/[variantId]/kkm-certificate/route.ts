@@ -20,7 +20,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ variantId: string }> },
 ) {
-  const context = await getStockConfigAdminContext()
+  const context = await getStockConfigAdminContext('product.catalog.manage')
   if (!context.ok) return errorResponse(context.error, context.status)
 
   const { variantId } = await params

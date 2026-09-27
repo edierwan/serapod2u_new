@@ -140,7 +140,7 @@ returns text language plpgsql immutable set search_path = pg_catalog, pg_temp as
 declare
   v text := p_expression;
   v_patterns text[] := array[
-    '\((public\.)?(get_my_role_level|current_user_role_level)\(\)\s*(<=|<|=|>=|>)\s*\d+\)',
+    '\((public\.)?[a-z_]*role_level\(\)\s*(<=|<|=|>=|>)\s*\d+\)',
     '(public\.)?sa_actor_is_hr_manager\(\)',
     '(public\.)?sa_actor_is_staff\(\d+\)',
     '(public\.)?is_hq_admin\(\)',
@@ -253,6 +253,8 @@ begin
     v_org := 'public.sa_actor_org_id()';
   end if;
   for v_pol in select polname, polcmd from pg_policy where polrelid = v_rel loop
+    -- A null permission leaves that command class on its existing policy.
+    continue when (case when v_pol.polcmd = 'r' then p_read else p_write end) is null;
     if public.sa_gate_policy(v_rel, v_pol.polname, case when v_pol.polcmd = 'r' then p_read else p_write end, v_org, p_force) then
       v_count := v_count + 1;
     end if;
@@ -764,7 +766,16 @@ begin
     jsonb_build_object('source', 'lifecycle'));
 
   -- Compatibility role for the legacy role code (explicit, removable grants).
-  v_compat_role := public.sa_refresh_compat_role(u.role_code, true);
+  -- Once Security & Access is the only writable authorization source
+  -- (legacy_authorization.read_only), a legacy role code no longer grants
+  -- anything: new access comes only from S&A assignments or approved access
+  -- requests, and a role-code change only removes obsolete compatibility
+  -- access (below). This neutralises role_code as an escalation path.
+  v_compat_role := case when public.sa_setting_bool('legacy_authorization.read_only', false)
+                        then (select id from public.sa_business_roles where role_key = public.sa_compat_role_key(u.role_code)
+                              and exists (select 1 from public.sa_role_assignments a where a.role_id = sa_business_roles.id
+                                          and a.user_id = p_user and a.status = 'active' and a.source in ('backfill','derived')))
+                        else public.sa_refresh_compat_role(u.role_code, true) end;
   if v_compat_role is not null then
     perform public.sa_ensure_derived_assignment(p_user, v_compat_role, v_membership, v_org_scope, v_until,
       'Lifecycle: compatibility role for legacy ' || u.role_code);

@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -18,6 +19,8 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       )
     }
+    const saDenied = await guardUserOperation(user.id, 'manufacturing.production.manage')
+    if (saDenied) return saDenied
 
     // Build query conditions
     let query = supabase

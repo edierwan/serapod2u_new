@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized - no user session' }, { status: 401 })
     }
+    const saDenied = await guardUserOperation(user.id, 'inventory.report.view')
+    if (saDenied) return saDenied
 
     // Check if user is Super Admin (role_level = 1)
     const { data: profile } = await supabase

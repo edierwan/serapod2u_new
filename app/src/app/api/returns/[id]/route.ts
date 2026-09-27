@@ -1,3 +1,4 @@
+import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { getReturnContext, loadAccessibleCase, buildReturnItemRows, validateReturnSource, validateReturnWarehouse, RETURN_ORG_SELECT } from '@/lib/returns/server'
 import { decorateCase } from '@/lib/returns/compute'
@@ -71,6 +72,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params
     const ctx = await getReturnContext()
     if (ctx instanceof NextResponse) return ctx
+    if (!ctx.isManager) {
+        const saDenied = await guardUserOperation(ctx.userId, 'inventory.return.request', { organizationId: ctx.orgId })
+        if (saDenied) return saDenied
+    }
 
     const rc = await loadAccessibleCase(ctx, id)
     if (rc instanceof NextResponse) return rc
@@ -163,6 +168,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params
     const ctx = await getReturnContext()
     if (ctx instanceof NextResponse) return ctx
+    if (!ctx.isManager) {
+        const saDenied = await guardUserOperation(ctx.userId, 'inventory.return.request', { organizationId: ctx.orgId })
+        if (saDenied) return saDenied
+    }
 
     const rc = await loadAccessibleCase(ctx, id)
     if (rc instanceof NextResponse) return rc
