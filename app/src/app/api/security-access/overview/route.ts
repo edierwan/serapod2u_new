@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { isActiveSecurityAccessAccount } from '@/lib/security-access/active-account'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || !(await checkPermissionForUser(user.id, 'manage_authorization')).allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!user || !(await isActiveSecurityAccessAccount(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await checkPermissionForUser(user.id, 'manage_authorization')).allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const admin = createAdminClient() as any
   try {
     const results = await Promise.all([
