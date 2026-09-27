@@ -3,7 +3,8 @@ import { randomUUID } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { evaluateNewPolicy, type PolicyAssignment, type PolicyMembership } from './policy'
-import type { AuthorizationDecision, AuthorizationRequest, MigrationMode, ShadowComparison } from './types'
+import { shadowComparisonFor } from './comparison'
+import type { AuthorizationDecision, AuthorizationRequest, MigrationMode } from './types'
 
 const POLICY_VERSION = 'sa-wave1-v1'
 
@@ -20,17 +21,6 @@ const legacyPermissionFor = (permission: string) => ({
   'security.access.view': 'view_users',
   'security.role.assign': 'manage_authorization',
 } as Record<string, string>)[permission] ?? permission
-
-function comparisonFor(decision: AuthorizationDecision): ShadowComparison {
-  if (decision.reasonCode === 'SCOPE_MISMATCH') return 'SCOPE_MISMATCH'
-  if (decision.reasonCode === 'MISSING_ASSIGNMENT') return 'MISSING_ASSIGNMENT'
-  if (decision.reasonCode === 'MISSING_CONTEXT') return 'MISSING_CONTEXT'
-  if (decision.reasonCode === 'POLICY_ERROR') return 'POLICY_ERROR'
-  if (decision.legacyDecision === 'ALLOW' && decision.newDecision === 'ALLOW') return 'MATCH_ALLOW'
-  if (decision.legacyDecision === 'DENY' && decision.newDecision === 'DENY') return 'MATCH_DENY'
-  if (decision.legacyDecision === 'ALLOW') return 'LEGACY_ALLOW_NEW_DENY'
-  return 'LEGACY_DENY_NEW_ALLOW'
-}
 
 async function loadNewPolicy(request: AuthorizationRequest) {
   const admin = createAdminClient() as any
@@ -121,7 +111,7 @@ export async function authorize(request: AuthorizationRequest, options: { log?: 
       migration_mode: mode,
       legacy_decision: legacyDecision,
       new_decision: evaluated.decision,
-      comparison: comparisonFor(result),
+      comparison: shadowComparisonFor(legacyDecision, evaluated.decision, evaluated.reasonCode),
       correlation_id: request.context?.correlationId ?? request.context?.requestId ?? null,
       policy_version: POLICY_VERSION,
     })

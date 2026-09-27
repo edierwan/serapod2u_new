@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { authorize } from '@/lib/security-access/authorization'
+import { isActiveSecurityAccessAccount } from '@/lib/security-access/active-account'
 
 const inputSchema = z.object({
   actorId: z.string().uuid(),
@@ -16,7 +17,8 @@ const inputSchema = z.object({
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user || !(await checkPermissionForUser(user.id, 'manage_authorization')).allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!user || !(await isActiveSecurityAccessAccount(user.id))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await checkPermissionForUser(user.id, 'manage_authorization')).allowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const parsed = inputSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid simulation request', issues: parsed.error.flatten() }, { status: 400 })
   const decision = await authorize({ ...parsed.data, context: { explainOnly: true } }, { log: false })
