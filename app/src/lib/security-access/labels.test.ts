@@ -13,7 +13,9 @@ describe('Security & Access labels', () => {
   })
 
   it('falls back to readable text for unknown keys', () => {
-    expect(permissionLabel('hr.leave_request.approve')).toMatchObject({ label: 'Approve Leave Request', group: 'Hr' })
+    expect(permissionLabel('hr.leave_request.approve')).toMatchObject({ label: 'Approve Leave Request', group: 'HR & Payroll' })
+    expect(permissionLabel('unknownmod.thing.do')).toMatchObject({ label: 'Do Thing', group: 'Unknownmod' })
+    expect(permissionLabel('finance.report.view_sensitive')).toMatchObject({ label: 'View sensitive Financial Reports', group: 'Finance' })
     expect(modeLabel('NEW_ENFORCED').label).toBe('New enforced')
     expect(comparisonLabel('LEGACY_ALLOW_NEW_DENY').label).toBe('Legacy allows, new denies')
     expect(reasonLabel('SCOPE_MISMATCH')).toMatch(/different organization or warehouse/)
