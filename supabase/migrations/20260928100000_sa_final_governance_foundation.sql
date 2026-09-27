@@ -171,13 +171,19 @@ grant execute on function public.sa_log_access_change(uuid,text,uuid,text,text,j
 -- ---------------------------------------------------------------------------
 -- 2. Permission catalog (Final Wave) + compatibility rules + modes
 -- ---------------------------------------------------------------------------
-drop table if exists pg_temp.sa_final_catalog;
-create temporary table sa_final_catalog (
+-- The seed lives in an ordinary, locked-down work table (dropped at the end of
+-- this migration) rather than a session temp table: SQL clients that run each
+-- statement on a pooled connection (e.g. the Supabase SQL editor) lose session
+-- temp tables between statements.
+drop table if exists public.sa_final_catalog;
+create table public.sa_final_catalog (
   permission_key text primary key, module text, resource text, action text, description text,
   sensitivity text, max_role_level integer, role_codes text[], legacy_permissions text[], employee_baseline boolean
 );
+revoke all on table public.sa_final_catalog from public, anon, authenticated, service_role;
+alter table public.sa_final_catalog enable row level security;
 
-insert into sa_final_catalog values
+insert into public.sa_final_catalog values
  ('security.role.manage','security','role','manage','Create and edit new-model business roles and their permissions','security_sensitive',1,'{}'::text[],'{}'::text[],false),
  ('security.scope.manage','security','scope','manage','Create and retire typed scope definitions','security_sensitive',1,'{}'::text[],'{}'::text[],false),
  ('security.policy.manage','security','policy','manage','Manage authority policies, segregation-of-duties rules and mitigations','security_sensitive',1,'{}'::text[],'{}'::text[],false),
@@ -265,13 +271,13 @@ insert into sa_final_catalog values
  ('reporting.analytics.view','reporting','analytics','view','View cross-module business analytics','ordinary',40,'{}'::text[],'{}'::text[],false);
 
 insert into public.sa_permissions(permission_key, module, resource, action, description, source, audit_sensitivity)
-select permission_key, module, resource, action, description, 'new', sensitivity from sa_final_catalog
+select permission_key, module, resource, action, description, 'new', sensitivity from public.sa_final_catalog
 on conflict (permission_key) do nothing;
 
 insert into public.sa_legacy_compat_rules(permission_key, max_role_level, role_codes, legacy_permissions, employee_baseline, notes)
 select permission_key, max_role_level, role_codes, legacy_permissions, employee_baseline,
        'Final Wave compatibility mapping (app/src/lib/security-access/catalog.ts)'
-from sa_final_catalog
+from public.sa_final_catalog
 on conflict (permission_key) do update set
   max_role_level = excluded.max_role_level, role_codes = excluded.role_codes,
   legacy_permissions = excluded.legacy_permissions, employee_baseline = excluded.employee_baseline,
@@ -301,7 +307,7 @@ on conflict (permission_key) do nothing;
 insert into public.sa_migration_modes(permission_key, mode, legacy_permission_key, notes)
 select permission_key, 'SHADOW', null,
        'Final Wave: legacy decides while the new model is evaluated and logged. NEW_ENFORCED requires enforcement wiring and reviewed parity.'
-from sa_final_catalog
+from public.sa_final_catalog
 on conflict (permission_key) do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -1587,12 +1593,12 @@ declare
   v_missing integer;
   v_t text;
 begin
-  select count(*) into v_missing from sa_final_catalog c
+  select count(*) into v_missing from public.sa_final_catalog c
   where not exists (select 1 from public.sa_permissions p where p.permission_key = c.permission_key)
      or not exists (select 1 from public.sa_migration_modes m where m.permission_key = c.permission_key);
   if v_missing > 0 then raise exception 'postcondition: % catalog permissions missing a row or mode', v_missing; end if;
 
-  if exists (select 1 from public.sa_migration_modes m join sa_final_catalog c using (permission_key)
+  if exists (select 1 from public.sa_migration_modes m join public.sa_final_catalog c using (permission_key)
              where m.mode in ('NEW_ENFORCED','LEGACY_RETIRED')) then
     raise notice 'Final Wave catalog permissions already NEW_ENFORCED/LEGACY_RETIRED were left unchanged';
   end if;
@@ -1643,4 +1649,4 @@ begin
   end if;
 end $$;
 
-drop table if exists pg_temp.sa_final_catalog;
+drop table if exists public.sa_final_catalog;

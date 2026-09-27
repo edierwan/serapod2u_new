@@ -10,7 +10,7 @@ const retirement = readFileSync(resolve(migrations, '20260928130000_sa_final_leg
 
 describe('Final Wave catalog ↔ migration lock-step', () => {
   it('seeds exactly the TypeScript catalog with the same sensitivity and compatibility rule', () => {
-    const block = foundation.slice(foundation.indexOf('insert into sa_final_catalog values'), foundation.indexOf("('reporting.analytics.view'") + 400)
+    const block = foundation.slice(foundation.indexOf('insert into public.sa_final_catalog values'), foundation.indexOf("('reporting.analytics.view'") + 400)
     const rows = [...block.matchAll(/^ \('([a-z_.]+)','[a-z_]+','[a-z_]+','[a-z_]+','(?:[^']|'')*','([a-z_]+)',(null|\d+),/gm)]
     const seeded = new Map(rows.map(r => [r[1], { sensitivity: r[2], max: r[3] === 'null' ? undefined : Number(r[3]) }]))
     expect([...seeded.keys()].sort()).toEqual(FINAL_WAVE_CATALOG.map(e => e.key).sort())
