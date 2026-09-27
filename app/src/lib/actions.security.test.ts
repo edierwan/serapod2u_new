@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// S&A in legacy mode: this suite tests the Phase 0A rules themselves.
+vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
+
 const authGetUser = vi.fn()
 const checkPermissionForUser = vi.fn()
 const usersUpdateEq = vi.fn()

@@ -134,7 +134,23 @@ insert into public.sa_enforcement_readiness(permission_key, route_wiring, databa
  ('roadtour.kpi.manage', true, 'read_only', null, 'RoadTour KPI routes (server-side).'),
  ('roadtour.report.view', true, 'read_only', null, 'RoadTour reports (server-side).'),
  ('ecommerce.store.manage', true, 'read_only', null, 'Storefront admin routes (server-side).'),
- ('ecommerce.order.manage', true, 'read_only', null, 'Storefront order admin routes (server-side).')
+ ('ecommerce.order.manage', true, 'read_only', null, 'Storefront order admin routes (server-side).'),
+ ('ecommerce.channel.manage', true, 'rls_gate', null, 'Payment gateway / channel settings gated in RLS.'),
+ ('customer.campaign.manage', true, 'rls_gate', null, 'Journeys, landing pages, lucky draw, marketing: routes + gated tables.'),
+ ('customer.support.manage', true, 'rls_gate', null, 'Support administration routes + gated support/WhatsApp tables.'),
+ ('customer.consumer.view', true, 'read_only', null, 'Consumer lookup/performance APIs (server-side reads).'),
+ ('manufacturing.production.manage', true, 'rls_gate', null, 'Packing/linking routes + gated QR code/master tables.'),
+ ('manufacturing.scan.reverse', true, 'rls_gate', null, 'Reverse-job routes + gated reverse job tables.'),
+ ('roadtour.campaign.manage', true, 'rls_gate', null, 'RoadTour events/settings/QR/surveys: routes + gated tables.'),
+ ('roadtour.visit.manage', true, 'rls_gate', null, 'RoadTour visits and survey responses: routes + gated tables.'),
+ ('platform.settings.manage', true, 'rls_gate', null, 'Integration/notification/AI settings: routes + gated tables.'),
+ ('platform.organization.manage', true, 'rls_gate', null, 'Organization import/update routes + gated organizations table.'),
+ ('platform.user.manage', true, 'rls_gate', null, 'User Management actions/routes; other users'' rows gated in RLS.'),
+ ('platform.data.destructive', true, 'governance_function', null, 'Environment-gated destructive routes; database functions are service-only.'),
+ ('reporting.analytics.view', true, 'read_only', null, 'Analytics routes (server-side reads).'),
+ ('inventory.report.view', true, 'read_only', null, 'Inventory/warehouse history routes (server-side reads).'),
+ ('inventory.stock_count.view', true, 'read_only', null, 'Stock Count preflight/posting-status routes (reads).'),
+ ('inventory.transfer.view', true, 'read_only', null, 'Transfer shadow diagnostics only; reads follow tenant RLS.')
 on conflict (permission_key) do update set route_wiring = excluded.route_wiring, database_backstop = excluded.database_backstop,
   intentional_tightening = excluded.intentional_tightening, notes = excluded.notes;
 
