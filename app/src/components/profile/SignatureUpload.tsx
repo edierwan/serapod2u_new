@@ -95,7 +95,7 @@ export default function SignatureUpload({
     return () => {
       cancelled = true;
     };
-  }, [signatureUrl]);
+  }, [signatureUrl, userId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

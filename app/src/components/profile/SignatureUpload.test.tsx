@@ -58,6 +58,36 @@ describe('SignatureUpload', () => {
     expect(img.src).toContain('/object/sign/documents/signatures/u1/old.png')
   })
 
+  it('loads the signed-in user\'s historical flat-path signature', async () => {
+    createSignedUrlMock.mockResolvedValue({
+      data: { signedUrl: 'http://localhost:54321/storage/v1/object/sign/documents/signatures/u1_1763485672062.png?token=abc' },
+      error: null,
+    })
+
+    render(
+      <SignatureUpload
+        userId="u1"
+        currentSignatureUrl={`${PUBLIC_URL_PREFIX}signatures/u1_1763485672062.png`}
+      />
+    )
+
+    await waitFor(() => expect(createSignedUrlMock)
+      .toHaveBeenCalledWith('signatures/u1_1763485672062.png', 3600))
+    expect(await screen.findByAltText('Digital Signature')).toBeTruthy()
+  })
+
+  it('does not sign another user\'s historical flat-path signature', async () => {
+    render(
+      <SignatureUpload
+        userId="u1"
+        currentSignatureUrl={`${PUBLIC_URL_PREFIX}signatures/u2_1763485672062.png`}
+      />
+    )
+
+    await waitFor(() => expect(screen.getByText('Signature image unavailable')).toBeTruthy())
+    expect(createSignedUrlMock).not.toHaveBeenCalled()
+  })
+
   it('shows a fallback error state when the signed URL cannot be resolved', async () => {
     createSignedUrlMock.mockResolvedValue({ data: null, error: new Error('not found') })
 
