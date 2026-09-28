@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
 import { MIN_ORDER_TOTAL, customerPaymentError, isSellablePrice } from '@/lib/storefront/price-rules'
+import { normalizeMalaysianPhone, validateCheckoutCustomer } from '@/lib/storefront/customer-validation'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
 import { easyParcelRateCheck, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
@@ -122,12 +123,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Each quantity must be a whole number from 1 to ${MAX_LINE_QUANTITY}` }, { status: 400 })
     }
     if (body.salesChannel === 'outdoor') {
-      const c = body.customer
-      if (![c.addressLine1, c.city, c.state].every((value) => typeof value === 'string' && value.trim())) {
-        return NextResponse.json({ error: 'Enter your delivery address, city, and state' }, { status: 400 })
+      const fieldErrors = validateCheckoutCustomer(body.customer)
+      const firstError = Object.values(fieldErrors)[0]
+      if (firstError) {
+        return NextResponse.json({ error: firstError, fieldErrors }, { status: 400 })
       }
-      if (!/^\d{5}$/.test(String(c.postcode || '').trim())) {
-        return NextResponse.json({ error: 'Enter a 5-digit Malaysian postcode' }, { status: 400 })
+      const c = body.customer
+      body.customer = {
+        ...c,
+        name: c.name.trim(),
+        phone: normalizeMalaysianPhone(c.phone) || c.phone,
+        addressLine1: c.addressLine1.trim(),
+        addressLine2: c.addressLine2?.trim() || '',
+        city: c.city.trim(),
+        state: c.state.trim(),
+        postcode: c.postcode.trim(),
       }
     }
 

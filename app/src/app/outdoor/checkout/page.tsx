@@ -15,6 +15,7 @@ import {
   type OutdoorShippingQuote,
 } from '@/lib/outdoor/shipping'
 import type { OutdoorCheckoutPrefill } from '@/lib/outdoor/checkout-prefill'
+import { validateCheckoutCustomer, type CheckoutFieldErrors } from '@/lib/storefront/customer-validation'
 
 function loginForCheckout() {
   const here = `${window.location.pathname}${window.location.search}`
@@ -35,6 +36,7 @@ export default function OutdoorCheckoutPage() {
   const hasItemsWithoutPrice = buyNow ? !(buyNow.price != null && buyNow.price > 0) : cart.hasItemsWithoutPrice
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<CheckoutFieldErrors>({})
   const [payMethods, setPayMethods] = useState<{ key: string; label: string; isDefault: boolean }[]>([])
   const [payProvider, setPayProvider] = useState('')
   const [accountEmail, setAccountEmail] = useState('')
@@ -152,6 +154,12 @@ export default function OutdoorCheckoutPage() {
       return
     }
     if (!shippingReady) return
+    const errors = validateCheckoutCustomer(form)
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      setError('Please check the highlighted fields.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -168,7 +176,10 @@ export default function OutdoorCheckoutPage() {
         }),
       })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error || 'Checkout failed')
+      if (!res.ok) {
+        if (data?.fieldErrors) setFieldErrors(data.fieldErrors)
+        throw new Error(data?.error || 'Checkout failed')
+      }
       if (buyNow) clearOutdoorBuyNow()
       else cart.clearCart()
       if (data?.paymentUrl) {
@@ -184,25 +195,53 @@ export default function OutdoorCheckoutPage() {
     }
   }
 
+  const updateField = (key: keyof typeof form, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }))
+    if (error) setError('')
+    if (fieldErrors[key as keyof CheckoutFieldErrors]) {
+      setFieldErrors((current) => ({ ...current, [key]: undefined }))
+    }
+  }
+
+  const checkField = (key: keyof typeof form) => {
+    if (!form[key].trim()) return
+    const message = validateCheckoutCustomer(form)[key as keyof CheckoutFieldErrors]
+    setFieldErrors((current) => ({ ...current, [key]: message }))
+  }
+
   const field = (
     key: keyof typeof form,
     label: string,
-    opts?: { required?: boolean; type?: string; pattern?: string; inputMode?: 'numeric' | 'tel'; title?: string },
-  ) => (
-    <label className="block text-sm font-medium text-[var(--out-bark)]">
-      {label}
-      <input
-        required={opts?.required !== false}
-        type={opts?.type || 'text'}
-        pattern={opts?.pattern}
-        inputMode={opts?.inputMode}
-        title={opts?.title}
-        value={form[key]}
-        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-        className="out-input"
-      />
-    </label>
-  )
+    opts?: {
+      required?: boolean
+      type?: string
+      inputMode?: 'numeric' | 'tel'
+      autoComplete?: string
+      placeholder?: string
+      maxLength?: number
+    },
+  ) => {
+    const message = fieldErrors[key as keyof CheckoutFieldErrors]
+    return (
+      <label className="block text-sm font-medium text-[var(--out-bark)]">
+        {label}
+        <input
+          required={opts?.required !== false}
+          type={opts?.type || 'text'}
+          inputMode={opts?.inputMode}
+          autoComplete={opts?.autoComplete}
+          placeholder={opts?.placeholder}
+          maxLength={opts?.maxLength}
+          value={form[key]}
+          onChange={(e) => updateField(key, e.target.value)}
+          onBlur={() => checkField(key)}
+          aria-invalid={Boolean(message)}
+          className={`out-input ${message ? 'border-red-500 ring-1 ring-red-500/30' : ''}`}
+        />
+        {message ? <span className="mt-1 block text-xs font-normal text-red-600">{message}</span> : null}
+      </label>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-8 py-8 sm:py-12">
@@ -219,41 +258,44 @@ export default function OutdoorCheckoutPage() {
       </p>
 
       <div className="mt-8 grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-        <form className="out-card space-y-5 p-5 sm:p-7" onSubmit={submit}>
+        <form className="out-card space-y-5 p-5 sm:p-7" onSubmit={submit} noValidate>
           <div>
             <h2 className="font-display text-xl text-[var(--out-bark)]">Your details</h2>
             <div className="mt-4 space-y-3">
-              {field('name', 'Full name')}
+              {field('name', 'Full name', { autoComplete: 'name', maxLength: 80 })}
               <label className="block text-sm font-medium text-[var(--out-bark)]">
                 Account
                 <input readOnly value={form.email} className="out-input bg-[var(--out-sand)]/40" />
               </label>
-              {field('phone', 'Phone', { type: 'tel' })}
+              {field('phone', 'Phone', { type: 'tel', inputMode: 'tel', autoComplete: 'tel', placeholder: '012-345 6789', maxLength: 20 })}
             </div>
           </div>
 
           <div>
             <h2 className="font-display text-xl text-[var(--out-bark)]">Delivery address</h2>
             <div className="mt-4 space-y-3">
-              {field('addressLine1', 'Address line 1')}
-              {field('addressLine2', 'Address line 2', { required: false })}
+              {field('addressLine1', 'Address line 1', { autoComplete: 'address-line1', placeholder: 'No. 12, Jalan Example', maxLength: 200 })}
+              {field('addressLine2', 'Address line 2', { required: false, autoComplete: 'address-line2', maxLength: 200 })}
               <div className="grid gap-3 sm:grid-cols-3">
-                {field('city', 'City')}
+                {field('city', 'City', { autoComplete: 'address-level2', maxLength: 60 })}
                 <label className="block text-sm font-medium text-[var(--out-bark)]">
                   State
                   <select
                     required
+                    autoComplete="address-level1"
                     value={form.state}
-                    onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-                    className="out-input"
+                    onChange={(e) => updateField('state', e.target.value)}
+                    aria-invalid={Boolean(fieldErrors.state)}
+                    className={`out-input ${fieldErrors.state ? 'border-red-500 ring-1 ring-red-500/30' : ''}`}
                   >
                     <option value="" disabled>Select</option>
                     {MALAYSIA_STATES.map((s) => (
                       <option key={s.code} value={s.label}>{s.label}</option>
                     ))}
                   </select>
+                  {fieldErrors.state ? <span className="mt-1 block text-xs font-normal text-red-600">{fieldErrors.state}</span> : null}
                 </label>
-                {field('postcode', 'Postcode', { pattern: '\\d{5}', inputMode: 'numeric', title: 'Enter a 5-digit Malaysian postcode' })}
+                {field('postcode', 'Postcode', { inputMode: 'numeric', autoComplete: 'postal-code', maxLength: 5 })}
               </div>
             </div>
           </div>
