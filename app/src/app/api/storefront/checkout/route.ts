@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
-import { outdoorCustomerShippingAmount } from '@/lib/outdoor/shipping'
+import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
 import { easyParcelRateCheck, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 
@@ -200,7 +200,12 @@ export async function POST(request: NextRequest) {
     let shippingServiceId: string | null = null
     let shippingCourierName: string | null = null
     if (salesChannel === 'outdoor') {
-      shippingAmount = outdoorCustomerShippingAmount(orderTotal)
+      const delivery = await resolveOutdoorShipping(
+        supabase,
+        variants.map((variant: any) => String(variant.product_id || '')),
+        orderTotal,
+      )
+      shippingAmount = delivery.amount
       const quote = await cheapestOutdoorCourier(body.customer.postcode, body.customer.state)
       if (quote) {
         shippingServiceId = quote.serviceId.slice(0, 80)

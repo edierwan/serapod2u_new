@@ -10,7 +10,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
-import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Truck, Upload } from 'lucide-react'
+import {
+  OUTDOOR_FLAT_SHIPPING_RM,
+  OUTDOOR_SHIPPING_NOTE,
+  OUTDOOR_SHIPPING_TITLE,
+  outdoorShippingPrice,
+} from '@/lib/outdoor/shipping'
 import SafeImage from '@/components/shared/SafeImage'
 import { compressProductImage } from '@/lib/utils/imageCompression'
 import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
@@ -63,6 +69,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     age_restriction: 0,
     outdoor_store: false
   })
+  const [delivery, setDelivery] = useState({ title: '', note: '', price: '' })
+  const [savedDelivery, setSavedDelivery] = useState({ title: '', note: '', price: '' })
 
   useEffect(() => {
     if (isReady) {
@@ -124,6 +132,14 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         age_restriction: data.age_restriction || 0,
         outdoor_store: Boolean((data as any).outdoor_only)
       })
+      const row = data as any
+      const loadedDelivery = {
+        title: row.outdoor_shipping_title || '',
+        note: row.outdoor_shipping_note || '',
+        price: row.outdoor_shipping_price == null ? '' : String(row.outdoor_shipping_price),
+      }
+      setDelivery(loadedDelivery)
+      setSavedDelivery(loadedDelivery)
       setStructuredAttributes(await loadStructuredAttributes(supabase, { productId }))
     } catch (error) {
       console.error('Error fetching product:', error)
@@ -402,6 +418,16 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     const productId = sessionStorage.getItem('selectedProductId')
     if (!productId) return
 
+    const deliveryPrice = outdoorShippingPrice(delivery.price)
+    if (delivery.price.trim() && deliveryPrice === null) {
+      toast({
+        title: 'Validation Error',
+        description: 'Delivery price must be 0 or more.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     setSaving(true)
     try {
       const changes: Record<string, unknown> = {
@@ -433,6 +459,31 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
 
       if (error) throw error
       await syncStructuredAttributes(supabase, { productId }, structuredAttributes)
+
+      const deliveryChanged =
+        delivery.title !== savedDelivery.title ||
+        delivery.note !== savedDelivery.note ||
+        delivery.price !== savedDelivery.price
+      if (deliveryChanged) {
+        const { error: deliveryError } = await supabase
+          .from('products')
+          .update({
+            outdoor_shipping_title: delivery.title.trim() || null,
+            outdoor_shipping_note: delivery.note.trim() || null,
+            outdoor_shipping_price: deliveryPrice
+          } as any)
+          .eq('id', productId)
+        if (deliveryError) {
+          toast({
+            title: 'Product saved, delivery not saved',
+            description: /outdoor_shipping/i.test(deliveryError.message || '')
+              ? 'Apply the Outdoor delivery migration, then save again.'
+              : deliveryError.message,
+            variant: 'destructive'
+          })
+          return
+        }
+      }
 
       toast({
         title: 'Success',
@@ -745,6 +796,59 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
               showValidationErrors={attributeSaveAttempted}
               colourReferenceClient={supabase}
             />
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5" />
+              Outdoor delivery
+            </CardTitle>
+            <CardDescription>
+              What the Outdoor checkout shows for this product. Leave empty for {OUTDOOR_SHIPPING_TITLE} at RM {OUTDOOR_FLAT_SHIPPING_RM.toFixed(2)}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="outdoor_shipping_title">Title</Label>
+                <Input
+                  id="outdoor_shipping_title"
+                  value={delivery.title}
+                  maxLength={60}
+                  placeholder={OUTDOOR_SHIPPING_TITLE}
+                  onChange={(e) => setDelivery({ ...delivery, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="outdoor_shipping_price">Price (RM)</Label>
+                <Input
+                  id="outdoor_shipping_price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={delivery.price}
+                  placeholder={OUTDOOR_FLAT_SHIPPING_RM.toFixed(2)}
+                  onChange={(e) => setDelivery({ ...delivery, price: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="outdoor_shipping_note">Text</Label>
+              <Textarea
+                id="outdoor_shipping_note"
+                value={delivery.note}
+                maxLength={200}
+                rows={2}
+                placeholder={OUTDOOR_SHIPPING_NOTE}
+                onChange={(e) => setDelivery({ ...delivery, note: e.target.value })}
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              Set the price to 0 to show Free shipping. When a bag has several products, checkout charges the highest delivery price.
+            </p>
           </CardContent>
         </Card>
 

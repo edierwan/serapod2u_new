@@ -8,7 +8,12 @@ import { useCart } from '@/lib/storefront/cart-context'
 import { createClient } from '@/lib/supabase/client'
 import { MALAYSIA_STATES } from '@/lib/shipping/malaysia-states'
 import { socialAccountLabel } from '@/lib/auth/social-oauth'
-import { OUTDOOR_FREE_SHIPPING_OVER_RM, outdoorCustomerShippingAmount } from '@/lib/outdoor/shipping'
+import {
+  OUTDOOR_FREE_SHIPPING_OVER_RM,
+  pickOutdoorShipping,
+  type OutdoorShippingQuote,
+} from '@/lib/outdoor/shipping'
+import type { OutdoorCheckoutPrefill } from '@/lib/outdoor/checkout-prefill'
 
 const LOGIN_FOR_CHECKOUT = `/outdoor/login?next=${encodeURIComponent('/outdoor/checkout')}`
 
@@ -31,9 +36,11 @@ export default function OutdoorCheckoutPage() {
     addressLine1: '',
     addressLine2: '',
     city: '',
-    state: 'Selangor',
+    state: '',
     postcode: '',
   })
+  const [shipping, setShipping] = useState<OutdoorShippingQuote | null>(null)
+  const bagKey = items.map((item) => `${item.variantId}:${item.quantity}`).join('|')
 
   useEffect(() => {
     const supabase = createClient()
@@ -48,8 +55,44 @@ export default function OutdoorCheckoutPage() {
         ...current,
         email: socialAccountLabel(user.email || '', username),
       }))
+      void fetch('/api/outdoor/checkout-prefill')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const known: Partial<OutdoorCheckoutPrefill> = data?.prefill || {}
+          setForm((current) => {
+            const next = { ...current }
+            for (const key of ['name', 'phone', 'addressLine1', 'addressLine2', 'city', 'state', 'postcode'] as const) {
+              const value = typeof known[key] === 'string' ? known[key]!.trim() : ''
+              if (value && !current[key].trim()) next[key] = value
+            }
+            return next
+          })
+        })
+        .catch(() => {})
     })
   }, [router])
+
+  useEffect(() => {
+    if (!bagKey) return
+    let cancelled = false
+    setShipping(null)
+    void fetch('/api/storefront/outdoor-shipping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })) }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setShipping(data?.shipping || pickOutdoorShipping([], subtotal))
+      })
+      .catch(() => {
+        if (!cancelled) setShipping(pickOutdoorShipping([], subtotal))
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bagKey])
 
   useEffect(() => {
     void fetch('/api/storefront/payment/methods')
@@ -79,8 +122,9 @@ export default function OutdoorCheckoutPage() {
     )
   }
 
-  const shippingCost = outdoorCustomerShippingAmount(subtotal)
-  const freeShipping = shippingCost <= 0
+  const shippingReady = shipping !== null
+  const shippingCost = shipping?.amount ?? 0
+  const freeShipping = shippingReady && shippingCost <= 0
   const total = subtotal + shippingCost
 
   const submit = async (e: React.FormEvent) => {
@@ -89,6 +133,7 @@ export default function OutdoorCheckoutPage() {
       setError('Remove items without a valid price before paying.')
       return
     }
+    if (!shippingReady) return
     setLoading(true)
     setError('')
     try {
@@ -140,9 +185,11 @@ export default function OutdoorCheckoutPage() {
       </p>
       <h1 className="mt-2 text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Checkout</h1>
       <p className="mx-auto mt-2 max-w-md text-center text-sm text-[var(--out-muted)]">
-        {freeShipping
-          ? 'Where should we send your gear? Shipping is free.'
-          : `Where should we send your gear? Delivery is a flat ${money(shippingCost)}.`}
+        {!shippingReady
+          ? 'Where should we send your gear?'
+          : freeShipping
+            ? 'Where should we send your gear? Shipping is free.'
+            : `Where should we send your gear? Delivery is ${money(shippingCost)}.`}
       </p>
 
       <div className="mt-8 grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
@@ -174,6 +221,7 @@ export default function OutdoorCheckoutPage() {
                     onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
                     className="out-input"
                   >
+                    <option value="" disabled>Select</option>
                     {MALAYSIA_STATES.map((s) => (
                       <option key={s.code} value={s.label}>{s.label}</option>
                     ))}
@@ -191,19 +239,22 @@ export default function OutdoorCheckoutPage() {
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--out-bark)] text-[var(--out-cream)]">
                   <Truck className="h-5 w-5" aria-hidden />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-display text-xl leading-none text-[var(--out-bark)]">
-                    {freeShipping ? 'Free shipping' : 'Standard delivery'}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--out-muted)]">
-                    {freeShipping
-                      ? 'We cover delivery anywhere in Malaysia.'
-                      : 'One rate for every address in Malaysia. We arrange the courier.'}
-                  </p>
-                </div>
-                <p className="shrink-0 whitespace-nowrap font-display text-xl text-[var(--out-bark)] sm:text-2xl">
-                  {freeShipping ? 'Free' : money(shippingCost)}
-                </p>
+                {shipping ? (
+                  <>
+                    <div key={shipping.title} className="out-swap min-w-0 flex-1">
+                      <p className="font-display text-xl leading-none text-[var(--out-bark)]">{shipping.title}</p>
+                      <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-[var(--out-muted)]">{shipping.note}</p>
+                    </div>
+                    <p key={shippingCost} className="out-swap shrink-0 whitespace-nowrap font-display text-xl text-[var(--out-bark)] sm:text-2xl">
+                      {freeShipping ? 'Free' : money(shippingCost)}
+                    </p>
+                  </>
+                ) : (
+                  <div className="min-w-0 flex-1 animate-pulse space-y-2" aria-label="Loading delivery">
+                    <div className="h-4 w-36 rounded-full bg-[var(--out-bark)]/10" />
+                    <div className="h-3 w-52 max-w-full rounded-full bg-[var(--out-bark)]/10" />
+                  </div>
+                )}
               </div>
               {OUTDOOR_FREE_SHIPPING_OVER_RM != null && OUTDOOR_FREE_SHIPPING_OVER_RM > 0 ? (
                 <p className="border-t border-[var(--out-bark)]/10 px-4 py-2.5 text-xs text-[var(--out-bark)] sm:px-5">
@@ -241,8 +292,8 @@ export default function OutdoorCheckoutPage() {
           ) : null}
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <button type="submit" disabled={loading} className="out-btn w-full">
-            {loading ? 'Processing…' : `Pay ${money(total)}`}
+          <button type="submit" disabled={loading || !shippingReady} className="out-btn w-full">
+            {loading ? 'Processing…' : shippingReady ? `Pay ${money(total)}` : 'Loading delivery…'}
           </button>
         </form>
 
@@ -274,7 +325,7 @@ export default function OutdoorCheckoutPage() {
             </div>
             <div className="flex justify-between">
               <span>Shipping</span>
-              <span>{freeShipping ? 'Free' : money(shippingCost)}</span>
+              <span>{!shippingReady ? '—' : freeShipping ? 'Free' : money(shippingCost)}</span>
             </div>
             <div className="flex justify-between pt-2 font-display text-xl">
               <span>Total</span>
