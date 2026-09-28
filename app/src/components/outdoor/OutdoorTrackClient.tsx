@@ -3,6 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
+import {
+  ORDER_STATUS_GROUPS,
+  defaultOrderGroup,
+  groupOfStatus,
+  orderInGroup,
+  orderStatusLabel,
+  type OrderStatusGroup,
+} from '@/lib/outdoor/order-status-groups'
 
 type TrackedOrder = {
   orderRef: string
@@ -35,9 +43,7 @@ function money(amount: number, currency = 'MYR') {
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency }).format(amount)
 }
 
-function statusLabel(status: string) {
-  return status.replace(/_/g, ' ')
-}
+const statusLabel = orderStatusLabel
 
 function stepIndex(status: string) {
   const s = status.toLowerCase()
@@ -72,6 +78,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
   const [paying, setPaying] = useState(false)
   const [accountMode, setAccountMode] = useState<'loading' | 'guest' | 'in'>('loading')
   const [accountOrders, setAccountOrders] = useState<MineOrder[]>([])
+  const [group, setGroup] = useState<OrderStatusGroup>('all')
 
   const lookup = async (ref: string, mail: string) => {
     setLoading(true)
@@ -105,7 +112,16 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
         }
         const data = await res.json().catch(() => null)
         if (cancelled) return
-        setAccountOrders(data?.orders || [])
+        const mine: MineOrder[] = data?.orders || []
+        setAccountOrders(mine)
+        const linked = directRef ? mine.find((item) => item.orderRef === directRef) : null
+        const startGroup = linked ? groupOfStatus(linked.status) : defaultOrderGroup(mine.map((item) => item.status))
+        setGroup(startGroup)
+        const startOrders = mine.filter((item) => orderInGroup(item.status, startGroup))
+        if (!directRef && startGroup !== 'all' && startOrders.length === 1) {
+          setOrderRef(startOrders[0].orderRef)
+          void lookup(startOrders[0].orderRef, '')
+        }
         setAccountMode('in')
       })
       .catch(() => {
@@ -116,7 +132,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [router, directRef])
 
   useEffect(() => {
     if (!directRef) return
@@ -127,6 +143,25 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
 
   const signedIn = accountMode === 'in'
   const waitingForAccount = accountMode === 'loading'
+  const groupCounts = ORDER_STATUS_GROUPS.map((g) => ({
+    ...g,
+    count: accountOrders.filter((item) => orderInGroup(item.status, g.key)).length,
+  })).filter((g) => g.key === 'all' || g.count > 0)
+  const visibleOrders = accountOrders.filter((item) => orderInGroup(item.status, group))
+
+  const chooseGroup = (next: OrderStatusGroup) => {
+    setGroup(next)
+    const inGroup = accountOrders.filter((item) => orderInGroup(item.status, next))
+    if (orderRef && inGroup.some((item) => item.orderRef === orderRef)) return
+    setError('')
+    if (inGroup.length === 1) {
+      setOrderRef(inGroup[0].orderRef)
+      void lookup(inGroup[0].orderRef, '')
+    } else {
+      setOrderRef('')
+      setOrder(null)
+    }
+  }
 
   const activeStep = order ? stepIndex(order.status) : -1
 
@@ -146,6 +181,32 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
             <p className="text-sm text-[var(--out-muted)]">You do not have an order yet.</p>
           ) : (
           <>
+          {groupCounts.length > 2 ? (
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter orders by status">
+              {groupCounts.map((g) => {
+                const active = group === g.key
+                return (
+                  <button
+                    key={g.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => chooseGroup(g.key)}
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition-colors ${
+                      active
+                        ? 'bg-[var(--out-bark)] text-[var(--out-cream)]'
+                        : 'border border-[var(--out-bark)]/15 text-[var(--out-bark)] hover:border-[var(--out-bark)]/40'
+                    }`}
+                  >
+                    {g.label}
+                    <span className={`rounded-full px-1.5 text-[10px] ${active ? 'bg-[var(--out-cream)]/20' : 'bg-[var(--out-bark)]/10'}`}>
+                      {g.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
           <label className="block text-sm font-medium text-[var(--out-bark)]">
             Your order
             <select
@@ -158,8 +219,10 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
               }}
               className="out-input"
             >
-              <option value="">Choose an order</option>
-              {accountOrders.map((item) => (
+              <option value="">
+                {visibleOrders.length === 1 ? 'Choose the order' : `Choose from ${visibleOrders.length} orders`}
+              </option>
+              {visibleOrders.map((item) => (
                 <option key={item.orderRef} value={item.orderRef}>
                   {orderOptionLabel(item)}
                 </option>
