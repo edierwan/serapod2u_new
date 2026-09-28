@@ -184,12 +184,19 @@ export default function OutdoorCheckoutPage() {
     }
   }
 
-  const field = (key: keyof typeof form, label: string, opts?: { required?: boolean; type?: string }) => (
+  const field = (
+    key: keyof typeof form,
+    label: string,
+    opts?: { required?: boolean; type?: string; pattern?: string; inputMode?: 'numeric' | 'tel'; title?: string },
+  ) => (
     <label className="block text-sm font-medium text-[var(--out-bark)]">
       {label}
       <input
         required={opts?.required !== false}
         type={opts?.type || 'text'}
+        pattern={opts?.pattern}
+        inputMode={opts?.inputMode}
+        title={opts?.title}
         value={form[key]}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
         className="out-input"
@@ -246,7 +253,7 @@ export default function OutdoorCheckoutPage() {
                     ))}
                   </select>
                 </label>
-                {field('postcode', 'Postcode')}
+                {field('postcode', 'Postcode', { pattern: '\\d{5}', inputMode: 'numeric', title: 'Enter a 5-digit Malaysian postcode' })}
               </div>
             </div>
           </div>

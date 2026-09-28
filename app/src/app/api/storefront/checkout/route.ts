@@ -54,6 +54,8 @@ interface CheckoutBody {
   paymentProvider?: string
 }
 
+const MAX_LINE_QUANTITY = 999
+
 async function cheapestOutdoorCourier(postcode: string, state: string) {
   try {
     if (!(await isEasyParcelConfigured())) return null
@@ -114,6 +116,18 @@ export async function POST(request: NextRequest) {
     }
     if (!body.items?.length) {
       return NextResponse.json({ error: 'Cart is empty' }, { status: 400 })
+    }
+    if (body.items.some((item) => !Number.isInteger(item?.quantity) || item.quantity < 1 || item.quantity > MAX_LINE_QUANTITY)) {
+      return NextResponse.json({ error: `Each quantity must be a whole number from 1 to ${MAX_LINE_QUANTITY}` }, { status: 400 })
+    }
+    if (body.salesChannel === 'outdoor') {
+      const c = body.customer
+      if (![c.addressLine1, c.city, c.state].every((value) => typeof value === 'string' && value.trim())) {
+        return NextResponse.json({ error: 'Enter your delivery address, city, and state' }, { status: 400 })
+      }
+      if (!/^\d{5}$/.test(String(c.postcode || '').trim())) {
+        return NextResponse.json({ error: 'Enter a 5-digit Malaysian postcode' }, { status: 400 })
+      }
     }
 
     // Cast to any: new tables not in generated types until migration runs

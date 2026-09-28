@@ -104,6 +104,9 @@ export async function PUT(request: NextRequest) {
       if (!tracking) {
         return NextResponse.json({ error: 'Tracking number required' }, { status: 400 })
       }
+      if (!['paid', 'processing', 'shipped'].includes(order.status)) {
+        return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
+      }
       const { data, error } = await admin
         .from('storefront_orders')
         .update({

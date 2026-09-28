@@ -28,6 +28,62 @@ export function verifyStripeSignature(rawBody: string, signatureHeader: string, 
   if (!matched) throw new Error('Stripe webhook signature mismatch')
 }
 
+/**
+ * What a Checkout Session event means for the order.
+ * `completed` + unpaid is a delayed method (e.g. FPX) that is still pending, not a failure.
+ */
+export function stripeEventOutcome(type: string, paymentStatus: string): 'paid' | 'failed' | 'ignore' {
+  if (type === 'checkout.session.completed') return paymentStatus === 'paid' ? 'paid' : 'ignore'
+  if (type === 'checkout.session.async_payment_succeeded') return 'paid'
+  if (type === 'checkout.session.async_payment_failed' || type === 'checkout.session.expired') return 'failed'
+  return 'ignore'
+}
+
+/** Reads the Checkout Session straight from Stripe, so its status can be trusted. */
+export async function fetchStripeCheckoutSession(sessionId: string, secretKey: string): Promise<any | null> {
+  if (!sessionId || !secretKey || !/^cs_[A-Za-z0-9_]+$/.test(sessionId)) return null
+  try {
+    const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: `Bearer ${secretKey}` },
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error('[stripe] session lookup failed:', res.status)
+      return null
+    }
+    return await res.json()
+  } catch (err) {
+    console.error('[stripe] session lookup error:', err)
+    return null
+  }
+}
+
+async function orderIdForSession(session: any) {
+  const fromMeta = String(session?.metadata?.order_id || '')
+  if (fromMeta) return fromMeta
+  const orderRef = String(session?.client_reference_id || session?.metadata?.order_ref || '')
+  if (!orderRef) return ''
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase: any = createAdminClient()
+  const { data: order } = await supabase
+    .from('storefront_orders')
+    .select('id')
+    .eq('order_ref', orderRef)
+    .maybeSingle()
+  return order?.id || ''
+}
+
+/** Payment result for a customer returning from Stripe with ?session_id=. */
+export async function stripeReturnResult(
+  sessionId: string,
+  credentials: Record<string, string>,
+): Promise<PaymentCallbackResult> {
+  const session = await fetchStripeCheckoutSession(sessionId, credentials.secret_key || '')
+  if (!session) return { verified: false, orderId: '', paid: false, error: 'Stripe session not found' }
+  if (session.payment_status !== 'paid') return { verified: true, orderId: '', paid: false, transactionId: session.id }
+  return { verified: true, orderId: await orderIdForSession(session), paid: true, transactionId: session.id }
+}
+
 export async function handleStripeCheckoutWebhook(
   rawBody: string,
   signatureHeader: string | null,
@@ -53,32 +109,33 @@ export async function handleStripeCheckoutWebhook(
   }
 
   const type = String(event?.type || '')
-  const session = event?.data?.object || {}
+  let session = event?.data?.object || {}
   const sessionId = String(session.id || '')
-  const paymentStatus = String(session.payment_status || '')
-  const orderRef = String(session.client_reference_id || session.metadata?.order_ref || '')
-  const orderIdFromMeta = String(session.metadata?.order_id || '')
 
-  if (type && type !== 'checkout.session.completed') {
-    return { verified: true, orderId: '', paid: false, transactionId: sessionId }
+  // Without a signing secret the event body cannot be trusted: read the session from Stripe instead.
+  if (!secret) {
+    const fetched = await fetchStripeCheckoutSession(sessionId, credentials.secret_key || '')
+    if (!fetched) {
+      return { verified: false, orderId: '', paid: false, error: 'Stripe webhook not verifiable (no webhook_secret, session lookup failed)' }
+    }
+    session = fetched
   }
 
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const supabase: any = createAdminClient()
-  let orderId = orderIdFromMeta
-  if (!orderId && orderRef) {
-    const { data: order } = await supabase
-      .from('storefront_orders')
-      .select('id')
-      .eq('order_ref', orderRef)
-      .maybeSingle()
-    orderId = order?.id || ''
+  const outcome = secret
+    ? stripeEventOutcome(type, String(session.payment_status || ''))
+    : session.payment_status === 'paid'
+      ? 'paid'
+      : session.status === 'expired'
+        ? 'failed'
+        : 'ignore'
+  if (outcome === 'ignore') {
+    return { verified: true, orderId: '', paid: false, transactionId: sessionId }
   }
 
   return {
     verified: true,
-    orderId,
-    paid: paymentStatus === 'paid',
+    orderId: await orderIdForSession(session),
+    paid: outcome === 'paid',
     transactionId: sessionId,
   }
 }

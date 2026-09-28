@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { CheckCircle2, Clock, Package, Truck, XCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { verifyPaymentCallback } from '@/lib/payments'
+import { getGatewayByProvider, verifyPaymentCallback } from '@/lib/payments'
+import { stripeReturnResult } from '@/lib/payments/providers/stripe-webhook'
 import { applyStorefrontPaymentResult } from '@/lib/payments/apply-callback'
 import { flattenPaymentParams } from '@/lib/payments/providers/billplz-signature'
 import { outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
@@ -154,6 +155,19 @@ export default async function OutdoorOrderSuccessPage({
       }
     } catch (err) {
       console.error('[outdoor-success] billplz confirm failed:', err)
+    }
+  }
+
+  const stripeSessionId = typeof params.session_id === 'string' ? params.session_id : ''
+  if (stripeSessionId) {
+    try {
+      const gateway = await getGatewayByProvider('stripe')
+      const result = await stripeReturnResult(stripeSessionId, (gateway?.credentials as Record<string, string>) || {})
+      if (result.verified && result.orderId) {
+        await applyStorefrontPaymentResult(result)
+      }
+    } catch (err) {
+      console.error('[outdoor-success] stripe confirm failed:', err)
     }
   }
 

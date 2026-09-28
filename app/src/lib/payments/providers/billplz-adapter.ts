@@ -126,6 +126,26 @@ export const billplz: PaymentProviderAdapter = {
         .maybeSingle()
       orderId = byBill?.id || ''
     }
+    // An older bill of the same order (replaced by Continue payment) is no longer on payment_ref.
+    if (!orderId && billId && apiKey) {
+      try {
+        const res = await fetch(`${baseUrl(credentials)}/api/v3/bills/${encodeURIComponent(billId)}`, {
+          headers: { Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}` },
+        })
+        const bill = res.ok ? await res.json() : null
+        const ref = String(bill?.reference_1 || '')
+        if (ref) {
+          const { data: byBillRef } = await supabase
+            .from('storefront_orders')
+            .select('id')
+            .eq('order_ref', ref)
+            .maybeSingle()
+          orderId = byBillRef?.id || ''
+        }
+      } catch {
+        // Leave unmatched; the next callback retry can match it.
+      }
+    }
 
     return {
       verified: true,
