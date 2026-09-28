@@ -161,19 +161,21 @@ SELECT ('00000000-0000-0000-0000-0000000000' || lpad(n::text, 2, '0'))::uuid,
 FROM generate_series(1, 12) AS n;
 
 -- id suffix | role | org | active | purpose
-INSERT INTO public.users (id, email, role_code, organization_id, is_active, full_name, phone) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'fixture1@phase0b.test',  'SA',         '00000000-0000-0000-0000-00000000a001', true,  'SA A',        '+60110000001'),
-  ('00000000-0000-0000-0000-000000000002', 'fixture2@phase0b.test',  'HQ',         '00000000-0000-0000-0000-00000000a001', true,  'HQ Admin A',  '+60110000002'),
-  ('00000000-0000-0000-0000-000000000003', 'fixture3@phase0b.test',  'WH',         '00000000-0000-0000-0000-00000000a002', true,  'WH A1 user',  '+60110000003'),
-  ('00000000-0000-0000-0000-000000000004', 'fixture4@phase0b.test',  'WH',         '00000000-0000-0000-0000-00000000a003', true,  'WH A2 user',  '+60110000004'),
-  ('00000000-0000-0000-0000-000000000005', 'fixture5@phase0b.test',  'GUEST',      '00000000-0000-0000-0000-00000000a005', true,  'Shop A user', '+60110000005'),
-  ('00000000-0000-0000-0000-000000000006', 'fixture6@phase0b.test',  'GUEST',      NULL,                                   true,  'Consumer',    '+60110000006'),
-  ('00000000-0000-0000-0000-000000000007', 'fixture7@phase0b.test',  'HQ',         '00000000-0000-0000-0000-00000000a006', true,  'HQ Admin B',  '+60110000007'),
-  ('00000000-0000-0000-0000-000000000008', 'fixture8@phase0b.test',  'HQ',         '00000000-0000-0000-0000-00000000a001', false, 'Inactive HQ', '+60110000008'),
-  ('00000000-0000-0000-0000-000000000009', 'fixture9@phase0b.test',  'POWER_USER', '00000000-0000-0000-0000-00000000a001', true,  'PU A',        '+60110000009'),
-  ('00000000-0000-0000-0000-000000000010', 'fixture10@phase0b.test', 'USER',       '00000000-0000-0000-0000-00000000a001', true,  'HQ A staff',  '+60110000010'),
-  ('00000000-0000-0000-0000-000000000011', 'fixture11@phase0b.test', 'MANAGER',    '00000000-0000-0000-0000-00000000a001', true,  'Manager A',   '+60110000011'),
-  ('00000000-0000-0000-0000-000000000012', 'fixture12@phase0b.test', 'USER',       '00000000-0000-0000-0000-00000000a006', true,  'HQ B staff',  '+60110000012');
+-- Enterprise fixtures are portal identities (canonical staff = INTERNAL_EMPLOYEE
+-- with an S&A membership, derived by the lifecycle); GUEST rows stay consumers.
+INSERT INTO public.users (id, email, role_code, organization_id, is_active, full_name, phone, account_scope) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'fixture1@phase0b.test',  'SA',         '00000000-0000-0000-0000-00000000a001', true,  'SA A',        '+60110000001', 'portal'),
+  ('00000000-0000-0000-0000-000000000002', 'fixture2@phase0b.test',  'HQ',         '00000000-0000-0000-0000-00000000a001', true,  'HQ Admin A',  '+60110000002', 'portal'),
+  ('00000000-0000-0000-0000-000000000003', 'fixture3@phase0b.test',  'WH',         '00000000-0000-0000-0000-00000000a002', true,  'WH A1 user',  '+60110000003', 'portal'),
+  ('00000000-0000-0000-0000-000000000004', 'fixture4@phase0b.test',  'WH',         '00000000-0000-0000-0000-00000000a003', true,  'WH A2 user',  '+60110000004', 'portal'),
+  ('00000000-0000-0000-0000-000000000005', 'fixture5@phase0b.test',  'GUEST',      '00000000-0000-0000-0000-00000000a005', true,  'Shop A user', '+60110000005', 'store'),
+  ('00000000-0000-0000-0000-000000000006', 'fixture6@phase0b.test',  'GUEST',      NULL,                                   true,  'Consumer',    '+60110000006', 'store'),
+  ('00000000-0000-0000-0000-000000000007', 'fixture7@phase0b.test',  'HQ',         '00000000-0000-0000-0000-00000000a006', true,  'HQ Admin B',  '+60110000007', 'portal'),
+  ('00000000-0000-0000-0000-000000000008', 'fixture8@phase0b.test',  'HQ',         '00000000-0000-0000-0000-00000000a001', false, 'Inactive HQ', '+60110000008', 'portal'),
+  ('00000000-0000-0000-0000-000000000009', 'fixture9@phase0b.test',  'POWER_USER', '00000000-0000-0000-0000-00000000a001', true,  'PU A',        '+60110000009', 'portal'),
+  ('00000000-0000-0000-0000-000000000010', 'fixture10@phase0b.test', 'USER',       '00000000-0000-0000-0000-00000000a001', true,  'HQ A staff',  '+60110000010', 'portal'),
+  ('00000000-0000-0000-0000-000000000011', 'fixture11@phase0b.test', 'MANAGER',    '00000000-0000-0000-0000-00000000a001', true,  'Manager A',   '+60110000011', 'portal'),
+  ('00000000-0000-0000-0000-000000000012', 'fixture12@phase0b.test', 'USER',       '00000000-0000-0000-0000-00000000a006', true,  'HQ B staff',  '+60110000012', 'portal');
 
 -- Readable aliases for the tests.
 CREATE FUNCTION phase0b_test.uid(p_name text) RETURNS uuid LANGUAGE sql IMMUTABLE AS $$

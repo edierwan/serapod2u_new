@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { isCanonicalStaff } from '@/lib/identity/staff'
 
 /**
  * Server-only context helper for Settings pages.
@@ -52,11 +53,11 @@ export async function getSettingsPageContext() {
         roles
     }
 
-    // Settings is accessible to HQ users with role_level ≤ 40
+    // Settings is accessible to HQ staff (canonical internal staff; the
+    // legacy role level is only a ceiling, never proof of staff).
     const canViewSettings =
         organization?.org_type_code === 'HQ' &&
-        roles?.role_level != null &&
-        roles.role_level <= 40
+        isCanonicalStaff(userProfile as any, roles?.role_level, 40)
 
     return { user, userProfile: transformedUserProfile, canViewSettings }
 }

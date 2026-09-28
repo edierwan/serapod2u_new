@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EllbowApiError } from '@/lib/server/ellbow-catalog'
 import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
+import { isCanonicalStaff } from '@/lib/identity/staff'
 
 /**
  * RoadTour Product Catalog server logic.
@@ -207,11 +208,11 @@ export async function getRoadtourCatalogContext({ initialize = false, permission
 
   const { data: profile, error: profileError } = await (supabase as any)
     .from('users')
-    .select('organization_id, is_active, roles:role_code(role_level)')
+    .select('organization_id, is_active, account_status, principal_type, roles:role_code(role_level)')
     .eq('id', user.id)
     .single()
   const role = Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles
-  const legacyAllowed = !profileError && !!profile?.is_active && !!role && Number(role.role_level) <= 40
+  const legacyAllowed = !profileError && isCanonicalStaff(profile, role?.role_level, 40)
   // S&A decides in the actor's organization; the historical staff rule is
   // the legacy evaluator.
   const allowed = profile?.organization_id
