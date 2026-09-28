@@ -26,6 +26,12 @@ import {
     Filter,
 } from 'lucide-react'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import {
+    OrderRequestBadge,
+    StoreOpenRequestsPanel,
+    StoreOrderRequestsSection,
+    useOpenRequestsByOrder,
+} from '@/modules/ecommerce/components/StoreOrderRequests'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -182,6 +188,8 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [totalOrders, setTotalOrders] = useState(0)
     const [selectedOrder, setSelectedOrder] = useState<StorefrontOrder | null>(null)
     const [updatingStatus, setUpdatingStatus] = useState(false)
+    const [requestsRefresh, setRequestsRefresh] = useState(0)
+    const openRequestsByOrder = useOpenRequestsByOrder(useMemo(() => orders.map(o => o.id), [orders]), requestsRefresh)
 
     // ── Debounce search ──────────────────────────────────────────
 
@@ -437,6 +445,12 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             </div>
                         </div>
 
+                        <StoreOrderRequestsSection
+                            key={selectedOrder.id}
+                            orderId={selectedOrder.id}
+                            onChanged={() => setRequestsRefresh(n => n + 1)}
+                        />
+
                         {/* Timestamps */}
                         <div className="text-[11px] text-muted-foreground space-y-1 py-2 border-t border-border">
                             <div className="flex items-center gap-1.5">
@@ -464,7 +478,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 description="View and manage online storefront orders"
                 actions={
                     <button
-                        onClick={fetchOrders}
+                        onClick={() => { fetchOrders(); setRequestsRefresh(n => n + 1) }}
                         disabled={loading}
                         className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-[var(--sera-line)] rounded-lg bg-white hover:bg-[var(--sera-mist)] transition-colors disabled:opacity-50 text-[var(--sera-ink)]"
                     >
@@ -481,6 +495,8 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     <button onClick={() => setError(null)} className="ml-2 underline text-xs">Dismiss</button>
                 </div>
             )}
+
+            <StoreOpenRequestsPanel refreshKey={requestsRefresh} onOpenOrder={(order) => setSelectedOrder(order)} />
 
             {/* Filters */}
             <div className="sera-sc-panel p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -588,7 +604,10 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            {renderStatusBadge(order.status)}
+                                            <div className="flex flex-col items-start gap-1">
+                                                {renderStatusBadge(order.status)}
+                                                {openRequestsByOrder[order.id] ? <OrderRequestBadge status={openRequestsByOrder[order.id]} /> : null}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <span className="font-semibold text-foreground">
@@ -637,7 +656,10 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                             {order.customer_name}
                                         </p>
                                     </div>
-                                    {renderStatusBadge(order.status)}
+                                    <div className="flex flex-col items-end gap-1">
+                                        {renderStatusBadge(order.status)}
+                                        {openRequestsByOrder[order.id] ? <OrderRequestBadge status={openRequestsByOrder[order.id]} /> : null}
+                                    </div>
                                 </div>
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                     <span>{formatShortDate(order.created_at)}</span>

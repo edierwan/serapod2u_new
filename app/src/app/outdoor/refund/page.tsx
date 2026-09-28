@@ -20,8 +20,9 @@ export default function OutdoorRefundPage() {
         {
           heading: 'How to request a refund',
           body: [
-            'Use the Contact page with your order reference, email used at checkout, and a short description of the issue.',
-            'For damaged goods, include clear photos of the product and packaging.',
+            'Sign in, open My account → Orders, and choose Report a problem on the order. Tell us what happened and we reply by email.',
+            'For damaged or wrong items, add clear photos of the product and packaging.',
+            'You can follow the status of your request on the same order. If you cannot sign in, use the Contact page with your order reference and checkout email.',
           ],
         },
         {

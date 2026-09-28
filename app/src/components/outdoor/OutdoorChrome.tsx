@@ -36,10 +36,10 @@ function staffTabClass(active: boolean) {
 function StaffTabs() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const inbox =
-    pathname.startsWith("/outdoor/fulfilment") &&
-    searchParams.get("tab") === "inbox";
-  const orders = pathname.startsWith("/outdoor/fulfilment") && !inbox;
+  const onDesk = pathname.startsWith("/outdoor/fulfilment");
+  const inbox = onDesk && searchParams.get("tab") === "inbox";
+  const requests = onDesk && searchParams.get("tab") === "requests";
+  const orders = onDesk && !inbox && !requests;
   return (
     <div className="border-b border-[var(--out-line)] bg-[var(--out-cream)]">
       <div className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 py-3 sm:px-8">
@@ -51,6 +51,12 @@ function StaffTabs() {
           className={staffTabClass(inbox)}
         >
           Messages
+        </Link>
+        <Link
+          href="/outdoor/fulfilment?tab=requests"
+          className={staffTabClass(requests)}
+        >
+          Requests
         </Link>
       </div>
     </div>
@@ -363,6 +369,13 @@ export default function OutdoorChrome({
                         className="py-1"
                       >
                         Messages
+                      </Link>
+                      <Link
+                        href="/outdoor/fulfilment?tab=requests"
+                        onClick={() => setOpen(false)}
+                        className="py-1"
+                      >
+                        Requests
                       </Link>
                     </>
                   ) : null}

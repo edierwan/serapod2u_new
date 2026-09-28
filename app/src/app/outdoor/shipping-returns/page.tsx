@@ -37,7 +37,7 @@ export default function OutdoorShippingPage() {
         {
           heading: 'Returns',
           body: [
-            'If an item arrives damaged, defective, or incorrect, contact us within 7 days of delivery with photos and your order reference.',
+            'If an item arrives damaged, defective, or incorrect, report it within 7 days of delivery from My account → Orders → Report a problem, with photos.',
             'Unused items in original packaging may be eligible for return subject to product type and approval. Hygiene-sensitive or custom items may be excluded.',
             'Approved returns are handled under the Refund Policy.',
           ],

@@ -6,6 +6,14 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { socialAccountLabel } from '@/lib/auth/social-oauth'
 import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
+import OutdoorOrderRequestDialog from '@/components/outdoor/OutdoorOrderRequestDialog'
+import {
+  ORDER_REQUEST_CUSTOMER_LABELS,
+  ORDER_REQUEST_TYPE_LABELS,
+  canRaiseOrderRequest,
+  isOpenOrderRequest,
+  type OrderRequestView,
+} from '@/lib/storefront/order-requests'
 
 type Profile = {
   email: string
@@ -47,6 +55,10 @@ export default function OutdoorAccountClient({
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [ordersError, setOrdersError] = useState('')
   const [isStaff, setIsStaff] = useState(false)
+  const [requests, setRequests] = useState<OrderRequestView[]>([])
+  const [requestsAvailable, setRequestsAvailable] = useState(false)
+  const [reportFor, setReportFor] = useState<string | null>(null)
+  const [requestNotice, setRequestNotice] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -108,7 +120,15 @@ export default function OutdoorAccountClient({
       }
       setOrders(data.orders || [])
     }
+    const loadRequests = async () => {
+      const res = await fetch('/api/storefront/requests?channel=outdoor')
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data) return
+      setRequestsAvailable(data.available !== false)
+      setRequests(data.requests || [])
+    }
     void loadOrders()
+    void loadRequests()
   }, [tab])
 
   const save = async () => {
@@ -251,7 +271,14 @@ export default function OutdoorAccountClient({
           {orders.length === 0 && !ordersError ? (
             <p className="text-sm text-[var(--out-muted)]">No Outdoor orders found for this email yet.</p>
           ) : null}
-          {orders.map((order) => (
+          {requestNotice ? (
+            <p className="rounded-xl border border-[var(--out-moss)] bg-white px-4 py-3 text-sm text-[var(--out-ink)]">{requestNotice}</p>
+          ) : null}
+          {orders.map((order) => {
+            const latestRequest = requests.find((request) => request.orderRef === order.orderRef)
+            const hasOpenRequest = Boolean(latestRequest && isOpenOrderRequest(latestRequest.status))
+            const canReport = requestsAvailable && !hasOpenRequest && canRaiseOrderRequest(order.status)
+            return (
             <div key={order.orderRef} className={`rounded-xl border bg-white p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${order.orderRef === pendingRef ? 'border-[var(--out-moss)]' : 'border-[var(--out-line)]'}`}>
               <div>
                 <p className="font-mono text-sm font-semibold">{order.orderRef}</p>
@@ -262,6 +289,21 @@ export default function OutdoorAccountClient({
                 <p className="text-xs uppercase tracking-wide text-[var(--out-moss-deep)] mt-1">{order.status.replace(/_/g, ' ')}</p>
                 {order.shippingTrackingNo ? (
                   <p className="text-xs mt-1">Tracking: <span className="font-mono">{order.shippingTrackingNo}</span></p>
+                ) : null}
+                {latestRequest ? (
+                  <div className="mt-3 rounded-lg bg-[var(--out-line)]/30 px-3 py-2 text-xs">
+                    <p>
+                      <span className="font-semibold">{ORDER_REQUEST_TYPE_LABELS[latestRequest.type]}</span>
+                      <span className="text-[var(--out-muted)]"> · {latestRequest.requestNo} · </span>
+                      <span className="font-semibold text-[var(--out-moss-deep)]">{ORDER_REQUEST_CUSTOMER_LABELS[latestRequest.status]}</span>
+                    </p>
+                    {latestRequest.staffReply ? (
+                      <p className="mt-1 whitespace-pre-line text-[var(--out-ink)]">
+                        <span className="font-semibold">Our reply: </span>
+                        {latestRequest.staffReply}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <div className="text-right">
@@ -284,12 +326,36 @@ export default function OutdoorAccountClient({
                   >
                     Track
                   </Link>
+                  {canReport ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRequestNotice('')
+                        setReportFor(order.orderRef)
+                      }}
+                      className="text-xs font-semibold text-[var(--out-muted)] hover:text-[var(--out-moss)] hover:underline"
+                    >
+                      Report a problem
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
+      {reportFor ? (
+        <OutdoorOrderRequestDialog
+          orderRef={reportFor}
+          onClose={() => setReportFor(null)}
+          onSent={(request) => {
+            setRequests((current) => [request, ...current])
+            setReportFor(null)
+            setRequestNotice(`Request ${request.requestNo} sent. We will reply by email.`)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

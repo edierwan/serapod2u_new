@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import OutdoorRequestsDesk from '@/components/outdoor/OutdoorRequestsDesk'
 
 type OrderItem = {
   id: string
@@ -54,7 +55,9 @@ function money(n: number) {
 export default function OutdoorFulfilmentClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const tab = searchParams.get('tab') === 'inbox' ? 'inbox' : 'orders'
+  const tabParam = searchParams.get('tab')
+  const tab = tabParam === 'inbox' ? 'inbox' : tabParam === 'requests' ? 'requests' : 'orders'
+  const [requestsRefresh, setRequestsRefresh] = useState(0)
   const [orderStatus, setOrderStatus] = useState('fulfilment')
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -106,7 +109,8 @@ export default function OutdoorFulfilmentClient() {
       }
       setAllowed(true)
       if (tab === 'orders') await loadOrders()
-      else await loadInbox()
+      else if (tab === 'inbox') await loadInbox()
+      else setRequestsRefresh((n) => n + 1)
     } catch (err: any) {
       setError(err.message || 'Failed to load')
     } finally {
@@ -119,7 +123,7 @@ export default function OutdoorFulfilmentClient() {
   }, [load])
 
   useEffect(() => {
-    document.getElementById(tab === 'inbox' ? 'outdoor-messages' : 'outdoor-orders')?.scrollIntoView({ block: 'start' })
+    document.getElementById(`outdoor-${tab === 'inbox' ? 'messages' : tab}`)?.scrollIntoView({ block: 'start' })
   }, [tab])
 
   useEffect(() => {
@@ -180,7 +184,7 @@ export default function OutdoorFulfilmentClient() {
         </button>
       </div>
 
-      <div id={tab === 'inbox' ? 'outdoor-messages' : 'outdoor-orders'} className="mt-6 flex gap-2 border-b border-[var(--out-line)] scroll-mt-28">
+      <div id={`outdoor-${tab === 'inbox' ? 'messages' : tab}`} className="mt-6 flex gap-2 border-b border-[var(--out-line)] scroll-mt-28">
         <button
           type="button"
           onClick={() => router.push('/outdoor/fulfilment')}
@@ -198,6 +202,15 @@ export default function OutdoorFulfilmentClient() {
           }`}
         >
           Messages
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push('/outdoor/fulfilment?tab=requests')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
+            tab === 'requests' ? 'border-[var(--out-moss)]' : 'border-transparent text-[var(--out-muted)]'
+          }`}
+        >
+          Requests
         </button>
       </div>
 
@@ -254,6 +267,8 @@ export default function OutdoorFulfilmentClient() {
 
       {loading ? (
         <p className="mt-10 text-sm text-[var(--out-muted)]">Loading…</p>
+      ) : tab === 'requests' ? (
+        <OutdoorRequestsDesk refreshKey={requestsRefresh} />
       ) : tab === 'inbox' ? (
         messages.length === 0 ? (
           <p className="mt-10 text-sm text-[var(--out-muted)]">No contact messages yet.</p>

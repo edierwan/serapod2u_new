@@ -23,7 +23,7 @@ const FAQS = [
   },
   {
     q: 'How do refunds work?',
-    a: 'See our Refund Policy. Approved refunds go back through the original payment method where possible.',
+    a: 'Open My account → Orders and choose Report a problem on the order. See our Refund Policy for details. Approved refunds go back through the original payment method where possible.',
   },
   {
     q: 'Where is my customer account?',
