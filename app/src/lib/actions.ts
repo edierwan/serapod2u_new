@@ -14,6 +14,12 @@ import {
 import { normalizePhoneE164, samePhone } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { userAllowed } from '@/lib/security-access/operation'
+import {
+  identityHistoryReferences,
+  provisionIdentity,
+  setIdentityAccountStatus,
+  updateIdentityAccess,
+} from '@/lib/identity/provisioning'
 
 /** Organization of an existing user (trusted row), for S&A target scoping. */
 const NO_ORGANIZATION_MATCH = '00000000-0000-0000-0000-000000000000'
@@ -52,6 +58,7 @@ import {
 } from '@/server/auth/registrationVerificationService'
 import {
   getDisallowedSelfServiceFields,
+  pickAdminEditableUserFields,
   pickSelfServiceProfileFields,
 } from '@/lib/security/user-profile-updates'
 
@@ -98,9 +105,7 @@ export async function createUserWithAuth(userData: {
       return { success: false, error: 'Forbidden' }
     }
 
-    // Step 1: Create auth user using admin API
     const adminClient = createAdminClient()
-
     if (!adminClient) {
       return {
         success: false,
@@ -108,110 +113,79 @@ export async function createUserWithAuth(userData: {
       }
     }
 
-    const phone = userData.phone ? normalizePhone(userData.phone) : undefined
-
-    const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+    // Canonical provisioning: resolve the identity from email/phone (never a
+    // duplicate), then profile + organization membership + baseline access in
+    // one database transaction. A role code above the baseline is access
+    // administration and is authorized separately in the database.
+    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(String(userData.role_code || '').toUpperCase())
+    const provisioned = await provisionIdentity({
+      actorId: callerUserId,
       email: userData.email,
+      phone: userData.phone || null,
+      fullName: userData.full_name,
+      callName: userData.call_name ?? null,
+      organizationId: userData.organization_id || null,
+      accountScope: userData.organization_id && !isConsumerRole ? 'portal' : 'store',
+      legacyRoleCode: userData.role_code || null,
       password: userData.password,
-      email_confirm: true,
-      phone: phone,
-      phone_confirm: !!phone,
-      user_metadata: {
-        full_name: userData.full_name // Set display_name in auth user_metadata
-      }
+      hr: {
+        departmentId: userData.department_id ?? null,
+        managerUserId: userData.manager_user_id ?? null,
+        positionId: userData.position_id ?? null,
+        employmentType: userData.employment_type ?? null,
+        joinDate: userData.join_date ?? null,
+      },
+      source: 'user_management',
     })
-
-    if (authError) {
+    if (!provisioned.ok) {
+      return { success: false, error: provisioned.message, code: provisioned.code }
+    }
+    if (provisioned.outcome === 'REUSED') {
+      // The person already has an identity in this organization: nothing is
+      // duplicated and nothing about the existing identity is overwritten.
+      revalidatePath('/dashboard')
       return {
-        success: false,
-        error: authError.message || 'Failed to create auth user'
+        success: true,
+        user_id: provisioned.userId,
+        reused: true,
+        message: `${userData.email} already has an account in this organization; the existing identity was kept.`,
       }
     }
 
-    if (!authUser?.user?.id) {
-      return {
-        success: false,
-        error: 'No user ID returned from auth creation'
-      }
-    }
-
-    // Step 2: Sync user profile to public.users table using the sync function
-    const { data: syncResult, error: syncError } = await adminClient
-      .rpc('sync_user_profile', {
-        p_user_id: authUser.user.id,
-        p_email: userData.email,
-        p_role_code: userData.role_code,
-        p_organization_id: userData.organization_id || undefined,
-        p_full_name: userData.full_name || undefined,
-        p_phone: phone
-      })
-
-    if (syncError) {
-      // Rollback: Delete the auth user if sync failed
-      try {
-        await adminClient.auth.admin.deleteUser(authUser.user.id)
-      } catch (deleteError) {
-        console.error('Failed to rollback auth user:', deleteError)
-      }
-
-      return {
-        success: false,
-        error: `Failed to sync user profile: ${syncError.message}`
-      }
-    }
-
-    // Step 2b: Keep an explicit compatibility write for deployments that have not
-    // yet applied the account-scope-aware sync_user_profile definition.
-    if (userData.organization_id) {
-      const { error: scopeError } = await adminClient
-        .from('users')
-        .update({ account_scope: 'portal' })
-        .eq('id', authUser.user.id)
-
-      if (scopeError) {
-        console.error('Failed to set account_scope:', scopeError.message)
-        // Non-fatal: user is created but may need manual scope fix
-      }
-    }
-
+    // Profile details that are not identity or access (compatibility fields).
     const profileUpdateData: Record<string, any> = {}
-    if (userData.call_name !== undefined) profileUpdateData.call_name = userData.call_name || null
-    if (userData.is_active !== undefined) profileUpdateData.is_active = userData.is_active
     if (userData.avatar_url !== undefined) profileUpdateData.avatar_url = userData.avatar_url || null
     if (userData.shop_name !== undefined) profileUpdateData.shop_name = userData.shop_name || null
     if (userData.address !== undefined) profileUpdateData.address = userData.address || null
     if (userData.referral_phone !== undefined) profileUpdateData.referral_phone = userData.referral_phone || null
+    // Banking is no longer collected by identity onboarding (Add User wizard);
+    // other callers may still pass it until the payee domain exists (Stage 2).
     if (userData.bank_id !== undefined) profileUpdateData.bank_id = userData.bank_id || null
     if (userData.bank_account_number !== undefined) profileUpdateData.bank_account_number = userData.bank_account_number || null
     if (userData.bank_account_holder_name !== undefined) profileUpdateData.bank_account_holder_name = userData.bank_account_holder_name || null
-    if (userData.department_id !== undefined) profileUpdateData.department_id = userData.department_id || null
-    if (userData.manager_user_id !== undefined) profileUpdateData.manager_user_id = userData.manager_user_id || null
-    if (userData.position_id !== undefined) profileUpdateData.position_id = userData.position_id || null
-    if (userData.employment_type !== undefined) profileUpdateData.employment_type = userData.employment_type || null
-    if (userData.join_date !== undefined) profileUpdateData.join_date = userData.join_date || null
-    if (userData.employment_status !== undefined) profileUpdateData.employment_status = userData.employment_status || 'active'
-    if (phone) profileUpdateData.phone_verified_at = new Date().toISOString()
+    if (userData.employment_status !== undefined && userData.employment_status && userData.employment_status !== 'active') {
+      profileUpdateData.employment_status = userData.employment_status
+    }
     if (userData.can_be_reference !== undefined) profileUpdateData.can_be_reference = Boolean(userData.can_be_reference)
 
     if (Object.keys(profileUpdateData).length > 0) {
-      const { error: callNameError } = await adminClient
+      const { error: profileError } = await adminClient
         .from('users')
         .update(profileUpdateData)
-        .eq('id', authUser.user.id)
-
-      if (callNameError) {
-        console.error('Failed to set created user profile fields:', callNameError.message)
-        try {
-          await adminClient.auth.admin.deleteUser(authUser.user.id)
-        } catch (deleteError) {
-          console.error('Failed to rollback auth user after profile update error:', deleteError)
-        }
-
+        .eq('id', provisioned.userId)
+      if (profileError) {
+        console.error('Failed to set created user profile fields:', profileError.message)
         return {
           success: false,
-          error: `Failed to save created user profile fields: ${callNameError.message}`
+          user_id: provisioned.userId,
+          error: `The account was created, but some profile details could not be saved: ${profileError.message}`,
         }
       }
+    }
+
+    if (userData.is_active === false) {
+      const statusResult = await setIdentityAccountStatus(callerUserId, provisioned.userId, 'DISABLED', 'Created as inactive in User Management')
+      if (!statusResult.ok) console.error('Failed to set created user inactive:', statusResult.message)
     }
 
     if (userData.organization_id) {
@@ -223,7 +197,7 @@ export async function createUserWithAuth(userData: {
           .maybeSingle()
 
         if (orgRow?.org_type_code === 'SHOP' || orgRow?.org_type_code === 'DIST') {
-          await upsertUserProgramMembership(adminClient as any, 'cellera', authUser.user.id, 'organization_user', 'legacy_registration', {
+          await upsertUserProgramMembership(adminClient as any, 'cellera', provisioned.userId, 'organization_user', 'legacy_registration', {
             memberOrganizationId: userData.organization_id,
             createdBy: callerUserId,
           })
@@ -237,7 +211,7 @@ export async function createUserWithAuth(userData: {
     revalidatePath('/dashboard')
     return {
       success: true,
-      user_id: authUser.user.id,
+      user_id: provisioned.userId,
       message: `User ${userData.email} created successfully`
     }
   } catch (error) {
@@ -310,7 +284,63 @@ export async function updateUserWithAuth(userId: string, userData: {
 
     const authorizedUserData = (isSelfUpdate
       ? pickSelfServiceProfileFields(requestedUpdate)
-      : requestedUpdate) as typeof userData
+      : pickAdminEditableUserFields(requestedUpdate)) as typeof userData
+
+    // Enterprise access fields and the account lifecycle are not profile data:
+    // they change only through the identity functions, which re-authorize in
+    // the database (platform.identity_access.manage / platform.identity.disable,
+    // no role above the actor's own level, source AND destination organization).
+    let organizationChanged = false
+    if (!isSelfUpdate && (authorizedUserData.role_code !== undefined
+      || authorizedUserData.organization_id !== undefined
+      || authorizedUserData.is_active !== undefined)) {
+      const { data: current, error: currentError } = await adminClient
+        .from('users')
+        .select('role_code, organization_id, is_active')
+        .eq('id', userId)
+        .maybeSingle()
+      if (currentError || !current) {
+        return { success: false, error: 'User not found' }
+      }
+
+      const nextRoleCode = authorizedUserData.role_code !== undefined && authorizedUserData.role_code !== ''
+        ? authorizedUserData.role_code
+        : current.role_code
+      const nextOrganizationId = authorizedUserData.organization_id !== undefined
+        ? (authorizedUserData.organization_id || null)
+        : current.organization_id
+      const roleChanged = nextRoleCode !== current.role_code
+      organizationChanged = nextOrganizationId !== current.organization_id
+
+      if (roleChanged || organizationChanged) {
+        const accessAllowed = await userAllowed(currentUser.id, 'platform.identity_access.manage',
+          () => typeof roleLevel === 'number' && roleLevel <= 10,
+          { organizationId: current.organization_id ?? await targetUserOrganization(currentUser.id) })
+        if (!accessAllowed) {
+          return { success: false, error: 'Changing a user\'s role or organization requires access-administration rights.' }
+        }
+        const accessResult = await updateIdentityAccess(currentUser.id, userId, {
+          roleCode: roleChanged ? nextRoleCode : null,
+          organizationId: nextOrganizationId,
+          changeOrganization: organizationChanged,
+        }, 'User Management edit')
+        if (!accessResult.ok) return { success: false, error: accessResult.message }
+      }
+
+      if (authorizedUserData.is_active !== undefined && Boolean(authorizedUserData.is_active) !== Boolean(current.is_active)) {
+        const statusAllowed = await userAllowed(currentUser.id, 'platform.identity.disable',
+          () => permissionCheck.allowed || hasRoleLevelEditAccess,
+          { organizationId: current.organization_id ?? await targetUserOrganization(currentUser.id) })
+        if (!statusAllowed) return { success: false, error: 'Unauthorized' }
+        const statusResult = await setIdentityAccountStatus(currentUser.id, userId,
+          authorizedUserData.is_active ? 'ACTIVE' : 'DISABLED', 'User Management edit')
+        if (!statusResult.ok) return { success: false, error: statusResult.message }
+      }
+
+      delete (authorizedUserData as any).role_code
+      delete (authorizedUserData as any).organization_id
+      delete (authorizedUserData as any).is_active
+    }
 
     // Update Auth User metadata (full_name/display_name) - sync to Supabase Auth user_metadata
     if (authorizedUserData.full_name !== undefined) {
@@ -393,23 +423,13 @@ export async function updateUserWithAuth(userId: string, userData: {
     }
     if (updateData.phone && updateData.phone.trim()) {
       updateData.phone = normalizePhone(updateData.phone)
-      // Also update phone_verified_at since we confirmed it in Auth
-      updateData.phone_verified_at = new Date().toISOString()
+      // An edited number is not a verified number (the database clears
+      // phone_verified_at on change); verification is an OTP flow.
     } else if (updateData.phone !== undefined) {
       updateData.phone = null // Explicitly set to null when cleared
       updateData.phone_verified_at = null
     }
 
-    // Auto-set account_scope when organization_id changes
-    // Users with an org and a business role should be 'portal'; without org → 'store'
-    if (updateData.organization_id !== undefined) {
-      const effectiveRole = updateData.role_code
-      if (updateData.organization_id && (!effectiveRole || !['GUEST', 'CONSUMER'].includes(effectiveRole))) {
-        updateData.account_scope = 'portal'
-      } else if (!updateData.organization_id) {
-        updateData.account_scope = 'store'
-      }
-    }
 
     if (updateData.department_id || updateData.manager_user_id || updateData.position_id) {
       const { data: targetUser, error: targetError } = await adminClient
@@ -461,7 +481,7 @@ export async function updateUserWithAuth(userId: string, userData: {
       }
     }
 
-    if (updateData.organization_id !== undefined || updateData.referral_phone !== undefined) {
+    if (organizationChanged || updateData.organization_id !== undefined || updateData.referral_phone !== undefined) {
       const { data: existingUser, error: existingUserError } = await adminClient
         .from('users')
         .select(`
@@ -613,6 +633,34 @@ export async function signup(formData: FormData) {
   redirect('/dashboard')
 }
 
+/**
+ * Account lifecycle change (activate / suspend / disable) by an authorized
+ * administrator. Replaces direct browser writes to users.is_active, which the
+ * database now rejects for API roles.
+ */
+export async function setUserAccountStatus(userId: string, status: 'ACTIVE' | 'SUSPENDED' | 'DISABLED', reason: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) return { success: false, error: 'Unauthorized' }
+    if (user.id === userId) return { success: false, error: 'You cannot change the status of your own account.' }
+
+    const permissionCheck = await checkPermissionForUser(user.id, 'edit_users')
+    const roleLevel = permissionCheck.context?.role_level
+    const legacyAllowed = () => permissionCheck.allowed || (typeof roleLevel === 'number' && roleLevel <= 30)
+    if (!(await userAllowed(user.id, 'platform.identity.disable', legacyAllowed, { organizationId: await targetUserOrganization(userId) }))) {
+      return { success: false, error: 'Forbidden' }
+    }
+    const result = await setIdentityAccountStatus(user.id, userId, status, reason)
+    if (!result.ok) return { success: false, error: result.message }
+    revalidatePath('/dashboard')
+    return { success: true, status: result.status }
+  } catch (error) {
+    console.error('Error changing account status:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
 export async function deleteUserWithAuth(userId: string, _callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
@@ -642,6 +690,22 @@ export async function deleteUserWithAuth(userId: string, _callerInfo?: { id: str
       return {
         success: false,
         error: 'Unauthorized: Only administrators can delete users'
+      }
+    }
+
+    // Business or audit history must survive account removal: such an
+    // identity is archived (account lifecycle), never hard-deleted. Checked
+    // before any cleanup so nothing is removed on refusal; the database
+    // (users_history_delete_guard) enforces the same rule.
+    const historyReferences = await identityHistoryReferences(userId)
+    if (historyReferences === null) {
+      return { success: false, error: 'Unable to verify this user\'s history; nothing was deleted.' }
+    }
+    if (historyReferences.length > 0) {
+      return {
+        success: false,
+        code: 'IDENTITY_HAS_HISTORY',
+        error: 'This user is referenced by business or audit history and cannot be deleted. Deactivate or archive the account instead.',
       }
     }
 

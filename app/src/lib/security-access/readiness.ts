@@ -1,3 +1,5 @@
+import { IDENTITY_ENFORCEMENT_READY } from './identity-catalog'
+
 /**
  * Operations whose every reachable path enforces the S&A decision: the
  * server route (requireAuthorization / guardOperation) AND the database
@@ -106,6 +108,9 @@ export const ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [
   'inventory.transfer.view',
 ]
 
+/** Final Wave registrations (20260928130000) plus Identity Foundation (20260929110000). */
+export const ALL_ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [...ENFORCEMENT_READY_PERMISSIONS, ...IDENTITY_ENFORCEMENT_READY]
+
 export function isEnforcementReady(permissionKey: string): boolean {
-  return ENFORCEMENT_READY_PERMISSIONS.includes(permissionKey)
+  return ALL_ENFORCEMENT_READY_PERMISSIONS.includes(permissionKey)
 }

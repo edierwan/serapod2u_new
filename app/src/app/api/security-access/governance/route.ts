@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireSecurityActor } from '@/lib/security-access/admin-api'
-import { ENFORCEMENT_READY_PERMISSIONS } from '@/lib/security-access/readiness'
+import { ALL_ENFORCEMENT_READY_PERMISSIONS } from '@/lib/security-access/readiness'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +44,7 @@ export async function GET() {
       legacyDenyNewAllow: compatRows.filter(r => r.classification === 'LEGACY_DENY_NEW_ALLOW').length,
     },
     readiness: readiness.data || [],
-    enforcementReadyInCode: ENFORCEMENT_READY_PERMISSIONS,
+    enforcementReadyInCode: ALL_ENFORCEMENT_READY_PERMISSIONS,
     emergencyAccess: {
       available: false,
       prerequisite: 'Multi-factor step-up (Supabase MFA, AAL2) must be enrolled for administrators and enforced by the application before emergency access can be enabled.',

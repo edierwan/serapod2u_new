@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
 import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
+import { identityHistoryReferences } from '@/lib/identity/provisioning'
 
 // Configure route to be dynamic
 export const dynamic = "force-dynamic";
@@ -185,7 +186,28 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Filter out the caller's own ID
-                const usersToDelete = userIds.filter((id: string) => id !== callerId);
+                let usersToDelete: string[] = userIds.filter((id: string) => id !== callerId);
+
+                // Identities referenced by business or audit history are never
+                // hard-deleted (the database refuses; checked first so no
+                // related data is cleaned up for them). They must be archived.
+                const keptForHistory: string[] = [];
+                const deletable: string[] = [];
+                for (let i = 0; i < usersToDelete.length; i += 10) {
+                    const chunk = usersToDelete.slice(i, i + 10);
+                    const refs = await Promise.all(chunk.map((id) => identityHistoryReferences(id)));
+                    chunk.forEach((id, index) => {
+                        const r = refs[index];
+                        if (r === null || r.length > 0) keptForHistory.push(id); else deletable.push(id);
+                    });
+                }
+                usersToDelete = deletable;
+                if (keptForHistory.length > 0) {
+                    sendEvent("progress", {
+                        current: 0, total: usersToDelete.length, progress: 1, success: 0, errors: 0,
+                        message: `${keptForHistory.length} user(s) kept: referenced by business or audit history (archive them instead).`,
+                    });
+                }
 
                 if (usersToDelete.length === 0) {
                     sendEvent("error", { message: "No users to delete (cannot delete yourself)" });
