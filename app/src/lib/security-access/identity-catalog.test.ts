@@ -11,7 +11,7 @@ const read = (f: string) => readFileSync(resolve(migrations, f), 'utf8')
 const foundation = read('20260929110000_identity_foundation.sql')
 const decisions = read('20260929100000_sa_decisions_history_survives_user_deletion.sql')
 const guard = read('20260929120000_identity_protected_fields_guard.sql')
-const closure = read('20260929130000_identity_stage1_closure.sql')
+const closure = read('20260929140000_identity_stage1_closure.sql')
 
 describe('Identity catalog ↔ migration lock-step', () => {
   it('seeds exactly the TypeScript identity permissions with the same sensitivity', () => {
