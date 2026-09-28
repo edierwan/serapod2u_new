@@ -53,6 +53,25 @@ Full aggregate audit: `supabase/diagnostics/identity_foundation_readonly_audit.s
    first, then switch modes through `sa_set_migration_mode` (readiness is registered for view / disable /
    identity_access.manage).
 
+## Stage 1 closure (management decision 2026-09-28)
+
+| # | File | Purpose | Risk | Rollback |
+|---|---|---|---|---|
+| 4 | `supabase/migrations/20260929140000_identity_stage1_closure.sql` | (1) `sa_actor_is_staff` = INTERNAL_EMPLOYEE + active account + active S&A membership + non-baseline S&A assignment; legacy level only a narrowing ceiling (staging: 37 internal users keep staff; 3 store consumers and 5 shop-style USER accounts lose it). (2) `sa_actor_is_supply_partner` keeps manufacturer/distributor reads on the six QR/stock read policies (read-only; nothing widened). (3) HR/department onboarding gets the no-authority legacy code GUEST + employee-self-service baseline (never USER, never "staff"). (4) `audit_action_valid` adds `PASSWORD_RESET` and `BULK_ENABLE_STOCK_CONFIGURATIONS` (both were rejected). | Medium: legacy-mode RLS/trigger decisions that used `sa_actor_is_staff` now require the canonical staff identity. **Production prerequisite:** every active portal user must have an active S&A membership and assignment (lifecycle backfill) before this runs there. | Header of the file. |
+
+Numbered 140000 because staging already carries `20260929130000_consumer_reward_secure_ledger.sql`.
+The application change (canonical staff test in settings/finance gates, email/SMS monitors, Ellbow/RoadTour
+catalog evaluators) is deployed with this branch; it does not depend on 140000.
+
+### Staging UAT (run by management after 140000)
+
+`supabase/diagnostics/identity_stage1_staging_uat.sql` — one DO block, staging only. Creates disposable
+`qa-idf-<run>-*@serapod.test` identities (no password, cannot sign in) and exercises cases A–I through the same
+database functions the provisioning service calls; each case writes an evidence row to `sa_access_change_log`
+(`action = 'uat.identity_stage1'`, `entity_id` = case, `details.pass`). Rehearsed on replicas of current staging in
+both staging state (NEW_ENFORCED, read-only) and production-like state: 9/9 cases pass; without 140000 the
+A/I/G cases fail (negative control).
+
 ## Evidence
 
 - Local vanilla PostgreSQL 17 replica built from a schema-only dump of live staging (catalog counts equal to
