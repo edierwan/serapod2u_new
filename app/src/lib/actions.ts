@@ -869,6 +869,27 @@ export async function deleteUserWithAuth(userId: string, _callerInfo?: { id: str
   }
 }
 
+/**
+ * Identity resolution for self-service consumer registration. Returns a
+ * user-facing refusal, or null when a new identity may be created.
+ */
+async function resolveConsumerRegistrationIdentity(adminClient: any, email: string, phone: string | undefined): Promise<string | null> {
+  const { data, error } = await adminClient.rpc('identity_resolve', { p_email: email, p_phone: phone ?? null })
+  if (error) return 'Registration is temporarily unavailable. Please try again.'
+  const outcome = data?.outcome
+  if (outcome === 'NO_MATCH') return null
+  if (outcome === 'INVALID_INPUT') return 'Please check your email address and mobile number.'
+  if (outcome === 'MATCH' && data?.matched_by !== 'phone') return 'An account with this email already exists. Please sign in instead.'
+  if (outcome === 'MATCH') return 'This mobile number is already registered. Please sign in with it instead.'
+  if (outcome === 'IDENTITY_ARCHIVED') return 'This account is no longer active. Please contact support.'
+  // Conflict / ambiguous / unverified-phone match: the phone belongs to someone else.
+  await adminClient.rpc('identity_record_conflict', {
+    p_code: outcome, p_resolution: data, p_email: email, p_phone: phone ?? null,
+    p_source: 'consumer_signup', p_actor: null, p_details: { stage: 'resolve' },
+  })
+  return 'This mobile number is already registered to another account. Please sign in, or contact support.'
+}
+
 export async function registerConsumer(userData: {
   email: string
   password: string
@@ -1020,6 +1041,13 @@ export async function registerConsumer(userData: {
         throw guardError
       }
     }
+
+    // One human = one central identity: resolve before creating a login. An
+    // existing person signs in instead; a phone that already belongs to
+    // another person is never attached to a second identity (recorded for
+    // review, never merged).
+    const identityCheck = await resolveConsumerRegistrationIdentity(adminClient, normalizedEmail, phone)
+    if (identityCheck) return { success: false, error: identityCheck }
 
     // Create user with auto-confirm to bypass rate limits and verification
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({

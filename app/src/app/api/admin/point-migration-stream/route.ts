@@ -1,4 +1,5 @@
 import { legacyRoleLevelAtMost } from '@/lib/security-access/legacy-rules'
+import { resolveImportIdentity } from '@/lib/identity/import-resolution'
 import { guardUserOperation } from '@/lib/security-access/operation'
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
@@ -263,19 +264,19 @@ async function processRowOptimized(
         userPassword = defaultPassword;
     }
 
-    // Use cached user lookups instead of DB queries
-    let user = userCache.byPhone.get(normalizedPhone);
-    const emailUser = row.email ? userCache.byEmail.get(row.email.trim().toLowerCase()) : null;
-
-    // Conflict Check
-    if (user && emailUser && user.id !== emailUser.id) {
-        throw new Error(
-            `Data conflict: This phone number is already registered to a different user than this email.`
-        );
-    }
-
-    if (!user && emailUser) {
-        user = emailUser;
+    // One human = one central identity: the shared resolver decides (existing
+    // person reused; conflicting or unverified matches refused and recorded).
+    const resolved = await resolveImportIdentity(supabaseAdmin, row.email, normalizedPhone, null);
+    if (resolved.error) throw new Error(resolved.error);
+    let user: any = null;
+    if (resolved.userId) {
+        user = [userCache.byPhone.get(normalizedPhone), row.email ? userCache.byEmail.get(row.email.trim().toLowerCase()) : null]
+            .find((candidate: any) => candidate?.id === resolved.userId) || null;
+        if (!user) {
+            const { data: resolvedUser } = await supabaseAdmin.from("users").select("*").eq("id", resolved.userId).maybeSingle();
+            user = resolvedUser;
+        }
+        if (!user) throw new Error("This person has a login but no profile yet; the row was not imported.");
     }
 
     let isNewUser = false;
