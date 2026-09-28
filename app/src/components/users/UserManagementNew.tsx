@@ -2429,7 +2429,7 @@ export default function UserManagementNew({
                     <p className="font-medium mb-1">A history check will run before removal.</p>
                     <ul className="list-disc ml-4 space-y-0.5 text-xs">
                       <li>Users without business history are deleted permanently.</li>
-                      <li>Users with orders or documents are archived to protect history.</li>
+                      <li>Users with orders or documents are archived to protect history. Their email and phone stay reserved; reactivate them if they return.</li>
                       <li>Archived users cannot sign in; their original email and phone are released for reuse.</li>
                     </ul>
                   </div>

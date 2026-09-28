@@ -226,6 +226,11 @@ export async function setIdentityAccountStatus(actorId: string, userId: string, 
     p_actor: actorId, p_user: userId, p_status: status, p_reason: reason,
   })
   if (error) return mapIdentityDbError(error)
+  // Login follows the lifecycle: an archived identity cannot sign in; any
+  // other status lifts a previous archive ban (access itself is governed by
+  // account_status in the database and S&A).
+  const { error: banError } = await admin.auth.admin.updateUserById(userId, { ban_duration: status === 'ARCHIVED' ? '876000h' : 'none' })
+  if (banError) console.error('[identity] login ban could not be updated; account status still governs access', { userId })
   return { ok: true as const, status: data as string }
 }
 
