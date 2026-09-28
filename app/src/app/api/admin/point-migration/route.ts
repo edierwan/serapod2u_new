@@ -5,6 +5,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
+import { resolveImportIdentity } from '@/lib/identity/import-resolution'
 
 // Configure route to be dynamic
 export const dynamic = "force-dynamic";
@@ -219,32 +220,16 @@ async function processBatch(
         userPassword = defaultPassword;
       }
 
-      // 2. Find user by phone OR email separately to handle conflicts
-      const { data: phoneUsers } = await supabaseAdmin
-        .from("users")
-        .select("*")
-        .eq("phone", normalizedPhone);
-
-      let emailUser = null;
-      if (row.email) {
-        const { data: emailUsers } = await supabaseAdmin
-          .from("users")
-          .select("*")
-          .eq("email", row.email.trim());
-        emailUser = emailUsers?.[0];
-      }
-
-      let user = phoneUsers?.[0];
-
-      // Conflict Check
-      if (user && emailUser && user.id !== emailUser.id) {
-        throw new Error(
-          `Data conflict: This phone number is already registered to a different user than this email.`
-        );
-      }
-
-      if (!user && emailUser) {
-        user = emailUser;
+      // 2. One human = one central identity: the shared resolver decides
+      //    (existing person reused; conflicting or unverified matches refused
+      //    and recorded for review — never merged, never duplicated).
+      const resolved = await resolveImportIdentity(supabaseAdmin, row.email, normalizedPhone, createdBy || null);
+      if (resolved.error) throw new Error(resolved.error);
+      let user: any = null;
+      if (resolved.userId) {
+        const { data: resolvedUser } = await supabaseAdmin.from("users").select("*").eq("id", resolved.userId).maybeSingle();
+        user = resolvedUser;
+        if (!user) throw new Error("This person has a login but no profile yet; the row was not imported.");
       }
 
       // If user not found, create new user
