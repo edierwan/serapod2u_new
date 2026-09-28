@@ -15,13 +15,9 @@ import {
   Inbox,
   LayoutDashboard,
   LifeBuoy,
-  Mail,
   MapPin,
-  MessageCircle,
-  Navigation,
   Package,
   PackageCheck,
-  Phone,
   RefreshCw,
   RotateCcw,
   Search,
@@ -34,6 +30,7 @@ import {
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import OutdoorRequestsDesk from '@/components/outdoor/OutdoorRequestsDesk'
+import { EmailLogo, GoogleMapsLogo, PhoneCallLogo, WhatsAppLogo } from '@/components/outdoor/BrandIcons'
 import { hasShipmentDetails, isOwnDelivery } from '@/lib/storefront/delivery'
 import { UNPAID_ORDER_TTL_HOURS, unpaidOrderDeadline } from '@/lib/storefront/unpaid-order-deadline'
 
@@ -115,7 +112,7 @@ const ORDER_FILTERS: Array<{ value: string; label: string; icon: LucideIcon }> =
 ]
 
 const CONTACT_CHIP =
-  'inline-flex items-center gap-1 rounded-full border border-[var(--out-line)] px-2.5 py-1 text-[var(--out-burgundy)] hover:bg-[var(--out-ivory)]'
+  'inline-flex items-center gap-1.5 rounded-full border border-[var(--out-line)] bg-white px-2.5 py-1 text-[var(--out-ink)] shadow-sm transition hover:-translate-y-px hover:shadow'
 
 const TONE_CLASS: Record<Tone, string> = {
   amber: 'bg-amber-50 text-amber-800 ring-amber-200',
@@ -150,10 +147,21 @@ function statusBadge(status: string, missingDetails: boolean): { label: string; 
   }
 }
 
-function FooterNote({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+const NOTE_TONE: Record<Tone, string> = {
+  amber: 'bg-amber-100 text-amber-600',
+  green: 'bg-emerald-100 text-emerald-600',
+  blue: 'bg-sky-100 text-sky-600',
+  violet: 'bg-violet-100 text-violet-600',
+  grey: 'bg-slate-200 text-slate-500',
+  red: 'bg-red-100 text-red-600',
+}
+
+function FooterNote({ icon: Icon, tone, children }: { icon: LucideIcon; tone: Tone; children: ReactNode }) {
   return (
-    <p className="flex items-start gap-2 text-sm text-[var(--out-ink-soft)]">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--out-muted)]" aria-hidden />
+    <p className="flex items-center gap-2.5 text-sm text-[var(--out-ink-soft)]">
+      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${NOTE_TONE[tone]}`} aria-hidden>
+        <Icon className="h-4 w-4" />
+      </span>
       <span>{children}</span>
     </p>
   )
@@ -218,7 +226,7 @@ function OrderCard({
             </span>
             {o.paid_at ? (
               <span className="inline-flex items-center gap-1">
-                <CreditCard className="h-3.5 w-3.5" aria-hidden />
+                <CreditCard className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
                 Paid {when(o.paid_at)}
               </span>
             ) : null}
@@ -235,7 +243,7 @@ function OrderCard({
       <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
         <section>
           <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--out-muted)]">
-            <MapPin className="h-3.5 w-3.5" aria-hidden />
+            <MapPin className="h-3.5 w-3.5 text-red-500" aria-hidden />
             Deliver to
           </h3>
           <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium">
@@ -245,14 +253,20 @@ function OrderCard({
           {address ? <p className="mt-0.5 pl-5 text-sm text-[var(--out-ink-soft)]">{address}</p> : null}
           <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs font-medium">
             {o.customer_phone ? (
-              <a href={`tel:${o.customer_phone}`} className={CONTACT_CHIP}>
-                <Phone className="h-3.5 w-3.5" aria-hidden />
+              <a href={`tel:${o.customer_phone}`} className={CONTACT_CHIP} title="Call the customer">
+                <PhoneCallLogo />
                 {o.customer_phone}
               </a>
             ) : null}
             {phoneDigits ? (
-              <a href={`https://wa.me/${phoneDigits}`} target="_blank" rel="noreferrer" className={CONTACT_CHIP}>
-                <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+              <a
+                href={`https://wa.me/${phoneDigits}`}
+                target="_blank"
+                rel="noreferrer"
+                className={CONTACT_CHIP}
+                title="Chat on WhatsApp"
+              >
+                <WhatsAppLogo />
                 WhatsApp
               </a>
             ) : null}
@@ -262,14 +276,15 @@ function OrderCard({
                 target="_blank"
                 rel="noreferrer"
                 className={CONTACT_CHIP}
+                title="Get directions in Google Maps"
               >
-                <Navigation className="h-3.5 w-3.5" aria-hidden />
-                Open in Maps
+                <GoogleMapsLogo />
+                Google Maps
               </a>
             ) : null}
             {o.customer_email ? (
-              <a href={`mailto:${o.customer_email}`} className={CONTACT_CHIP}>
-                <Mail className="h-3.5 w-3.5" aria-hidden />
+              <a href={`mailto:${o.customer_email}`} className={CONTACT_CHIP} title="Send an email">
+                <EmailLogo email={o.customer_email} />
                 {o.customer_email}
               </a>
             ) : null}
@@ -278,7 +293,7 @@ function OrderCard({
 
         <section>
           <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--out-muted)]">
-            <ShoppingBag className="h-3.5 w-3.5" aria-hidden />
+            <ShoppingBag className="h-3.5 w-3.5 text-[var(--out-burgundy)]" aria-hidden />
             {items.length === 1 ? '1 item' : `${items.length} items`}
           </h3>
           <ul className="mt-1.5 space-y-1.5">
@@ -297,28 +312,28 @@ function OrderCard({
 
       <div className="border-t border-[var(--out-line)] bg-[var(--out-ivory)] px-5 py-4">
         {o.status === 'pending_payment' ? (
-          <FooterNote icon={Hourglass}>
+          <FooterNote icon={Hourglass} tone="amber">
             Waiting for the customer to pay.
             {deadline ? ` If it isn’t paid by ${when(deadline.toISOString())}, it cancels itself.` : ''}
           </FooterNote>
         ) : null}
 
         {o.status === 'payment_failed' ? (
-          <FooterNote icon={XCircle}>The payment didn’t go through. Nothing to send.</FooterNote>
+          <FooterNote icon={XCircle} tone="red">The payment didn’t go through. Nothing to send.</FooterNote>
         ) : null}
-        {o.status === 'cancelled' ? <FooterNote icon={Ban}>Cancelled. Nothing to send.</FooterNote> : null}
+        {o.status === 'cancelled' ? <FooterNote icon={Ban} tone="grey">Cancelled. Nothing to send.</FooterNote> : null}
         {o.status === 'refunded' ? (
-          <FooterNote icon={RotateCcw}>Refunded to the customer. Nothing to send.</FooterNote>
+          <FooterNote icon={RotateCcw} tone="blue">Refunded to the customer. Nothing to send.</FooterNote>
         ) : null}
         {o.status === 'delivered' ? (
-          <FooterNote icon={PackageCheck}>
+          <FooterNote icon={PackageCheck} tone="green">
             Delivered{ownDelivery ? ' by our team' : o.shipping_courier_name ? ` by ${o.shipping_courier_name}` : ''}. All done.
           </FooterNote>
         ) : null}
 
         {o.status === 'shipped' && !notSent ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <FooterNote icon={Truck}>
+            <FooterNote icon={Truck} tone="violet">
               {ownDelivery ? (
                 'On the way with our delivery team.'
               ) : (
@@ -742,8 +757,8 @@ export default function OutdoorFulfilmentClient() {
                     {new Date(m.created_at).toLocaleString()}
                   </p>
                 </div>
-                <a href={`mailto:${m.email}`} className="mt-1 inline-flex items-center gap-1.5 text-sm text-[var(--out-moss)] hover:underline">
-                  <Mail className="h-3.5 w-3.5" aria-hidden />
+                <a href={`mailto:${m.email}`} className={`mt-2 ${CONTACT_CHIP} text-sm`}>
+                  <EmailLogo email={m.email} />
                   {m.email}
                 </a>
                 <p className="mt-3 text-sm text-[var(--out-ink-soft)] whitespace-pre-wrap">{m.message}</p>
