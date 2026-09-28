@@ -8,6 +8,12 @@ UPDATE auth.users SET phone = '60129990012', phone_confirmed_at = now() WHERE id
 UPDATE public.users SET phone = '+60129990011' WHERE id = saf.uid('pu_a');
 UPDATE auth.users SET phone = '60129990011' WHERE id = saf.uid('whm_a1');                               -- would collide with pu_a
 UPDATE auth.users SET phone = '123' WHERE id = saf.uid('hr_a');                                        -- not normalizable
+-- Staging case (2026-09-29): A's login phone is held on B's profile, and B's own
+-- login phone differs, so B moves away during the run and frees it. A is
+-- processed first (ORDER BY id: dist_a < hq_b), exactly as on staging.
+UPDATE auth.users SET phone = '60129990031', phone_confirmed_at = now() WHERE id = saf.uid('dist_a');      -- A login X
+UPDATE public.users SET phone = '+60129990031' WHERE id = saf.uid('hq_b');                               -- B profile holds X
+UPDATE auth.users SET phone = '60129990032', phone_confirmed_at = now() WHERE id = saf.uid('hq_b');       -- B login Y
 
 DO $$
 DECLARE r jsonb; n_log integer;
@@ -21,6 +27,16 @@ BEGIN
     (SELECT phone_verified_at IS NOT NULL FROM public.users WHERE id = saf.uid('emp_a2')), true);
   PERFORM saf.expect_eq('S4 collision is skipped, never merged', (SELECT phone FROM public.users WHERE id = saf.uid('whm_a1')), NULL::text);
   PERFORM saf.expect_eq('S4 the other identity keeps its phone', (SELECT phone FROM public.users WHERE id = saf.uid('pu_a')), '+60129990011');
+  PERFORM saf.expect_eq('S4b a phone freed during the run is claimed by its login owner (converges)',
+    (SELECT phone FROM public.users WHERE id = saf.uid('dist_a')), '+60129990031');
+  PERFORM saf.expect_eq('S4b the former holder moved to its own login phone',
+    (SELECT phone FROM public.users WHERE id = saf.uid('hq_b')), '+60129990032');
+  PERFORM saf.expect_eq('S4b took more than one pass', (r->>'passes')::int >= 2, true);
+  PERFORM saf.expect_eq('S4b not reported as a collision',
+    (SELECT count(*) FROM public.sa_access_change_log WHERE action = 'identity.identifier_sync_skipped' AND target_user_id = saf.uid('dist_a'))::int, 0);
+  PERFORM saf.expect_eq('S4 a persistent collision is still reported once',
+    (SELECT count(*) FROM public.sa_access_change_log WHERE action = 'identity.identifier_sync_skipped' AND target_user_id = saf.uid('whm_a1')
+       AND details->>'reason' = 'collision')::int, 1);
   PERFORM saf.expect_eq('S5 unnormalizable login phone is skipped (no guessing)',
     (SELECT count(*) FROM public.sa_access_change_log WHERE action = 'identity.identifier_sync_skipped' AND target_user_id = saf.uid('hr_a')
        AND details->>'reason' = 'login_phone_not_normalizable')::int, 1);
