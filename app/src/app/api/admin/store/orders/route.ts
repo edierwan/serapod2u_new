@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
 import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
+import { getGatewayByProvider } from '@/lib/payments'
+import { refundStripeCheckout } from '@/lib/payments/stripe-refund'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -35,6 +37,25 @@ async function getAuthenticatedAdmin(supabase: any) {
 const orgScopeFilter = (orgId: string) => `organization_id.eq.${orgId},organization_id.is.null`
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const MONEY_TAKEN_STATUSES = ['paid', 'processing', 'shipped', 'delivered']
+
+function needsRefund(fromStatus: string, toStatus: string) {
+    return (toStatus === 'refunded' || toStatus === 'cancelled') && MONEY_TAKEN_STATUSES.includes(fromStatus)
+}
+
+function isStripeCheckout(order: { payment_provider?: string | null; payment_ref?: string | null }) {
+    return order.payment_provider === 'stripe' && String(order.payment_ref || '').startsWith('cs_')
+}
+
+function formatAmount(amount: unknown, currency: unknown) {
+    const code = String(currency || 'MYR').toUpperCase()
+    try {
+        return new Intl.NumberFormat('en-MY', { style: 'currency', currency: code }).format(Number(amount) || 0)
+    } catch {
+        return `${code} ${(Number(amount) || 0).toFixed(2)}`
+    }
+}
 
 // PostgREST or() filters are comma/parenthesis delimited; keep search text literal.
 const sanitizeSearch = (value: string) => value.replace(/[,()\\*%]/g, ' ').trim().slice(0, 100)
@@ -177,12 +198,46 @@ export async function PUT(request: NextRequest) {
 
         const { data: current } = await adminClient
             .from('storefront_orders')
-            .select('id, status, sales_channel, shipping_tracking_no, shipping_courier_name')
+            .select('id, order_ref, status, sales_channel, shipping_tracking_no, shipping_courier_name, payment_provider, payment_ref, total_amount, currency')
             .eq('id', id)
             .or(orgScopeFilter(admin.orgId))
             .maybeSingle()
         if (!current) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        }
+
+        // Refunding or cancelling an order the customer already paid for returns the money
+        // first; the status only changes once the refund went through.
+        let refundNote: string | null = null
+        if (needsRefund(current.status, status)) {
+            if (isStripeCheckout(current)) {
+                const gateway = await getGatewayByProvider('stripe')
+                const refund = await refundStripeCheckout({
+                    sessionId: String(current.payment_ref),
+                    secretKey: String((gateway?.credentials as Record<string, string> | undefined)?.secret_key || ''),
+                    orderId: id,
+                    orderRef: String(current.order_ref || id),
+                })
+                if (!refund.ok) {
+                    return NextResponse.json(
+                        { error: `Stripe did not return the money (${refund.error}). The order was not changed.` },
+                        { status: 502 },
+                    )
+                }
+                refundNote = refund.alreadyRefunded
+                    ? 'Payment was already refunded on Stripe'
+                    : `Refunded ${formatAmount(refund.amountCents != null ? refund.amountCents / 100 : current.total_amount, current.currency)} to the customer on Stripe${refund.refundId ? ` (${refund.refundId})` : ''}`
+            } else if (body.refundedOutside === true) {
+                refundNote = `Money returned outside the dashboard${current.payment_provider ? ` via ${current.payment_provider}` : ''} (confirmed by staff)`
+            } else {
+                return NextResponse.json(
+                    {
+                        error: `This order was paid with ${current.payment_provider || 'another method'}, so the money can't be returned from here. Refund it there first, then confirm.`,
+                        needsManualRefund: true,
+                    },
+                    { status: 409 },
+                )
+            }
         }
 
         // An Outdoor order only counts as shipped once we know how it left: our own
@@ -219,7 +274,13 @@ export async function PUT(request: NextRequest) {
             .maybeSingle()
 
         if (error) {
-            console.error('[admin/store/orders] PUT error:', error)
+            console.error('[admin/store/orders] PUT error:', error, refundNote ? `— after: ${refundNote}` : '')
+            if (refundNote) {
+                return NextResponse.json(
+                    { error: `${refundNote}, but the order status could not be saved. Try again — the customer will not be refunded twice.` },
+                    { status: 500 },
+                )
+            }
             throw error
         }
 
@@ -242,7 +303,7 @@ export async function PUT(request: NextRequest) {
             actorType: 'staff',
             actorId: admin.userId,
             actorLabel: await staffActorLabel(adminClient, admin.userId),
-            note: [shippingNote, 'Changed in dashboard'].filter(Boolean).join(' — '),
+            note: [shippingNote, refundNote, 'Changed in dashboard'].filter(Boolean).join(' — '),
         })
 
         return NextResponse.json({ order: data })

@@ -98,6 +98,18 @@ interface OrderEvent {
 }
 
 type ShipDetails = { deliveryMethod: 'own' } | { deliveryMethod: 'courier'; courierName: string; trackingNo: string }
+type UpdateExtra = ShipDetails | { refundedOutside?: boolean }
+
+const MONEY_TAKEN_STATUSES = ['paid', 'processing', 'shipped', 'delivered']
+
+/** Mirrors the server: refunding or cancelling a paid order sends the money back first. */
+function needsRefund(fromStatus: string, toStatus: string) {
+    return (toStatus === 'refunded' || toStatus === 'cancelled') && MONEY_TAKEN_STATUSES.includes(fromStatus)
+}
+
+function isStripeCheckout(order: { payment_provider?: string | null; payment_ref?: string | null }) {
+    return order.payment_provider === 'stripe' && String(order.payment_ref || '').startsWith('cs_')
+}
 
 /** The detail panel is portalled to <body>, outside `.sera-shell`, so it carries the shell palette itself. */
 const PORTAL_THEME = {
@@ -245,6 +257,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [statusFilter, setStatusFilter] = useState('all')
     const [channelFilter, setChannelFilter] = useState('all')
     const [shipForm, setShipForm] = useState<{ method: 'own' | 'courier'; courier: string; tracking: string } | null>(null)
+    const [refundAsk, setRefundAsk] = useState<'refunded' | 'cancelled' | null>(null)
     const [history, setHistory] = useState<OrderEvent[]>([])
     const [historyAvailable, setHistoryAvailable] = useState(true)
     const [historyRefresh, setHistoryRefresh] = useState(0)
@@ -315,7 +328,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const handleStatusUpdate = async (
         orderId: string,
         newStatus: string,
-        shipping?: ShipDetails,
+        shipping?: UpdateExtra,
     ) => {
         if (!shipping && !confirm(`Change order status to "${STATUS_CONFIG[newStatus]?.label || newStatus}"?`)) return
 
@@ -341,6 +354,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 setSelectedOrder(prev => prev ? { ...prev, ...data.order, storefront_order_items: prev.storefront_order_items } : null)
             }
             setShipForm(null)
+            setRefundAsk(null)
             setHistoryRefresh(n => n + 1)
         } catch (err: any) {
             setError(err.message)
@@ -357,6 +371,8 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
 
     useEffect(() => {
         setShipForm(null)
+        setRefundAsk(null)
+        if (selectedOrderRef) setError(null)
     }, [selectedOrderRef])
 
     const selectedOrderId = selectedOrder?.id
@@ -488,13 +504,21 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                         {transitions.map(nextStatus => (
                                             <button
                                                 key={nextStatus}
-                                                onClick={() => nextStatus === 'shipped'
-                                                    ? setShipForm({
-                                                        method: selectedOrder.shipping_tracking_no ? 'courier' : 'own',
-                                                        courier: selectedOrder.shipping_tracking_no ? selectedOrder.shipping_courier_name || '' : '',
-                                                        tracking: selectedOrder.shipping_tracking_no || '',
-                                                    })
-                                                    : handleStatusUpdate(selectedOrder.id, nextStatus)}
+                                                onClick={() => {
+                                                    if (nextStatus === 'shipped') {
+                                                        setRefundAsk(null)
+                                                        setShipForm({
+                                                            method: selectedOrder.shipping_tracking_no ? 'courier' : 'own',
+                                                            courier: selectedOrder.shipping_tracking_no ? selectedOrder.shipping_courier_name || '' : '',
+                                                            tracking: selectedOrder.shipping_tracking_no || '',
+                                                        })
+                                                    } else if (needsRefund(selectedOrder.status, nextStatus)) {
+                                                        setShipForm(null)
+                                                        setRefundAsk(nextStatus as 'refunded' | 'cancelled')
+                                                    } else {
+                                                        void handleStatusUpdate(selectedOrder.id, nextStatus)
+                                                    }
+                                                }}
                                                 disabled={updatingStatus}
                                                 className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-border hover:bg-accent hover:border-violet-300 dark:hover:border-violet-700 transition-colors disabled:opacity-50"
                                             >
@@ -582,6 +606,46 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                         </button>
                                     </div>
                                 </div>
+                            )}
+                            {refundAsk && (() => {
+                                const viaStripe = isStripeCheckout(selectedOrder)
+                                const amount = formatCurrency(selectedOrder.total_amount, selectedOrder.currency)
+                                const provider = selectedOrder.payment_provider || 'another payment method'
+                                return (
+                                    <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2 dark:border-amber-800 dark:bg-amber-950/30">
+                                        <p className="text-xs font-semibold text-foreground">
+                                            {refundAsk === 'refunded' ? `Refund ${amount} to the customer?` : `Cancel this order and refund ${amount}?`}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {viaStripe
+                                                ? 'The full amount goes back to the card or account they paid with, through Stripe. This can’t be undone. Banks usually show it within 5–10 business days.'
+                                                : `This order was paid with ${provider}, so the money can’t be sent back from here. Refund it in ${provider} first, then confirm to update the order.`}
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                onClick={() => handleStatusUpdate(selectedOrder.id, refundAsk, viaStripe ? {} : { refundedOutside: true })}
+                                                disabled={updatingStatus}
+                                                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--sera-orange,#f97316)] text-white disabled:opacity-50"
+                                            >
+                                                {updatingStatus
+                                                    ? viaStripe ? 'Refunding…' : 'Saving…'
+                                                    : viaStripe ? `Refund ${amount}` : 'I’ve refunded it — update the order'}
+                                            </button>
+                                            <button
+                                                onClick={() => setRefundAsk(null)}
+                                                disabled={updatingStatus}
+                                                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-accent"
+                                            >
+                                                Keep the order
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+                            {error && (
+                                <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                    {error}
+                                </p>
                             )}
                         </div>
 
