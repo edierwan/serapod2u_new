@@ -234,14 +234,57 @@ export async function easyParcelSubmitOrder(input: {
     ],
   })
   if (!result.ok) return result
+  return parseEasyParcelSubmitResponse(result.data)
+}
 
-  const first = Array.isArray(result.data?.data) ? result.data.data[0] : result.data?.data
+/**
+ * EasyParcel answers HTTP 200 even when a shipment is rejected; the real result is
+ * the per-shipment `status` and `errors`. Only a `success` shipment with a number exists.
+ */
+export function parseEasyParcelSubmitResponse(json: any):
+  | { ok: true; orderNo: string | null; awb: string | null; raw: any }
+  | { ok: false; error: string } {
+  const first = Array.isArray(json?.data) ? json.data[0] : json?.data
   const shipment = Array.isArray(first?.shipments) ? first.shipments[0] : first?.shipments
+  if (!shipment || shipment.status !== 'success' || !shipment.shipment_number) {
+    const errors = [shipment?.errors, first?.errors, json?.errors]
+      .flat()
+      .filter((e: unknown) => typeof e === 'string' && e.trim())
+      .map((e: string) => e.trim())
+    const reason = errors.length > 0 ? errors.join('; ') : String(json?.message || 'no shipment was created')
+    return { ok: false, error: `EasyParcel did not create the shipment: ${reason}` }
+  }
   return {
     ok: true,
-    orderNo: first?.order_details?.order_number || shipment?.shipment_number || null,
-    awb: shipment?.awb_number || shipment?.shipment_number || null,
-    raw: result.data,
+    orderNo: first?.order_details?.order_number || shipment.shipment_number,
+    awb: shipment.awb_number || null,
+    raw: json,
+  }
+}
+
+/** Wallet plus free credit in MYR, used to pay for shipments. */
+export async function easyParcelWalletBalance(): Promise<
+  | { ok: true; balance: number; freeCredit: number }
+  | { ok: false; error: string }
+> {
+  const token = await getEasyParcelAccessToken()
+  if (!token.ok) return token
+  try {
+    const res = await fetch(openApiUrl('/wallet'), {
+      headers: { Authorization: `Bearer ${token.token}` },
+      cache: 'no-store',
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok || !json?.data) {
+      return { ok: false, error: String(json?.message || `EasyParcel HTTP ${res.status}`) }
+    }
+    const sum = (list: any) =>
+      (Array.isArray(list) ? list : [])
+        .filter((w: any) => String(w?.currency || 'MYR').toUpperCase() === 'MYR')
+        .reduce((total: number, w: any) => total + (Number(w?.balance) || 0), 0)
+    return { ok: true, balance: sum(json.data.wallet), freeCredit: sum(json.data.free_credit_wallet) }
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'EasyParcel wallet check failed' }
   }
 }
 

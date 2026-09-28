@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
-import { easyParcelSubmitOrder, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import { easyParcelSubmitOrder, easyParcelWalletBalance, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
 import { isEasyParcelAppConfigured } from '@/lib/shipping/easyparcel-oauth'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
+
+/** Marked shipped, but no courier shipment or tracking number was ever recorded. */
+function isShippedWithoutShipment(order: any) {
+  return order?.status === 'shipped' && !order?.easyparcel_order_no && !String(order?.shipping_tracking_no || '').trim()
+}
 
 /** GET — Outdoor paid/processing orders for fulfilment desk. */
 export async function GET(request: NextRequest) {
@@ -46,10 +51,12 @@ export async function GET(request: NextRequest) {
     }
 
     const connected = await isEasyParcelConfigured()
+    const wallet = connected ? await easyParcelWalletBalance() : null
     return NextResponse.json({
       orders: data || [],
       easyParcelConfigured: connected,
       easyParcelNeedsConnect: isEasyParcelAppConfigured() && !connected,
+      easyParcelCredit: wallet?.ok ? wallet.balance + wallet.freeCredit : null,
     })
   } catch (err) {
     console.error('[outdoor/fulfilment] GET', err)
@@ -122,7 +129,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === 'ship_easyparcel') {
-      if (!['paid', 'processing'].includes(order.status)) {
+      if (!['paid', 'processing'].includes(order.status) && !isShippedWithoutShipment(order)) {
         return NextResponse.json({ error: 'Order must be paid or processing' }, { status: 400 })
       }
       const serviceId = String(body.serviceId || order.shipping_service_id || '').trim()
@@ -131,6 +138,13 @@ export async function PUT(request: NextRequest) {
       }
       if (!(await isEasyParcelConfigured())) {
         return NextResponse.json({ error: 'EasyParcel is not configured' }, { status: 503 })
+      }
+      const wallet = await easyParcelWalletBalance()
+      if (wallet.ok && wallet.balance + wallet.freeCredit <= 0) {
+        return NextResponse.json(
+          { error: 'EasyParcel credit is RM 0.00. Top up in EasyParcel, then ship again.' },
+          { status: 402 },
+        )
       }
 
       const addr = order.shipping_address || {}

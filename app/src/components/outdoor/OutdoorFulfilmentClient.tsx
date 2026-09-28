@@ -64,6 +64,7 @@ export default function OutdoorFulfilmentClient() {
   const [messages, setMessages] = useState<ContactMessage[]>([])
   const [easyParcelConfigured, setEasyParcelConfigured] = useState(false)
   const [easyParcelNeedsConnect, setEasyParcelNeedsConnect] = useState(false)
+  const [easyParcelCredit, setEasyParcelCredit] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -84,6 +85,7 @@ export default function OutdoorFulfilmentClient() {
     setOrders(data.orders || [])
     setEasyParcelConfigured(Boolean(data.easyParcelConfigured))
     setEasyParcelNeedsConnect(Boolean(data.easyParcelNeedsConnect))
+    setEasyParcelCredit(typeof data.easyParcelCredit === 'number' ? data.easyParcelCredit : null)
   }, [search, orderStatus])
 
   const loadInbox = useCallback(async () => {
@@ -246,7 +248,9 @@ export default function OutdoorFulfilmentClient() {
           <p className="text-xs text-[var(--out-muted)]">
             EasyParcel:{' '}
             {easyParcelConfigured
-              ? 'connected'
+              ? easyParcelCredit == null
+                ? 'connected'
+                : <>connected · credit <span className={easyParcelCredit <= 0 ? 'font-semibold text-red-600' : ''}>{money(easyParcelCredit)}</span></>
               : easyParcelNeedsConnect
                 ? 'app ready — connect account'
                 : 'not configured (manual tracking OK)'}
@@ -295,6 +299,8 @@ export default function OutdoorFulfilmentClient() {
           {orders.map((o) => {
             const addr = o.shipping_address || {}
             const busy = busyId === o.id
+            const notSent = o.status === 'shipped' && !o.easyparcel_order_no && !o.shipping_tracking_no?.trim()
+            const canShip = ['paid', 'processing'].includes(o.status) || notSent
             return (
               <li key={o.id} className="rounded-xl border border-[var(--out-line)] bg-white p-5">
                 <div className="flex flex-wrap justify-between gap-3">
@@ -316,6 +322,14 @@ export default function OutdoorFulfilmentClient() {
                 {o.shipping_tracking_no ? (
                   <p className="mt-1 text-sm font-medium">Tracking: {o.shipping_tracking_no}</p>
                 ) : null}
+                {o.easyparcel_order_no ? (
+                  <p className="mt-1 text-xs text-[var(--out-muted)]">EasyParcel: {o.easyparcel_order_no}</p>
+                ) : null}
+                {notSent ? (
+                  <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    Marked shipped, but no courier shipment was created. Ship it via EasyParcel or add a tracking number.
+                  </p>
+                ) : null}
                 <ul className="mt-3 text-sm text-[var(--out-muted)] space-y-1">
                   {(o.storefront_order_items || []).map((i) => (
                     <li key={i.id}>
@@ -334,7 +348,7 @@ export default function OutdoorFulfilmentClient() {
                       Mark packing
                     </button>
                   ) : null}
-                  {['paid', 'processing'].includes(o.status) && o.shipping_service_id && easyParcelConfigured ? (
+                  {canShip && o.shipping_service_id && easyParcelConfigured ? (
                     <button
                       type="button"
                       disabled={busy}
@@ -344,7 +358,7 @@ export default function OutdoorFulfilmentClient() {
                       Ship via EasyParcel
                     </button>
                   ) : null}
-                  {['paid', 'processing'].includes(o.status) ? (
+                  {canShip ? (
                     <div className="flex flex-wrap gap-2 items-center">
                       <input
                         value={trackingDraft[o.id] || ''}
@@ -364,7 +378,7 @@ export default function OutdoorFulfilmentClient() {
                       </button>
                     </div>
                   ) : null}
-                  {o.status === 'shipped' ? (
+                  {o.status === 'shipped' && !notSent ? (
                     <button
                       type="button"
                       disabled={busy}
