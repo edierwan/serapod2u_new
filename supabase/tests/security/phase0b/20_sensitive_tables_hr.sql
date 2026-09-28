@@ -155,10 +155,13 @@ BEGIN
     'SELECT count(*) FROM public.points_transactions', 4);
   PERFORM phase0b_test.expect_count('other company staff see none of company A', 'authenticated', phase0b_test.uid('staff_b'),
     format('SELECT count(*) FROM public.points_transactions WHERE company_id = %L', phase0b_test.org('hq_a')), 0);
-  PERFORM phase0b_test.expect_ok('shop records a redemption debit (ShopCatalogPage)', 'authenticated', phase0b_test.uid('shop_a'),
+  -- Since 20260929130000 redemption debits are server-only
+  -- (public.consumer_reward_claim); a shop-linked account can no longer insert
+  -- one through the API.
+  PERFORM phase0b_test.expect_denied('shop cannot record a redemption debit directly', 'authenticated', phase0b_test.uid('shop_a'),
     format('INSERT INTO public.points_transactions (company_id, consumer_phone, transaction_type, points_amount, balance_after, redeem_item_id) VALUES (%L, %L, %L, -100, 0, %L)',
            phase0b_test.org('hq_a'), '+60110000005', 'redeem', '00000000-0000-0000-0000-0000000e0001'));
-  PERFORM phase0b_test.expect_ok('shop redemption with its own shop org as company_id (real ShopCatalogPage shape)', 'authenticated', phase0b_test.uid('shop_a'),
+  PERFORM phase0b_test.expect_denied('shop cannot record a redemption debit on its own shop org either', 'authenticated', phase0b_test.uid('shop_a'),
     format('INSERT INTO public.points_transactions (company_id, consumer_phone, transaction_type, points_amount, balance_after, redeem_item_id) VALUES (%L, %L, %L, -100, 0, %L)',
            phase0b_test.org('shop_a'), '+60110000005', 'redeem', '00000000-0000-0000-0000-0000000e0001'));
   PERFORM phase0b_test.expect_denied('shop cannot mint points under its own shop org', 'authenticated', phase0b_test.uid('shop_a'),
