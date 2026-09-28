@@ -4,9 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Eye } from 'lucide-react'
 import type { StorefrontProduct } from '@/lib/storefront/products'
+import { isSellablePrice } from '@/lib/storefront/price-rules'
 
 function formatPrice(price: number | null) {
-  if (price == null || price <= 0) return 'Currently unavailable'
+  if (price == null || !isSellablePrice(price)) return 'Currently unavailable'
   return `RM ${price.toFixed(2)}`
 }
 

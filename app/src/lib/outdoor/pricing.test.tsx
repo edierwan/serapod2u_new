@@ -12,6 +12,11 @@ describe('outdoor pricing visibility', () => {
     expect(isOutdoorPriced({ display_price: 0, starting_price: null })).toBe(false)
   })
 
+  it('hides products priced below what the gateway can charge', () => {
+    expect(isOutdoorPriced({ display_price: 0.1, starting_price: 0.1 })).toBe(false)
+    expect(hasPricedVariant([{ suggested_retail_price: 0.1 }])).toBe(false)
+  })
+
   it('keeps a product page when at least one option has a price', () => {
     expect(hasPricedVariant([{ suggested_retail_price: 0 }, { suggested_retail_price: 120 }])).toBe(true)
     expect(hasPricedVariant([{ suggested_retail_price: 0 }, { suggested_retail_price: null }])).toBe(false)

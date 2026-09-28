@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { Check, Minus, Plus } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { OUTDOOR_BUY_NOW_CHECKOUT, saveOutdoorBuyNow } from '@/lib/outdoor/buy-now'
+import { isSellablePrice } from '@/lib/storefront/price-rules'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
 import { outdoorColorFromText, outdoorFallbackSwatches, outdoorProductKind, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
 import { useRouter } from 'next/navigation'
 
 function formatPrice(price: number | null) {
-  if (price == null || price <= 0) return 'Currently unavailable'
+  if (price == null || !isSellablePrice(price)) return 'Currently unavailable'
   return `RM ${price.toFixed(2)}`
 }
 
@@ -110,8 +111,10 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     ? selected.suggested_retail_price
     : defaultVariant?.suggested_retail_price ?? null
 
+  const canBuy = isSellablePrice(productPrice)
+
   const lineItem = () =>
-    selected && productPrice && productPrice > 0
+    selected && productPrice && canBuy
       ? {
           productId: product.id,
           variantId: selected.id,
@@ -229,7 +232,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             <button
               type="button"
               onClick={handleAddToBag}
-              disabled={!productPrice || productPrice <= 0 || adding}
+              disabled={!canBuy || adding}
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-2 border-[var(--out-bark)] text-sm font-semibold text-[var(--out-bark)] transition-colors hover:bg-[var(--out-bark)] hover:text-[var(--out-cream)] disabled:opacity-40"
             >
               {added ? (
@@ -244,7 +247,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           <button
             type="button"
             onClick={handleBuy}
-            disabled={!productPrice || productPrice <= 0 || adding}
+            disabled={!canBuy || adding}
             className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
           >
             Buy Now

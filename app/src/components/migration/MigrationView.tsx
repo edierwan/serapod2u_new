@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import Papa from 'papaparse'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { retailPriceError } from '@/lib/storefront/price-rules'
 
 interface MigrationViewProps {
   userProfile: any
@@ -404,6 +405,12 @@ export default function MigrationView({ userProfile }: MigrationViewProps) {
 
                 if (existingProduct) {
                   throw new Error(`Row ${rowNum}: Product code "${productCode}" already exists for "${existingProduct.product_name}".`)
+                }
+
+                const importPrice = parseFloat(row['Retail Price (RM)*'])
+                const importPriceError = retailPriceError(Number.isFinite(importPrice) ? importPrice : null)
+                if (importPriceError) {
+                  throw new Error(`Row ${rowNum}: ${importPriceError}`)
                 }
 
                 // Parse is_vape

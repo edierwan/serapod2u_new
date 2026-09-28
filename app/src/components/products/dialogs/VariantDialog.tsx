@@ -28,6 +28,7 @@ import {
   normalizeProductCode,
   validateProductCode,
 } from '@/lib/products/product-code'
+import { retailPriceError } from '@/lib/storefront/price-rules'
 import { cleanAlternativeName } from '@/lib/products/alternative-name'
 import VariantStockConfigurationsPanel from '@/components/products/VariantStockConfigurationsPanel'
 import KkmApprovalCertificate from '@/components/products/KkmApprovalCertificate'
@@ -301,6 +302,8 @@ export default function VariantDialog({
     if (!validateStructuredAttributes(structuredAttributes).isValid) e.attributes = 'Please fix the Additional Attributes errors.'
     const productCodeError = validateProductCode(formData.product_code)
     if (productCodeError) e.product_code = productCodeError
+    const priceError = retailPriceError(formData.suggested_retail_price)
+    if (priceError) e.suggested_retail_price = priceError
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -600,7 +603,8 @@ export default function VariantDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="retailPrice">Retail Price (RM)</Label>
-              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="retailPrice" type="number" step="0.01" placeholder="0.00" value={formData.suggested_retail_price ?? ''} onChange={(e) => setFormData((p) => ({ ...p, suggested_retail_price: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
+              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="retailPrice" type="number" step="0.01" placeholder="0.00" value={formData.suggested_retail_price ?? ''} onChange={(e) => { setFormData((p) => ({ ...p, suggested_retail_price: e.target.value ? parseFloat(e.target.value) : null })); if (errors.suggested_retail_price) setErrors((p) => ({ ...p, suggested_retail_price: '' })) }} className={`flex-1 ${errors.suggested_retail_price ? 'border-red-500' : ''}`} aria-invalid={Boolean(errors.suggested_retail_price)} /></div>
+              {errors.suggested_retail_price && <p className="text-xs text-red-500">{errors.suggested_retail_price}</p>}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

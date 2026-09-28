@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
+import { MIN_ORDER_TOTAL, customerPaymentError, isSellablePrice } from '@/lib/storefront/price-rules'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
 import { easyParcelRateCheck, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
@@ -169,9 +170,9 @@ export async function POST(request: NextRequest) {
         )
       }
       const unitPrice = variant.suggested_retail_price || 0
-      if (unitPrice <= 0) {
+      if (!isSellablePrice(unitPrice)) {
         return NextResponse.json(
-          { error: `${variant.variant_name} does not have a valid price` },
+          { error: `${variant.products?.product_name || variant.variant_name} is not available to buy online right now.` },
           { status: 400 },
         )
       }
@@ -227,6 +228,12 @@ export async function POST(request: NextRequest) {
       }
     }
     const payableTotal = orderTotal + shippingAmount
+    if (payableTotal < MIN_ORDER_TOTAL) {
+      return NextResponse.json(
+        { error: `The order total must be at least RM ${MIN_ORDER_TOTAL.toFixed(2)} to pay online.` },
+        { status: 400 },
+      )
+    }
 
     // ── 3. Generate order reference ──────────────────────────────
     const orderRef = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
@@ -361,7 +368,7 @@ export async function POST(request: NextRequest) {
         .eq('id', order.id)
 
       return NextResponse.json(
-        { error: paymentResult.error || 'Payment gateway error' },
+        { error: customerPaymentError(paymentResult.error) },
         { status: 502 },
       )
     }

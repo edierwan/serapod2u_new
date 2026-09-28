@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
+import { customerPaymentError } from '@/lib/storefront/price-rules'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 
 function normalizeEmail(value: unknown) {
@@ -75,7 +76,8 @@ export async function POST(request: NextRequest) {
     )
 
     if (!paymentResult.success) {
-      return NextResponse.json({ error: paymentResult.error || 'Payment gateway error' }, { status: 502 })
+      console.error('[storefront/resume-payment] gateway error:', paymentResult.error)
+      return NextResponse.json({ error: customerPaymentError(paymentResult.error) }, { status: 502 })
     }
 
     await admin.from('storefront_orders').update({

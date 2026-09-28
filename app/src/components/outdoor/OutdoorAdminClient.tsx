@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import StorefrontProductCard from '@/components/storefront/ProductCard'
 import type { StorefrontProduct } from '@/lib/storefront/products'
 import { isOutdoorPriced } from '@/lib/outdoor/pricing'
+import { MIN_RETAIL_PRICE } from '@/lib/storefront/price-rules'
 import '@/app/store/store.css'
 
 export default function OutdoorAdminClient() {
@@ -47,7 +48,7 @@ export default function OutdoorAdminClient() {
       </p>
       {unpriced > 0 ? (
         <p className="mt-4 max-w-2xl rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {unpriced} product{unpriced === 1 ? ' has' : 's have'} no price, so {unpriced === 1 ? 'it is' : 'they are'} hidden from the shop. Add a price in the main admin to show {unpriced === 1 ? 'it' : 'them'}.
+          {unpriced} product{unpriced === 1 ? ' has' : 's have'} no price or a price under RM {MIN_RETAIL_PRICE.toFixed(2)}, so {unpriced === 1 ? 'it is' : 'they are'} hidden from the shop. Set the retail price in the main admin to show {unpriced === 1 ? 'it' : 'them'}.
         </p>
       ) : null}
       {error ? <p className="mt-6 text-sm text-red-600">{error}</p> : null}
