@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import StorefrontProductCard from '@/components/storefront/ProductCard'
 import type { StorefrontProduct } from '@/lib/storefront/products'
+import { isOutdoorPriced } from '@/lib/outdoor/pricing'
 import '@/app/store/store.css'
 
 export default function OutdoorAdminClient() {
@@ -32,6 +33,8 @@ export default function OutdoorAdminClient() {
     void load()
   }, [])
 
+  const unpriced = products.filter((product) => !isOutdoorPriced(product)).length
+
   if (allowed === null) return <div className="mx-auto max-w-6xl px-5 py-16 text-sm text-[var(--out-muted)]">Loading…</div>
   if (!allowed) return <div className="mx-auto max-w-6xl px-5 py-16 text-sm text-[var(--out-bark)]">This desk is for Outdoor staff.</div>
 
@@ -42,6 +45,11 @@ export default function OutdoorAdminClient() {
       <p className="mt-2 max-w-2xl text-sm text-[var(--out-muted)]">
         {subscribers} newsletter subscriber{subscribers === 1 ? '' : 's'}. Products are added and edited in the main admin. These are the same cards as the main shop.
       </p>
+      {unpriced > 0 ? (
+        <p className="mt-4 max-w-2xl rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {unpriced} product{unpriced === 1 ? ' has' : 's have'} no price, so {unpriced === 1 ? 'it is' : 'they are'} hidden from the shop. Add a price in the main admin to show {unpriced === 1 ? 'it' : 'them'}.
+        </p>
+      ) : null}
       {error ? <p className="mt-6 text-sm text-red-600">{error}</p> : null}
       <div className="sera-store mt-10 bg-transparent">
         {products.length === 0 ? <p className="text-sm text-[var(--out-muted)]">No outdoor products yet.</p> : null}

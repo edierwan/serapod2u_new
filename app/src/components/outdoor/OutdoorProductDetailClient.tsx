@@ -10,7 +10,7 @@ import { outdoorColorFromText, outdoorFallbackSwatches, outdoorProductKind, outd
 import { useRouter } from 'next/navigation'
 
 function formatPrice(price: number | null) {
-  if (price == null || price <= 0) return 'Price on request'
+  if (price == null || price <= 0) return 'Currently unavailable'
   return `RM ${price.toFixed(2)}`
 }
 

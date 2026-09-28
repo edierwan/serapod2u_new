@@ -6,7 +6,7 @@ import { Eye } from 'lucide-react'
 import type { StorefrontProduct } from '@/lib/storefront/products'
 
 function formatPrice(price: number | null) {
-  if (price == null || price <= 0) return 'Price on request'
+  if (price == null || price <= 0) return 'Currently unavailable'
   return `RM ${price.toFixed(2)}`
 }
 

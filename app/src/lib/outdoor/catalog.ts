@@ -7,6 +7,7 @@ import {
   outdoorStaticImage,
 } from "@/lib/outdoor/merch";
 import { getStorageUrl } from "@/lib/utils";
+import { hasPricedVariant, isOutdoorPriced } from "@/lib/outdoor/pricing";
 import {
   listProducts,
   listCategories,
@@ -116,6 +117,8 @@ export async function listOutdoorProducts(params: {
   sort?: "newest" | "price_asc" | "price_desc" | "name_asc";
   page?: number;
   limit?: number;
+  /** Staff views list products without a price too; shoppers never see them. */
+  includeUnpriced?: boolean;
 }): Promise<{
   products: StorefrontProduct[];
   total: number;
@@ -126,6 +129,8 @@ export async function listOutdoorProducts(params: {
   const scope = await resolveOutdoorCatalogScope();
   const page = params.page || 1;
   const limit = params.limit || 48;
+  const shown = (list: StorefrontProduct[]) =>
+    params.includeUnpriced ? list : list.filter(isOutdoorPriced);
 
   if (scope.matchedBy === "none") {
     return { products: [], total: 0, page, limit, scope };
@@ -175,7 +180,7 @@ export async function listOutdoorProducts(params: {
     } else if (params.sort === "name_asc") {
       products.sort((a, b) => a.product_name.localeCompare(b.product_name));
     }
-    const merged = await withOutdoorStoreProducts(products, limit);
+    const merged = shown(await withOutdoorStoreProducts(products, limit));
     products = merged.slice(0, limit).map(withOutdoorAppearance);
     return { products, total: products.length, page: 1, limit, scope };
   }
@@ -198,7 +203,7 @@ export async function listOutdoorProducts(params: {
     return isOutdoorName(p.category_name) || isOutdoorName(p.brand_name);
   });
 
-  const merged = await withOutdoorStoreProducts(products, limit);
+  const merged = shown(await withOutdoorStoreProducts(products, limit));
   return {
     products: merged.slice(0, limit).map(withOutdoorAppearance),
     total: merged.length,
@@ -274,6 +279,7 @@ export async function getOutdoorProductDetail(
   const variants = product.variants.filter(
     (variant) => !variant.attributes?.outdoor_only_variant,
   );
+  if (!hasPricedVariant(variants)) return null;
   const priced = {
     ...product,
     image_url: await productPhoto(productId, variants),

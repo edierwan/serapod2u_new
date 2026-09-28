@@ -7,7 +7,7 @@ import { countOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
 const MASTER_ONLY = 'Products are managed in the main admin. Outdoor shows those products.'
 
 async function loadShopProducts() {
-  const { products } = await listOutdoorProducts({ sort: 'name_asc', limit: 48 })
+  const { products } = await listOutdoorProducts({ sort: 'name_asc', limit: 48, includeUnpriced: true })
   return products
 }
 
