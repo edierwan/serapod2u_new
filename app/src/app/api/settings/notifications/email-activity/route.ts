@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { emailProviderBlockedByUiTest } from '@/lib/notifications/emailProviderReady'
+import { isCanonicalStaff } from '@/lib/identity/staff'
 import {
   emailOrderFields,
   extractEmailBody,
@@ -56,7 +57,7 @@ function applyProviderTestFailure(
 async function canViewEmailMonitor(supabase: any, userId: string) {
   const { data } = await supabase
     .from('users')
-    .select('organization_id, roles:role_code(role_level, role_code), organizations:organization_id(org_type_code)')
+    .select('organization_id, is_active, account_status, principal_type, roles:role_code(role_level, role_code), organizations:organization_id(org_type_code)')
     .eq('id', userId)
     .single()
 
@@ -64,8 +65,10 @@ async function canViewEmailMonitor(supabase: any, userId: string) {
   const org = Array.isArray(data?.organizations) ? data.organizations[0] : data?.organizations
   const roleLevel = Number(role?.role_level)
   const roleCode = String(role?.role_code || '')
+  // Only canonical internal staff; the legacy level is a ceiling, not proof.
+  if (!isCanonicalStaff(data, roleLevel, 40)) return false
   if (roleLevel <= 20 || ['super_admin', 'admin', 'org_admin'].includes(roleCode)) return true
-  return org?.org_type_code === 'HQ' && roleLevel > 0 && roleLevel <= 40
+  return org?.org_type_code === 'HQ'
 }
 
 async function resolveEmailOrgIds(admin: any, userOrgId: string | null) {

@@ -75,7 +75,14 @@ BEGIN
          'email', 'hr.created@saf.test', 'organization_id', saf.org('hq_a'), 'authorizing_permission', 'hr.employee.manage',
          'employment_type', 'Full-time', 'created_identity', true, 'source', 'hr'));
   PERFORM saf.expect_eq('P4 HR manager provisions a baseline employee', r->>'outcome', 'CREATED');
-  PERFORM saf.expect_eq('P4 baseline role only', r->>'legacy_role_code', 'USER');
+  PERFORM saf.expect_eq('P4 HR onboarding grants no authority (no-authority legacy code, never USER/"staff")', r->>'legacy_role_code', 'GUEST');
+  PERFORM saf.expect_eq('P4 baseline employee role only',
+    (SELECT string_agg(br.role_key, ',' ORDER BY br.role_key) FROM public.sa_role_assignments a
+       JOIN public.sa_business_roles br ON br.id = a.role_id WHERE a.user_id = idt.new_uid(23) AND a.status = 'active'
+         AND br.source <> 'legacy'), 'employee-self-service');
+  PERFORM saf.expect_eq('P4 principal INTERNAL_EMPLOYEE with membership',
+    (SELECT u.principal_type || ':' || count(m.*) FROM public.users u LEFT JOIN public.sa_organization_memberships m
+       ON m.user_id = u.id AND m.status = 'active' WHERE u.id = idt.new_uid(23) GROUP BY u.principal_type), 'INTERNAL_EMPLOYEE:1');
 
   PERFORM saf.expect_raise('P5 HR/department caller cannot create a Super Admin',
     format('select idt.provision(%L, idt.auth_user(24, %L), %L::jsonb)', saf.uid('hr_a'), 'sa.attempt@saf.test',

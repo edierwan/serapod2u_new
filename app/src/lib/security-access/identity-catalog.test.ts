@@ -11,6 +11,7 @@ const read = (f: string) => readFileSync(resolve(migrations, f), 'utf8')
 const foundation = read('20260929110000_identity_foundation.sql')
 const decisions = read('20260929100000_sa_decisions_history_survives_user_deletion.sql')
 const guard = read('20260929120000_identity_protected_fields_guard.sql')
+const closure = read('20260929130000_identity_stage1_closure.sql')
 
 describe('Identity catalog ↔ migration lock-step', () => {
   it('seeds exactly the TypeScript identity permissions with the same sensitivity', () => {
@@ -110,5 +111,38 @@ describe('Identity Foundation migration contracts', () => {
     expect(foundation).not.toMatch(/unique\s*\(\s*(email|phone|email_normalized)/i)
     expect(foundation).toMatch(/IDENTITY_CONFLICT/)
     expect(foundation).toMatch(/no silent merge/i)
+  })
+})
+
+describe('Identity Stage 1 closure migration contracts', () => {
+  it('defines staff canonically: internal employee + S&A membership + non-baseline assignment; level only a ceiling', () => {
+    const fn = closure.slice(closure.indexOf('create or replace function public.sa_actor_is_staff'), closure.indexOf('create or replace function public.sa_actor_is_supply_partner'))
+    expect(fn).toContain("u.principal_type = 'INTERNAL_EMPLOYEE'")
+    expect(fn).toContain("u.account_status in ('ACTIVE', 'INVITED')")
+    expect(fn).toContain('public.sa_organization_memberships m')
+    expect(fn).toContain("br.role_key <> 'employee-self-service'")
+    expect(fn).toMatch(/r\.role_level <= p_max_role_level\s+-- compatibility ceiling only/)
+  })
+
+  it('gives supply partners only the six operational read policies', () => {
+    const block = closure.slice(closure.indexOf('do $partner$'), closure.indexOf('$partner$;'))
+    for (const [t, p] of [['qr_codes', 'sa_staff_read'], ['qr_batches', 'sa_staff_read'], ['qr_master_codes', 'sa_staff_read'],
+      ['qr_movements', 'sa_scoped_staff_read'], ['stock_movements', 'stock_movements_view_all'], ['stock_transfers', 'stock_transfers_view_all']]) {
+      expect(block).toContain(`('${t}', '${p}')`)
+    }
+    expect(closure).toMatch(/supply-partner access must be read-only/)
+  })
+
+  it('onboards HR/department employees with the no-authority legacy code, never USER or "staff"', () => {
+    expect(closure).toContain("v_baseline := case when v_perm = 'hr.employee.manage' and v_principal <> 'CONSUMER' then 'GUEST'")
+    expect(closure).not.toMatch(/'staff'/)
+  })
+
+  it('adds exactly the application audit actions and keeps the list closed', () => {
+    expect(closure).toContain("array['INSERT'::text, 'UPDATE'::text, 'DELETE'::text,\n                      'PASSWORD_RESET'::text, 'BULK_ENABLE_STOCK_CONFIGURATIONS'::text]")
+  })
+
+  it('changes no migration mode', () => {
+    expect(closure).not.toMatch(/update\s+public\.sa_migration_modes/i)
   })
 })
