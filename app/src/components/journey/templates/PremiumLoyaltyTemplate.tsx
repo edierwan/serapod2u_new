@@ -1218,6 +1218,9 @@ export default function PremiumLoyaltyTemplate({
     const [selectedReward, setSelectedReward] = useState<RewardItem | null>(null)
     const [showRedeemConfirm, setShowRedeemConfirm] = useState(false)
     const [redeeming, setRedeeming] = useState(false)
+    // One idempotency key per confirmation: a retry of the same confirmation
+    // returns the original result instead of redeeming twice.
+    const redeemRequestKeyRef = useRef<string | null>(null)
     const [redeemError, setRedeemError] = useState('')
     const [showRedeemSuccess, setShowRedeemSuccess] = useState(false)
     const [redemptionDetails, setRedemptionDetails] = useState<{
@@ -4663,13 +4666,16 @@ export default function PremiumLoyaltyTemplate({
         }
 
         // Show confirmation
+        redeemRequestKeyRef.current = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
         setSelectedReward(reward)
         setShowRedeemConfirm(true)
     }
 
     // Confirm and process redemption
     const confirmRedemption = async () => {
-        if (!selectedReward) return
+        if (!selectedReward || redeeming) return
 
         setRedeeming(true)
         setRedeemError('')
@@ -4679,7 +4685,8 @@ export default function PremiumLoyaltyTemplate({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    reward_id: selectedReward.id
+                    reward_id: selectedReward.id,
+                    request_key: redeemRequestKeyRef.current
                 })
             })
 
