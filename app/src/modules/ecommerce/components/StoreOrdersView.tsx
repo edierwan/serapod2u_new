@@ -67,9 +67,43 @@ interface StorefrontOrder {
     payment_ref: string | null
     paid_at: string | null
     organization_id: string | null
+    sales_channel?: string | null
+    shipping_amount?: number | null
+    shipping_courier_name?: string | null
+    shipping_tracking_no?: string | null
+    easyparcel_order_no?: string | null
     created_at: string
     updated_at: string
     storefront_order_items: StorefrontOrderItem[]
+}
+
+interface CourierEvent {
+    status: string
+    date: string | null
+    location: string | null
+}
+
+const CHANNEL_OPTIONS = [
+    { value: 'all', label: 'All stores' },
+    { value: 'outdoor', label: 'Outdoor' },
+    { value: 'store', label: 'Store' },
+]
+
+const COURIER_SUGGESTIONS = [
+    'J&T Express',
+    'Pos Laju',
+    'DHL eCommerce',
+    'Ninja Van',
+    'City-Link Express',
+    'GDEX',
+    'SPX Express',
+    'Flash Express',
+    'Skynet',
+    'Aramex',
+]
+
+function isOutdoorOrder(order: Pick<StorefrontOrder, 'sales_channel'>) {
+    return order.sales_channel === 'outdoor'
 }
 
 interface StoreOrdersViewProps {
@@ -181,6 +215,11 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [statusFilter, setStatusFilter] = useState('all')
+    const [channelFilter, setChannelFilter] = useState('all')
+    const [shipForm, setShipForm] = useState<{ courier: string; tracking: string } | null>(null)
+    const [courierEvents, setCourierEvents] = useState<CourierEvent[]>([])
+    const [courierLatest, setCourierLatest] = useState<string | null>(null)
+    const [courierLoading, setCourierLoading] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
     const [page, setPage] = useState(1)
@@ -212,6 +251,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             params.set('page', String(page))
             params.set('limit', '25')
             if (statusFilter !== 'all') params.set('status', statusFilter)
+            if (channelFilter !== 'all') params.set('salesChannel', channelFilter)
             if (debouncedSearch) params.set('search', debouncedSearch)
 
             const res = await fetch(`/api/admin/store/orders?${params.toString()}`)
@@ -229,14 +269,18 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
         } finally {
             setLoading(false)
         }
-    }, [page, statusFilter, debouncedSearch])
+    }, [page, statusFilter, channelFilter, debouncedSearch])
 
     useEffect(() => { fetchOrders() }, [fetchOrders])
 
     // ── Update order status ──────────────────────────────────────
 
-    const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-        if (!confirm(`Change order status to "${STATUS_CONFIG[newStatus]?.label || newStatus}"?`)) return
+    const handleStatusUpdate = async (
+        orderId: string,
+        newStatus: string,
+        shipping?: { courierName: string; trackingNo: string },
+    ) => {
+        if (!shipping && !confirm(`Change order status to "${STATUS_CONFIG[newStatus]?.label || newStatus}"?`)) return
 
         setUpdatingStatus(true)
         setError(null)
@@ -245,7 +289,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             const res = await fetch('/api/admin/store/orders', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: orderId, status: newStatus }),
+                body: JSON.stringify({ id: orderId, status: newStatus, ...shipping }),
             })
 
             if (!res.ok) {
@@ -259,12 +303,45 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             if (selectedOrder?.id === orderId) {
                 setSelectedOrder(prev => prev ? { ...prev, ...data.order, storefront_order_items: prev.storefront_order_items } : null)
             }
+            setShipForm(null)
         } catch (err: any) {
             setError(err.message)
         } finally {
             setUpdatingStatus(false)
         }
     }
+
+    // ── Courier tracking updates for the open order ──────────────
+
+    const selectedOrderRef = selectedOrder?.order_ref
+    const selectedOrderEmail = selectedOrder?.customer_email
+    const selectedTrackingNo = selectedOrder?.shipping_tracking_no?.trim() || ''
+
+    useEffect(() => {
+        setShipForm(null)
+    }, [selectedOrderRef])
+
+    useEffect(() => {
+        setCourierEvents([])
+        setCourierLatest(null)
+        if (!selectedOrderRef || !selectedOrderEmail || !selectedTrackingNo) return
+        let cancelled = false
+        setCourierLoading(true)
+        fetch('/api/storefront/orders/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderRef: selectedOrderRef, email: selectedOrderEmail }),
+        })
+            .then(res => res.json().catch(() => null))
+            .then(data => {
+                if (cancelled) return
+                setCourierEvents(Array.isArray(data?.order?.courierEvents) ? data.order.courierEvents : [])
+                setCourierLatest(data?.order?.courierLatestStatus || null)
+            })
+            .catch(() => undefined)
+            .finally(() => { if (!cancelled) setCourierLoading(false) })
+        return () => { cancelled = true }
+    }, [selectedOrderRef, selectedOrderEmail, selectedTrackingNo])
 
     // ── Status summary counts ────────────────────────────────────
 
@@ -296,6 +373,18 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
         )
     }
 
+    const renderChannelBadge = (order: StorefrontOrder) => (
+        <span
+            className={`inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                isOutdoorOrder(order)
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                    : 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300'
+            }`}
+        >
+            {isOutdoorOrder(order) ? 'Outdoor' : 'Store'}
+        </span>
+    )
+
     // ── Order detail panel ───────────────────────────────────────
 
     const renderOrderDetail = () => {
@@ -317,7 +406,10 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     {/* Header */}
                     <div className="sticky top-0 z-10 bg-card border-b border-border px-5 py-4 flex items-center justify-between">
                         <div>
-                            <h2 className="font-semibold text-base text-foreground">{selectedOrder.order_ref}</h2>
+                            <h2 className="flex items-center gap-2 font-semibold text-base text-foreground">
+                                {selectedOrder.order_ref}
+                                {renderChannelBadge(selectedOrder)}
+                            </h2>
                             <p className="text-xs text-muted-foreground mt-0.5">
                                 Created {formatDate(selectedOrder.created_at)}
                             </p>
@@ -342,7 +434,12 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                         {transitions.map(nextStatus => (
                                             <button
                                                 key={nextStatus}
-                                                onClick={() => handleStatusUpdate(selectedOrder.id, nextStatus)}
+                                                onClick={() => nextStatus === 'shipped'
+                                                    ? setShipForm({
+                                                        courier: selectedOrder.shipping_tracking_no ? selectedOrder.shipping_courier_name || '' : '',
+                                                        tracking: selectedOrder.shipping_tracking_no || '',
+                                                    })
+                                                    : handleStatusUpdate(selectedOrder.id, nextStatus)}
                                                 disabled={updatingStatus}
                                                 className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-border hover:bg-accent hover:border-violet-300 dark:hover:border-violet-700 transition-colors disabled:opacity-50"
                                             >
@@ -352,6 +449,112 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                     </div>
                                 )}
                             </div>
+                            {shipForm && (
+                                <div className="mt-2 rounded-xl border border-border p-3 space-y-2">
+                                    <p className="text-xs font-medium text-foreground">
+                                        {isOutdoorOrder(selectedOrder)
+                                            ? 'Courier and tracking number are required to mark this order shipped.'
+                                            : 'Add the courier and tracking number (optional).'}
+                                    </p>
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            value={shipForm.courier}
+                                            onChange={(e) => setShipForm(f => f ? { ...f, courier: e.target.value } : f)}
+                                            list="store-orders-courier-suggestions"
+                                            maxLength={120}
+                                            placeholder="Courier (e.g. J&T Express)"
+                                            aria-label="Courier"
+                                            className="flex-1 text-sm border border-border rounded-lg bg-background px-3 py-1.5"
+                                        />
+                                        <input
+                                            value={shipForm.tracking}
+                                            onChange={(e) => setShipForm(f => f ? { ...f, tracking: e.target.value } : f)}
+                                            maxLength={60}
+                                            placeholder="Tracking no."
+                                            aria-label="Tracking number"
+                                            className="flex-1 text-sm border border-border rounded-lg bg-background px-3 py-1.5"
+                                        />
+                                    </div>
+                                    <datalist id="store-orders-courier-suggestions">
+                                        {COURIER_SUGGESTIONS.map(name => <option key={name} value={name} />)}
+                                    </datalist>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleStatusUpdate(selectedOrder.id, 'shipped', {
+                                                courierName: shipForm.courier.trim(),
+                                                trackingNo: shipForm.tracking.trim(),
+                                            })}
+                                            disabled={updatingStatus || (isOutdoorOrder(selectedOrder) && (!shipForm.courier.trim() || !shipForm.tracking.trim()))}
+                                            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--sera-orange,#f97316)] text-white disabled:opacity-50"
+                                        >
+                                            Mark shipped
+                                        </button>
+                                        <button
+                                            onClick={() => setShipForm(null)}
+                                            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-accent"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Shipping */}
+                        <div className="bg-accent/40 rounded-xl p-4 space-y-2.5">
+                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                                <Truck className="h-3.5 w-3.5" /> Shipping
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <span className="text-[11px] text-muted-foreground">Shipping fee</span>
+                                    <p className="text-sm text-foreground">
+                                        {Number(selectedOrder.shipping_amount) > 0
+                                            ? formatCurrency(Number(selectedOrder.shipping_amount), selectedOrder.currency)
+                                            : 'Free'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-[11px] text-muted-foreground">Courier</span>
+                                    <p className="text-sm text-foreground">
+                                        {selectedOrder.shipping_tracking_no && selectedOrder.shipping_courier_name
+                                            ? selectedOrder.shipping_courier_name
+                                            : '—'}
+                                    </p>
+                                </div>
+                                <div className="col-span-2">
+                                    <span className="text-[11px] text-muted-foreground">Tracking number</span>
+                                    <p className="text-sm font-mono text-foreground">{selectedOrder.shipping_tracking_no || '—'}</p>
+                                </div>
+                                {selectedOrder.easyparcel_order_no && (
+                                    <div className="col-span-2">
+                                        <span className="text-[11px] text-muted-foreground">EasyParcel order</span>
+                                        <p className="text-sm font-mono text-foreground">{selectedOrder.easyparcel_order_no}</p>
+                                    </div>
+                                )}
+                            </div>
+                            {selectedOrder.shipping_tracking_no && (
+                                <div className="border-t border-border pt-2.5">
+                                    <span className="text-[11px] text-muted-foreground">Tracking updates</span>
+                                    {courierLoading ? (
+                                        <p className="text-xs text-muted-foreground mt-1">Loading…</p>
+                                    ) : courierEvents.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {courierLatest || 'No courier updates yet.'}
+                                        </p>
+                                    ) : (
+                                        <ul className="mt-1 space-y-1.5">
+                                            {courierEvents.map((ev, i) => (
+                                                <li key={`${ev.status}-${i}`} className="text-xs">
+                                                    <span className="font-medium text-foreground">{ev.status}</span>
+                                                    {ev.location ? <span className="text-muted-foreground"> · {ev.location}</span> : null}
+                                                    {ev.date ? <span className="text-muted-foreground"> · {ev.date}</span> : null}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Customer info */}
@@ -507,7 +710,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search by order ref, name, or email…"
+                        placeholder="Search by order ref, name, email or tracking no…"
                         className="w-full pl-9 pr-3 py-2 text-sm border border-[var(--sera-line)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 transition-shadow"
                     />
                 </div>
@@ -515,6 +718,16 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 {/* Status filter */}
                 <div className="flex items-center gap-1.5">
                     <Filter className="h-3.5 w-3.5 text-[var(--sera-muted)]" />
+                    <select
+                        value={channelFilter}
+                        onChange={(e) => { setChannelFilter(e.target.value); setPage(1) }}
+                        aria-label="Store"
+                        className="text-sm border border-[var(--sera-line)] rounded-lg bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 text-[var(--sera-ink)]"
+                    >
+                        {CHANNEL_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
                     <select
                         value={statusFilter}
                         onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
@@ -560,7 +773,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
                     <h3 className="font-semibold text-foreground mb-1">No orders found</h3>
                     <p className="text-sm text-muted-foreground mb-1">
-                        {statusFilter !== 'all' || debouncedSearch
+                        {statusFilter !== 'all' || channelFilter !== 'all' || debouncedSearch
                             ? 'Try adjusting your filters or search query.'
                             : 'Orders from your online storefront will appear here.'}
                     </p>
@@ -589,9 +802,12 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                         onClick={() => setSelectedOrder(order)}
                                     >
                                         <td className="px-4 py-3">
-                                            <span className="font-mono text-xs font-medium text-foreground">
-                                                {order.order_ref}
-                                            </span>
+                                            <div className="flex flex-col items-start gap-1">
+                                                <span className="font-mono text-xs font-medium text-foreground">
+                                                    {order.order_ref}
+                                                </span>
+                                                {renderChannelBadge(order)}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="min-w-0">
@@ -649,8 +865,9 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             >
                                 <div className="flex items-start justify-between gap-2 mb-2">
                                     <div>
-                                        <span className="font-mono text-xs font-medium text-foreground">
+                                        <span className="flex items-center gap-1.5 font-mono text-xs font-medium text-foreground">
                                             {order.order_ref}
+                                            {renderChannelBadge(order)}
                                         </span>
                                         <p className="text-sm font-medium text-foreground mt-1">
                                             {order.customer_name}

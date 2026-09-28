@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         const safeSearch = search ? sanitizeSearch(search) : ''
         if (safeSearch) {
             query = query.or(
-                `order_ref.ilike.%${safeSearch}%,customer_name.ilike.%${safeSearch}%,customer_email.ilike.%${safeSearch}%`
+                `order_ref.ilike.%${safeSearch}%,customer_name.ilike.%${safeSearch}%,customer_email.ilike.%${safeSearch}%,shipping_tracking_no.ilike.%${safeSearch}%`
             )
         }
 
@@ -141,8 +141,35 @@ export async function PUT(request: NextRequest) {
 
         const adminClient: any = createAdminClient()
 
+        const trackingNo = String(body.trackingNo ?? '').trim().slice(0, 60)
+        const courierName = String(body.courierName ?? '').trim().slice(0, 120)
+
+        // Outdoor orders only count as shipped with a courier and tracking number,
+        // the same rule as the Outdoor staff desk.
+        if (status === 'shipped') {
+            const { data: current } = await adminClient
+                .from('storefront_orders')
+                .select('id, sales_channel, shipping_tracking_no, shipping_courier_name')
+                .eq('id', id)
+                .or(orgScopeFilter(admin.orgId))
+                .maybeSingle()
+            if (!current) {
+                return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+            }
+            const hasTracking = Boolean(trackingNo || String(current.shipping_tracking_no || '').trim())
+            const hasCourier = Boolean(courierName || String(current.shipping_courier_name || '').trim())
+            if (current.sales_channel === 'outdoor' && (!hasTracking || !hasCourier)) {
+                return NextResponse.json(
+                    { error: 'Add the courier and tracking number before marking this order shipped.' },
+                    { status: 400 },
+                )
+            }
+        }
+
         const updateData: Record<string, any> = { status }
         if (notes !== undefined) updateData.admin_notes = notes
+        if (status === 'shipped' && trackingNo) updateData.shipping_tracking_no = trackingNo
+        if (status === 'shipped' && courierName) updateData.shipping_courier_name = courierName
 
         // The tenant scope is part of the UPDATE itself, so an order outside the
         // admin's scope is indistinguishable from a non-existent one.
