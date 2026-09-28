@@ -1,7 +1,37 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
+import {
+  AlertTriangle,
+  Ban,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  CreditCard,
+  Hourglass,
+  Inbox,
+  LayoutDashboard,
+  LifeBuoy,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Navigation,
+  Package,
+  PackageCheck,
+  Phone,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Send,
+  ShoppingBag,
+  Truck,
+  User,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import OutdoorRequestsDesk from '@/components/outdoor/OutdoorRequestsDesk'
 import { hasShipmentDetails, isOwnDelivery } from '@/lib/storefront/delivery'
@@ -78,6 +108,15 @@ const EMPTY_STATE: Record<string, { title: string; hint: string }> = {
 
 type Tone = 'amber' | 'green' | 'blue' | 'violet' | 'grey' | 'red'
 
+const ORDER_FILTERS: Array<{ value: string; label: string; icon: LucideIcon }> = [
+  { value: 'fulfilment', label: 'To send out', icon: Send },
+  { value: 'pending_payment', label: 'Awaiting payment', icon: Hourglass },
+  { value: 'all', label: 'All orders', icon: ClipboardList },
+]
+
+const CONTACT_CHIP =
+  'inline-flex items-center gap-1 rounded-full border border-[var(--out-line)] px-2.5 py-1 text-[var(--out-burgundy)] hover:bg-[var(--out-ivory)]'
+
 const TONE_CLASS: Record<Tone, string> = {
   amber: 'bg-amber-50 text-amber-800 ring-amber-200',
   green: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
@@ -87,28 +126,37 @@ const TONE_CLASS: Record<Tone, string> = {
   red: 'bg-red-50 text-red-700 ring-red-200',
 }
 
-function statusBadge(status: string, missingDetails: boolean): { label: string; tone: Tone } {
-  if (status === 'shipped' && missingDetails) return { label: 'Shipped · details missing', tone: 'amber' }
+function statusBadge(status: string, missingDetails: boolean): { label: string; tone: Tone; icon: LucideIcon } {
+  if (status === 'shipped' && missingDetails) return { label: 'Shipped · details missing', tone: 'amber', icon: AlertTriangle }
   switch (status) {
     case 'pending_payment':
-      return { label: 'Awaiting payment', tone: 'amber' }
+      return { label: 'Awaiting payment', tone: 'amber', icon: Hourglass }
     case 'paid':
-      return { label: 'Paid · ready to pack', tone: 'green' }
+      return { label: 'Paid · ready to pack', tone: 'green', icon: CheckCircle2 }
     case 'processing':
-      return { label: 'Packing', tone: 'blue' }
+      return { label: 'Packing', tone: 'blue', icon: Package }
     case 'shipped':
-      return { label: 'Out for delivery', tone: 'violet' }
+      return { label: 'Out for delivery', tone: 'violet', icon: Truck }
     case 'delivered':
-      return { label: 'Delivered', tone: 'green' }
+      return { label: 'Delivered', tone: 'green', icon: PackageCheck }
     case 'payment_failed':
-      return { label: 'Payment failed', tone: 'red' }
+      return { label: 'Payment failed', tone: 'red', icon: XCircle }
     case 'refunded':
-      return { label: 'Refunded', tone: 'grey' }
+      return { label: 'Refunded', tone: 'grey', icon: RotateCcw }
     case 'cancelled':
-      return { label: 'Cancelled', tone: 'grey' }
+      return { label: 'Cancelled', tone: 'grey', icon: Ban }
     default:
-      return { label: status.replace(/_/g, ' '), tone: 'grey' }
+      return { label: status.replace(/_/g, ' '), tone: 'grey', icon: Clock }
   }
+}
+
+function FooterNote({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 text-sm text-[var(--out-ink-soft)]">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--out-muted)]" aria-hidden />
+      <span>{children}</span>
+    </p>
+  )
 }
 
 function when(value: string | null | undefined) {
@@ -158,13 +206,22 @@ function OrderCard({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-semibold tracking-tight">{o.order_ref}</p>
-            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${TONE_CLASS[badge.tone]}`}>
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${TONE_CLASS[badge.tone]}`}>
+              <badge.icon className="h-3 w-3" aria-hidden />
               {badge.label}
             </span>
           </div>
-          <p className="mt-1 text-xs text-[var(--out-muted)]">
-            Placed {when(o.created_at)}
-            {o.paid_at ? ` · paid ${when(o.paid_at)}` : ''}
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--out-muted)]">
+            <span className="inline-flex items-center gap-1">
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+              Placed {when(o.created_at)}
+            </span>
+            {o.paid_at ? (
+              <span className="inline-flex items-center gap-1">
+                <CreditCard className="h-3.5 w-3.5" aria-hidden />
+                Paid {when(o.paid_at)}
+              </span>
+            ) : null}
           </p>
         </div>
         <div className="text-right">
@@ -177,22 +234,25 @@ function OrderCard({
 
       <div className="grid gap-5 px-5 py-4 sm:grid-cols-2">
         <section>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--out-muted)]">Deliver to</h3>
-          <p className="mt-1.5 text-sm font-medium">{o.customer_name}</p>
-          {address ? <p className="mt-0.5 text-sm text-[var(--out-ink-soft)]">{address}</p> : null}
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--out-muted)]">
+            <MapPin className="h-3.5 w-3.5" aria-hidden />
+            Deliver to
+          </h3>
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium">
+            <User className="h-3.5 w-3.5 shrink-0 text-[var(--out-muted)]" aria-hidden />
+            {o.customer_name}
+          </p>
+          {address ? <p className="mt-0.5 pl-5 text-sm text-[var(--out-ink-soft)]">{address}</p> : null}
+          <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs font-medium">
             {o.customer_phone ? (
-              <a href={`tel:${o.customer_phone}`} className="text-[var(--out-burgundy)] hover:underline">
+              <a href={`tel:${o.customer_phone}`} className={CONTACT_CHIP}>
+                <Phone className="h-3.5 w-3.5" aria-hidden />
                 {o.customer_phone}
               </a>
             ) : null}
             {phoneDigits ? (
-              <a
-                href={`https://wa.me/${phoneDigits}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--out-burgundy)] hover:underline"
-              >
+              <a href={`https://wa.me/${phoneDigits}`} target="_blank" rel="noreferrer" className={CONTACT_CHIP}>
+                <MessageCircle className="h-3.5 w-3.5" aria-hidden />
                 WhatsApp
               </a>
             ) : null}
@@ -201,13 +261,15 @@ function OrderCard({
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[var(--out-burgundy)] hover:underline"
+                className={CONTACT_CHIP}
               >
+                <Navigation className="h-3.5 w-3.5" aria-hidden />
                 Open in Maps
               </a>
             ) : null}
             {o.customer_email ? (
-              <a href={`mailto:${o.customer_email}`} className="text-[var(--out-muted)] hover:underline">
+              <a href={`mailto:${o.customer_email}`} className={CONTACT_CHIP}>
+                <Mail className="h-3.5 w-3.5" aria-hidden />
                 {o.customer_email}
               </a>
             ) : null}
@@ -215,7 +277,8 @@ function OrderCard({
         </section>
 
         <section>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--out-muted)]">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--out-muted)]">
+            <ShoppingBag className="h-3.5 w-3.5" aria-hidden />
             {items.length === 1 ? '1 item' : `${items.length} items`}
           </h3>
           <ul className="mt-1.5 space-y-1.5">
@@ -234,30 +297,28 @@ function OrderCard({
 
       <div className="border-t border-[var(--out-line)] bg-[var(--out-ivory)] px-5 py-4">
         {o.status === 'pending_payment' ? (
-          <p className="text-sm text-[var(--out-ink-soft)]">
+          <FooterNote icon={Hourglass}>
             Waiting for the customer to pay.
             {deadline ? ` If it isn’t paid by ${when(deadline.toISOString())}, it cancels itself.` : ''}
-          </p>
+          </FooterNote>
         ) : null}
 
         {o.status === 'payment_failed' ? (
-          <p className="text-sm text-[var(--out-ink-soft)]">The payment didn’t go through. Nothing to send.</p>
+          <FooterNote icon={XCircle}>The payment didn’t go through. Nothing to send.</FooterNote>
         ) : null}
-        {o.status === 'cancelled' ? (
-          <p className="text-sm text-[var(--out-ink-soft)]">Cancelled. Nothing to send.</p>
-        ) : null}
+        {o.status === 'cancelled' ? <FooterNote icon={Ban}>Cancelled. Nothing to send.</FooterNote> : null}
         {o.status === 'refunded' ? (
-          <p className="text-sm text-[var(--out-ink-soft)]">Refunded. Nothing to send.</p>
+          <FooterNote icon={RotateCcw}>Refunded to the customer. Nothing to send.</FooterNote>
         ) : null}
         {o.status === 'delivered' ? (
-          <p className="text-sm text-[var(--out-ink-soft)]">
+          <FooterNote icon={PackageCheck}>
             Delivered{ownDelivery ? ' by our team' : o.shipping_courier_name ? ` by ${o.shipping_courier_name}` : ''}. All done.
-          </p>
+          </FooterNote>
         ) : null}
 
         {o.status === 'shipped' && !notSent ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-[var(--out-ink-soft)]">
+            <FooterNote icon={Truck}>
               {ownDelivery ? (
                 'On the way with our delivery team.'
               ) : (
@@ -271,13 +332,14 @@ function OrderCard({
                   {o.easyparcel_order_no ? ` · EasyParcel ${o.easyparcel_order_no}` : ''}
                 </>
               )}
-            </p>
+            </FooterNote>
             <button
               type="button"
               disabled={busy}
               onClick={() => onAction('mark_delivered')}
-              className="h-10 rounded-md bg-[var(--out-olive)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--out-olive)] px-4 text-sm font-semibold text-white disabled:opacity-50"
             >
+              <PackageCheck className="h-4 w-4" aria-hidden />
               {busy ? 'Saving…' : 'Mark as delivered'}
             </button>
           </div>
@@ -286,27 +348,39 @@ function OrderCard({
         {canShip ? (
           <div>
             {notSent ? (
-              <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
-                This order is marked as shipped, but nobody saved how it went out, so the customer can’t follow it.
-                Choose one option below to fix that.
+              <p className="mb-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>
+                  This order is marked as shipped, but nobody saved how it went out, so the customer can’t follow it.
+                  Choose one option below to fix that.
+                </span>
               </p>
             ) : null}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold">How is it going out?</p>
+              <p className="flex items-center gap-1.5 text-sm font-semibold">
+                <Send className="h-4 w-4 text-[var(--out-muted)]" aria-hidden />
+                How is it going out?
+              </p>
               {o.status === 'paid' ? (
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => onAction('mark_processing')}
-                  className="text-xs font-semibold text-[var(--out-burgundy)] hover:underline disabled:opacity-50"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--out-burgundy)] hover:underline disabled:opacity-50"
                 >
+                  <Package className="h-3.5 w-3.5" aria-hidden />
                   Packing it first? Mark as packing
                 </button>
               ) : null}
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col rounded-xl border border-[var(--out-line)] bg-white p-4">
-                <p className="text-sm font-semibold">Our delivery team</p>
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--out-ivory)]">
+                    <Truck className="h-4 w-4 text-[var(--out-bark)]" aria-hidden />
+                  </span>
+                  Our delivery team
+                </p>
                 <p className="mt-1 text-xs text-[var(--out-muted)]">
                   We take it to the customer ourselves. They’ll see that our team is on the way.
                 </p>
@@ -320,8 +394,9 @@ function OrderCard({
                           setConfirmOwn(false)
                           onAction('ship_own')
                         }}
-                        className="h-10 rounded-md bg-[var(--out-bark)] px-4 text-sm font-semibold text-[var(--out-cream)] disabled:opacity-50"
+                        className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--out-bark)] px-4 text-sm font-semibold text-[var(--out-cream)] disabled:opacity-50"
                       >
+                        <CheckCircle2 className="h-4 w-4" aria-hidden />
                         Yes, it’s on the way
                       </button>
                       <button
@@ -337,8 +412,9 @@ function OrderCard({
                       type="button"
                       disabled={busy}
                       onClick={() => setConfirmOwn(true)}
-                      className="h-10 w-full rounded-md bg-[var(--out-bark)] px-4 text-sm font-semibold text-[var(--out-cream)] disabled:opacity-50"
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[var(--out-bark)] px-4 text-sm font-semibold text-[var(--out-cream)] disabled:opacity-50"
                     >
+                      <Send className="h-4 w-4" aria-hidden />
                       {busy ? 'Saving…' : 'Send out with our team'}
                     </button>
                   )}
@@ -352,7 +428,12 @@ function OrderCard({
                   if (courierReady) onAction('set_tracking', { trackingNo: tracking, courierName: courier })
                 }}
               >
-                <p className="text-sm font-semibold">A courier company</p>
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--out-ivory)]">
+                    <Building2 className="h-4 w-4 text-[var(--out-bark)]" aria-hidden />
+                  </span>
+                  A courier company
+                </p>
                 <p className="mt-1 text-xs text-[var(--out-muted)]">Add the tracking number so the customer can follow it live.</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <input
@@ -376,8 +457,9 @@ function OrderCard({
                 <button
                   type="submit"
                   disabled={busy || !courierReady}
-                  className="mt-2 h-10 rounded-md border border-[var(--out-bark)] px-4 text-sm font-semibold text-[var(--out-bark)] hover:bg-[var(--out-ivory)] disabled:border-[var(--out-line)] disabled:text-[var(--out-muted)] disabled:hover:bg-transparent"
+                  className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[var(--out-bark)] px-4 text-sm font-semibold text-[var(--out-bark)] hover:bg-[var(--out-ivory)] disabled:border-[var(--out-line)] disabled:text-[var(--out-muted)] disabled:hover:bg-transparent"
                 >
+                  <Truck className="h-4 w-4" aria-hidden />
                   {busy ? 'Saving…' : 'Save and mark as shipped'}
                 </button>
                 {o.shipping_service_id && easyParcelConfigured && easyParcelBooking ? (
@@ -531,16 +613,18 @@ export default function OutdoorFulfilmentClient() {
         <div className="flex gap-2">
           <a
             href="/ecommerce/store-orders?channel=outdoor"
-            className="inline-flex h-10 items-center rounded-md border border-[var(--out-line)] px-4 text-sm font-medium hover:bg-white"
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--out-line)] px-4 text-sm font-medium hover:bg-white"
           >
+            <LayoutDashboard className="h-4 w-4" aria-hidden />
             Open in dashboard
           </a>
           <button
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="h-10 px-4 rounded-md border border-[var(--out-line)] text-sm font-medium hover:bg-white disabled:opacity-50"
+            className="inline-flex h-10 items-center gap-2 px-4 rounded-md border border-[var(--out-line)] text-sm font-medium hover:bg-white disabled:opacity-50"
           >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
@@ -550,47 +634,47 @@ export default function OutdoorFulfilmentClient() {
         <button
           type="button"
           onClick={() => router.push('/outdoor/fulfilment')}
-          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
+          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
             tab === 'orders' ? 'border-[var(--out-moss)]' : 'border-transparent text-[var(--out-muted)]'
           }`}
         >
+          <ClipboardList className="h-4 w-4" aria-hidden />
           Follow orders
         </button>
         <button
           type="button"
           onClick={() => router.push('/outdoor/fulfilment?tab=inbox')}
-          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
+          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
             tab === 'inbox' ? 'border-[var(--out-moss)]' : 'border-transparent text-[var(--out-muted)]'
           }`}
         >
+          <Inbox className="h-4 w-4" aria-hidden />
           Messages
         </button>
         <button
           type="button"
           onClick={() => router.push('/outdoor/fulfilment?tab=requests')}
-          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
+          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
             tab === 'requests' ? 'border-[var(--out-moss)]' : 'border-transparent text-[var(--out-muted)]'
           }`}
         >
+          <LifeBuoy className="h-4 w-4" aria-hidden />
           Requests
         </button>
       </div>
 
       {tab === 'orders' ? (
         <div className="mt-6 flex flex-wrap gap-2">
-          {[
-            ['fulfilment', 'To send out'],
-            ['pending_payment', 'Awaiting payment'],
-            ['all', 'All orders'],
-          ].map(([value, label]) => (
+          {ORDER_FILTERS.map(({ value, label, icon: FilterIcon }) => (
             <button
               key={value}
               type="button"
               onClick={() => setOrderStatus(value)}
-              className={`h-9 rounded-full px-3 text-xs font-semibold ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold ${
                 orderStatus === value ? 'bg-[var(--out-bark)] text-[var(--out-cream)]' : 'border border-[var(--out-line)]'
               }`}
             >
+              <FilterIcon className="h-3.5 w-3.5" aria-hidden />
               {label}
             </button>
           ))}
@@ -599,12 +683,15 @@ export default function OutdoorFulfilmentClient() {
 
       {tab === 'orders' ? (
         <div className="mt-4 flex flex-wrap gap-3 items-center">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Order number, customer name, phone, email or tracking…"
-            className="h-11 flex-1 min-w-[220px] rounded-md border border-[var(--out-line)] bg-white px-3 text-sm"
-          />
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--out-muted)]" aria-hidden />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Order number, customer name, phone, email or tracking…"
+              className="h-11 w-full rounded-md border border-[var(--out-line)] bg-white pl-9 pr-3 text-sm"
+            />
+          </div>
           <p className="flex items-center gap-2 text-xs text-[var(--out-muted)]">
             <span
               className={`h-2 w-2 rounded-full ${easyParcelConfigured ? 'bg-emerald-500' : 'bg-[var(--out-line)]'}`}
@@ -646,10 +733,17 @@ export default function OutdoorFulfilmentClient() {
             {messages.map((m) => (
               <li key={m.id} className="rounded-xl border border-[var(--out-line)] bg-white p-5">
                 <div className="flex flex-wrap justify-between gap-2">
-                  <p className="font-semibold">{m.name}</p>
-                  <p className="text-xs text-[var(--out-muted)]">{new Date(m.created_at).toLocaleString()}</p>
+                  <p className="flex items-center gap-1.5 font-semibold">
+                    <User className="h-4 w-4 text-[var(--out-muted)]" aria-hidden />
+                    {m.name}
+                  </p>
+                  <p className="flex items-center gap-1 text-xs text-[var(--out-muted)]">
+                    <Clock className="h-3.5 w-3.5" aria-hidden />
+                    {new Date(m.created_at).toLocaleString()}
+                  </p>
                 </div>
-                <a href={`mailto:${m.email}`} className="text-sm text-[var(--out-moss)] hover:underline">
+                <a href={`mailto:${m.email}`} className="mt-1 inline-flex items-center gap-1.5 text-sm text-[var(--out-moss)] hover:underline">
+                  <Mail className="h-3.5 w-3.5" aria-hidden />
                   {m.email}
                 </a>
                 <p className="mt-3 text-sm text-[var(--out-ink-soft)] whitespace-pre-wrap">{m.message}</p>
