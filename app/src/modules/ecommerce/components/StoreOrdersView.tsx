@@ -249,6 +249,11 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [requestsRefresh, setRequestsRefresh] = useState(0)
     const openRequestsByOrder = useOpenRequestsByOrder(useMemo(() => orders.map(o => o.id), [orders]), requestsRefresh)
 
+    useEffect(() => {
+        const fromUrl = new URLSearchParams(window.location.search).get('channel')
+        if (fromUrl && CHANNEL_OPTIONS.some(option => option.value === fromUrl)) setChannelFilter(fromUrl)
+    }, [])
+
     // ── Debounce search ──────────────────────────────────────────
 
     useEffect(() => {
