@@ -10,10 +10,19 @@ export function paymentResultFromStatuses(paid: boolean) {
   return paid ? ['pending_payment', 'payment_failed'] : ['pending_payment']
 }
 
+/**
+ * A Stripe session that expires or fails only fails the order when it is still the
+ * order's current session. "Continue payment" opens a new session, and the old
+ * one expiring later must not mark the order failed.
+ */
+export function failureNeedsCurrentSession(result: Pick<PaymentCallbackResult, 'paid' | 'transactionId'>) {
+  return !result.paid && String(result.transactionId || '').startsWith('cs_')
+}
+
 export async function applyStorefrontPaymentResult(result: PaymentCallbackResult) {
   if (!result.verified || !result.orderId) return { updated: false }
   const supabase: any = createAdminClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('storefront_orders')
     .update({
       status: result.paid ? 'paid' : 'payment_failed',
@@ -22,7 +31,10 @@ export async function applyStorefrontPaymentResult(result: PaymentCallbackResult
     })
     .eq('id', result.orderId)
     .in('status', paymentResultFromStatuses(result.paid))
-    .select('id')
+  if (failureNeedsCurrentSession(result)) {
+    query = query.eq('payment_ref', result.transactionId)
+  }
+  const { data, error } = await query.select('id')
 
   if (error) {
     console.error('[payments] DB update failed:', error)

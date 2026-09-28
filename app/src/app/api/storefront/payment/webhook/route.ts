@@ -5,7 +5,8 @@ import { flattenPaymentParams } from '@/lib/payments/providers/billplz-signature
 import { handleStripeCheckoutWebhook } from '@/lib/payments/providers/stripe-webhook'
 
 async function handleWebhook(request: NextRequest, fromGet = false) {
-  const provider = request.nextUrl.searchParams.get('provider') || 'unknown'
+  const providerParam = request.nextUrl.searchParams.get('provider')
+  const provider = providerParam || (request.headers.get('stripe-signature') ? 'stripe' : 'unknown')
   const body = fromGet ? '' : await request.text()
 
   console.log(`[payment-webhook] provider=${provider} method=${request.method}`)

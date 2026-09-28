@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
 
-import { paymentResultFromStatuses } from '@/lib/payments/apply-callback'
+import { failureNeedsCurrentSession, paymentResultFromStatuses } from '@/lib/payments/apply-callback'
 import { stripeEventOutcome } from '@/lib/payments/providers/stripe-webhook'
 
 describe('payment result rules', () => {
@@ -14,6 +14,13 @@ describe('payment result rules', () => {
 
   it('never turns a paid order into failed', () => {
     expect(paymentResultFromStatuses(false)).toEqual(['pending_payment'])
+  })
+
+  it('only lets the current Stripe session fail an order', () => {
+    expect(failureNeedsCurrentSession({ paid: false, transactionId: 'cs_test_old' })).toBe(true)
+    expect(failureNeedsCurrentSession({ paid: true, transactionId: 'cs_test_old' })).toBe(false)
+    expect(failureNeedsCurrentSession({ paid: false, transactionId: 'billplz-bill-id' })).toBe(false)
+    expect(failureNeedsCurrentSession({ paid: false })).toBe(false)
   })
 })
 

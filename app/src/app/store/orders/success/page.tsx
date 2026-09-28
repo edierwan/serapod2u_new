@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import { CheckCircle2, ShoppingBag, ArrowRight } from 'lucide-react'
 import type { Metadata } from 'next'
-import { verifyPaymentCallback } from '@/lib/payments'
+import { getGatewayByProvider, verifyPaymentCallback } from '@/lib/payments'
 import { applyStorefrontPaymentResult } from '@/lib/payments/apply-callback'
+import { stripeReturnResult } from '@/lib/payments/providers/stripe-webhook'
 import { flattenPaymentParams } from '@/lib/payments/providers/billplz-signature'
 
 export const metadata: Metadata = { title: 'Order Confirmed' }
@@ -26,6 +27,19 @@ export default async function OrderSuccessPage({ searchParams }: PageProps) {
       }
     } catch (err) {
       console.error('[store-success] billplz confirm failed:', err)
+    }
+  }
+
+  const stripeSessionId = typeof params.session_id === 'string' ? params.session_id : ''
+  if (stripeSessionId) {
+    try {
+      const gateway = await getGatewayByProvider('stripe')
+      const result = await stripeReturnResult(stripeSessionId, (gateway?.credentials as Record<string, string>) || {})
+      if (result.verified && result.orderId) {
+        await applyStorefrontPaymentResult(result)
+      }
+    } catch (err) {
+      console.error('[store-success] stripe confirm failed:', err)
     }
   }
 

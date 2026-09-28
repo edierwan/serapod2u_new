@@ -3,6 +3,7 @@
 // Flow: Create Checkout Session → redirect → webhook callback
 
 import type { PaymentProviderAdapter, PaymentIntentInput, PaymentIntentResult, PaymentCallbackResult } from '../types'
+import { stripeReturnResult } from './stripe-webhook'
 
 export const stripe: PaymentProviderAdapter = {
   name: 'Stripe',
@@ -70,36 +71,9 @@ export const stripe: PaymentProviderAdapter = {
   },
 
   async verifyCallback(payload: Record<string, string>, credentials: Record<string, string>): Promise<PaymentCallbackResult> {
-    // Stripe sends webhook events — the payload is flattened from the parsed event body
-    // Expected fields: type, session_id, payment_status, client_reference_id, metadata.order_ref, etc.
-    const eventType = payload.type || ''
-    const sessionId = payload.session_id || payload.id || ''
-    const paymentStatus = payload.payment_status || ''
-    const orderRef = payload.client_reference_id || payload['metadata.order_ref'] || ''
-
-    if (eventType && eventType !== 'checkout.session.completed') {
-      return {
-        verified: true,
-        orderId: '',
-        paid: false,
-        transactionId: sessionId,
-      }
-    }
-
-    // Resolve orderId from the external reference
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const supabase: any = createAdminClient()
-    const { data: order } = await supabase
-      .from('storefront_orders')
-      .select('id')
-      .eq('order_ref', orderRef)
-      .maybeSingle()
-
-    return {
-      verified: true,
-      orderId: order?.id || '',
-      paid: paymentStatus === 'paid',
-      transactionId: sessionId,
-    }
+    // Webhooks go through handleStripeCheckoutWebhook. Anything else is only trusted
+    // after reading the session from Stripe.
+    const sessionId = payload.session_id || payload['data.object.id'] || payload.id || ''
+    return stripeReturnResult(sessionId, credentials)
   },
 }
