@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import {
     ArrowLeft,
     Loader2,
@@ -97,6 +98,18 @@ interface OrderEvent {
 }
 
 type ShipDetails = { deliveryMethod: 'own' } | { deliveryMethod: 'courier'; courierName: string; trackingNo: string }
+
+/** The detail panel is portalled to <body>, outside `.sera-shell`, so it carries the shell palette itself. */
+const PORTAL_THEME = {
+    '--sera-ink': '#141210',
+    '--sera-ink-soft': '#2a2622',
+    '--sera-orange': '#e85d04',
+    '--sera-orange-deep': '#c44a00',
+    '--sera-mist': '#f2f3f5',
+    '--sera-line': '#e8eaed',
+    '--sera-muted': '#6b7280',
+    '--sera-paper': '#fafbfc',
+} as CSSProperties
 
 const CHANNEL_OPTIONS = [
     { value: 'all', label: 'All stores' },
@@ -435,7 +448,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
         const addr = selectedOrder.shipping_address || {}
 
         return (
-            <div className="fixed inset-0 z-50 flex items-start justify-end">
+            <div className="fixed inset-0 z-50 flex items-start justify-end" style={PORTAL_THEME}>
                 {/* Backdrop */}
                 <div
                     className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -676,9 +689,9 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                     </p>
                                 </div>
                                 {selectedOrder.payment_ref && (
-                                    <div>
+                                    <div className="col-span-2 min-w-0">
                                         <span className="text-[11px] text-muted-foreground">Reference</span>
-                                        <p className="text-sm font-mono text-foreground">{selectedOrder.payment_ref}</p>
+                                        <p className="text-xs font-mono text-foreground break-all">{selectedOrder.payment_ref}</p>
                                     </div>
                                 )}
                                 {selectedOrder.paid_at && (
@@ -1052,7 +1065,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             </>)}
 
             {/* Order detail slide-over panel */}
-            {renderOrderDetail()}
+            {selectedOrder && typeof document !== 'undefined' ? createPortal(renderOrderDetail(), document.body) : null}
         </div>
     )
 }
