@@ -8,6 +8,7 @@ import {
 import { formatStorefrontError } from "@/lib/storefront/error";
 import { getStorageUrl } from "@/lib/utils";
 import { mergeStructuredAttributes } from "@/lib/products/structured-attributes";
+import { sellableStock } from "@/lib/storefront/order-stock";
 
 /**
  * Resolve a variant image/media URL to a full public URL.
@@ -48,6 +49,8 @@ export interface StorefrontProduct {
   colorSwatches?: OutdoorColorSwatch[];
   specLabel?: string | null;
   outdoorNav?: string;
+  /** Every variant is out of stock in the online shop's warehouse. */
+  sold_out?: boolean;
 }
 
 export interface StorefrontProductDetail {
@@ -87,6 +90,8 @@ export interface StorefrontVariant {
   barcode: string | null;
   sort_order: number | null;
   media: StorefrontMediaItem[];
+  /** Units the shop can still sell. Missing when stock cannot be read, which means keep selling. */
+  available?: number | null;
 }
 
 export interface StorefrontCategory {
@@ -328,14 +333,21 @@ export async function listProducts(params: ListProductsParams = {}) {
     return { products: [], total: 0, page, limit };
   }
 
-  // Transform data
-  const products: StorefrontProduct[] = (data || []).map((p: any) => {
-    const activeVariants = (p.product_variants || []).filter((v: any) => {
+  const sellableVariants = (p: any) =>
+    (p.product_variants || []).filter((v: any) => {
       if (v.is_active === false) return false;
       const attrs = v.attributes || {};
       if (attrs.outdoor_only_variant) return false;
       return true;
     });
+  const stock = await sellableStock(
+    supabase,
+    (data || []).flatMap((p: any) => sellableVariants(p).map((v: any) => v.id)),
+  );
+
+  // Transform data
+  const products: StorefrontProduct[] = (data || []).map((p: any) => {
+    const activeVariants = sellableVariants(p);
     const prices = activeVariants
       .map((v: any) => v.suggested_retail_price)
       .filter((price: any) => price != null && price > 0);
@@ -408,6 +420,10 @@ export async function listProducts(params: ListProductsParams = {}) {
         String(defaultAttributes.outdoor_nav || ""),
         p.product_name,
       ),
+      sold_out:
+        stock !== null &&
+        activeVariants.length > 0 &&
+        activeVariants.every((v: any) => (stock.get(v.id) ?? 0) <= 0),
     };
   });
 
@@ -495,6 +511,11 @@ export async function getProductDetail(
     return null;
   }
 
+  const stock = await sellableStock(
+    supabase,
+    (p.product_variants || []).filter((v: any) => v.is_active !== false).map((v: any) => v.id),
+  );
+
   return {
     id: p.id,
     product_name: p.product_name,
@@ -561,6 +582,7 @@ export async function getProductDetail(
           barcode: v.barcode,
           sort_order: v.sort_order,
           media,
+          available: stock ? (stock.get(v.id) ?? 0) : null,
         };
       }),
   };

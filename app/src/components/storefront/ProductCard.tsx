@@ -106,6 +106,12 @@ export default function StorefrontProductCard({ product }: { product: Storefront
           </div>
         )}
 
+        {product.sold_out && (
+          <span className="absolute top-3 left-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-ink)] backdrop-blur-sm">
+            Sold out
+          </span>
+        )}
+
         {product.variant_count > 1 && (
           <span className="absolute top-3 right-3 rounded-lg bg-[var(--sera-ink)]/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
             {product.variant_count} Variants

@@ -27,7 +27,12 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
 
   return (
     <article className="flex h-full flex-col">
-      <Link href={`/outdoor/shop/${product.id}`} className="block">
+      <Link href={`/outdoor/shop/${product.id}`} className="relative block">
+        {product.sold_out ? (
+          <span className="absolute left-3 top-3 z-10 rounded-full bg-[var(--out-bark)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--out-cream)]">
+            Sold out
+          </span>
+        ) : null}
         <div className="aspect-[4/5] overflow-hidden rounded-[1.35rem] bg-white">
           <div className="out-carousel" style={{ transform: `translate3d(-${index * 100}%, 0, 0)` }}>
             {frames.map((src, frame) => (
@@ -76,7 +81,7 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
           href={`/outdoor/shop/${product.id}`}
           className="inline-flex h-10 flex-1 items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)]"
         >
-          Buy Now
+          {product.sold_out ? 'View' : 'Buy Now'}
         </Link>
         <Link
           href={`/outdoor/shop/${product.id}`}

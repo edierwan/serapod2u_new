@@ -7,6 +7,7 @@ const authGetUser = vi.fn()
 const profileSingle = vi.fn()
 const maybeSingle = vi.fn()
 const updateCalls: Array<{ payload: any; filters: string[] }> = []
+const stockRpc = vi.fn()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: authGetUser } })),
@@ -14,6 +15,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
+    rpc: stockRpc,
     from: (table: string) => {
       if (table === 'users') {
         return { select: () => ({ eq: () => ({ single: profileSingle }) }) }
@@ -47,6 +49,7 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
     profileSingle.mockResolvedValue({
       data: { id: 'admin-1', organization_id: 'hq', role_code: 'HQ', organizations: { id: 'hq', org_type_code: 'HQ' }, roles: { role_level: 10 } },
     })
+    stockRpc.mockResolvedValue({ data: { status: 'taken', units: 1 }, error: null })
   })
 
   it('refuses to ship an Outdoor order without a courier and tracking number', async () => {
@@ -89,6 +92,58 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
       shipping_courier_name: 'Serapod delivery team',
       shipping_tracking_no: null,
     })
+  })
+
+  it('takes the stock out of the warehouse when a paid order ships', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'paid', sales_channel: 'store' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'shipped' }, error: null })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'shipped' }))
+    expect(response.status).toBe(200)
+    expect(stockRpc).toHaveBeenCalledWith('storefront_order_stock_out', { p_order_id: ORDER_ID, p_actor: 'admin-1' })
+  })
+
+  it('does not ship when the warehouse cannot cover the order', async () => {
+    maybeSingle.mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'processing', sales_channel: 'store' } })
+    stockRpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'storefront_stock_short: Cellera (Mango) has 0 in the warehouse, this order needs 2.' },
+    })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'shipped' }))
+    expect(response.status).toBe(409)
+    expect((await response.json()).error).toContain('Cellera (Mango) has 0 in the warehouse')
+    expect(updateCalls).toHaveLength(0)
+  })
+
+  it('puts the stock back as not-shipped when the status cannot be saved', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'paid', sales_channel: 'store' } })
+      .mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'shipped' }))
+    expect(response.status).toBe(500)
+    expect(stockRpc).toHaveBeenLastCalledWith('storefront_order_stock_undo', { p_order_id: ORDER_ID, p_actor: 'admin-1' })
+  })
+
+  it('keeps shipping as before while the stock functions are not deployed', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'paid', sales_channel: 'store' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'shipped' }, error: null })
+    stockRpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'shipped' }))
+    expect(response.status).toBe(200)
+  })
+
+  it('does not take stock again when a shipped order is marked delivered', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'shipped', sales_channel: 'store' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'delivered' }, error: null })
+    const { PUT } = await import('./route')
+    await PUT(put({ id: ORDER_ID, status: 'delivered' }))
+    expect(stockRpc).not.toHaveBeenCalled()
   })
 
   it('leaves shipping details alone for other status changes', async () => {

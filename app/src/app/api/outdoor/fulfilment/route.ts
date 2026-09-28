@@ -11,6 +11,7 @@ import { isEasyParcelAppConfigured } from '@/lib/shipping/easyparcel-oauth'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 import { hasShipmentDetails, OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
 import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
+import { stockMoveNote, takeOrderStock, undoOrderStock } from '@/lib/storefront/order-stock'
 
 /** Marked shipped, but no delivery, courier shipment or tracking number was ever recorded. */
 function isShippedWithoutShipment(order: any) {
@@ -113,6 +114,17 @@ export async function PUT(request: NextRequest) {
       })
     }
 
+    // A paid order leaving the warehouse takes its stock; re-saving an already
+    // shipped order (e.g. adding a missed tracking number) does not take it twice.
+    const takeStockForShipping = async (): Promise<{ ok: true; note: string | null } | { ok: false; response: NextResponse }> => {
+      if (!['paid', 'processing'].includes(order.status)) return { ok: true, note: null }
+      const taken = await takeOrderStock(admin, id, staff.userId)
+      if (!taken.ok) {
+        return { ok: false, response: NextResponse.json({ error: `${taken.error} The order was not changed.` }, { status: 409 }) }
+      }
+      return { ok: true, note: stockMoveNote(taken, 'out') }
+    }
+
     if (action === 'mark_processing') {
       if (!['paid', 'processing'].includes(order.status)) {
         return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
@@ -133,6 +145,8 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
       }
       const note = String(body.note || '').trim().slice(0, 200)
+      const stock = await takeStockForShipping()
+      if (!stock.ok) return stock.response
       const { data, error } = await admin
         .from('storefront_orders')
         .update({
@@ -143,8 +157,11 @@ export async function PUT(request: NextRequest) {
         .eq('id', id)
         .select('*')
         .single()
-      if (error) throw error
-      await logStaff('shipped', ['Out for delivery with our own team', note].filter(Boolean).join(' — '))
+      if (error) {
+        if (stock.note) await undoOrderStock(admin, id, staff.userId)
+        throw error
+      }
+      await logStaff('shipped', ['Out for delivery with our own team', note, stock.note].filter(Boolean).join(' — '))
       return NextResponse.json({ order: data })
     }
 
@@ -159,6 +176,8 @@ export async function PUT(request: NextRequest) {
       if (!['paid', 'processing', 'shipped'].includes(order.status)) {
         return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
       }
+      const stock = await takeStockForShipping()
+      if (!stock.ok) return stock.response
       const { data, error } = await admin
         .from('storefront_orders')
         .update({
@@ -169,8 +188,11 @@ export async function PUT(request: NextRequest) {
         .eq('id', id)
         .select('*')
         .single()
-      if (error) throw error
-      await logStaff('shipped', `Sent by ${courier || 'courier'} · tracking ${tracking}`)
+      if (error) {
+        if (stock.note) await undoOrderStock(admin, id, staff.userId)
+        throw error
+      }
+      await logStaff('shipped', [`Sent by ${courier || 'courier'} · tracking ${tracking}`, stock.note].filter(Boolean).join(' — '))
       return NextResponse.json({ order: data })
     }
 
@@ -199,6 +221,12 @@ export async function PUT(request: NextRequest) {
         )
       }
 
+      const stock = await takeStockForShipping()
+      if (!stock.ok) return stock.response
+      const giveStockBack = async () => {
+        if (stock.note) await undoOrderStock(admin, id, staff.userId)
+      }
+
       const addr = order.shipping_address || {}
       const items = order.storefront_order_items || []
       const content = items
@@ -225,6 +253,7 @@ export async function PUT(request: NextRequest) {
       })
 
       if (!submitted.ok) {
+        await giveStockBack()
         return NextResponse.json({ error: submitted.error }, { status: 502 })
       }
 
@@ -240,8 +269,11 @@ export async function PUT(request: NextRequest) {
         .select('*')
         .single()
 
-      if (error) throw error
-      await logStaff('shipped', `Booked with EasyParcel ${submitted.orderNo || ''}`.trim())
+      if (error) {
+        await giveStockBack()
+        throw error
+      }
+      await logStaff('shipped', [`Booked with EasyParcel ${submitted.orderNo || ''}`.trim(), stock.note].filter(Boolean).join(' — '))
       return NextResponse.json({
         order: data,
         easyparcel: { orderNo: submitted.orderNo, awb: submitted.awb },

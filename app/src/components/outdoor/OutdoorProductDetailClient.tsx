@@ -111,7 +111,13 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     ? selected.suggested_retail_price
     : defaultVariant?.suggested_retail_price ?? null
 
-  const canBuy = isSellablePrice(productPrice)
+  const stockLeft = typeof selected?.available === 'number' ? selected.available : null
+  const soldOut = stockLeft !== null && stockLeft <= 0
+  const canBuy = isSellablePrice(productPrice) && !soldOut
+
+  useEffect(() => {
+    if (stockLeft !== null && stockLeft > 0) setQty((q) => Math.min(q, stockLeft))
+  }, [stockLeft])
 
   const lineItem = () =>
     selected && productPrice && canBuy
@@ -203,6 +209,9 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                   }`}
                 >
                   {v.variant_name}
+                  {typeof v.available === 'number' && v.available <= 0 ? (
+                    <span className="ml-1 text-[10px] font-semibold uppercase opacity-70">Sold out</span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -225,7 +234,13 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                 <Minus className="h-4 w-4" />
               </button>
               <span className="w-6 text-center text-sm font-semibold">{qty}</span>
-              <button type="button" className="p-2" onClick={() => setQty((q) => q + 1)} aria-label="Increase">
+              <button
+                type="button"
+                className="p-2 disabled:opacity-40"
+                onClick={() => setQty((q) => (stockLeft !== null ? Math.min(stockLeft, q + 1) : q + 1))}
+                disabled={stockLeft !== null && qty >= stockLeft}
+                aria-label="Increase"
+              >
                 <Plus className="h-4 w-4" />
               </button>
             </div>
@@ -250,10 +265,14 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             disabled={!canBuy || adding}
             className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
           >
-            Buy Now
+            {soldOut ? 'Out of stock' : 'Buy Now'}
           </button>
           <p className="mt-2 min-h-[1.25rem] text-center text-xs text-[var(--out-muted)]" aria-live="polite">
-            {added ? (
+            {soldOut ? (
+              'This one is sold out for now.'
+            ) : !added && stockLeft !== null && stockLeft <= 5 ? (
+              <span className="font-semibold text-[var(--out-bark)]">Only {stockLeft} left</span>
+            ) : added ? (
               <>
                 Added to your cart ·{' '}
                 <Link href="/outdoor/cart" className="font-semibold text-[var(--out-bark)] hover:underline">

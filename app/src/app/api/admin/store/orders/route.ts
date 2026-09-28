@@ -6,6 +6,7 @@ import { OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
 import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
 import { getGatewayByProvider } from '@/lib/payments'
 import { refundStripeCheckout } from '@/lib/payments/stripe-refund'
+import { returnOrderStock, stockMoveNote, takeOrderStock, undoOrderStock } from '@/lib/storefront/order-stock'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -253,6 +254,17 @@ export async function PUT(request: NextRequest) {
             }
         }
 
+        // Stock leaves the warehouse when a paid order ships; nothing changes if it can't.
+        let stockNote: string | null = null
+        const shipsNow = ['shipped', 'delivered'].includes(status) && ['paid', 'processing'].includes(current.status)
+        if (shipsNow) {
+            const taken = await takeOrderStock(adminClient, id, admin.userId)
+            if (!taken.ok) {
+                return NextResponse.json({ error: `${taken.error} The order was not changed.` }, { status: 409 })
+            }
+            stockNote = stockMoveNote(taken, 'out')
+        }
+
         const updateData: Record<string, any> = { status }
         if (notes !== undefined) updateData.admin_notes = notes
         if (status === 'shipped' && ownDelivery) {
@@ -273,6 +285,10 @@ export async function PUT(request: NextRequest) {
             .select('*')
             .maybeSingle()
 
+        if ((error || !data) && stockNote) {
+            await undoOrderStock(adminClient, id, admin.userId)
+        }
+
         if (error) {
             console.error('[admin/store/orders] PUT error:', error, refundNote ? `— after: ${refundNote}` : '')
             if (refundNote) {
@@ -286,6 +302,17 @@ export async function PUT(request: NextRequest) {
 
         if (!data) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        }
+
+        // Goods only go back on the shelf when staff confirm they came back.
+        let stockWarning: string | null = null
+        if (refundNote && body.restock === true) {
+            const returned = await returnOrderStock(adminClient, id, admin.userId)
+            if (returned.ok) {
+                stockNote = stockMoveNote(returned, 'back')
+            } else {
+                stockWarning = `The refund went through, but the stock was not put back: ${returned.error}`
+            }
         }
 
         const shippingNote = status !== 'shipped'
@@ -303,10 +330,10 @@ export async function PUT(request: NextRequest) {
             actorType: 'staff',
             actorId: admin.userId,
             actorLabel: await staffActorLabel(adminClient, admin.userId),
-            note: [shippingNote, refundNote, 'Changed in dashboard'].filter(Boolean).join(' — '),
+            note: [shippingNote, refundNote, stockNote, stockWarning, 'Changed in dashboard'].filter(Boolean).join(' — '),
         })
 
-        return NextResponse.json({ order: data })
+        return NextResponse.json(stockWarning ? { order: data, warning: stockWarning } : { order: data })
     } catch (err) {
         console.error('[admin/store/orders] PUT error:', err)
         return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })

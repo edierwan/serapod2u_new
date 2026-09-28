@@ -8,6 +8,7 @@ const profileSingle = vi.fn()
 const maybeSingle = vi.fn()
 const updateCalls: Array<{ payload: any }> = []
 const refundStripeCheckout = vi.fn()
+const stockRpc = vi.fn()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: authGetUser } })),
@@ -21,6 +22,7 @@ vi.mock('@/lib/payments/stripe-refund', () => ({ refundStripeCheckout }))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
+    rpc: stockRpc,
     from: (table: string) => {
       if (table === 'users') {
         return { select: () => ({ eq: () => ({ single: profileSingle }) }) }
@@ -59,6 +61,40 @@ describe('PUT /api/admin/store/orders — refunds', () => {
     profileSingle.mockResolvedValue({
       data: { id: 'admin-1', organization_id: 'hq', role_code: 'HQ', organizations: { id: 'hq', org_type_code: 'HQ' }, roles: { role_level: 10 } },
     })
+    stockRpc.mockResolvedValue({ data: { status: 'returned', units: 2 }, error: null })
+  })
+
+  it('puts shipped goods back in stock only when staff say they came back', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { ...stripeOrder, status: 'shipped' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'refunded' }, error: null })
+    refundStripeCheckout.mockResolvedValueOnce({ ok: true, refundId: 're_3', amountCents: 200, alreadyRefunded: false })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'refunded', restock: true }))
+    expect(response.status).toBe(200)
+    expect(stockRpc).toHaveBeenCalledWith('storefront_order_stock_return', { p_order_id: ORDER_ID, p_actor: 'admin-1' })
+  })
+
+  it('leaves the stock alone on a refund when the goods did not come back', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { ...stripeOrder, status: 'shipped' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'refunded' }, error: null })
+    refundStripeCheckout.mockResolvedValueOnce({ ok: true, refundId: 're_4', amountCents: 200, alreadyRefunded: false })
+    const { PUT } = await import('./route')
+    await PUT(put({ id: ORDER_ID, status: 'refunded' }))
+    expect(stockRpc).not.toHaveBeenCalled()
+  })
+
+  it('still refunds, and says so, when putting the stock back fails', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { ...stripeOrder, status: 'shipped' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'refunded' }, error: null })
+    refundStripeCheckout.mockResolvedValueOnce({ ok: true, refundId: 're_5', amountCents: 200, alreadyRefunded: false })
+    stockRpc.mockResolvedValueOnce({ data: null, error: { message: 'inventory_cutoff_warehouse_frozen' } })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'refunded', restock: true }))
+    expect(response.status).toBe(200)
+    expect((await response.json()).warning).toContain('stock count')
   })
 
   it('returns the money on Stripe before marking a paid order refunded', async () => {

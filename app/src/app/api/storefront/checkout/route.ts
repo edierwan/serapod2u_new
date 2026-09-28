@@ -9,6 +9,7 @@ import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
 import { easyParcelRateCheck, isEasyParcelBookingEnabled, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 import { recordOrderEvent } from '@/lib/storefront/order-events'
+import { sellableStock, stockShortfall } from '@/lib/storefront/order-stock'
 
 // NOTE: storefront_orders / storefront_order_items are not in the
 // auto-generated database types yet. After running STOREFRONT_MIGRATION.sql
@@ -197,6 +198,18 @@ export async function POST(request: NextRequest) {
         unit_price: unitPrice,
         subtotal,
       })
+    }
+
+    const shortfall = stockShortfall(
+      lineItems.map((li) => ({
+        variantId: li.variant_id,
+        quantity: li.quantity,
+        name: [li.product_name, li.variant_name].filter(Boolean).join(' · '),
+      })),
+      await sellableStock(supabase, lineItems.map((li) => li.variant_id)),
+    )
+    if (shortfall) {
+      return NextResponse.json({ error: shortfall }, { status: 409 })
     }
 
     // ── 2. Shipping (Outdoor may pass EasyParcel quote; /store stays free/zero) ──

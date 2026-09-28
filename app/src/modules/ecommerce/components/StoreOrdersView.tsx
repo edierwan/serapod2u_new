@@ -75,6 +75,8 @@ interface StorefrontOrder {
     shipping_courier_name?: string | null
     shipping_tracking_no?: string | null
     easyparcel_order_no?: string | null
+    stock_out_at?: string | null
+    stock_returned_at?: string | null
     created_at: string
     updated_at: string
     storefront_order_items: StorefrontOrderItem[]
@@ -98,7 +100,7 @@ interface OrderEvent {
 }
 
 type ShipDetails = { deliveryMethod: 'own' } | { deliveryMethod: 'courier'; courierName: string; trackingNo: string }
-type UpdateExtra = ShipDetails | { refundedOutside?: boolean }
+type UpdateExtra = ShipDetails | { refundedOutside?: boolean; restock?: boolean }
 
 const MONEY_TAKEN_STATUSES = ['paid', 'processing', 'shipped', 'delivered']
 
@@ -258,6 +260,8 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [channelFilter, setChannelFilter] = useState('all')
     const [shipForm, setShipForm] = useState<{ method: 'own' | 'courier'; courier: string; tracking: string } | null>(null)
     const [refundAsk, setRefundAsk] = useState<'refunded' | 'cancelled' | null>(null)
+    const [restock, setRestock] = useState(false)
+    const [notice, setNotice] = useState<string | null>(null)
     const [history, setHistory] = useState<OrderEvent[]>([])
     const [historyAvailable, setHistoryAvailable] = useState(true)
     const [historyRefresh, setHistoryRefresh] = useState(0)
@@ -334,6 +338,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
 
         setUpdatingStatus(true)
         setError(null)
+        setNotice(null)
 
         try {
             const res = await fetch('/api/admin/store/orders', {
@@ -355,6 +360,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             }
             setShipForm(null)
             setRefundAsk(null)
+            setNotice(typeof data.warning === 'string' ? data.warning : null)
             setHistoryRefresh(n => n + 1)
         } catch (err: any) {
             setError(err.message)
@@ -372,6 +378,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     useEffect(() => {
         setShipForm(null)
         setRefundAsk(null)
+        setNotice(null)
         if (selectedOrderRef) setError(null)
     }, [selectedOrderRef])
 
@@ -514,6 +521,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                                         })
                                                     } else if (needsRefund(selectedOrder.status, nextStatus)) {
                                                         setShipForm(null)
+                                                        setRestock(false)
                                                         setRefundAsk(nextStatus as 'refunded' | 'cancelled')
                                                     } else {
                                                         void handleStatusUpdate(selectedOrder.id, nextStatus)
@@ -611,6 +619,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                 const viaStripe = isStripeCheckout(selectedOrder)
                                 const amount = formatCurrency(selectedOrder.total_amount, selectedOrder.currency)
                                 const provider = selectedOrder.payment_provider || 'another payment method'
+                                const stockIsOut = Boolean(selectedOrder.stock_out_at && !selectedOrder.stock_returned_at)
                                 return (
                                     <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2 dark:border-amber-800 dark:bg-amber-950/30">
                                         <p className="text-xs font-semibold text-foreground">
@@ -621,9 +630,36 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                                 ? 'The full amount goes back to the card or account they paid with, through Stripe. This can’t be undone. Banks usually show it within 5–10 business days.'
                                                 : `This order was paid with ${provider}, so the money can’t be sent back from here. Refund it in ${provider} first, then confirm to update the order.`}
                                         </p>
+                                        {stockIsOut ? (
+                                            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-white/70 px-2.5 py-2 text-[11px] text-foreground cursor-pointer dark:border-amber-900 dark:bg-black/20">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={restock}
+                                                    onChange={(e) => setRestock(e.target.checked)}
+                                                    disabled={updatingStatus}
+                                                    className="mt-0.5"
+                                                />
+                                                <span>
+                                                    <span className="font-medium">The items came back to the warehouse</span>
+                                                    <span className="block text-muted-foreground">
+                                                        Tick only once the parcel is physically back — this puts the stock back into Inventory. Leave it unticked if the customer keeps the items or they were lost.
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        ) : (
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {selectedOrder.stock_returned_at
+                                                    ? 'The items are already back in warehouse stock.'
+                                                    : 'Nothing was taken out of warehouse stock for this order, so stock stays as it is.'}
+                                            </p>
+                                        )}
                                         <div className="flex flex-wrap items-center gap-2">
                                             <button
-                                                onClick={() => handleStatusUpdate(selectedOrder.id, refundAsk, viaStripe ? {} : { refundedOutside: true })}
+                                                onClick={() => handleStatusUpdate(
+                                                    selectedOrder.id,
+                                                    refundAsk,
+                                                    { ...(viaStripe ? {} : { refundedOutside: true }), ...(stockIsOut && restock ? { restock: true } : {}) },
+                                                )}
                                                 disabled={updatingStatus}
                                                 className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--sera-orange,#f97316)] text-white disabled:opacity-50"
                                             >
@@ -645,6 +681,11 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             {error && (
                                 <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                                     {error}
+                                </p>
+                            )}
+                            {notice && (
+                                <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                                    {notice}
                                 </p>
                             )}
                         </div>
@@ -681,6 +722,15 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                     <div className="col-span-2">
                                         <span className="text-[11px] text-muted-foreground">EasyParcel order</span>
                                         <p className="text-sm font-mono text-foreground">{selectedOrder.easyparcel_order_no}</p>
+                                    </div>
+                                )}
+                                {selectedOrder.stock_out_at && (
+                                    <div className="col-span-2">
+                                        <span className="text-[11px] text-muted-foreground">Warehouse stock</span>
+                                        <p className="text-sm text-foreground">
+                                            Taken out {formatDate(selectedOrder.stock_out_at)}
+                                            {selectedOrder.stock_returned_at ? ` · put back ${formatDate(selectedOrder.stock_returned_at)}` : ''}
+                                        </p>
                                     </div>
                                 )}
                             </div>
