@@ -12,8 +12,9 @@ INSERT INTO public.users (id, email, role_code, account_scope) VALUES
   (idt.new_uid(73), 'gotrue.delete@saf.test', 'GUEST', 'store');
 -- Identity 72 owns rows (membership, assignments via the lifecycle; a manager
 -- reference) but has no business/audit history.
+-- (a distributor user: owns memberships but has no employment record)
 INSERT INTO public.users (id, email, role_code, account_scope, organization_id) VALUES
-  (idt.new_uid(72), 'no.history@saf.test', 'USER', 'portal', saf.org('wh_b'));
+  (idt.new_uid(72), 'no.history@saf.test', 'DIST', 'portal', saf.org('dist_a'));
 UPDATE public.users SET manager_user_id = idt.new_uid(72) WHERE id = saf.uid('hq_b');
 
 INSERT INTO public.sa_authorization_decisions (id, occurred_at, actor_id, permission_key, resource_type, decision, reason_code,
@@ -45,6 +46,10 @@ BEGIN
     (SELECT count(*) FROM public.sa_organization_memberships WHERE user_id = idt.new_uid(72))::int > 0
     AND (SELECT count(*) FROM public.sa_role_assignments WHERE user_id = idt.new_uid(72))::int > 0, true);
   PERFORM saf.expect_eq('H1 identity-owned rows are not history', cardinality(public.identity_history_references(idt.new_uid(72))), 0);
+  PERFORM saf.expect_eq('H1 an employee''s own employment record is HR history (archive, never hard-delete)',
+    'hr_employees.user_id' = ANY(public.identity_history_references(saf.uid('emp_a'))), true);
+  PERFORM saf.expect_eq('H1 being someone''s manager is not history',
+    'hr_employees.manager_user_id' = ANY(public.identity_history_references(saf.uid('hq_a'))), false);
 
   -- The trusted server cannot hard-delete an identity with history.
   PERFORM saf.expect_err('H2 server delete refused (authorization history)', 'service_role', NULL,
