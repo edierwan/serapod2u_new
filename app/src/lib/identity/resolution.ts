@@ -79,7 +79,7 @@ export const IDENTITY_BLOCK_MESSAGES: Record<IdentityBlockCode, string> = {
   IDENTITY_VERIFICATION_REQUIRED:
     'This phone number belongs to an existing account but has not been verified. Use the person\'s email address, or verify the phone first.',
   IDENTITY_ARCHIVED:
-    'This person\'s account has been archived and cannot be reused.',
+    'This person already has an archived account. A Super Admin can reactivate it; a second account is never created for the same person.',
   IDENTITY_INACTIVE:
     'This person already has an account that is suspended or disabled. Reactivate it instead of creating a new one.',
   IDENTITY_PRINCIPAL_UPGRADE_REQUIRED:

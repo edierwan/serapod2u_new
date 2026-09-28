@@ -35,11 +35,24 @@ BEGIN
   PERFORM public.identity_set_account_status(saf.uid('sa'), saf.uid('pu_a2'), 'ARCHIVED', 'Remove account');
   PERFORM saf.expect_eq('L5 archived', (SELECT account_status || ':' || is_active FROM public.users WHERE id = saf.uid('pu_a2')), 'ARCHIVED:false');
   PERFORM saf.expect_eq('L5 archived identity keeps its row (history resolves)', (SELECT full_name FROM public.users WHERE id = saf.uid('pu_a2')), 'Power User A2');
-  PERFORM saf.expect_raise('L5 archived is terminal (lifecycle)',
-    format('select public.identity_set_account_status(%L, %L, %L, %L)', saf.uid('sa'), saf.uid('pu_a2'), 'ACTIVE', 'Bring back'),
-    'identity_archived_is_terminal');
-  PERFORM saf.expect_raise('L5 archived is terminal (legacy is_active writer)',
+  PERFORM saf.expect_raise('L5 archived is terminal for any other writer (legacy is_active toggle)',
     format('update public.users set is_active = true where id = %L', saf.uid('pu_a2')), 'identity_archived_is_terminal');
+  PERFORM saf.expect_raise('L5 archived cannot move to another inactive state',
+    format('select public.identity_set_account_status(%L, %L, %L, %L)', saf.uid('sa'), saf.uid('pu_a2'), 'DISABLED', 'not a reactivation'),
+    'identity_archived_is_terminal');
+  PERFORM saf.expect_raise('L5 only a Super Admin reactivates an archived identity',
+    format('select public.identity_set_account_status(%L, %L, %L, %L)', saf.uid('hq_a'), saf.uid('pu_a2'), 'ACTIVE', 'Rehire'),
+    'sa_authorization_required');
+  PERFORM saf.expect_eq('L5 identifiers stay reserved on the archived identity',
+    (SELECT email FROM public.users WHERE id = saf.uid('pu_a2')), 'fixture13@saf.test');
+  PERFORM saf.expect_eq('L5 re-creating the same person is blocked', public.identity_resolve('fixture13@saf.test', NULL)->>'outcome', 'IDENTITY_ARCHIVED');
+  PERFORM public.identity_set_account_status(saf.uid('sa'), saf.uid('pu_a2'), 'ACTIVE', 'Rehired');
+  PERFORM saf.expect_eq('L5 Super Admin reactivation restores the same identity',
+    (SELECT account_status || ':' || is_active FROM public.users WHERE id = saf.uid('pu_a2')), 'ACTIVE:true');
+  PERFORM saf.expect_eq('L5 reactivation restores enterprise membership',
+    (SELECT count(*) FROM public.sa_organization_memberships WHERE user_id = saf.uid('pu_a2') AND status = 'active')::int, 1);
+  PERFORM saf.expect_eq('L5 reactivation is audited',
+    (SELECT count(*) FROM public.sa_access_change_log WHERE action = 'identity.reactivated' AND target_user_id = saf.uid('pu_a2'))::int, 1);
 
   -- Legacy writers that only toggle is_active map onto the canonical status.
   UPDATE public.users SET is_active = false WHERE id = saf.uid('whm_a1');

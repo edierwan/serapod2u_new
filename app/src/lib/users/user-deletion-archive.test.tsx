@@ -29,12 +29,13 @@ describe('user deletion archive-and-release safety contract', () => {
     expect(verifyRoute).toContain("account_status: 'ARCHIVED'")
   })
 
-  it('archives historical users and releases their reusable identifiers', () => {
-    expect(verifyRoute).toContain("is_active: false")
-    expect(verifyRoute).toContain("phone: null")
-    expect(verifyRoute).toContain("archived-${userId}@deleted.serapod.local")
-    expect(verifyRoute).toContain('admin.auth.admin.updateUserById')
-    expect(verifyRoute).toContain("update({ is_active: false })")
+  it('archives historical users keeping their identifiers reserved (one human = one identity)', () => {
+    expect(verifyRoute).toContain("account_status: 'ARCHIVED'")
+    expect(verifyRoute).toContain("ban_duration: '876000h'")
+    expect(verifyRoute).not.toContain('@deleted.serapod.local')
+    expect(verifyRoute).not.toMatch(/email:\s*archived/)
+    expect(verifyRoute).not.toContain('phone: null')
+    expect(verifyRoute).toContain('email/phone stay reserved')
   })
 
   it('explains archive behavior instead of reporting a generic failure', () => {
