@@ -21,7 +21,7 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import {
     Search, Users, UserCheck, Building2, Briefcase, Pencil, Check, X,
-    Plus, Copy, Loader2, Link2, UserPlus, Eye, Save, ChevronRight, Camera
+    Plus, Copy, Loader2, Eye, Save, ChevronRight, Camera
 } from 'lucide-react'
 import { listDepartments } from '@/lib/actions/departments'
 import { fetchHrPositions, updateUserHr } from '@/lib/api/hr'
@@ -113,27 +113,20 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
     const [addDialogOpen, setAddDialogOpen] = useState(false)
     const [addLoading, setAddLoading] = useState(false)
     const [statusFilter, setStatusFilter] = useState('active')
-    const [addMode, setAddMode] = useState<'create' | 'link'>('link')
+    // One form: the central identity is resolved from email/phone on the
+    // server (existing person → reused, new person → created). HR records
+    // employment facts only; access is administered in Security & Access.
     const [addForm, setAddForm] = useState({
         full_name: '',
         email: '',
         phone: '',
-        role_code: 'staff',
         department_id: '',
         position_id: '',
         manager_user_id: '',
         employment_type: 'Full-time',
         join_date: new Date().toISOString().split('T')[0],
-        create_login: true,
     })
-    const [addResult, setAddResult] = useState<{ employee_no?: number; temp_password?: string } | null>(null)
-
-    // Link existing users state
-    const [unlinkUsers, setUnlinkUsers] = useState<{ id: string; full_name: string; email: string; phone: string | null; role_name: string | null; avatar_url: string | null }[]>([])
-    const [linkSelected, setLinkSelected] = useState<Set<string>>(new Set())
-    const [linkLoading, setLinkLoading] = useState(false)
-    const [linkSearchQuery, setLinkSearchQuery] = useState('')
-    const [linkResult, setLinkResult] = useState<{ linked: number; errors: number } | null>(null)
+    const [addResult, setAddResult] = useState<{ employee_no?: number; temp_password?: string | null; outcome?: 'CREATED' | 'REUSED' } | null>(null)
 
     // HR Profile sheet state
     const [profileOpen, setProfileOpen] = useState(false)
@@ -358,21 +351,21 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                     full_name: addForm.full_name.trim(),
                     email: addForm.email.trim().toLowerCase(),
                     phone: addForm.phone.trim() || null,
-                    role_code: addForm.role_code,
                     department_id: addForm.department_id || null,
                     position_id: addForm.position_id || null,
                     manager_user_id: addForm.manager_user_id || null,
                     employment_type: addForm.employment_type,
                     join_date: addForm.join_date || null,
-                    create_login: addForm.create_login,
                 }),
             })
             const json = await res.json()
             if (json.success) {
-                toast({ title: 'Employee added', description: `${addForm.full_name} has been added.` })
+                const reused = json.data?.outcome === 'REUSED'
+                toast({ title: reused ? 'Existing person added to HR' : 'Employee added', description: `${addForm.full_name} ${reused ? 'already had an account; it was used.' : 'has been added.'}` })
                 setAddResult({
                     employee_no: json.data?.employee_no,
                     temp_password: json.data?.temp_password,
+                    outcome: json.data?.outcome,
                 })
                 loadUsers()
             } else {
@@ -386,74 +379,12 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
 
     const resetAddForm = () => {
         setAddForm({
-            full_name: '', email: '', phone: '', role_code: 'staff',
+            full_name: '', email: '', phone: '',
             department_id: '', position_id: '', manager_user_id: '',
             employment_type: 'Full-time', join_date: new Date().toISOString().split('T')[0],
-            create_login: true,
         })
         setAddResult(null)
-        setLinkResult(null)
-        setLinkSelected(new Set())
-        setLinkSearchQuery('')
     }
-
-    // Load unlinked users (in org but without hr_employees / employee_no)
-    const loadUnlinkedUsers = async () => {
-        if (!isReady) return
-        const { data, error } = await (supabase as any)
-            .from('users')
-            .select('id, full_name, email, phone, avatar_url, employee_no, roles:role_code(role_name)')
-            .eq('organization_id', organizationId)
-            .is('employee_no', null)
-            .order('full_name', { ascending: true })
-
-        if (!error && data) {
-            setUnlinkUsers(data.map((u: any) => ({
-                id: u.id,
-                full_name: u.full_name || u.email,
-                email: u.email,
-                phone: u.phone,
-                role_name: u.roles?.role_name || null,
-                avatar_url: u.avatar_url,
-            })))
-        }
-    }
-
-    const handleLinkUsers = async () => {
-        if (linkSelected.size === 0) return
-        setLinkLoading(true)
-        try {
-            const res = await fetch('/api/hr/employees/profile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_ids: Array.from(linkSelected) }),
-            })
-            const json = await res.json()
-            if (json.success) {
-                setLinkResult({ linked: json.linked, errors: json.errors })
-                toast({ title: 'Users linked to HR', description: `${json.linked} employee(s) linked successfully.` })
-                loadUsers()
-                loadUnlinkedUsers()
-            } else {
-                toast({ title: 'Error', description: json.error, variant: 'destructive' })
-            }
-        } catch (err: any) {
-            toast({ title: 'Error', description: err.message, variant: 'destructive' })
-        }
-        setLinkLoading(false)
-    }
-
-    const toggleLinkUser = (id: string, checked: boolean) => {
-        const next = new Set(linkSelected)
-        if (checked) next.add(id); else next.delete(id)
-        setLinkSelected(next)
-    }
-
-    const filteredUnlinkedUsers = useMemo(() => {
-        if (!linkSearchQuery.trim()) return unlinkUsers
-        const q = linkSearchQuery.toLowerCase()
-        return unlinkUsers.filter(u => u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
-    }, [unlinkUsers, linkSearchQuery])
 
     // Open HR profile sheet
     const openProfile = async (user: HrUserRow) => {
@@ -550,7 +481,7 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                         <CardDescription className="text-xs">Employees and reporting lines • {filteredUsers.length} of {users.length}</CardDescription>
                     </div>
                     {canEdit && (
-                        <Button size="sm" className="w-full sm:w-auto shrink-0" onClick={() => { resetAddForm(); setAddMode('link'); loadUnlinkedUsers(); setAddDialogOpen(true) }}>
+                        <Button size="sm" className="w-full sm:w-auto shrink-0" onClick={() => { resetAddForm(); setAddDialogOpen(true) }}>
                             <Plus className="h-4 w-4 mr-1" /> Add Employee
                         </Button>
                     )}
@@ -804,50 +735,43 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                 )}
             </CardContent>
 
-            {/* ─── Add Employee Dialog (Two modes: Link / Create) ──── */}
+            {/* ─── Add Employee Dialog (identity resolved on the server) ──── */}
             <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (!open) resetAddForm() }}>
                 <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>{addResult || linkResult ? 'Done' : 'Add Employee'}</DialogTitle>
+                        <DialogTitle>{addResult ? 'Done' : 'Add Employee'}</DialogTitle>
                         <DialogDescription>
-                            {addResult ? 'New employee created.' : linkResult ? 'Users linked to HR.' : 'Link an existing user or create a new employee record.'}
+                            {addResult
+                                ? (addResult.outcome === 'REUSED' ? 'This person already had an account; it is now linked to their employment record.' : 'New employee created.')
+                                : 'Enter the person\'s details. If they already have an account (same email), it is used automatically — no duplicate is created.'}
                         </DialogDescription>
                     </DialogHeader>
 
-                    {/* ── Success state ──────────────────────────── */}
-                    {(addResult || linkResult) ? (
+                    {addResult ? (
                         <div className="space-y-4">
-                            {addResult && (
-                                <>
-                                    <div className="rounded-lg border p-4 bg-green-50 space-y-2">
-                                        <div className="text-sm font-medium text-green-800">Employee added successfully!</div>
-                                        {addResult.employee_no && (
-                                            <div className="text-sm text-green-700">Employee No: <span className="font-mono font-medium">EMP-{String(addResult.employee_no).padStart(4, '0')}</span></div>
-                                        )}
-                                    </div>
-                                    {addResult.temp_password && (
-                                        <div className="rounded-lg border p-4 bg-yellow-50 space-y-2">
-                                            <div className="text-sm font-medium text-yellow-800">Login Credentials</div>
-                                            <div className="text-sm text-yellow-700">
-                                                <div>Email: <span className="font-mono">{addForm.email}</span></div>
-                                                <div className="flex items-center gap-2">
-                                                    Temporary password: <span className="font-mono font-medium">{addResult.temp_password}</span>
-                                                    <Button variant="ghost" size="sm" className="h-6 px-1"
-                                                        onClick={() => { navigator.clipboard.writeText(addResult.temp_password!); toast({ title: 'Copied' }) }}>
-                                                        <Copy className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                            <div className="text-xs text-yellow-600">Save these credentials. The password cannot be retrieved later.</div>
+                            <div className="rounded-lg border p-4 bg-green-50 space-y-2">
+                                <div className="text-sm font-medium text-green-800">
+                                    {addResult.outcome === 'REUSED' ? 'Existing account used — no duplicate created.' : 'Employee added successfully!'}
+                                </div>
+                                {addResult.employee_no && (
+                                    <div className="text-sm text-green-700">Employee No: <span className="font-mono font-medium">EMP-{String(addResult.employee_no).padStart(4, '0')}</span></div>
+                                )}
+                                <div className="text-xs text-green-700">Access beyond employee self-service is granted in Security &amp; Access.</div>
+                            </div>
+                            {addResult.temp_password && (
+                                <div className="rounded-lg border p-4 bg-yellow-50 space-y-2">
+                                    <div className="text-sm font-medium text-yellow-800">Login Credentials</div>
+                                    <div className="text-sm text-yellow-700">
+                                        <div>Email: <span className="font-mono">{addForm.email}</span></div>
+                                        <div className="flex items-center gap-2">
+                                            Temporary password: <span className="font-mono font-medium">{addResult.temp_password}</span>
+                                            <Button variant="ghost" size="sm" className="h-6 px-1"
+                                                onClick={() => { navigator.clipboard.writeText(addResult.temp_password!); toast({ title: 'Copied' }) }}>
+                                                <Copy className="h-3 w-3" />
+                                            </Button>
                                         </div>
-                                    )}
-                                </>
-                            )}
-                            {linkResult && (
-                                <div className="rounded-lg border p-4 bg-green-50 space-y-2">
-                                    <div className="text-sm font-medium text-green-800">{linkResult.linked} user(s) linked to HR module</div>
-                                    {linkResult.errors > 0 && <div className="text-sm text-red-600">{linkResult.errors} error(s)</div>}
-                                    <div className="text-xs text-green-600">These users now have HR profiles. Click their names to fill in personal details.</div>
+                                    </div>
+                                    <div className="text-xs text-yellow-600">Save these credentials. The password cannot be retrieved later.</div>
                                 </div>
                             )}
                             <DialogFooter>
@@ -856,168 +780,86 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                             </DialogFooter>
                         </div>
                     ) : (
-                        /* ── Add / Link tabs ──────────────────────── */
-                        <Tabs value={addMode} onValueChange={(v) => setAddMode(v as 'link' | 'create')}>
-                            <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="link" className="gap-1"><Link2 className="h-3.5 w-3.5" />Link Existing User</TabsTrigger>
-                                <TabsTrigger value="create" className="gap-1"><UserPlus className="h-3.5 w-3.5" />Create New</TabsTrigger>
-                            </TabsList>
-
-                            {/* ── Link Existing Users ──────────────── */}
-                            <TabsContent value="link" className="space-y-4 mt-4">
-                                <div className="text-xs text-gray-500">
-                                    Select users from User Management who don&apos;t have HR records yet. They will be assigned an Employee Number and HR profile.
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <Input placeholder="Search users..." value={linkSearchQuery}
-                                        onChange={e => setLinkSearchQuery(e.target.value)} className="pl-10" />
-                                </div>
-                                <div className="rounded-lg border max-h-[300px] overflow-y-auto divide-y">
-                                    {filteredUnlinkedUsers.length === 0 ? (
-                                        <div className="px-4 py-6 text-center text-sm text-gray-500">
-                                            {unlinkUsers.length === 0 ? 'All users already have HR records.' : 'No matching users.'}
-                                        </div>
-                                    ) : filteredUnlinkedUsers.map(u => (
-                                        <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
-                                            <Checkbox
-                                                checked={linkSelected.has(u.id)}
-                                                onCheckedChange={(c) => toggleLinkUser(u.id, c as boolean)}
-                                            />
-                                            <Avatar className="h-7 w-7">
-                                                <AvatarImage src={u.avatar_url || undefined} />
-                                                <AvatarFallback className="text-[10px]">{(u.full_name || 'U').slice(0, 2).toUpperCase()}</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="text-sm font-medium truncate">{u.full_name}</div>
-                                                <div className="text-xs text-gray-400 truncate">{u.email}{u.phone ? ` • ${u.phone}` : ''}</div>
-                                            </div>
-                                            {u.role_name && <Badge variant="outline" className="text-[10px]">{u.role_name}</Badge>}
-                                        </label>
-                                    ))}
-                                </div>
-                                {linkSelected.size > 0 && (
-                                    <div className="text-sm text-blue-700 font-medium">{linkSelected.size} user(s) selected</div>
-                                )}
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => { setAddDialogOpen(false); resetAddForm() }}>Cancel</Button>
-                                    <Button onClick={handleLinkUsers} disabled={linkLoading || linkSelected.size === 0}>
-                                        {linkLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Linking...</> : <><Link2 className="h-4 w-4 mr-1" />Link to HR</>}
-                                    </Button>
-                                </DialogFooter>
-                            </TabsContent>
-
-                            {/* ── Create New Employee ──────────────── */}
-                            <TabsContent value="create" className="space-y-4 mt-4">
-                                <div className="text-xs text-gray-500">
-                                    Create a brand new employee record. This will also create a User Management entry.
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Full Name *</Label>
-                                        <Input value={addForm.full_name} onChange={e => setAddForm(p => ({ ...p, full_name: e.target.value }))} placeholder="e.g. Ahmad bin Ismail" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Work Email *</Label>
-                                        <Input type="email" value={addForm.email} onChange={e => setAddForm(p => ({ ...p, email: e.target.value }))} placeholder="e.g. ahmad@company.com" />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Phone</Label>
-                                        <Input value={addForm.phone} onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))} placeholder="+60123456789" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Employment Type</Label>
-                                        <Select value={addForm.employment_type} onValueChange={v => setAddForm(p => ({ ...p, employment_type: v }))}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Full-time">Full-time</SelectItem>
-                                                <SelectItem value="Part-time">Part-time</SelectItem>
-                                                <SelectItem value="Contract">Contract</SelectItem>
-                                                <SelectItem value="Intern">Intern</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Department</Label>
-                                        <Select value={addForm.department_id || 'none'} onValueChange={v => setAddForm(p => ({ ...p, department_id: v === 'none' ? '' : v }))}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">No department</SelectItem>
-                                                {departments.map(d => (
-                                                    <SelectItem key={d.id} value={d.id}>{d.dept_code ? `${d.dept_code} - ` : ''}{d.dept_name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Position</Label>
-                                        <Select value={addForm.position_id || 'none'} onValueChange={v => setAddForm(p => ({ ...p, position_id: v === 'none' ? '' : v }))}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">No position</SelectItem>
-                                                {positions.map(p => (
-                                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Reports To</Label>
-                                        <Select value={addForm.manager_user_id || 'none'} onValueChange={v => setAddForm(p => ({ ...p, manager_user_id: v === 'none' ? '' : v }))}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">Top leader</SelectItem>
-                                                {users.map(u => (
-                                                    <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Join Date</Label>
-                                        <Input type="date" value={addForm.join_date} onChange={e => setAddForm(p => ({ ...p, join_date: e.target.value }))} />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Role</Label>
-                                        <Select value={addForm.role_code} onValueChange={v => setAddForm(p => ({ ...p, role_code: v }))}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="staff">Staff</SelectItem>
-                                                <SelectItem value="manager">Manager</SelectItem>
-                                                <SelectItem value="hr_admin">HR Admin</SelectItem>
-                                                <SelectItem value="finance">Finance</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="flex items-end pb-2">
-                                        <label className="flex items-center gap-2">
-                                            <Checkbox checked={addForm.create_login} onCheckedChange={v => setAddForm(p => ({ ...p, create_login: v as boolean }))} />
-                                            <span className="text-sm text-gray-700">Create login credentials</span>
-                                        </label>
-                                    </div>
-                                </div>
-                                {!addForm.create_login && (
-                                    <div className="text-xs text-yellow-600 flex items-center gap-1 px-1">
-                                        <Users className="h-3 w-3" />
-                                        Employee record only. Login can be created later from User Management.
-                                    </div>
-                                )}
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => { setAddDialogOpen(false); resetAddForm() }}>Cancel</Button>
-                                    <Button onClick={handleAddEmployee} disabled={addLoading || !addForm.full_name.trim() || !addForm.email.trim()}>
-                                        {addLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Adding...</> : <><Plus className="h-4 w-4 mr-1" />Add Employee</>}
-                                    </Button>
-                                </DialogFooter>
-                            </TabsContent>
-                        </Tabs>
+                        <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Full Name *</Label>
+                                <Input value={addForm.full_name} onChange={e => setAddForm(p => ({ ...p, full_name: e.target.value }))} placeholder="e.g. Ahmad bin Ismail" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Work Email *</Label>
+                                <Input type="email" value={addForm.email} onChange={e => setAddForm(p => ({ ...p, email: e.target.value }))} placeholder="e.g. ahmad@company.com" />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Phone</Label>
+                                <Input value={addForm.phone} onChange={e => setAddForm(p => ({ ...p, phone: e.target.value }))} placeholder="+60123456789" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Employment Type</Label>
+                                <Select value={addForm.employment_type} onValueChange={v => setAddForm(p => ({ ...p, employment_type: v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Full-time">Full-time</SelectItem>
+                                        <SelectItem value="Part-time">Part-time</SelectItem>
+                                        <SelectItem value="Contract">Contract</SelectItem>
+                                        <SelectItem value="Intern">Intern</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Department</Label>
+                                <Select value={addForm.department_id || 'none'} onValueChange={v => setAddForm(p => ({ ...p, department_id: v === 'none' ? '' : v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No department</SelectItem>
+                                        {departments.map(d => (
+                                            <SelectItem key={d.id} value={d.id}>{d.dept_code ? `${d.dept_code} - ` : ''}{d.dept_name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Position</Label>
+                                <Select value={addForm.position_id || 'none'} onValueChange={v => setAddForm(p => ({ ...p, position_id: v === 'none' ? '' : v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No position</SelectItem>
+                                        {positions.map(p => (
+                                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Reports To</Label>
+                                <Select value={addForm.manager_user_id || 'none'} onValueChange={v => setAddForm(p => ({ ...p, manager_user_id: v === 'none' ? '' : v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Top leader</SelectItem>
+                                        {users.map(u => (
+                                            <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Join Date</Label>
+                                <Input type="date" value={addForm.join_date} onChange={e => setAddForm(p => ({ ...p, join_date: e.target.value }))} />
+                            </div>
+                        </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => { setAddDialogOpen(false); resetAddForm() }}>Cancel</Button>
+                                <Button onClick={handleAddEmployee} disabled={addLoading || !addForm.full_name.trim() || !addForm.email.trim()}>
+                                    {addLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Adding...</> : <><Plus className="h-4 w-4 mr-1" />Add Employee</>}
+                                </Button>
+                            </DialogFooter>
+                        </div>
                     )}
                 </DialogContent>
             </Dialog>

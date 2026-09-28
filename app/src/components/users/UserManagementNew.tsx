@@ -1031,6 +1031,8 @@ export default function UserManagementNew({
           join_date: (userData as any).join_date || undefined,
           employment_status: (userData as any).employment_status || 'active',
           can_be_reference: Boolean((userData as any).can_be_reference),
+          initial_role_id: (userData as any).initial_role_id || null,
+          initial_access_reason: (userData as any).initial_access_reason || null,
         }, {
           id: userProfile.id,
           role_code: userProfile.role_code,

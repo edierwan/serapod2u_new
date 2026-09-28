@@ -1,6 +1,6 @@
 'use client'
 
-import { Bot, KeyRound } from 'lucide-react'
+import { Bot, History, KeyRound } from 'lucide-react'
 import { formatDate } from './client-api'
 
 const KIND_LABELS: Record<string, string> = {
@@ -30,5 +30,42 @@ export default function TechnicalAccessPanel({ governance }: { governance: any |
         <div className="text-gray-500">Status: {s.status}</div>
       </div>
     </div>)}</div>
+  </section>
+}
+
+/**
+ * Legacy compatibility (read-only): the legacy role levels and department
+ * overrides that Settings → Authorization used to edit, shown with the
+ * compatibility role each maps to. Nothing here is writable; enterprise
+ * access is granted through business roles.
+ */
+export function LegacyCompatibilityPanel({ governance }: { governance: any | null }) {
+  const legacy = governance?.legacyCompatibility
+  if (!legacy) return null
+  return <section className="rounded-xl border border-gray-200 bg-white">
+    <div className="border-b p-4">
+      <h2 className="flex items-center gap-2 font-semibold"><History className="h-4 w-4" />Legacy compatibility</h2>
+      <p className="text-sm text-gray-500">Legacy role levels are compatibility metadata only: they never make anyone staff and never override a Security &amp; Access decision.
+        {legacy.readOnly
+          ? ' Legacy authorization stores are read-only in this environment.'
+          : ' Legacy authorization stores are still writable in this environment (Settings → Authorization); they become read-only at cutover.'}</p>
+    </div>
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+          <tr><th className="px-4 py-2">Legacy role</th><th className="px-4 py-2">Level</th><th className="px-4 py-2">Compatibility role</th><th className="px-4 py-2">Permissions</th><th className="px-4 py-2">Holders</th></tr>
+        </thead>
+        <tbody className="divide-y">
+          {legacy.roles.map((r: any) => <tr key={r.roleCode} className={r.isActive ? '' : 'text-gray-400'}>
+            <td className="px-4 py-2">{r.roleName || r.roleCode} <code className="text-xs text-gray-400">{r.roleCode}</code>{r.isActive ? null : <span className="ml-1 text-xs">(inactive)</span>}</td>
+            <td className="px-4 py-2">{r.roleLevel}</td>
+            <td className="px-4 py-2">{r.compatRoleKey ? <code className="text-xs">{r.compatRoleKey}</code> : <span className="text-gray-400">—</span>}</td>
+            <td className="px-4 py-2">{r.compatPermissions}</td>
+            <td className="px-4 py-2">{r.compatAssignments}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+    <div className="border-t p-4 text-xs text-gray-500">Departments with legacy permission overrides: {legacy.departmentsWithOverrides}</div>
   </section>
 }

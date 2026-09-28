@@ -46,6 +46,7 @@ import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from 
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 import UserPasswordResetSection from './UserPasswordResetSection'
+import { listInitialAccessRoles } from '@/lib/actions'
 
 interface Bank {
   id: string
@@ -312,6 +313,15 @@ export default function UserDialogNew({
   const selectedPosition = positions.find(position => position.id === formData.position_id)
   const selectedManager = orgUsers.find(orgUser => orgUser.id === formData.manager_user_id)
   const isGuest = selectedRoleLevel === 50
+  // Optional initial Security & Access business role (create mode only; the
+  // list is empty unless the administrator may assign roles in that org).
+  const [initialRoles, setInitialRoles] = useState<Array<{ id: string; name: string; description: string | null }>>([])
+  useEffect(() => {
+    if (user || !open || isGuest || !formData.organization_id) { setInitialRoles([]); return }
+    let cancelled = false
+    listInitialAccessRoles(formData.organization_id).then(r => { if (!cancelled) setInitialRoles(r.roles || []) }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [user, open, isGuest, formData.organization_id])
   const showBusinessStep = organizationType === 'SHOP' || selectedOrgIsShop
   const showHrFields = Boolean(
     formData.organization_id &&
@@ -1123,6 +1133,23 @@ export default function UserDialogNew({
             </Select>
           </div>
           </div>
+        </div>
+      ) : null}
+      {!user && initialRoles.length > 0 ? (
+        <div className="space-y-2 rounded-lg border border-[var(--sera-line)] p-4">
+          <Label>Initial access (optional)</Label>
+          <p className="text-xs text-[var(--sera-muted)]">Grant a Security &amp; Access business role now. The legacy role above is compatibility only; access comes from business roles.</p>
+          <Select value={(formData as any).initial_role_id || 'none'} onValueChange={v => setFormData(prev => ({ ...prev, initial_role_id: v === 'none' ? '' : v } as any))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Employee self-service only</SelectItem>
+              {initialRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {(formData as any).initial_role_id ? (
+            <Input placeholder="Reason (recorded in the access audit)" value={(formData as any).initial_access_reason || ''}
+              onChange={e => setFormData(prev => ({ ...prev, initial_access_reason: e.target.value } as any))} />
+          ) : null}
         </div>
       ) : null}
     </div>
