@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Truck } from 'lucide-react'
-import { useCart } from '@/lib/storefront/cart-context'
+import { useCart, type CartItem } from '@/lib/storefront/cart-context'
+import { clearOutdoorBuyNow, readOutdoorBuyNow } from '@/lib/outdoor/buy-now'
 import { createClient } from '@/lib/supabase/client'
 import { MALAYSIA_STATES } from '@/lib/shipping/malaysia-states'
 import { socialAccountLabel } from '@/lib/auth/social-oauth'
@@ -15,7 +16,10 @@ import {
 } from '@/lib/outdoor/shipping'
 import type { OutdoorCheckoutPrefill } from '@/lib/outdoor/checkout-prefill'
 
-const LOGIN_FOR_CHECKOUT = `/outdoor/login?next=${encodeURIComponent('/outdoor/checkout')}`
+function loginForCheckout() {
+  const here = `${window.location.pathname}${window.location.search}`
+  return `/outdoor/login?next=${encodeURIComponent(here.startsWith('/outdoor/checkout') ? here : '/outdoor/checkout')}`
+}
 
 function money(n: number) {
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(n)
@@ -23,7 +27,12 @@ function money(n: number) {
 
 export default function OutdoorCheckoutPage() {
   const router = useRouter()
-  const { items, subtotal, clearCart, hasItemsWithoutPrice } = useCart()
+  const cart = useCart()
+  // undefined until the URL is read; null means a normal checkout of the whole bag.
+  const [buyNow, setBuyNow] = useState<CartItem | null | undefined>(undefined)
+  const items = buyNow ? [buyNow] : cart.items
+  const subtotal = buyNow ? (buyNow.price ?? 0) * buyNow.quantity : cart.subtotal
+  const hasItemsWithoutPrice = buyNow ? !(buyNow.price != null && buyNow.price > 0) : cart.hasItemsWithoutPrice
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [payMethods, setPayMethods] = useState<{ key: string; label: string; isDefault: boolean }[]>([])
@@ -43,10 +52,15 @@ export default function OutdoorCheckoutPage() {
   const bagKey = items.map((item) => `${item.variantId}:${item.quantity}`).join('|')
 
   useEffect(() => {
+    const mode = new URLSearchParams(window.location.search).get('mode')
+    setBuyNow(mode === 'buy-now' ? readOutdoorBuyNow() : null)
+  }, [])
+
+  useEffect(() => {
     const supabase = createClient()
     void supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user?.email) {
-        router.replace(LOGIN_FOR_CHECKOUT)
+        router.replace(loginForCheckout())
         return
       }
       setAccountEmail(user.email)
@@ -108,6 +122,10 @@ export default function OutdoorCheckoutPage() {
       })
   }, [])
 
+  if (buyNow === undefined) {
+    return <div className="mx-auto max-w-md px-5 py-16 text-center text-sm text-[var(--out-muted)]">Loading checkout…</div>
+  }
+
   if (items.length === 0) {
     return (
       <div className="mx-auto max-w-md px-5 py-16 text-center">
@@ -151,7 +169,8 @@ export default function OutdoorCheckoutPage() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || 'Checkout failed')
-      clearCart()
+      if (buyNow) clearOutdoorBuyNow()
+      else cart.clearCart()
       if (data?.paymentUrl) {
         sessionStorage.setItem('outdoor-pay-next', data.paymentUrl)
         window.location.replace(`/outdoor/pay?ref=${encodeURIComponent(data.orderRef || '')}`)
@@ -298,7 +317,12 @@ export default function OutdoorCheckoutPage() {
         </form>
 
         <aside className="out-card p-5 sm:p-6 lg:sticky lg:top-24">
-          <h2 className="font-display text-xl text-[var(--out-bark)]">Your bag</h2>
+          <h2 className="font-display text-xl text-[var(--out-bark)]">{buyNow ? 'Buying now' : 'Your bag'}</h2>
+          {buyNow && cart.items.length > 0 ? (
+            <p className="mt-1 text-xs text-[var(--out-muted)]">
+              Only this item is in this order. Your bag keeps its {cart.totalItems} other item{cart.totalItems === 1 ? '' : 's'}.
+            </p>
+          ) : null}
           <ul className="mt-4 space-y-3">
             {items.map((i) => (
               <li key={i.variantId} className="flex items-center gap-3">

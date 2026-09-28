@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import Link from 'next/link'
+import { Check, Minus, Plus } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
+import { OUTDOOR_BUY_NOW_CHECKOUT, saveOutdoorBuyNow } from '@/lib/outdoor/buy-now'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
 import { outdoorColorFromText, outdoorFallbackSwatches, outdoorProductKind, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
 import { useRouter } from 'next/navigation'
@@ -57,6 +59,13 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   const [selected, setSelected] = useState<StorefrontVariant | null>(defaultVariant)
   const [qty, setQty] = useState(1)
   const [adding, setAdding] = useState(false)
+  const [added, setAdded] = useState(false)
+
+  useEffect(() => {
+    if (!added) return
+    const timer = window.setTimeout(() => setAdded(false), 2400)
+    return () => window.clearTimeout(timer)
+  }, [added])
 
   useEffect(() => {
     setSelected(defaultVariant)
@@ -101,20 +110,34 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     ? selected.suggested_retail_price
     : defaultVariant?.suggested_retail_price ?? null
 
+  const lineItem = () =>
+    selected && productPrice && productPrice > 0
+      ? {
+          productId: product.id,
+          variantId: selected.id,
+          productName: product.product_name,
+          variantName: selected.variant_name,
+          price: productPrice,
+          imageUrl: displayImage || selected.image_url || gallery[0] || null,
+        }
+      : null
+
+  const handleAddToBag = () => {
+    const item = lineItem()
+    if (!item || adding) return
+    addItem(item, qty)
+    setAdded(true)
+  }
+
   const handleBuy = () => {
-    if (!selected || !productPrice || productPrice <= 0 || adding) return
+    const item = lineItem()
+    if (!item || adding) return
     setAdding(true)
-    addItem(
-      {
-        productId: product.id,
-        variantId: selected.id,
-        productName: product.product_name,
-        variantName: selected.variant_name,
-        price: productPrice,
-        imageUrl: displayImage || selected.image_url || gallery[0] || null,
-      },
-      qty,
-    )
+    if (saveOutdoorBuyNow({ ...item, quantity: qty })) {
+      router.push(OUTDOOR_BUY_NOW_CHECKOUT)
+      return
+    }
+    addItem(item, qty)
     router.push('/outdoor/checkout')
   }
 
@@ -194,14 +217,6 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           ) : null}
 
           <div className="mt-6 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleBuy}
-              disabled={!productPrice || productPrice <= 0 || adding}
-              className="inline-flex h-12 flex-1 items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
-            >
-              Buy Now
-            </button>
             <div className="inline-flex h-12 items-center rounded-2xl bg-white px-2 text-[var(--out-bark)]">
               <button type="button" className="p-2" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease">
                 <Minus className="h-4 w-4" />
@@ -211,7 +226,39 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                 <Plus className="h-4 w-4" />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleAddToBag}
+              disabled={!productPrice || productPrice <= 0 || adding}
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-2 border-[var(--out-bark)] text-sm font-semibold text-[var(--out-bark)] transition-colors hover:bg-[var(--out-bark)] hover:text-[var(--out-cream)] disabled:opacity-40"
+            >
+              {added ? (
+                <span key="added" className="out-swap inline-flex items-center gap-2">
+                  <Check className="h-4 w-4" aria-hidden /> Added to bag
+                </span>
+              ) : (
+                <span key="add" className="out-swap">Add to bag</span>
+              )}
+            </button>
           </div>
+          <button
+            type="button"
+            onClick={handleBuy}
+            disabled={!productPrice || productPrice <= 0 || adding}
+            className="mt-3 inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--out-moss)] text-sm font-semibold text-white hover:bg-[var(--out-moss-deep)] disabled:opacity-40"
+          >
+            Buy Now
+          </button>
+          <p className="mt-2 min-h-[1.25rem] text-center text-xs text-[var(--out-muted)]" aria-live="polite">
+            {added ? (
+              <>
+                Added to your bag ·{' '}
+                <Link href="/outdoor/cart" className="font-semibold text-[var(--out-bark)] hover:underline">
+                  View bag
+                </Link>
+              </>
+            ) : null}
+          </p>
         </div>
       </div>
     </div>
