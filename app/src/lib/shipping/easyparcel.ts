@@ -47,6 +47,16 @@ export function isEasyParcelAppReady() {
   return isEasyParcelAppConfigured()
 }
 
+/**
+ * Outdoor delivers orders itself and uses EasyParcel only to track them. Booking
+ * couriers through EasyParcel (quotes, submit, wallet) stays off unless
+ * OUTDOOR_EASYPARCEL_BOOKING is explicitly turned on.
+ */
+export function isEasyParcelBookingEnabled(env: NodeJS.ProcessEnv = process.env) {
+  const value = String(env.OUTDOOR_EASYPARCEL_BOOKING || '').trim().toLowerCase()
+  return ['1', 'true', 'on', 'yes'].includes(value)
+}
+
 export async function isEasyParcelConfigured() {
   if (!isEasyParcelAppConfigured()) return false
   return hasEasyParcelTokens()

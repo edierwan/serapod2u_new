@@ -300,7 +300,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
           <div className="grid gap-2 text-sm text-[var(--out-bark)]">
             <p><span className="text-[var(--out-muted)]">Placed</span> · {new Date(order.createdAt).toLocaleString()}</p>
             <p><span className="text-[var(--out-muted)]">Total</span> · {money(order.totalAmount, order.currency)}</p>
-            {order.shippingCourierName ? (
+            {order.shippingCourierName && order.shippingTrackingNo ? (
               <p><span className="text-[var(--out-muted)]">Courier</span> · {order.shippingCourierName}</p>
             ) : null}
             {order.shippingTrackingNo ? (

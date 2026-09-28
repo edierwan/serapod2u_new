@@ -2,7 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
 
-import { parseEasyParcelSubmitResponse } from '@/lib/shipping/easyparcel'
+import { isEasyParcelBookingEnabled, parseEasyParcelSubmitResponse } from '@/lib/shipping/easyparcel'
+
+describe('isEasyParcelBookingEnabled', () => {
+  const env = (value?: string) => ({ OUTDOOR_EASYPARCEL_BOOKING: value }) as unknown as NodeJS.ProcessEnv
+
+  it('keeps EasyParcel to tracking only unless booking is explicitly turned on', () => {
+    expect(isEasyParcelBookingEnabled(env())).toBe(false)
+    expect(isEasyParcelBookingEnabled(env(''))).toBe(false)
+    expect(isEasyParcelBookingEnabled(env('false'))).toBe(false)
+    expect(isEasyParcelBookingEnabled(env('true'))).toBe(true)
+    expect(isEasyParcelBookingEnabled(env(' ON '))).toBe(true)
+  })
+})
 
 describe('parseEasyParcelSubmitResponse', () => {
   it('accepts a created shipment even before the AWB is assigned', () => {

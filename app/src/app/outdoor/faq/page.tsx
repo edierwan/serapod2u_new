@@ -15,7 +15,7 @@ const FAQS = [
   },
   {
     q: 'Do you ship outside Malaysia?',
-    a: 'Launch focus is Malaysia via EasyParcel. International options may be enabled later if courier coverage and rates support them.',
+    a: 'We currently deliver within Malaysia only. International options may be enabled later if courier coverage and rates support them.',
   },
   {
     q: 'Can I change or cancel an order?',

@@ -6,7 +6,7 @@ import { MIN_ORDER_TOTAL, customerPaymentError, isSellablePrice } from '@/lib/st
 import { normalizeMalaysianPhone, validateCheckoutCustomer } from '@/lib/storefront/customer-validation'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
-import { easyParcelRateCheck, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import { easyParcelRateCheck, isEasyParcelBookingEnabled, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 
 // NOTE: storefront_orders / storefront_order_items are not in the
@@ -60,7 +60,7 @@ const MAX_LINE_QUANTITY = 999
 
 async function cheapestOutdoorCourier(postcode: string, state: string) {
   try {
-    if (!(await isEasyParcelConfigured())) return null
+    if (!isEasyParcelBookingEnabled() || !(await isEasyParcelConfigured())) return null
     const quoted = await easyParcelRateCheck({
       sendCode: String(postcode || '').trim(),
       sendState: toEasyParcelState(state),

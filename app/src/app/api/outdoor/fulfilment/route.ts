@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
-import { easyParcelSubmitOrder, easyParcelWalletBalance, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import {
+  easyParcelSubmitOrder,
+  easyParcelWalletBalance,
+  isEasyParcelBookingEnabled,
+  isEasyParcelConfigured,
+} from '@/lib/shipping/easyparcel'
 import { isEasyParcelAppConfigured } from '@/lib/shipping/easyparcel-oauth'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 
@@ -51,10 +56,12 @@ export async function GET(request: NextRequest) {
     }
 
     const connected = await isEasyParcelConfigured()
-    const wallet = connected ? await easyParcelWalletBalance() : null
+    const booking = isEasyParcelBookingEnabled()
+    const wallet = connected && booking ? await easyParcelWalletBalance() : null
     return NextResponse.json({
       orders: data || [],
       easyParcelConfigured: connected,
+      easyParcelBooking: booking,
       easyParcelNeedsConnect: isEasyParcelAppConfigured() && !connected,
       easyParcelCredit: wallet?.ok ? wallet.balance + wallet.freeCredit : null,
     })
@@ -106,8 +113,10 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === 'set_tracking') {
-      const tracking = String(body.trackingNo || '').trim()
-      const courier = String(body.courierName || order.shipping_courier_name || '').trim()
+      const tracking = String(body.trackingNo || '').trim().slice(0, 60)
+      // A checkout-time EasyParcel quote only names the courier when EasyParcel books it.
+      const fallbackCourier = isEasyParcelBookingEnabled() ? order.shipping_courier_name : ''
+      const courier = String(body.courierName || fallbackCourier || '').trim().slice(0, 120)
       if (!tracking) {
         return NextResponse.json({ error: 'Tracking number required' }, { status: 400 })
       }
@@ -129,6 +138,12 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === 'ship_easyparcel') {
+      if (!isEasyParcelBookingEnabled()) {
+        return NextResponse.json(
+          { error: 'We deliver Outdoor orders ourselves. Add the courier and tracking number instead.' },
+          { status: 400 },
+        )
+      }
       if (!['paid', 'processing'].includes(order.status) && !isShippedWithoutShipment(order)) {
         return NextResponse.json({ error: 'Order must be paid or processing' }, { status: 400 })
       }

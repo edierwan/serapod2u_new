@@ -52,6 +52,19 @@ function money(n: number) {
   return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(n)
 }
 
+const COURIER_SUGGESTIONS = [
+  'J&T Express',
+  'Pos Laju',
+  'DHL eCommerce',
+  'Ninja Van',
+  'City-Link Express',
+  'GDEX',
+  'SPX Express',
+  'Flash Express',
+  'Skynet',
+  'Aramex',
+]
+
 export default function OutdoorFulfilmentClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -65,12 +78,14 @@ export default function OutdoorFulfilmentClient() {
   const [easyParcelConfigured, setEasyParcelConfigured] = useState(false)
   const [easyParcelNeedsConnect, setEasyParcelNeedsConnect] = useState(false)
   const [easyParcelCredit, setEasyParcelCredit] = useState<number | null>(null)
+  const [easyParcelBooking, setEasyParcelBooking] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [trackingDraft, setTrackingDraft] = useState<Record<string, string>>({})
+  const [courierDraft, setCourierDraft] = useState<Record<string, string>>({})
 
   const loadOrders = useCallback(async () => {
     const params = new URLSearchParams({ status: orderStatus })
@@ -86,6 +101,7 @@ export default function OutdoorFulfilmentClient() {
     setEasyParcelConfigured(Boolean(data.easyParcelConfigured))
     setEasyParcelNeedsConnect(Boolean(data.easyParcelNeedsConnect))
     setEasyParcelCredit(typeof data.easyParcelCredit === 'number' ? data.easyParcelCredit : null)
+    setEasyParcelBooking(Boolean(data.easyParcelBooking))
   }, [search, orderStatus])
 
   const loadInbox = useCallback(async () => {
@@ -248,9 +264,11 @@ export default function OutdoorFulfilmentClient() {
           <p className="text-xs text-[var(--out-muted)]">
             EasyParcel:{' '}
             {easyParcelConfigured
-              ? easyParcelCredit == null
-                ? 'connected'
-                : <>connected · credit <span className={easyParcelCredit <= 0 ? 'font-semibold text-red-600' : ''}>{money(easyParcelCredit)}</span></>
+              ? !easyParcelBooking
+                ? 'connected · tracking only (we deliver)'
+                : easyParcelCredit == null
+                  ? 'connected'
+                  : <>connected · credit <span className={easyParcelCredit <= 0 ? 'font-semibold text-red-600' : ''}>{money(easyParcelCredit)}</span></>
               : easyParcelNeedsConnect
                 ? 'app ready — connect account'
                 : 'not configured (manual tracking OK)'}
@@ -316,8 +334,10 @@ export default function OutdoorFulfilmentClient() {
                 <p className="mt-1 text-sm text-[var(--out-muted)]">
                   {[addr.line1, addr.line2, addr.city, addr.state, addr.postcode].filter(Boolean).join(', ')}
                 </p>
-                {o.shipping_courier_name ? (
-                  <p className="mt-1 text-xs text-[var(--out-muted)]">Courier quote: {o.shipping_courier_name}</p>
+                {o.shipping_courier_name && (easyParcelBooking || o.shipping_tracking_no?.trim()) ? (
+                  <p className="mt-1 text-xs text-[var(--out-muted)]">
+                    {o.shipping_tracking_no?.trim() ? 'Courier' : 'Courier quote'}: {o.shipping_courier_name}
+                  </p>
                 ) : null}
                 {o.shipping_tracking_no ? (
                   <p className="mt-1 text-sm font-medium">Tracking: {o.shipping_tracking_no}</p>
@@ -327,7 +347,9 @@ export default function OutdoorFulfilmentClient() {
                 ) : null}
                 {notSent ? (
                   <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    Marked shipped, but no courier shipment was created. Ship it via EasyParcel or add a tracking number.
+                    {easyParcelBooking
+                      ? 'Marked shipped, but no courier shipment was created. Ship it via EasyParcel or add a tracking number.'
+                      : 'Marked shipped, but no tracking number was saved. Add the courier and tracking number.'}
                   </p>
                 ) : null}
                 <ul className="mt-3 text-sm text-[var(--out-muted)] space-y-1">
@@ -348,7 +370,7 @@ export default function OutdoorFulfilmentClient() {
                       Mark packing
                     </button>
                   ) : null}
-                  {canShip && o.shipping_service_id && easyParcelConfigured ? (
+                  {canShip && o.shipping_service_id && easyParcelConfigured && easyParcelBooking ? (
                     <button
                       type="button"
                       disabled={busy}
@@ -361,16 +383,30 @@ export default function OutdoorFulfilmentClient() {
                   {canShip ? (
                     <div className="flex flex-wrap gap-2 items-center">
                       <input
+                        value={courierDraft[o.id] || ''}
+                        onChange={(e) => setCourierDraft((d) => ({ ...d, [o.id]: e.target.value }))}
+                        list="outdoor-courier-suggestions"
+                        maxLength={120}
+                        placeholder="Courier (e.g. J&T Express)"
+                        aria-label="Courier"
+                        className="h-9 rounded-md border border-[var(--out-line)] px-2 text-xs"
+                      />
+                      <input
                         value={trackingDraft[o.id] || ''}
                         onChange={(e) => setTrackingDraft((d) => ({ ...d, [o.id]: e.target.value }))}
-                        placeholder="Manual tracking no."
+                        maxLength={60}
+                        placeholder="Tracking no."
+                        aria-label="Tracking number"
                         className="h-9 rounded-md border border-[var(--out-line)] px-2 text-xs"
                       />
                       <button
                         type="button"
-                        disabled={busy || !trackingDraft[o.id]?.trim()}
+                        disabled={busy || !trackingDraft[o.id]?.trim() || (!easyParcelBooking && !courierDraft[o.id]?.trim())}
                         onClick={() =>
-                          void runAction(o.id, 'set_tracking', { trackingNo: trackingDraft[o.id] || '' })
+                          void runAction(o.id, 'set_tracking', {
+                            trackingNo: trackingDraft[o.id] || '',
+                            courierName: courierDraft[o.id] || '',
+                          })
                         }
                         className="h-9 px-3 rounded-md border border-[var(--out-line)] text-xs font-semibold disabled:opacity-50"
                       >
@@ -394,6 +430,12 @@ export default function OutdoorFulfilmentClient() {
           })}
         </ul>
       )}
+
+      <datalist id="outdoor-courier-suggestions">
+        {COURIER_SUGGESTIONS.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
 
       <p className="mt-10 text-xs text-[var(--out-muted)]">
         <button type="button" className="underline" onClick={() => router.push('/outdoor')}>
