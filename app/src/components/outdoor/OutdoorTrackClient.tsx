@@ -146,7 +146,8 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
   const groupCounts = ORDER_STATUS_GROUPS.map((g) => ({
     ...g,
     count: accountOrders.filter((item) => orderInGroup(item.status, g.key)).length,
-  })).filter((g) => g.key === 'all' || g.count > 0)
+  }))
+  const activeGroupLabel = ORDER_STATUS_GROUPS.find((g) => g.key === group)?.label.toLowerCase() || ''
   const visibleOrders = accountOrders.filter((item) => orderInGroup(item.status, group))
 
   const chooseGroup = (next: OrderStatusGroup) => {
@@ -181,7 +182,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
             <p className="text-sm text-[var(--out-muted)]">You do not have an order yet.</p>
           ) : (
           <>
-          {groupCounts.length > 2 ? (
+          {accountOrders.length > 1 ? (
             <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter orders by status">
               {groupCounts.map((g) => {
                 const active = group === g.key
@@ -207,6 +208,11 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
               })}
             </div>
           ) : null}
+          {visibleOrders.length === 0 ? (
+            <p className="rounded-2xl bg-[var(--out-ivory)] px-4 py-3 text-sm text-[var(--out-muted)]">
+              {group === 'to_pay' ? 'No orders waiting for payment.' : `No ${activeGroupLabel} orders.`}
+            </p>
+          ) : (
           <label className="block text-sm font-medium text-[var(--out-bark)]">
             Your order
             <select
@@ -229,6 +235,7 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
               ))}
             </select>
           </label>
+          )}
           {error && !order ? <p className="text-sm text-red-600">{error}</p> : null}
           </>
           )}
