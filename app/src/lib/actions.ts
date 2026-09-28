@@ -85,6 +85,9 @@ export async function createUserWithAuth(userData: {
   join_date?: string | null
   employment_status?: string | null
   can_be_reference?: boolean
+  /** Optional initial S&A business role (Security & Access administrators only; re-checked in the database). */
+  initial_role_id?: string | null
+  initial_access_reason?: string | null
 }, _callerInfo?: { id: string, role_code: string }) {
   try {
     const supabase = await createClient()
@@ -135,6 +138,9 @@ export async function createUserWithAuth(userData: {
         employmentType: userData.employment_type ?? null,
         joinDate: userData.join_date ?? null,
       },
+      initialAccess: userData.initial_role_id
+        ? { roleId: userData.initial_role_id, reason: userData.initial_access_reason?.trim() || 'Initial access at onboarding' }
+        : undefined,
       source: 'user_management',
     })
     if (!provisioned.ok) {
@@ -220,6 +226,32 @@ export async function createUserWithAuth(userData: {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to delete user'
     }
+  }
+}
+
+/**
+ * Business roles an administrator may grant as initial access in the Add
+ * User wizard. Empty unless the caller holds security.role.assign in the
+ * organization (the database re-checks it, plus SoD, at provisioning).
+ * Compatibility (legacy-*) roles and the employee baseline are never offered.
+ */
+export async function listInitialAccessRoles(organizationId: string | null) {
+  try {
+    if (!organizationId) return { success: true, roles: [] as Array<{ id: string; name: string; description: string | null }> }
+    const supabase = await createClient()
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) return { success: false, roles: [] }
+    const allowed = await userAllowed(user.id, 'security.role.assign',
+      async () => (await checkPermissionForUser(user.id, 'manage_authorization')).allowed, { organizationId })
+    if (!allowed) return { success: true, roles: [] }
+    const admin = createAdminClient() as any
+    const { data } = await admin.from('sa_business_roles')
+      .select('id, name, description, role_key, source')
+      .eq('status', 'active').neq('source', 'legacy').neq('role_key', 'employee-self-service')
+      .order('name')
+    return { success: true, roles: (data || []).map((r: any) => ({ id: r.id, name: r.name, description: r.description ?? null })) }
+  } catch {
+    return { success: false, roles: [] }
   }
 }
 
