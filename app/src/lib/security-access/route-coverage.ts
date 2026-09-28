@@ -581,7 +581,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "user/lookup-phone": { kind: 'SELF', reason: "Caller's own profile, session and notification linking only" },
   "user/profile": { kind: 'SELF', reason: "Caller's own profile, session and notification linking only" },
   "user/update-auth": { kind: 'EMPTY', reason: "Route file has no handlers" },
-  "user/update-phone": { kind: 'SELF', reason: "Caller's own profile, session and notification linking only" },
+  "user/update-phone": { kind: 'SELF', reason: "Retired (410 Gone, Identity Foundation Stage 1): performs no write; phone changes go through user/update-profile" },
   "user/update-profile": { kind: 'SELF', reason: "Caller's own profile, session and notification linking only" },
   "users/[id]/hr": { kind: 'ENTERPRISE', permissions: ["hr.employee.manage"] },
   "users/reset-password": { kind: 'ENTERPRISE', permissions: ["platform.user.manage"] },

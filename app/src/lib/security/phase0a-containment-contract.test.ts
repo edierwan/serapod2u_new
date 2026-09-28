@@ -25,10 +25,17 @@ describe('Phase 0A containment contract', () => {
     }
   })
 
-  it('routes every application provisioning caller through an admin client', () => {
-    expect(actions.match(/adminClient\s*\n?\s*\.rpc\('sync_user_profile'/g)?.length).toBe(2)
-    expect(departmentActions).toMatch(/adminClient\s*\n?\s*\.rpc\('sync_user_profile'/)
-    expect(hrEmployees).toMatch(/adminClient\.rpc\('sync_user_profile'/)
+  it('routes every application provisioning caller through a trusted server path', () => {
+    // Enterprise onboarding (User Management, departments, HR) uses the
+    // canonical provisioning service (Identity Foundation Stage 1); only the
+    // OTP-verified consumer registration still syncs directly.
+    expect(actions.match(/adminClient\s*\n?\s*\.rpc\('sync_user_profile'/g)?.length).toBe(1)
+    expect(actions).toContain('await provisionIdentity({')
+    expect(departmentActions).toContain('await provisionIdentity({')
+    expect(departmentActions).not.toContain("rpc('sync_user_profile'")
+    expect(hrEmployees).toContain('await provisionIdentity({')
+    expect(hrEmployees).not.toContain("rpc('sync_user_profile'")
+    expect(hrEmployees).not.toContain('crypto.randomUUID()')
   })
 
   it('does not use request-supplied callerInfo as server-action identity', () => {

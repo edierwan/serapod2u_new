@@ -180,7 +180,8 @@ export async function POST(request: NextRequest) {
         }
 
         updateData.phone = normalizedPhone
-        updateData.phone_verified_at = new Date().toISOString()
+        // A changed number is not a verified number: phone_verified_at is
+        // cleared by the database on change and set only by an OTP flow.
       } else {
         // Clearing phone
         const { error: authPhoneError } = await adminClient.auth.admin.updateUserById(userId, {

@@ -318,9 +318,13 @@ export default function UserDialogNew({
     selectedOrg &&
     [1, 10, 20, 30, 40].includes(selectedRoleLevel || 0)
   )
+  // Identity onboarding (create) does not collect banking: payee details
+  // belong to an employee/vendor/beneficiary domain. Existing banking data is
+  // still shown and editable on an existing user.
+  const showBankingStep = Boolean(user)
   const steps = useMemo<WizardStep[]>(() => {
-    return ['basic', 'access', ...(showBusinessStep ? ['business' as WizardStep] : []), 'banking', 'review']
-  }, [showBusinessStep])
+    return ['basic', 'access', ...(showBusinessStep ? ['business' as WizardStep] : []), ...(showBankingStep ? ['banking' as WizardStep] : []), 'review']
+  }, [showBusinessStep, showBankingStep])
   const filteredOrganizations = filterOrganizationsForType(organizations, organizationType, organizationSearch)
 
   useEffect(() => {
@@ -728,7 +732,7 @@ export default function UserDialogNew({
   }
 
   const validateAll = () => {
-    const next = { ...validateBasic(), ...validateAccess(), ...validateBanking() }
+    const next = { ...validateBasic(), ...validateAccess(), ...(showBankingStep ? validateBanking() : {}) }
     setErrors(next)
     if (Object.keys(next).length > 0) {
       const first = Object.keys(next)[0]
@@ -1233,11 +1237,13 @@ export default function UserDialogNew({
             <p>Notes: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.notes)}</span></p>
           </SummaryCard>
         ) : null}
-        <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-[var(--sera-orange)]" />} step="banking">
-          <p>Bank: <span className="font-medium text-[var(--sera-ink)]">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
-          <p>Account No: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_number)}</span></p>
-          <p>Account Holder: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_holder_name)}</span></p>
-        </SummaryCard>
+        {showBankingStep ? (
+          <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-[var(--sera-orange)]" />} step="banking">
+            <p>Bank: <span className="font-medium text-[var(--sera-ink)]">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
+            <p>Account No: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_number)}</span></p>
+            <p>Account Holder: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_holder_name)}</span></p>
+          </SummaryCard>
+        ) : null}
         <SummaryCard title="Account/Security Status" icon={<CheckCircle2 className="h-4 w-4 text-[var(--sera-orange)]" />} step="access">
           <div className="flex items-center gap-2">
             <span>Status:</span>

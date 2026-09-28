@@ -3,27 +3,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashOtp, logNotificationEvent } from '@/server/auth/passwordResetService'
+import { identityHistoryReferences } from '@/lib/identity/provisioning'
 
 const PURPOSE = 'user_deletion'
 type UserRemovalMode = 'delete' | 'archive'
 
 async function getUserRemovalMode(admin: any, userId: string): Promise<UserRemovalMode> {
-    const checks = await Promise.all([
-        admin.from('orders').select('id', { count: 'exact', head: true })
-            .or(`created_by.eq.${userId},approved_by.eq.${userId},updated_by.eq.${userId}`),
-        admin.from('documents').select('id', { count: 'exact', head: true })
-            .or(`created_by.eq.${userId},acknowledged_by.eq.${userId}`),
-        admin.from('document_files').select('id', { count: 'exact', head: true })
-            .eq('uploaded_by', userId),
-        admin.from('document_signatures').select('id', { count: 'exact', head: true })
-            .eq('signer_user_id', userId),
-    ])
-
+    // One definition of "history" for every removal path: any business or
+    // audit reference except the identity's own memberships, sessions and
+    // consumer loyalty data (public.identity_history_references). The database
+    // refuses a hard delete of such an identity (users_history_delete_guard).
+    const references = await identityHistoryReferences(userId)
     // A failed check must never fall through to hard deletion.
-    if (checks.some(({ error }: { error: unknown }) => Boolean(error))) return 'archive'
-    return checks.some(({ count }: { count: number | null }) => (count ?? 0) > 0)
-        ? 'archive'
-        : 'delete'
+    if (references === null) return 'archive'
+    return references.length > 0 ? 'archive' : 'delete'
 }
 
 function archivedEmailFor(userId: string): string {
@@ -76,6 +69,13 @@ async function archiveUserAndReleaseIdentifiers(
             .eq('id', targetUser.id)
         return { error: authError.message || 'Unable to release authentication identifiers' }
     }
+
+    // Canonical lifecycle state: ARCHIVED (terminal; history keeps resolving).
+    const { error: statusError } = await admin
+        .from('users')
+        .update({ account_status: 'ARCHIVED', account_status_reason: 'Archived by administrator (identifiers released)' })
+        .eq('id', targetUser.id)
+    if (statusError) console.error('Failed to mark archived account status:', statusError.message)
 
     // Prevent an archived business user from continuing to submit Telegram orders.
     await admin

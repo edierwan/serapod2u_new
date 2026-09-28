@@ -1,8 +1,7 @@
 import { hrCan } from '@/lib/server/hrAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { normalizePhone } from '@/lib/utils'
+import { provisionIdentity } from '@/lib/identity/provisioning'
 
 // ─── POST /api/hr/employees  ── Create a new employee record
 // ─── GET  /api/hr/employees  ── List employees, org-scoped
@@ -148,181 +147,66 @@ export async function POST(request: NextRequest) {
             full_name,
             email,
             phone,
-            role_code = 'staff',
+            role_code,
             department_id,
             position_id,
             manager_user_id,
             employment_type = 'Full-time',
-            employment_status = 'active',
             join_date,
-            create_login = false,
         } = body
 
         if (!full_name || !email) {
             return NextResponse.json({ success: false, error: 'full_name and email are required' }, { status: 400 })
         }
 
-        // Validate email is unique
-        const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', email.toLowerCase().trim())
-            .maybeSingle()
-
-        if (existingUser) {
-            return NextResponse.json({ success: false, error: 'An employee with this email already exists.' }, { status: 409 })
+        // HR never creates a second "HR user" and never decides "link existing
+        // or create new": the central identity is resolved from email/phone by
+        // the canonical provisioning service (one identity per person, no
+        // login-less duplicate rows). HR supplies employment facts only; a
+        // legacy role above the baseline is access administration, authorized
+        // separately in the database.
+        const requestedRole = typeof role_code === 'string' && role_code.trim() && role_code.trim().toLowerCase() !== 'staff'
+            ? role_code.trim()
+            : null
+        const provisioned = await provisionIdentity({
+            actorId: user.id,
+            email,
+            phone: phone || null,
+            fullName: full_name,
+            organizationId: caller.organization_id,
+            accountScope: 'portal',
+            legacyRoleCode: requestedRole,
+            authorizingPermission: 'hr.employee.manage',
+            hr: {
+                departmentId: department_id || null,
+                positionId: position_id || null,
+                managerUserId: manager_user_id || null,
+                employmentType: employment_type || null,
+                joinDate: join_date || null,
+            },
+            source: 'hr',
+        })
+        if (!provisioned.ok) {
+            return NextResponse.json({ success: false, error: provisioned.message, code: provisioned.code }, { status: provisioned.status })
         }
 
-        // Validate department belongs to org
-        if (department_id) {
-            const { data: dept } = await supabase
-                .from('departments')
-                .select('id')
-                .eq('id', department_id)
-                .eq('organization_id', caller.organization_id)
-                .maybeSingle()
-            if (!dept) {
-                return NextResponse.json({ success: false, error: 'Selected department not found in your organization.' }, { status: 400 })
-            }
-        }
-
-        // Validate position belongs to org
-        if (position_id) {
-            const { data: pos } = await supabase
-                .from('hr_positions')
-                .select('id')
-                .eq('id', position_id)
-                .eq('organization_id', caller.organization_id)
-                .maybeSingle()
-            if (!pos) {
-                return NextResponse.json({ success: false, error: 'Selected position not found in your organization.' }, { status: 400 })
-            }
-        }
-
-        // Validate manager belongs to org
-        if (manager_user_id) {
-            const { data: mgr } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', manager_user_id)
-                .eq('organization_id', caller.organization_id)
-                .maybeSingle()
-            if (!mgr) {
-                return NextResponse.json({ success: false, error: 'Selected manager not found in your organization.' }, { status: 400 })
-            }
-        }
-
-        let userId: string
-        let tempPassword: string | null = null
-
-        if (create_login) {
-            // Create auth user via admin API
-            const adminClient = createAdminClient()
-            if (!adminClient) {
-                return NextResponse.json({ success: false, error: 'Admin client not available.' }, { status: 500 })
-            }
-
-            tempPassword = generateTempPassword()
-            const normalizedPhone = phone ? normalizePhone(phone) : undefined
-
-            const { data: authUser, error: createError } = await adminClient.auth.admin.createUser({
-                email: email.toLowerCase().trim(),
-                password: tempPassword,
-                email_confirm: true,
-                phone: normalizedPhone,
-                phone_confirm: !!normalizedPhone,
-                user_metadata: { full_name },
-            })
-
-            if (createError || !authUser?.user?.id) {
-                return NextResponse.json({ success: false, error: createError?.message || 'Failed to create login' }, { status: 500 })
-            }
-
-            userId = authUser.user.id
-
-            // Sync to public.users table
-            const { error: syncError } = await adminClient.rpc('sync_user_profile', {
-                p_user_id: userId,
-                p_email: email.toLowerCase().trim(),
-                p_role_code: role_code,
-                p_organization_id: caller.organization_id,
-                p_full_name: full_name,
-                p_phone: normalizedPhone,
-            })
-
-            if (syncError) {
-                // Rollback auth user
-                try { await adminClient.auth.admin.deleteUser(userId) } catch (_) { }
-                return NextResponse.json({ success: false, error: syncError.message }, { status: 500 })
-            }
-        } else {
-            // Create user record directly (no auth login). Use a placeholder ID.
-            // Insert into users table directly with a generated UUID.
-            const newId = crypto.randomUUID()
-            const { error: insertError } = await supabase
-                .from('users')
-                .insert({
-                    id: newId,
-                    email: email.toLowerCase().trim(),
-                    full_name,
-                    phone: phone ? normalizePhone(phone) : null,
-                    role_code,
-                    organization_id: caller.organization_id,
-                    is_active: true,
-                })
-
-            if (insertError) {
-                return NextResponse.json({ success: false, error: insertError.message }, { status: 500 })
-            }
-
-            userId = newId
-        }
-
-        // Update HR-specific fields
-        const hrUpdates: Record<string, any> = {}
-        if (department_id) hrUpdates.department_id = department_id
-        if (position_id) hrUpdates.position_id = position_id
-        if (manager_user_id) hrUpdates.manager_user_id = manager_user_id
-        if (employment_type) hrUpdates.employment_type = employment_type
-        if (employment_status) hrUpdates.employment_status = employment_status
-        if (join_date) hrUpdates.join_date = join_date
-
-        if (Object.keys(hrUpdates).length > 0) {
-            const { error: updateError } = await supabase
-                .from('users')
-                .update(hrUpdates)
-                .eq('id', userId)
-
-            if (updateError) {
-                console.error('Failed to set HR fields:', updateError)
-            }
-        }
-
-        // Fetch the created employee for response
+        // Fetch the employee for the response
         const { data: newEmployee } = await supabase
             .from('users')
             .select('id, full_name, email, employee_no, employment_type, employment_status')
-            .eq('id', userId)
+            .eq('id', provisioned.userId)
             .single()
 
         return NextResponse.json({
             success: true,
             data: {
                 ...newEmployee,
-                temp_password: tempPassword,
+                outcome: provisioned.outcome,
+                temp_password: provisioned.tempPassword ?? null,
             },
         })
     } catch (error: any) {
         console.error('Failed to create employee:', error)
         return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
-}
-
-function generateTempPassword(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$%'
-    let password = ''
-    for (let i = 0; i < 12; i++) {
-        password += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return password
 }

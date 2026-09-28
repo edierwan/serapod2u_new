@@ -17,13 +17,16 @@ const managementView = fs.readFileSync(
 )
 
 describe('user deletion archive-and-release safety contract', () => {
-  it('classifies retained order and document history before removal', () => {
+  it('classifies retained history before removal with the database definition (orders, documents, signatures, Supply Chain, audit)', () => {
     for (const source of [requestRoute, verifyRoute]) {
-      expect(source).toContain("admin.from('orders')")
-      expect(source).toContain("admin.from('documents')")
-      expect(source).toContain("admin.from('document_signatures')")
-      expect(source).toContain("return 'archive'")
+      expect(source).toContain('identityHistoryReferences(userId)')
+      expect(source).toContain("if (references === null) return 'archive'")
+      expect(source).toContain("return references.length > 0 ? 'archive' : 'delete'")
     }
+  })
+
+  it('marks archived identities with the canonical terminal lifecycle state', () => {
+    expect(verifyRoute).toContain("account_status: 'ARCHIVED'")
   })
 
   it('archives historical users and releases their reusable identifiers', () => {

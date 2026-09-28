@@ -7,10 +7,12 @@ const authGetUser = vi.fn()
 const checkPermissionForUser = vi.fn()
 const usersUpdateEq = vi.fn()
 const usersUpdate = vi.fn(() => ({ eq: usersUpdateEq }))
+const usersSelectRow = vi.fn()
 const updateUserById = vi.fn()
 const createAuthUser = vi.fn()
 const deleteAuthUser = vi.fn()
 const adminRpc = vi.fn()
+const adminFromTables: string[] = []
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
@@ -22,23 +24,36 @@ vi.mock('@/lib/supabase/admin', () => ({
     auth: { admin: { updateUserById, createUser: createAuthUser, deleteUser: deleteAuthUser } },
     rpc: adminRpc,
     from: (table: string) => {
+      adminFromTables.push(table)
       if (table !== 'users') throw new Error(`Unexpected table: ${table}`)
-      return { update: usersUpdate }
+      return {
+        update: usersUpdate,
+        select: () => ({ eq: () => ({ maybeSingle: usersSelectRow, single: usersSelectRow }) }),
+      }
     },
   })),
 }))
 vi.mock('@/lib/server/permissions', () => ({ checkPermissionForUser }))
 
-describe('updateUserWithAuth Phase 0A authorization', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    usersUpdateEq.mockResolvedValue({ error: null })
-    updateUserById.mockResolvedValue({ data: { user: {} }, error: null })
-    createAuthUser.mockResolvedValue({ data: { user: { id: 'new-user' } }, error: null })
-    deleteAuthUser.mockResolvedValue({ error: null })
-    adminRpc.mockResolvedValue({ data: null, error: null })
+function rpcRoutes(handlers: Record<string, (args: any) => any>) {
+  adminRpc.mockImplementation(async (name: string, args: any) => {
+    const h = handlers[name]
+    return h ? { data: null, error: null, ...h(args) } : { data: null, error: null }
   })
+}
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  adminFromTables.length = 0
+  usersUpdateEq.mockResolvedValue({ error: null })
+  usersSelectRow.mockResolvedValue({ data: { role_code: 'USER', organization_id: 'org-a', is_active: true }, error: null })
+  updateUserById.mockResolvedValue({ data: { user: {} }, error: null })
+  createAuthUser.mockResolvedValue({ data: { user: { id: 'new-user' } }, error: null })
+  deleteAuthUser.mockResolvedValue({ error: null })
+  rpcRoutes({})
+})
+
+describe('updateUserWithAuth Phase 0A authorization', () => {
   it('allows a legitimate self-service personal profile change', async () => {
     authGetUser.mockResolvedValue({ data: { user: { id: 'self' } }, error: null })
     checkPermissionForUser.mockResolvedValue({ allowed: false, context: { role_level: 50 } })
@@ -65,15 +80,93 @@ describe('updateUserWithAuth Phase 0A authorization', () => {
     },
   )
 
-  it('preserves authorized User Management role changes', async () => {
+  it('routes an authorized role change through the identity access function (never a direct write)', async () => {
     authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
     checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    rpcRoutes({ identity_admin_update_access: () => ({ data: { role_code: 'MANAGER', organization_id: 'org-a', account_scope: 'portal' } }) })
     const { updateUserWithAuth } = await import('./actions')
 
     const result = await updateUserWithAuth('target', { role_code: 'MANAGER' })
 
     expect(result).toEqual({ success: true })
-    expect(usersUpdate).toHaveBeenCalledWith({ role_code: 'MANAGER' })
+    expect(adminRpc).toHaveBeenCalledWith('identity_admin_update_access', expect.objectContaining({
+      p_actor: 'admin', p_user: 'target', p_role_code: 'MANAGER', p_change_org: false,
+    }))
+    expect(usersUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ role_code: expect.anything() }))
+  })
+
+  it('employee management (level 20/30) does not imply changing roles or organizations', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'manager' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 30 } })
+    const { updateUserWithAuth } = await import('./actions')
+
+    const result = await updateUserWithAuth('target', { role_code: 'SA', full_name: 'X' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/access-administration/)
+    expect(adminRpc).not.toHaveBeenCalledWith('identity_admin_update_access', expect.anything())
+    expect(usersUpdate).not.toHaveBeenCalled()
+  })
+
+  it('surfaces the database refusal of an escalation', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    rpcRoutes({ identity_admin_update_access: () => ({ error: { code: '42501', message: 'identity_role_grant_not_allowed' } }) })
+    const { updateUserWithAuth } = await import('./actions')
+
+    const result = await updateUserWithAuth('target', { role_code: 'SA' })
+
+    expect(result.success).toBe(false)
+    expect(usersUpdate).not.toHaveBeenCalled()
+  })
+
+  it('does not call the access function when role and organization are unchanged', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'manager' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 30 } })
+    const { updateUserWithAuth } = await import('./actions')
+
+    const result = await updateUserWithAuth('target', { role_code: 'USER', organization_id: 'org-a', is_active: true, full_name: 'Same Access' })
+
+    expect(result).toEqual({ success: true })
+    expect(adminRpc).not.toHaveBeenCalled()
+    expect(usersUpdate).toHaveBeenCalledWith({ full_name: 'Same Access' })
+  })
+
+  it('applies an account status change through the lifecycle function', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    rpcRoutes({ identity_set_account_status: () => ({ data: 'DISABLED' }) })
+    const { updateUserWithAuth } = await import('./actions')
+
+    const result = await updateUserWithAuth('target', { is_active: false })
+
+    expect(result).toEqual({ success: true })
+    expect(adminRpc).toHaveBeenCalledWith('identity_set_account_status', expect.objectContaining({ p_status: 'DISABLED', p_user: 'target' }))
+    expect(usersUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ is_active: expect.anything() }))
+  })
+
+  it('drops non-profile fields (email, password, arbitrary columns) from an administrator edit', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    const { updateUserWithAuth } = await import('./actions')
+
+    const result = await updateUserWithAuth('target', { full_name: 'Ok', email: 'hijack@x.test', password: 'x', account_status: 'ACTIVE', phone_verified_at: 'now' } as any)
+
+    expect(result).toEqual({ success: true })
+    expect(usersUpdate).toHaveBeenCalledWith({ full_name: 'Ok' })
+  })
+
+  it('an edited phone number is never marked verified', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'self' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: false, context: { role_level: 50 } })
+    updateUserById.mockResolvedValue({ data: { user: { phone: '60123456789' } }, error: null })
+    const { updateUserWithAuth } = await import('./actions')
+
+    const result = await updateUserWithAuth('self', { phone: '0123456789' })
+
+    expect(result).toEqual({ success: true })
+    expect(usersUpdate).toHaveBeenCalledWith(expect.objectContaining({ phone: '+60123456789' }))
+    expect(usersUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ phone_verified_at: expect.any(String) }))
   })
 
   it('denies an unauthorized cross-user update', async () => {
@@ -101,11 +194,16 @@ describe('updateUserWithAuth Phase 0A authorization', () => {
     expect(checkPermissionForUser).not.toHaveBeenCalled()
     expect(usersUpdate).not.toHaveBeenCalled()
   })
+})
 
+describe('createUserWithAuth canonical provisioning', () => {
   it('rolls back the Auth identity when privileged profile provisioning fails', async () => {
     authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
     checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
-    adminRpc.mockResolvedValue({ data: null, error: { message: 'sync denied' } })
+    rpcRoutes({
+      identity_resolve: () => ({ data: { outcome: 'NO_MATCH' } }),
+      identity_provision: () => ({ error: { message: 'sa_authorization_required' } }),
+    })
     const { createUserWithAuth } = await import('./actions')
 
     const result = await createUserWithAuth({
@@ -116,7 +214,92 @@ describe('updateUserWithAuth Phase 0A authorization', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('sync denied')
     expect(deleteAuthUser).toHaveBeenCalledWith('new-user')
+  })
+
+  it('never creates a second identity for a person who already exists', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    rpcRoutes({
+      identity_resolve: () => ({ data: { outcome: 'MATCH', user_id: 'existing' } }),
+      identity_provision: () => ({ data: { status: 'ok', outcome: 'REUSED', user_id: 'existing', principal_type: 'INTERNAL_EMPLOYEE' } }),
+    })
+    const { createUserWithAuth } = await import('./actions')
+
+    const result = await createUserWithAuth({
+      email: 'Existing@Example.com', password: 'whatever-123', full_name: 'Existing', role_code: 'USER', organization_id: 'org-a',
+      bank_account_number: '123',
+    })
+
+    expect(result).toMatchObject({ success: true, user_id: 'existing', reused: true })
+    expect(createAuthUser).not.toHaveBeenCalled()
+    // The existing identity's profile (e.g. banking) is not overwritten.
+    expect(usersUpdate).not.toHaveBeenCalled()
+  })
+
+  it('blocks conflicting identifiers without creating anything', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    rpcRoutes({ identity_resolve: () => ({ data: { outcome: 'IDENTITY_CONFLICT', matched_user_ids: ['a', 'b'] } }) })
+    const { createUserWithAuth } = await import('./actions')
+
+    const result = await createUserWithAuth({ email: 'a@example.com', password: 'p-123456', full_name: 'A', role_code: 'USER', phone: '0123456789' })
+
+    expect(result).toMatchObject({ success: false, code: 'IDENTITY_CONFLICT' })
+    expect(createAuthUser).not.toHaveBeenCalled()
+    expect(adminRpc).toHaveBeenCalledWith('identity_record_conflict', expect.anything())
+  })
+})
+
+describe('setUserAccountStatus', () => {
+  it('changes status through the lifecycle function for an authorized administrator', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    rpcRoutes({ identity_set_account_status: () => ({ data: 'SUSPENDED' }) })
+    const { setUserAccountStatus } = await import('./actions')
+
+    const result = await setUserAccountStatus('target', 'SUSPENDED', 'Investigation')
+
+    expect(result).toEqual({ success: true, status: 'SUSPENDED' })
+    expect(adminRpc).toHaveBeenCalledWith('identity_set_account_status', { p_actor: 'admin', p_user: 'target', p_status: 'SUSPENDED', p_reason: 'Investigation' })
+  })
+
+  it('refuses self changes and unauthorized callers', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 10 } })
+    const { setUserAccountStatus } = await import('./actions')
+    expect((await setUserAccountStatus('admin', 'DISABLED', 'self')).success).toBe(false)
+
+    authGetUser.mockResolvedValue({ data: { user: { id: 'ordinary' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: false, context: { role_level: 50 } })
+    expect((await setUserAccountStatus('target', 'DISABLED', 'nope')).success).toBe(false)
+    expect(adminRpc).not.toHaveBeenCalledWith('identity_set_account_status', expect.anything())
+  })
+})
+
+describe('deleteUserWithAuth history protection', () => {
+  it('refuses to hard-delete an identity with business or audit history, before any cleanup', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 1 } })
+    rpcRoutes({ identity_history_references: () => ({ data: ['stock_movements.created_by'] }) })
+    const { deleteUserWithAuth } = await import('./actions')
+
+    const result = await deleteUserWithAuth('target')
+
+    expect(result).toMatchObject({ success: false, code: 'IDENTITY_HAS_HISTORY' })
+    expect(adminFromTables.filter(t => t !== 'users')).toEqual([])
+    expect(deleteAuthUser).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when history cannot be verified', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
+    checkPermissionForUser.mockResolvedValue({ allowed: true, context: { role_level: 1 } })
+    rpcRoutes({ identity_history_references: () => ({ error: { message: 'unavailable' } }) })
+    const { deleteUserWithAuth } = await import('./actions')
+
+    const result = await deleteUserWithAuth('target')
+
+    expect(result.success).toBe(false)
+    expect(deleteAuthUser).not.toHaveBeenCalled()
   })
 })
