@@ -59,6 +59,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 export function CartProvider({
   children,
   storageKey = CART_STORAGE_KEY,
+  accountScoped = false,
 }: {
   children: ReactNode
   /** Override for isolated storefronts (e.g. Outdoor). Default keeps Serapod2U Store behaviour. */
