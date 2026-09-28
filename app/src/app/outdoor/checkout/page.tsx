@@ -130,7 +130,7 @@ export default function OutdoorCheckoutPage() {
     return (
       <div className="mx-auto max-w-md px-5 py-16 text-center">
         <div className="out-card px-6 py-12">
-          <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">Your bag is empty</h1>
+          <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">Your cart is empty</h1>
           <p className="mt-3 text-sm text-[var(--out-muted)]">Add a chair, mat, or tumbler first.</p>
           <Link href="/outdoor/shop" className="out-btn mt-8 w-full">
             Shop Outdoor
@@ -317,10 +317,10 @@ export default function OutdoorCheckoutPage() {
         </form>
 
         <aside className="out-card p-5 sm:p-6 lg:sticky lg:top-24">
-          <h2 className="font-display text-xl text-[var(--out-bark)]">{buyNow ? 'Buying now' : 'Your bag'}</h2>
+          <h2 className="font-display text-xl text-[var(--out-bark)]">{buyNow ? 'Buying now' : 'Your cart'}</h2>
           {buyNow && cart.items.length > 0 ? (
             <p className="mt-1 text-xs text-[var(--out-muted)]">
-              Only this item is in this order. Your bag keeps its {cart.totalItems} other item{cart.totalItems === 1 ? '' : 's'}.
+              Only this item is in this order. Your cart keeps its {cart.totalItems} other item{cart.totalItems === 1 ? '' : 's'}.
             </p>
           ) : null}
           <ul className="mt-4 space-y-3">

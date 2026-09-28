@@ -8,6 +8,7 @@ import { flattenPaymentParams } from '@/lib/payments/providers/billplz-signature
 import { outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
 import type { CartItem } from '@/lib/storefront/cart-context'
 import { OutdoorPaymentPoller, OutdoorRetryBag } from '@/components/outdoor/OutdoorOrderResult'
+import OutdoorThankYouGift from '@/components/outdoor/OutdoorThankYouGift'
 
 export const metadata = { title: 'Order confirmation' }
 export const dynamic = 'force-dynamic'
@@ -164,18 +165,33 @@ export default async function OutdoorOrderSuccessPage({
     return (
       <div className="mx-auto max-w-lg px-4 py-14 text-center sm:px-6">
         <div className="out-card px-6 py-10 sm:px-8">
-          <div className="out-swap mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--out-bark)] text-[var(--out-cream)]">
-            <CheckCircle2 className="h-8 w-8" aria-hidden />
-          </div>
-          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--out-bark)]/50">Payment received</p>
-          <h1 className="mt-2 font-display text-3xl tracking-tight text-[var(--out-bark)]">
+          <OutdoorThankYouGift />
+          <p
+            className="out-reveal mt-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--out-bark)]/60"
+            style={{ '--reveal-delay': '1.5s' } as React.CSSProperties}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 text-[var(--out-olive)]" aria-hidden />
+            Payment received
+          </p>
+          <h1
+            className="out-reveal mt-2 font-display text-3xl tracking-tight text-[var(--out-bark)]"
+            style={{ '--reveal-delay': '1.65s' } as React.CSSProperties}
+          >
             Thank you{firstName ? `, ${firstName}` : ''}!
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-[var(--out-muted)]">
+          <p
+            className="out-reveal mt-3 text-sm leading-relaxed text-[var(--out-muted)]"
+            style={{ '--reveal-delay': '1.8s' } as React.CSSProperties}
+          >
             Your order is confirmed and your gear is getting ready for the trip.
           </p>
-          <OrderSummary order={order} />
-          <ol className="mt-6 space-y-3 text-left text-sm text-[var(--out-bark)]">
+          <div className="out-reveal" style={{ '--reveal-delay': '1.95s' } as React.CSSProperties}>
+            <OrderSummary order={order} />
+          </div>
+          <ol
+            className="out-reveal mt-6 space-y-3 text-left text-sm text-[var(--out-bark)]"
+            style={{ '--reveal-delay': '2.1s' } as React.CSSProperties}
+          >
             <li className="flex gap-3">
               <Package className="mt-0.5 h-4 w-4 shrink-0 text-[var(--out-moss)]" aria-hidden />
               <span>We pack your order and hand it to the courier within 1–3 business days.</span>
@@ -185,7 +201,7 @@ export default async function OutdoorOrderSuccessPage({
               <span>When it ships, the tracking number appears on your order in My account.</span>
             </li>
           </ol>
-          <div className="mt-8 flex flex-col gap-2">
+          <div className="out-reveal mt-8 flex flex-col gap-2" style={{ '--reveal-delay': '2.2s' } as React.CSSProperties}>
             <Link href={trackHref} className="out-btn w-full">
               Track order
             </Link>

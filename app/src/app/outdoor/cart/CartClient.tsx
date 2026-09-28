@@ -43,7 +43,7 @@ export default function OutdoorCartClient() {
     return (
       <div className="mx-auto max-w-md px-5 py-16 text-center">
         <div className="out-card px-6 py-12">
-          <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">Your bag is empty</h1>
+          <h1 className="font-display text-3xl tracking-tight text-[var(--out-bark)]">Your cart is empty</h1>
           <p className="mt-3 text-sm text-[var(--out-muted)]">Moon Chair, tumbler, and camp mat live in the shop.</p>
           <Link href="/outdoor/shop" className="out-btn mt-8 w-full">
             Shop Outdoor
@@ -55,7 +55,7 @@ export default function OutdoorCartClient() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
-      <h1 className="text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Your bag</h1>
+      <h1 className="text-center font-display text-4xl tracking-tight text-[var(--out-bark)]">Your cart</h1>
       <ul className="mt-8 space-y-3">
         {items.map((item) => (
           <li key={item.variantId} className="out-card flex gap-4 p-4">

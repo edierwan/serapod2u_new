@@ -234,10 +234,10 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             >
               {added ? (
                 <span key="added" className="out-swap inline-flex items-center gap-2">
-                  <Check className="h-4 w-4" aria-hidden /> Added to bag
+                  <Check className="h-4 w-4" aria-hidden /> Added to cart
                 </span>
               ) : (
-                <span key="add" className="out-swap">Add to bag</span>
+                <span key="add" className="out-swap">Add to cart</span>
               )}
             </button>
           </div>
@@ -252,9 +252,9 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           <p className="mt-2 min-h-[1.25rem] text-center text-xs text-[var(--out-muted)]" aria-live="polite">
             {added ? (
               <>
-                Added to your bag ·{' '}
+                Added to your cart ·{' '}
                 <Link href="/outdoor/cart" className="font-semibold text-[var(--out-bark)] hover:underline">
-                  View bag
+                  View cart
                 </Link>
               </>
             ) : null}
