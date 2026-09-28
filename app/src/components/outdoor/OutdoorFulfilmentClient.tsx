@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import OutdoorRequestsDesk from '@/components/outdoor/OutdoorRequestsDesk'
+import { hasShipmentDetails, isOwnDelivery } from '@/lib/storefront/delivery'
 
 type OrderItem = {
   id: string
@@ -317,8 +318,9 @@ export default function OutdoorFulfilmentClient() {
           {orders.map((o) => {
             const addr = o.shipping_address || {}
             const busy = busyId === o.id
-            const notSent = o.status === 'shipped' && !o.easyparcel_order_no && !o.shipping_tracking_no?.trim()
+            const notSent = o.status === 'shipped' && !hasShipmentDetails(o)
             const canShip = ['paid', 'processing'].includes(o.status) || notSent
+            const ownDelivery = isOwnDelivery(o.shipping_courier_name)
             return (
               <li key={o.id} className="rounded-xl border border-[var(--out-line)] bg-white p-5">
                 <div className="flex flex-wrap justify-between gap-3">
@@ -334,7 +336,10 @@ export default function OutdoorFulfilmentClient() {
                 <p className="mt-1 text-sm text-[var(--out-muted)]">
                   {[addr.line1, addr.line2, addr.city, addr.state, addr.postcode].filter(Boolean).join(', ')}
                 </p>
-                {o.shipping_courier_name && (easyParcelBooking || o.shipping_tracking_no?.trim()) ? (
+                {ownDelivery && o.status !== 'paid' && o.status !== 'processing' ? (
+                  <p className="mt-1 text-sm font-medium">Delivery: our own team</p>
+                ) : null}
+                {!ownDelivery && o.shipping_courier_name && (easyParcelBooking || o.shipping_tracking_no?.trim()) ? (
                   <p className="mt-1 text-xs text-[var(--out-muted)]">
                     {o.shipping_tracking_no?.trim() ? 'Courier' : 'Courier quote'}: {o.shipping_courier_name}
                   </p>
@@ -349,7 +354,7 @@ export default function OutdoorFulfilmentClient() {
                   <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
                     {easyParcelBooking
                       ? 'Marked shipped, but no courier shipment was created. Ship it via EasyParcel or add a tracking number.'
-                      : 'Marked shipped, but no tracking number was saved. Add the courier and tracking number.'}
+                      : 'Marked shipped, but how it was sent was not saved. Choose "Send with our team", or add the courier and tracking number.'}
                   </p>
                 ) : null}
                 <ul className="mt-3 text-sm text-[var(--out-muted)] space-y-1">
@@ -381,7 +386,20 @@ export default function OutdoorFulfilmentClient() {
                     </button>
                   ) : null}
                   {canShip ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        if (confirm(`Send ${o.order_ref} out for delivery with our own team?`)) void runAction(o.id, 'ship_own')
+                      }}
+                      className="h-9 px-3 rounded-md bg-[var(--out-bark)] text-[var(--out-cream)] text-xs font-semibold disabled:opacity-50"
+                    >
+                      Send with our team
+                    </button>
+                  ) : null}
+                  {canShip ? (
                     <div className="flex flex-wrap gap-2 items-center">
+                      <span className="text-xs text-[var(--out-muted)]">or by courier:</span>
                       <input
                         value={courierDraft[o.id] || ''}
                         onChange={(e) => setCourierDraft((d) => ({ ...d, [o.id]: e.target.value }))}
@@ -410,7 +428,7 @@ export default function OutdoorFulfilmentClient() {
                         }
                         className="h-9 px-3 rounded-md border border-[var(--out-line)] text-xs font-semibold disabled:opacity-50"
                       >
-                        Mark shipped
+                        Mark shipped by courier
                       </button>
                     </div>
                   ) : null}

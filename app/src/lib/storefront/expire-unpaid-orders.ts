@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getGatewayByProvider } from '@/lib/payments'
 import { applyStorefrontPaymentResult } from '@/lib/payments/apply-callback'
 import { EXPIRING_CHANNELS, UNPAID_ORDER_TTL_HOURS, unpaidOrderCutoff } from './unpaid-order-deadline'
+import { recordOrderEvent } from './order-events'
 
 export { isUnpaidOrderExpired, UNPAID_ORDER_TTL_HOURS } from './unpaid-order-deadline'
 
@@ -66,6 +67,17 @@ async function cancelOrder(admin: any, order: ExpiringOrder): Promise<UnpaidExpi
   const { data, error } = await query.select('id')
   if (error) throw error
   const cancelled = Array.isArray(data) && data.length > 0
+  if (cancelled) {
+    await recordOrderEvent(admin, {
+      orderId: order.id,
+      eventType: 'status_changed',
+      fromStatus: 'pending_payment',
+      toStatus: 'cancelled',
+      actorType: 'system',
+      actorLabel: 'Automatic',
+      note: `Not paid within ${UNPAID_ORDER_TTL_HOURS} hours — payment page closed`,
+    })
+  }
   return {
     orderRef: order.order_ref,
     outcome: cancelled ? 'cancelled' : 'kept',

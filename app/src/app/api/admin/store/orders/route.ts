@@ -2,6 +2,8 @@ import { userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
+import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -57,6 +59,34 @@ export async function GET(request: NextRequest) {
         const offset = (page - 1) * limit
 
         const adminClient: any = createAdminClient()
+
+        // History of one order, only when that order is inside the admin's scope.
+        const eventsFor = searchParams.get('eventsFor')
+        if (eventsFor) {
+            if (!UUID_PATTERN.test(eventsFor)) {
+                return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+            }
+            const { data: scoped } = await adminClient
+                .from('storefront_orders')
+                .select('id')
+                .eq('id', eventsFor)
+                .or(orgScopeFilter(admin.orgId))
+                .maybeSingle()
+            if (!scoped) {
+                return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+            }
+            const { data: events, error: eventsError } = await adminClient
+                .from('storefront_order_events')
+                .select('id, event_type, from_status, to_status, actor_type, actor_label, note, created_at')
+                .eq('order_id', eventsFor)
+                .order('created_at', { ascending: true })
+                .limit(200)
+            if (eventsError) {
+                console.warn('[admin/store/orders] history unavailable:', eventsError.message)
+                return NextResponse.json({ events: [], historyAvailable: false })
+            }
+            return NextResponse.json({ events: events ?? [], historyAvailable: true })
+        }
 
         // Build query
         let query = adminClient
@@ -141,26 +171,28 @@ export async function PUT(request: NextRequest) {
 
         const adminClient: any = createAdminClient()
 
-        const trackingNo = String(body.trackingNo ?? '').trim().slice(0, 60)
-        const courierName = String(body.courierName ?? '').trim().slice(0, 120)
+        const ownDelivery = body.deliveryMethod === 'own'
+        const trackingNo = ownDelivery ? '' : String(body.trackingNo ?? '').trim().slice(0, 60)
+        const courierName = ownDelivery ? OWN_DELIVERY_LABEL : String(body.courierName ?? '').trim().slice(0, 120)
 
-        // Outdoor orders only count as shipped with a courier and tracking number,
-        // the same rule as the Outdoor staff desk.
-        if (status === 'shipped') {
-            const { data: current } = await adminClient
-                .from('storefront_orders')
-                .select('id, sales_channel, shipping_tracking_no, shipping_courier_name')
-                .eq('id', id)
-                .or(orgScopeFilter(admin.orgId))
-                .maybeSingle()
-            if (!current) {
-                return NextResponse.json({ error: 'Order not found' }, { status: 404 })
-            }
+        const { data: current } = await adminClient
+            .from('storefront_orders')
+            .select('id, status, sales_channel, shipping_tracking_no, shipping_courier_name')
+            .eq('id', id)
+            .or(orgScopeFilter(admin.orgId))
+            .maybeSingle()
+        if (!current) {
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        }
+
+        // An Outdoor order only counts as shipped once we know how it left: our own
+        // team, or a courier with a tracking number (same rule as the Outdoor staff desk).
+        if (status === 'shipped' && current.sales_channel === 'outdoor' && !ownDelivery) {
             const hasTracking = Boolean(trackingNo || String(current.shipping_tracking_no || '').trim())
             const hasCourier = Boolean(courierName || String(current.shipping_courier_name || '').trim())
-            if (current.sales_channel === 'outdoor' && (!hasTracking || !hasCourier)) {
+            if (!hasTracking || !hasCourier) {
                 return NextResponse.json(
-                    { error: 'Add the courier and tracking number before marking this order shipped.' },
+                    { error: 'Choose our own delivery, or add the courier and tracking number, before marking this order shipped.' },
                     { status: 400 },
                 )
             }
@@ -168,8 +200,13 @@ export async function PUT(request: NextRequest) {
 
         const updateData: Record<string, any> = { status }
         if (notes !== undefined) updateData.admin_notes = notes
-        if (status === 'shipped' && trackingNo) updateData.shipping_tracking_no = trackingNo
-        if (status === 'shipped' && courierName) updateData.shipping_courier_name = courierName
+        if (status === 'shipped' && ownDelivery) {
+            updateData.shipping_courier_name = OWN_DELIVERY_LABEL
+            updateData.shipping_tracking_no = null
+        } else {
+            if (status === 'shipped' && trackingNo) updateData.shipping_tracking_no = trackingNo
+            if (status === 'shipped' && courierName) updateData.shipping_courier_name = courierName
+        }
 
         // The tenant scope is part of the UPDATE itself, so an order outside the
         // admin's scope is indistinguishable from a non-existent one.
@@ -189,6 +226,24 @@ export async function PUT(request: NextRequest) {
         if (!data) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 })
         }
+
+        const shippingNote = status !== 'shipped'
+            ? null
+            : ownDelivery
+                ? 'Out for delivery with our own team'
+                : trackingNo
+                    ? `Sent by ${courierName || 'courier'} · tracking ${trackingNo}`
+                    : null
+        await recordOrderEvent(adminClient, {
+            orderId: id,
+            eventType: 'status_changed',
+            fromStatus: current.status,
+            toStatus: status,
+            actorType: 'staff',
+            actorId: admin.userId,
+            actorLabel: await staffActorLabel(adminClient, admin.userId),
+            note: [shippingNote, 'Changed in dashboard'].filter(Boolean).join(' — '),
+        })
 
         return NextResponse.json({ order: data })
     } catch (err) {

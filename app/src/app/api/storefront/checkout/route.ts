@@ -8,6 +8,7 @@ import { publicOriginFromRequest } from '@/lib/http/public-origin'
 import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
 import { easyParcelRateCheck, isEasyParcelBookingEnabled, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
+import { recordOrderEvent } from '@/lib/storefront/order-events'
 
 // NOTE: storefront_orders / storefront_order_items are not in the
 // auto-generated database types yet. After running STOREFRONT_MIGRATION.sql
@@ -313,6 +314,15 @@ export async function POST(request: NextRequest) {
       await supabase.from('storefront_orders').delete().eq('id', order.id)
       return NextResponse.json({ error: 'Could not create order items' }, { status: 500 })
     }
+
+    await recordOrderEvent(supabase, {
+      orderId: order.id,
+      eventType: 'created',
+      toStatus: 'pending_payment',
+      actorType: 'customer',
+      actorLabel: String(body.customer.email || ''),
+      note: `Order placed on the ${salesChannel === 'outdoor' ? 'Outdoor' : 'online'} store`,
+    })
 
     if (landingPageAttribution) {
       const { error: attributionErr } = await supabase

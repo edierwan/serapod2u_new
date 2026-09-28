@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PaymentCallbackResult } from './types'
+import { recordOrderEvent } from '@/lib/storefront/order-events'
 
 /**
  * Order statuses a payment result may move from. Replayed or late callbacks
@@ -41,6 +42,16 @@ export async function applyStorefrontPaymentResult(result: PaymentCallbackResult
     throw error
   }
   const updated = Array.isArray(data) && data.length > 0
+  if (updated) {
+    await recordOrderEvent(supabase, {
+      orderId: result.orderId,
+      eventType: 'status_changed',
+      toStatus: result.paid ? 'paid' : 'payment_failed',
+      actorType: 'payment',
+      actorLabel: 'Payment gateway',
+      note: result.transactionId ? `Payment ref ${result.transactionId}` : null,
+    })
+  }
   if (updated && result.paid) {
     try {
       const { notifyOutdoorOrderPaid } = await import('@/lib/outdoor/order-paid-email')

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
 import { unpaidOrderDeadline } from '@/lib/storefront/unpaid-order-deadline'
+import { isOwnDelivery } from '@/lib/storefront/delivery'
 import {
   ORDER_STATUS_GROUPS,
   defaultOrderGroup,
@@ -300,7 +301,13 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
           <div className="grid gap-2 text-sm text-[var(--out-bark)]">
             <p><span className="text-[var(--out-muted)]">Placed</span> · {new Date(order.createdAt).toLocaleString()}</p>
             <p><span className="text-[var(--out-muted)]">Total</span> · {money(order.totalAmount, order.currency)}</p>
-            {order.shippingCourierName && order.shippingTrackingNo ? (
+            {isOwnDelivery(order.shippingCourierName) && ['shipped', 'delivered'].includes(order.status) ? (
+              <p>
+                <span className="text-[var(--out-muted)]">Delivery</span> ·{' '}
+                {order.status === 'delivered' ? 'Delivered by our own team' : 'Our own team is bringing your order'}
+              </p>
+            ) : null}
+            {!isOwnDelivery(order.shippingCourierName) && order.shippingCourierName && order.shippingTrackingNo ? (
               <p><span className="text-[var(--out-muted)]">Courier</span> · {order.shippingCourierName}</p>
             ) : null}
             {order.shippingTrackingNo ? (

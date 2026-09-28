@@ -9,10 +9,12 @@ import {
 } from '@/lib/shipping/easyparcel'
 import { isEasyParcelAppConfigured } from '@/lib/shipping/easyparcel-oauth'
 import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
+import { hasShipmentDetails, OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
+import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
 
-/** Marked shipped, but no courier shipment or tracking number was ever recorded. */
+/** Marked shipped, but no delivery, courier shipment or tracking number was ever recorded. */
 function isShippedWithoutShipment(order: any) {
-  return order?.status === 'shipped' && !order?.easyparcel_order_no && !String(order?.shipping_tracking_no || '').trim()
+  return order?.status === 'shipped' && !hasShipmentDetails(order || {})
 }
 
 /** GET — Outdoor paid/processing orders for fulfilment desk. */
@@ -98,6 +100,19 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
+    const logStaff = async (toStatus: string, note?: string) => {
+      await recordOrderEvent(admin, {
+        orderId: id,
+        eventType: toStatus === order.status ? 'shipping_updated' : 'status_changed',
+        fromStatus: order.status,
+        toStatus,
+        actorType: 'staff',
+        actorId: staff.userId,
+        actorLabel: await staffActorLabel(admin, staff.userId),
+        note,
+      })
+    }
+
     if (action === 'mark_processing') {
       if (!['paid', 'processing'].includes(order.status)) {
         return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
@@ -109,6 +124,27 @@ export async function PUT(request: NextRequest) {
         .select('*')
         .single()
       if (error) throw error
+      await logStaff('processing', 'Packing started (Outdoor staff desk)')
+      return NextResponse.json({ order: data })
+    }
+
+    if (action === 'ship_own') {
+      if (!['paid', 'processing'].includes(order.status) && !isShippedWithoutShipment(order)) {
+        return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
+      }
+      const note = String(body.note || '').trim().slice(0, 200)
+      const { data, error } = await admin
+        .from('storefront_orders')
+        .update({
+          status: 'shipped',
+          shipping_courier_name: OWN_DELIVERY_LABEL,
+          shipping_tracking_no: null,
+        })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (error) throw error
+      await logStaff('shipped', ['Out for delivery with our own team', note].filter(Boolean).join(' — '))
       return NextResponse.json({ order: data })
     }
 
@@ -134,6 +170,7 @@ export async function PUT(request: NextRequest) {
         .select('*')
         .single()
       if (error) throw error
+      await logStaff('shipped', `Sent by ${courier || 'courier'} · tracking ${tracking}`)
       return NextResponse.json({ order: data })
     }
 
@@ -204,6 +241,7 @@ export async function PUT(request: NextRequest) {
         .single()
 
       if (error) throw error
+      await logStaff('shipped', `Booked with EasyParcel ${submitted.orderNo || ''}`.trim())
       return NextResponse.json({
         order: data,
         easyparcel: { orderNo: submitted.orderNo, awb: submitted.awb },
@@ -221,6 +259,7 @@ export async function PUT(request: NextRequest) {
         .select('*')
         .single()
       if (error) throw error
+      await logStaff('delivered', 'Marked delivered (Outdoor staff desk)')
       return NextResponse.json({ order: data })
     }
 

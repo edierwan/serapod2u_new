@@ -26,6 +26,8 @@ import {
     Filter,
 } from 'lucide-react'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { isOwnDelivery } from '@/lib/storefront/delivery'
+import { OutdoorMessagesPanel, OutdoorSubscribersPanel } from '@/modules/ecommerce/components/OutdoorInboxPanels'
 import {
     OrderRequestBadge,
     StoreOpenRequestsPanel,
@@ -82,6 +84,19 @@ interface CourierEvent {
     date: string | null
     location: string | null
 }
+
+interface OrderEvent {
+    id: string
+    event_type: string
+    from_status: string | null
+    to_status: string | null
+    actor_type: string
+    actor_label: string | null
+    note: string | null
+    created_at: string
+}
+
+type ShipDetails = { deliveryMethod: 'own' } | { deliveryMethod: 'courier'; courierName: string; trackingNo: string }
 
 const CHANNEL_OPTIONS = [
     { value: 'all', label: 'All stores' },
@@ -216,7 +231,11 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [error, setError] = useState<string | null>(null)
     const [statusFilter, setStatusFilter] = useState('all')
     const [channelFilter, setChannelFilter] = useState('all')
-    const [shipForm, setShipForm] = useState<{ courier: string; tracking: string } | null>(null)
+    const [shipForm, setShipForm] = useState<{ method: 'own' | 'courier'; courier: string; tracking: string } | null>(null)
+    const [history, setHistory] = useState<OrderEvent[]>([])
+    const [historyAvailable, setHistoryAvailable] = useState(true)
+    const [historyRefresh, setHistoryRefresh] = useState(0)
+    const [tab, setTab] = useState<'orders' | 'messages' | 'subscribers'>('orders')
     const [courierEvents, setCourierEvents] = useState<CourierEvent[]>([])
     const [courierLatest, setCourierLatest] = useState<string | null>(null)
     const [courierLoading, setCourierLoading] = useState(false)
@@ -278,7 +297,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const handleStatusUpdate = async (
         orderId: string,
         newStatus: string,
-        shipping?: { courierName: string; trackingNo: string },
+        shipping?: ShipDetails,
     ) => {
         if (!shipping && !confirm(`Change order status to "${STATUS_CONFIG[newStatus]?.label || newStatus}"?`)) return
 
@@ -304,6 +323,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 setSelectedOrder(prev => prev ? { ...prev, ...data.order, storefront_order_items: prev.storefront_order_items } : null)
             }
             setShipForm(null)
+            setHistoryRefresh(n => n + 1)
         } catch (err: any) {
             setError(err.message)
         } finally {
@@ -320,6 +340,22 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     useEffect(() => {
         setShipForm(null)
     }, [selectedOrderRef])
+
+    const selectedOrderId = selectedOrder?.id
+    useEffect(() => {
+        setHistory([])
+        if (!selectedOrderId) return
+        let cancelled = false
+        fetch(`/api/admin/store/orders?eventsFor=${encodeURIComponent(selectedOrderId)}`)
+            .then(res => res.json().catch(() => null))
+            .then(data => {
+                if (cancelled) return
+                setHistory(Array.isArray(data?.events) ? data.events : [])
+                setHistoryAvailable(data?.historyAvailable !== false)
+            })
+            .catch(() => undefined)
+        return () => { cancelled = true }
+    }, [selectedOrderId, historyRefresh])
 
     useEffect(() => {
         setCourierEvents([])
@@ -436,6 +472,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                                 key={nextStatus}
                                                 onClick={() => nextStatus === 'shipped'
                                                     ? setShipForm({
+                                                        method: selectedOrder.shipping_tracking_no ? 'courier' : 'own',
                                                         courier: selectedOrder.shipping_tracking_no ? selectedOrder.shipping_courier_name || '' : '',
                                                         tracking: selectedOrder.shipping_tracking_no || '',
                                                     })
@@ -451,12 +488,35 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             </div>
                             {shipForm && (
                                 <div className="mt-2 rounded-xl border border-border p-3 space-y-2">
-                                    <p className="text-xs font-medium text-foreground">
-                                        {isOutdoorOrder(selectedOrder)
-                                            ? 'Courier and tracking number are required to mark this order shipped.'
-                                            : 'Add the courier and tracking number (optional).'}
-                                    </p>
-                                    <div className="flex flex-col sm:flex-row gap-2">
+                                    <p className="text-xs font-medium text-foreground">How is this order being delivered?</p>
+                                    <div className="flex flex-wrap gap-3 text-xs">
+                                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="delivery-method"
+                                                checked={shipForm.method === 'own'}
+                                                onChange={() => setShipForm(f => f ? { ...f, method: 'own' } : f)}
+                                            />
+                                            Our own delivery team
+                                        </label>
+                                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="delivery-method"
+                                                checked={shipForm.method === 'courier'}
+                                                onChange={() => setShipForm(f => f ? { ...f, method: 'courier' } : f)}
+                                            />
+                                            Courier company
+                                        </label>
+                                    </div>
+                                    {shipForm.method === 'courier' && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {isOutdoorOrder(selectedOrder)
+                                                ? 'Courier and tracking number are required.'
+                                                : 'Courier and tracking number are optional.'}
+                                        </p>
+                                    )}
+                                    {shipForm.method === 'courier' && <div className="flex flex-col sm:flex-row gap-2">
                                         <input
                                             value={shipForm.courier}
                                             onChange={(e) => setShipForm(f => f ? { ...f, courier: e.target.value } : f)}
@@ -474,17 +534,24 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                             aria-label="Tracking number"
                                             className="flex-1 text-sm border border-border rounded-lg bg-background px-3 py-1.5"
                                         />
-                                    </div>
+                                    </div>}
                                     <datalist id="store-orders-courier-suggestions">
                                         {COURIER_SUGGESTIONS.map(name => <option key={name} value={name} />)}
                                     </datalist>
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => handleStatusUpdate(selectedOrder.id, 'shipped', {
-                                                courierName: shipForm.courier.trim(),
-                                                trackingNo: shipForm.tracking.trim(),
-                                            })}
-                                            disabled={updatingStatus || (isOutdoorOrder(selectedOrder) && (!shipForm.courier.trim() || !shipForm.tracking.trim()))}
+                                            onClick={() => handleStatusUpdate(selectedOrder.id, 'shipped', shipForm.method === 'own'
+                                                ? { deliveryMethod: 'own' }
+                                                : {
+                                                    deliveryMethod: 'courier',
+                                                    courierName: shipForm.courier.trim(),
+                                                    trackingNo: shipForm.tracking.trim(),
+                                                })}
+                                            disabled={updatingStatus || (
+                                                shipForm.method === 'courier'
+                                                && isOutdoorOrder(selectedOrder)
+                                                && (!shipForm.courier.trim() || !shipForm.tracking.trim())
+                                            )}
                                             className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--sera-orange,#f97316)] text-white disabled:opacity-50"
                                         >
                                             Mark shipped
@@ -515,11 +582,13 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                     </p>
                                 </div>
                                 <div>
-                                    <span className="text-[11px] text-muted-foreground">Courier</span>
+                                    <span className="text-[11px] text-muted-foreground">Delivered by</span>
                                     <p className="text-sm text-foreground">
-                                        {selectedOrder.shipping_tracking_no && selectedOrder.shipping_courier_name
-                                            ? selectedOrder.shipping_courier_name
-                                            : '—'}
+                                        {isOwnDelivery(selectedOrder.shipping_courier_name)
+                                            ? 'Our own team'
+                                            : selectedOrder.shipping_tracking_no && selectedOrder.shipping_courier_name
+                                                ? selectedOrder.shipping_courier_name
+                                                : '—'}
                                     </p>
                                 </div>
                                 <div className="col-span-2">
@@ -654,6 +723,45 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             onChanged={() => setRequestsRefresh(n => n + 1)}
                         />
 
+                        {/* History */}
+                        <div className="space-y-2">
+                            <h3 className="text-sm font-semibold text-foreground">History</h3>
+                            {!historyAvailable ? (
+                                <p className="text-xs text-muted-foreground">History is not set up yet (database migration pending).</p>
+                            ) : history.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">No history recorded yet. Changes from now on appear here.</p>
+                            ) : (
+                                <ol className="relative border-l border-border ml-1.5 space-y-3">
+                                    {history.map(event => {
+                                        const to = event.to_status ? STATUS_CONFIG[event.to_status]?.label || event.to_status : null
+                                        const from = event.from_status ? STATUS_CONFIG[event.from_status]?.label || event.from_status : null
+                                        const title = event.event_type === 'created'
+                                            ? 'Order placed'
+                                            : event.event_type === 'shipping_updated'
+                                                ? 'Shipping details updated'
+                                                : to
+                                                    ? from ? `${from} → ${to}` : to
+                                                    : 'Update'
+                                        const who = event.actor_type === 'system'
+                                            ? 'Automatic'
+                                            : event.actor_type === 'payment'
+                                                ? 'Payment gateway'
+                                                : event.actor_type === 'customer'
+                                                    ? `Customer${event.actor_label ? ` · ${event.actor_label}` : ''}`
+                                                    : event.actor_label || 'Staff'
+                                        return (
+                                            <li key={event.id} className="ml-3">
+                                                <span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full border border-card bg-[var(--sera-orange,#f97316)]" />
+                                                <p className="text-xs font-medium text-foreground">{title}</p>
+                                                {event.note ? <p className="text-[11px] text-muted-foreground">{event.note}</p> : null}
+                                                <p className="text-[11px] text-muted-foreground">{who} · {formatDate(event.created_at)}</p>
+                                            </li>
+                                        )
+                                    })}
+                                </ol>
+                            )}
+                        </div>
+
                         {/* Timestamps */}
                         <div className="text-[11px] text-muted-foreground space-y-1 py-2 border-t border-border">
                             <div className="flex items-center gap-1.5">
@@ -699,6 +807,27 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 </div>
             )}
 
+            <div className="flex gap-1 border-b border-[var(--sera-line)]">
+                {([
+                    ['orders', 'Orders'],
+                    ['messages', 'Outdoor messages'],
+                    ['subscribers', 'Newsletter subscribers'],
+                ] as const).map(([value, label]) => (
+                    <button
+                        key={value}
+                        onClick={() => setTab(value)}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                            tab === value
+                                ? 'border-[var(--sera-orange,#f97316)] text-[var(--sera-ink)]'
+                                : 'border-transparent text-[var(--sera-muted)] hover:text-[var(--sera-ink)]'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {tab === 'messages' ? <OutdoorMessagesPanel /> : tab === 'subscribers' ? <OutdoorSubscribersPanel /> : (<>
             <StoreOpenRequestsPanel refreshKey={requestsRefresh} onOpenOrder={(order) => setSelectedOrder(order)} />
 
             {/* Filters */}
@@ -914,6 +1043,8 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     )}
                 </>
             )}
+
+            </>)}
 
             {/* Order detail slide-over panel */}
             {renderOrderDetail()}

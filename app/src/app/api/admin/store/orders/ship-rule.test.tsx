@@ -77,12 +77,27 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
     expect(updateCalls[0].payload).toEqual({ status: 'shipped' })
   })
 
-  it('does not read the order first for other status changes', async () => {
-    maybeSingle.mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'delivered' }, error: null })
+  it('ships an Outdoor order with our own delivery team, without a tracking number', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'processing', sales_channel: 'outdoor', shipping_tracking_no: null, shipping_courier_name: null } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'shipped' }, error: null })
     const { PUT } = await import('./route')
-    const response = await PUT(put({ id: ORDER_ID, status: 'delivered', trackingNo: 'ignored' }))
+    const response = await PUT(put({ id: ORDER_ID, status: 'shipped', deliveryMethod: 'own', trackingNo: 'ignored' }))
     expect(response.status).toBe(200)
-    expect(maybeSingle).toHaveBeenCalledTimes(1)
+    expect(updateCalls[0].payload).toEqual({
+      status: 'shipped',
+      shipping_courier_name: 'Serapod delivery team',
+      shipping_tracking_no: null,
+    })
+  })
+
+  it('leaves shipping details alone for other status changes', async () => {
+    maybeSingle
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'shipped', sales_channel: 'outdoor' } })
+      .mockResolvedValueOnce({ data: { id: ORDER_ID, status: 'delivered' }, error: null })
+    const { PUT } = await import('./route')
+    const response = await PUT(put({ id: ORDER_ID, status: 'delivered', trackingNo: 'ignored', deliveryMethod: 'own' }))
+    expect(response.status).toBe(200)
     expect(updateCalls[0].payload).toEqual({ status: 'delivered' })
   })
 })

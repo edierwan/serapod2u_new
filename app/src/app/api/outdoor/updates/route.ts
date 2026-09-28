@@ -22,13 +22,27 @@ const KIND_LABEL: Record<string, string> = {
   other: 'Update',
 }
 
-/** GET — recent Outdoor updates for staff. */
-export async function GET() {
+/** GET — recent Outdoor updates for staff; `?list=subscribers` returns the newsletter list. */
+export async function GET(request: NextRequest) {
   try {
     const staff = await requireOutdoorStaff()
     if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const admin: any = createAdminClient()
+
+    if (request.nextUrl.searchParams.get('list') === 'subscribers') {
+      const { data, error } = await admin
+        .from('outdoor_newsletter_subscribers')
+        .select('id, email, source, status, created_at, unsubscribed_at')
+        .order('created_at', { ascending: false })
+        .limit(1000)
+      if (error) {
+        console.error('[outdoor/updates GET subscribers]', error)
+        return NextResponse.json({ error: 'Could not load subscribers.' }, { status: 500 })
+      }
+      return NextResponse.json({ subscribers: data || [] })
+    }
+
     const [{ data, error }, subscribers] = await Promise.all([
       admin.from('outdoor_admin_updates').select('id, kind, title, body, emailed_count, created_at').order('created_at', { ascending: false }).limit(30),
       countOutdoorSubscribers(admin),

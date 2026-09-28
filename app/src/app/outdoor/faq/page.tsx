@@ -11,7 +11,7 @@ const FAQS = [
   },
   {
     q: 'How can I track my parcel?',
-    a: 'Open Track Order and enter your order reference plus the email used at checkout. After we ship, tracking number and courier updates appear there.',
+    a: 'Open Track Order and enter your order reference plus the email used at checkout. You will see when it is paid, on its way and delivered; if a courier carries it, the tracking number appears there too.',
   },
   {
     q: 'Do you ship outside Malaysia?',

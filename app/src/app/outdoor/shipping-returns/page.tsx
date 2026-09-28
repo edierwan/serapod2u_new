@@ -11,21 +11,21 @@ export default function OutdoorShippingPage() {
         {
           heading: 'Shipping coverage',
           body: [
-            'We pack and send every order ourselves, within Malaysia, through our courier partners.',
+            'We pack and deliver every order ourselves, within Malaysia. For some addresses we may hand the parcel to a courier instead, and you will get its tracking number.',
             'Checkout uses one flat delivery rate for every address in Malaysia. When an order qualifies, that rate is shown as free shipping.',
           ],
         },
         {
           heading: 'Processing time',
           body: [
-            'Paid orders enter our fulfilment desk for packing. We aim to hand parcels to the courier within 1–3 business days after payment confirmation, unless a product note states otherwise.',
+            'Paid orders enter our fulfilment desk for packing. We aim to send them out within 1–3 business days after payment confirmation, unless a product note states otherwise.',
             'Public holidays and peak seasons may add delay.',
           ],
         },
         {
           heading: 'Tracking',
           body: [
-            'When your order ships, a tracking number is stored on the order. Use Track Order with your order reference and checkout email to view status and courier updates.',
+            'Use Track Order with your order reference and checkout email to see where your order is: paid, on its way, delivered. If a courier carries it, its tracking number and updates appear there too.',
           ],
         },
         {
