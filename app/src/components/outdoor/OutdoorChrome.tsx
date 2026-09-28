@@ -8,7 +8,7 @@ import { useCart } from "@/lib/storefront/cart-context";
 import { createClient } from "@/lib/supabase/client";
 import OutdoorBrandMark from "@/components/outdoor/OutdoorBrandMark";
 import OutdoorNewsletter from "@/components/outdoor/OutdoorNewsletter";
-import { outdoorAuthHref } from "@/lib/outdoor/auth-return";
+import { OUTDOOR_HOME, outdoorAuthHref } from "@/lib/outdoor/auth-return";
 
 const NAV = [
   { href: "/outdoor/shop", label: "Shop" },
@@ -83,8 +83,14 @@ export default function OutdoorChrome({
   const [authReady, setAuthReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [pageSearch, setPageSearch] = useState("");
-  const loginHref = outdoorAuthHref("login", pathname, pageSearch);
-  const signupHref = outdoorAuthHref("register", pathname, pageSearch);
+  // On the auth pages keep the pending destination (e.g. checkout); elsewhere signing in lands on the home page.
+  const onAuthPage = /^\/outdoor\/(login|register|forgot-password)/.test(pathname);
+  const loginHref = onAuthPage
+    ? outdoorAuthHref("login", pathname, pageSearch)
+    : `/outdoor/login?next=${encodeURIComponent(OUTDOOR_HOME)}`;
+  const signupHref = onAuthPage
+    ? outdoorAuthHref("register", pathname, pageSearch)
+    : `/outdoor/register?next=${encodeURIComponent(OUTDOOR_HOME)}`;
 
   useEffect(() => {
     setPageSearch(window.location.search);
