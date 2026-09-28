@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
 import { customerPaymentError } from '@/lib/storefront/price-rules'
+import { expireUnpaidOrders, isUnpaidOrderExpired, UNPAID_ORDER_TTL_HOURS } from '@/lib/storefront/expire-unpaid-orders'
 import { publicOriginFromRequest } from '@/lib/http/public-origin'
 
 function normalizeEmail(value: unknown) {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     const admin: any = createAdminClient()
     const { data: order, error } = await admin
       .from('storefront_orders')
-      .select('id, order_ref, status, sales_channel, customer_name, customer_email, customer_phone, total_amount, currency, payment_provider')
+      .select('id, order_ref, status, sales_channel, customer_name, customer_email, customer_phone, total_amount, currency, payment_provider, created_at')
       .eq('order_ref', orderRef)
       .ilike('customer_email', email)
       .maybeSingle()
@@ -45,6 +46,15 @@ export async function POST(request: NextRequest) {
     }
     if (String(order.status) !== 'pending_payment') {
       return NextResponse.json({ error: 'This order is not waiting for payment.' }, { status: 400 })
+    }
+    if (order.payment_provider === 'stripe' && isUnpaidOrderExpired(order)) {
+      const [expiry] = await expireUnpaidOrders({ orderRef: order.order_ref, limit: 1 })
+      const message = expiry?.outcome === 'paid'
+        ? 'This order has already been paid.'
+        : expiry?.outcome === 'kept'
+          ? 'Your earlier payment is still being processed. Please check again shortly.'
+          : `This order was not paid within ${UNPAID_ORDER_TTL_HOURS} hours and has been cancelled. Please place a new order.`
+      return NextResponse.json({ error: message }, { status: 409 })
     }
 
     const amount = Number(order.total_amount)

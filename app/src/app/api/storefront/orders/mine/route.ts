@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { expireUnpaidOrders } from '@/lib/storefront/expire-unpaid-orders'
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,6 +19,9 @@ export async function GET(request: NextRequest) {
 
     const channel = request.nextUrl.searchParams.get('channel')
     const email = user.email.trim().toLowerCase()
+    await expireUnpaidOrders({ email, limit: 10 }).catch((err) => {
+      console.error('[storefront/orders/mine] unpaid expiry failed', err)
+    })
     const admin: any = createAdminClient()
     let query = admin
       .from('storefront_orders')

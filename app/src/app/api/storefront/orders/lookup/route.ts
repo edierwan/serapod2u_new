@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { easyParcelTrackAwb, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import { expireUnpaidOrders } from '@/lib/storefront/expire-unpaid-orders'
 
 function normalizeEmail(value: unknown) {
   return String(value || '').trim().toLowerCase()
@@ -29,6 +30,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    await expireUnpaidOrders({ orderRef, email, limit: 1 }).catch((err) => {
+      console.error('[storefront/orders/lookup] unpaid expiry failed', err)
+    })
     const admin: any = createAdminClient()
     const { data: order, error } = await admin
       .from('storefront_orders')

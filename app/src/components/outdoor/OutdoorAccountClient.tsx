@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { socialAccountLabel } from '@/lib/auth/social-oauth'
 import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
+import { unpaidOrderDeadline } from '@/lib/storefront/unpaid-order-deadline'
 import OutdoorOrderRequestDialog from '@/components/outdoor/OutdoorOrderRequestDialog'
 import {
   ORDER_REQUEST_CUSTOMER_LABELS,
@@ -319,6 +320,11 @@ export default function OutdoorAccountClient({
                     >
                       Continue payment
                     </button>
+                  ) : null}
+                  {order.status === 'pending_payment' && unpaidOrderDeadline(order.createdAt) ? (
+                    <span className="text-[11px] text-[var(--out-muted)]">
+                      Pay by {unpaidOrderDeadline(order.createdAt)!.toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                    </span>
                   ) : null}
                   <Link
                     href={`/outdoor/track?order=${encodeURIComponent(order.orderRef)}`}

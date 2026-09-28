@@ -159,6 +159,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "cron/sa-decision-retention": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "cron/sa-governance-maintenance": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "cron/serapp-hold-expiry": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
+  "cron/storefront-unpaid-expiry": { kind: 'SERVICE', reason: "Cron worker authenticated with CRON_SECRET: cancels Outdoor orders unpaid for 24 hours" },
   "cron/warehouse-debug": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "cron/warehouse-receiving-worker": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "debug/sms-provider-check": { kind: 'ENTERPRISE', permissions: ["platform.settings.manage"], via: ["app/api/settings/whatsapp/_utils.ts"] },

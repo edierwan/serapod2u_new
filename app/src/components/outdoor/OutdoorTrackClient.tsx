@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { resumeOutdoorPayment } from '@/lib/outdoor/resume-payment'
+import { unpaidOrderDeadline } from '@/lib/storefront/unpaid-order-deadline'
 import {
   ORDER_STATUS_GROUPS,
   defaultOrderGroup,
@@ -274,6 +275,11 @@ export default function OutdoorTrackClient({ initialOrderRef = '' }: { initialOr
             >
               {paying ? 'Opening payment…' : 'Continue payment'}
             </button>
+          ) : null}
+          {order.status === 'pending_payment' && unpaidOrderDeadline(order.createdAt) ? (
+            <p className="-mt-3 text-center text-xs text-[var(--out-muted)]">
+              Pay by {unpaidOrderDeadline(order.createdAt)!.toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}, or this order is cancelled automatically.
+            </p>
           ) : null}
           {error && order ? <p className="text-sm text-red-600">{error}</p> : null}
 
