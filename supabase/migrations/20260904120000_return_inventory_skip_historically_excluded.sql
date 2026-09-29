@@ -155,7 +155,7 @@ BEGIN
       CONTINUE;
     END IF;
 
-    v_cfg := public.resolve_default_stock_config(v_item.variant_id);
+    v_cfg := public.resolve_operational_stock_config(v_item.variant_id);
     IF v_cfg IS NULL THEN
       RAISE EXCEPTION 'No stock configuration available for returned variant %', v_item.variant_id;
     END IF;
