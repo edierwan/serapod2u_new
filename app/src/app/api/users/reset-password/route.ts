@@ -1,4 +1,5 @@
 import { userAllowed, guardUserOperation } from '@/lib/security-access/operation'
+import { targetProtectionAllows } from '@/lib/security-access/scope'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -93,11 +94,14 @@ export async function POST(request: NextRequest) {
     }
 
     const targetUserLevel = extractRoleLevel((targetUser as any).roles)
-    if (
+    // Target protection: once platform.identity_access.manage is enforced the
+    // actor must hold every grant the target holds (sa_actor_dominates); until
+    // then the historical "not a higher legacy role" rule decides.
+    if (!(await targetProtectionAllows(authUser.id, user_id, 'platform.identity_access.manage', () => !(
       typeof currentUserLevel === 'number' &&
       typeof targetUserLevel === 'number' &&
       targetUserLevel < currentUserLevel
-    ) {
+    )))) {
       return NextResponse.json(
         { success: false, error: 'Access denied - You cannot reset the password for a higher-privilege user' },
         { status: 403 }

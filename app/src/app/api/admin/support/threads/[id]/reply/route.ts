@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
@@ -42,7 +42,7 @@ export async function POST(
     
     console.log('[Admin Reply] User role data:', userData, 'error:', userError)
         
-    if (userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
+    if (userError || !userData || !(await userAllowed(user.id, 'customer.support.administer', () => ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)))) {
          console.log('[Admin Reply] Role check failed. Role:', userData?.role_code)
          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

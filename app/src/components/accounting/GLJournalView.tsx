@@ -26,6 +26,7 @@ import {
   ChevronRight,
   AlertCircle
 } from 'lucide-react'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 interface GLJournalViewProps {
   userProfile: {
@@ -140,7 +141,9 @@ export default function GLJournalView({ userProfile }: GLJournalViewProps) {
   const [postingLoading, setPostingLoading] = useState(false)
   const [selectedPending, setSelectedPending] = useState<PendingPosting | null>(null)
 
-  const canPost = userProfile.roles.role_level <= 20
+  // Shown when Security & Access allows finance.journal.post (the server decides the
+  // operation); the historical role-level rule applies until it is enforced.
+  const canPost = useSaCapability('finance.journal.post', userProfile.roles.role_level <= 20)
 
   useEffect(() => {
     if (activeTab === 'posted') {

@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizePhoneE164 } from '@/utils/phone'
+import { readableOrganizations } from '@/lib/security-access/scope'
 
 type AdminClient = SupabaseClient<any, 'public', any>
 
@@ -32,13 +33,25 @@ export function resolveCurrentUserLevel(roleCode?: string | null): number {
     return 999
 }
 
+/**
+ * Users visible to the caller. With `access` (the caller and the permission
+ * the route decided), visibility is an S&A scope decision once that
+ * permission is enforced: users in the caller's readable organizations plus
+ * organization-less consumers. Until then (and without `access`) the
+ * historical rule applies: power users and above see everyone, others their
+ * own organization and users at or below their legacy level.
+ */
 export async function loadScopedShopUsers(
     admin: AdminClient,
     currentUserRoleCode?: string | null,
     currentUserOrgId?: string | null,
+    access?: { userId: string; permission: string },
 ): Promise<ScopedShopUserResult> {
+    const scope = access
+        ? await readableOrganizations(access.userId, access.permission, () => ({ all: true }))
+        : { all: true as const }
     const currentUserLevel = resolveCurrentUserLevel(currentUserRoleCode)
-    const isPowerUser = currentUserLevel <= 20
+    const isPowerUser = !scope.all || currentUserLevel <= 20
 
     const allUsers: ScopedUserRow[] = []
     const pageSize = 1000
@@ -82,7 +95,9 @@ export async function loadScopedShopUsers(
         }
     }
 
+    const readableIds = scope.all ? null : new Set(scope.organizationIds)
     const visibleUsers = allUsers.filter((user) => {
+        if (readableIds) return !user.organization_id || readableIds.has(user.organization_id)
         const userRoleLevel = user.roles?.role_level || 999
         if (currentUserLevel <= 20) return true
         return userRoleLevel >= currentUserLevel

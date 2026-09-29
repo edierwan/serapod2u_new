@@ -144,9 +144,11 @@ describe('Stage 2C — behaviour', () => {
     await expect(resolveHrRoleForCaller(ctx)).resolves.toBe('HR_STAFF')
   })
 
-  it('HR assistant: the line-manager tier keeps the legacy classification', async () => {
-    authorizeOperation.mockResolvedValue({ decision: 'DENY' })
+  it('HR assistant: the line-manager tier is the S&A decision hr.employee.view_internal (Stage 2D)', async () => {
+    authorizeOperation.mockImplementation(async (req: any) => ({ decision: req.permission === 'hr.employee.view_internal' ? 'ALLOW' : 'DENY' }))
     const { resolveHrRoleForCaller } = await import('@/lib/server/hr/assistant/access')
-    await expect(resolveHrRoleForCaller({ ...ctx, roleCode: 'MANAGER', roleLevel: 30 })).resolves.toBe('MANAGER')
+    await expect(resolveHrRoleForCaller({ ...ctx, roleCode: 'GUEST', roleLevel: 50 })).resolves.toBe('MANAGER')
+    authorizeOperation.mockResolvedValue({ decision: 'DENY' })
+    await expect(resolveHrRoleForCaller({ ...ctx, roleCode: 'MANAGER', roleLevel: 30 })).resolves.toBe('EMPLOYEE')
   })
 })

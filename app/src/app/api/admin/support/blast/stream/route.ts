@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         .eq('id', user.id)
         .single()
         
-      if (userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
+      if (userError || !userData || !(await userAllowed(user.id, 'customer.support.administer', () => ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)))) {
         await sendProgress({ type: 'error', error: 'Forbidden' })
         await writer.close()
         return

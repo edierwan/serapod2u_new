@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -47,7 +47,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
     }
 
-    if (userProfile.role_code !== 'SA' && userProfile.organization_id !== adjustment.organization_id) {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (userProfile.organization_id !== adjustment.organization_id && !(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       return NextResponse.json({ error: 'Not allowed to send this issue' }, { status: 403 })
     }
 

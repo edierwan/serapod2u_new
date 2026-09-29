@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 /**
  * Server-only context helper for Catalog pages.
@@ -54,7 +55,14 @@ export async function getCatalogPageContext() {
     // Catalog is accessible to HQ, DIST, and SHOP org types with role level ≤ 50
     const orgType = organization?.org_type_code
     const roleLevel = roles?.role_level ?? 999
-    const canViewCatalog = ['HQ', 'DIST', 'SHOP'].includes(orgType) && roleLevel <= 50
+    // Module entry is an S&A decision (product.catalog.view) in the user's own
+    // organization; the historical page rule is the legacy evaluator.
+    const canViewCatalog = await authorizeOperation({
+        actorId: user.id,
+        permission: 'product.catalog.view',
+        resource: organizationResource('catalog_module', organizationId),
+        legacy: () => ['HQ', 'DIST', 'SHOP'].includes(orgType) && roleLevel <= 50,
+    }).then(d => d.decision === 'ALLOW').catch(() => false)
 
     return { user, userProfile: transformedUserProfile, canViewCatalog }
 }

@@ -95,6 +95,11 @@ async function migrationMode(permission: string): Promise<MigrationMode> {
   return data?.mode ?? 'LEGACY_ENFORCED'
 }
 
+/** Current migration mode of a permission (LEGACY_ENFORCED when not seeded yet). */
+export async function currentMigrationMode(permission: string): Promise<MigrationMode> {
+  return migrationMode(permission)
+}
+
 // Unknown, missing, or unreadable sensitivity is treated as protected.
 async function auditSensitivity(permission: string): Promise<AuditSensitivity> {
   const admin = createAdminClient() as any

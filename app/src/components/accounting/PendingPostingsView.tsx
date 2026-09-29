@@ -34,6 +34,7 @@ import {
   Eye,
 } from 'lucide-react'
 import { POSTING_TYPE_COLORS, getPostingType } from '@/modules/finance/postingMap'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -138,7 +139,9 @@ export default function PendingPostingsView({ userProfile }: PendingPostingsView
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false)
   const [batchResults, setBatchResults] = useState<{ success: number; failed: number; errors: string[] } | null>(null)
 
-  const canPost = userProfile.roles.role_level <= 20
+  // Shown when Security & Access allows finance.journal.post (the server decides the
+  // operation); the historical role-level rule applies until it is enforced.
+  const canPost = useSaCapability('finance.journal.post', userProfile.roles.role_level <= 20)
 
   // ── Data Loading ──────────────────────────────────────────────
 

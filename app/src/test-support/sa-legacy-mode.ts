@@ -31,3 +31,15 @@ export const resourceContextModule = {
   resolveWarehouseResourceContext: async (_actorOrg: string | null | undefined, warehouseId: string) => ({ organizationId: warehouseId, warehouseId }),
   organizationContextForWarehouse: (_a: string | null | undefined, ancestry: string[], warehouseId: string) => ancestry[ancestry.length - 1] ?? warehouseId,
 }
+
+type Readable = { all: true } | { all: false; organizationIds: string[] }
+
+/** Stage 2D scope helpers in legacy mode: the route's historical rule decides. */
+export const scopeModule = {
+  readableOrganizations: async (_userId: string, _permission: string, legacy: () => Readable | Promise<Readable>) => legacy(),
+  canReadOrganization: (scope: Readable, organizationId: string | null | undefined) =>
+    scope.all ? true : !!organizationId && scope.organizationIds.includes(organizationId),
+  readableOrganizationsOfTypes: async (scope: Readable) => (scope.all ? 'all' : scope.organizationIds),
+  targetProtectionAllows: async (_actor: string, _target: string, _permission: string, legacy: () => boolean | Promise<boolean>) =>
+    Boolean(await legacy()),
+}

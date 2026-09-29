@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { userAllowed } from '@/lib/security-access/operation'
 import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
@@ -84,7 +85,12 @@ export async function POST(request: NextRequest) {
       const roleCode = userProfile?.role_code
       const isAdmin = roleCode === 'SUPER' || roleCode === 'SUPERADMIN' || roleCode === 'HQ_ADMIN' || roleLevel === 1 || roleLevel === 10
 
-      if (!isAdmin) {
+      // Editing another person's profile is an S&A decision
+      // (platform.user.profile_edit) in that person's organization; the
+      // historical admin rule is the legacy evaluator.
+      const { data: target } = await adminClient.from('users').select('organization_id').eq('id', requestedUserId).maybeSingle()
+      if (!target || !(await userAllowed(authUser.id, 'platform.user.profile_edit', () => isAdmin,
+        { organizationId: (target as any).organization_id ?? null }))) {
         return NextResponse.json(
           { success: false, error: 'Unauthorized - Can only update your own profile' },
           { status: 403 }

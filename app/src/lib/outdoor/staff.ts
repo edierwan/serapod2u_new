@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { userAllowed } from '@/lib/security-access/operation'
 
 export async function requireOutdoorStaff() {
   const supabase = await createClient()
@@ -16,7 +17,13 @@ export async function requireOutdoorStaff() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !isOutdoorStaffProfile(profile)) return null
+  if (!profile) return null
+  // Operating the Outdoor store is an S&A decision (ecommerce.outdoor.operate)
+  // in the staff member's organization; isOutdoorStaffProfile (the historical
+  // HQ / role-level rule) is the legacy evaluator.
+  const allowed = await userAllowed(user.id, 'ecommerce.outdoor.operate', () => isOutdoorStaffProfile(profile),
+    { organizationId: profile.organization_id })
+  if (!allowed) return null
   return { userId: user.id, orgId: profile.organization_id }
 }
 

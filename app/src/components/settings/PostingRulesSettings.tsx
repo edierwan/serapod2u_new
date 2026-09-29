@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import { POSTING_TYPES, POSTING_TYPE_COLORS, type PostingTypeInfo } from '@/modules/finance/postingMap'
 import type { GLPostingMode } from '@/types/accounting'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -92,7 +93,9 @@ export default function PostingRulesSettings({ userProfile }: PostingRulesSettin
     posting_config: {} as Record<string, any>,
   })
 
-  const canManage = userProfile.roles.role_level <= 20
+  // Shown when Security & Access allows finance.settings.manage (the server decides the
+  // operation); the historical role-level rule applies until it is enforced.
+  const canManage = useSaCapability('finance.settings.manage', userProfile.roles.role_level <= 20)
 
   // ── Load Data ───────────────────────────────────────────────
 

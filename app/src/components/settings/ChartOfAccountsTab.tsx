@@ -27,6 +27,7 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import { GLAccount, GLAccountType, GLAccountInsert, GLAccountUpdate, GLAccountsListResponse } from '@/types/accounting'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 interface ChartOfAccountsTabProps {
   userProfile: {
@@ -83,7 +84,9 @@ export default function ChartOfAccountsTab({ userProfile }: ChartOfAccountsTabPr
     is_active: true
   })
 
-  const canManage = userProfile.roles.role_level <= 20
+  // Shown when Security & Access allows finance.account.manage (the server decides the
+  // operation); the historical role-level rule applies until it is enforced.
+  const canManage = useSaCapability('finance.account.manage', userProfile.roles.role_level <= 20)
 
   // Check if DEV mode is available for hard delete
   useEffect(() => {

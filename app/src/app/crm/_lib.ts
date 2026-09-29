@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 /**
  * Server-only context helper for CRM pages.
@@ -54,7 +55,14 @@ export async function getCrmPageContext() {
     // CRM is accessible to HQ org type with role level ≤ 50
     const orgType = organization?.org_type_code
     const roleLevel = roles?.role_level ?? 999
-    const canViewCrm = orgType === 'HQ' && roleLevel <= 50
+    // Module entry is an S&A decision (customer.crm.view) in the user's own
+    // organization; the historical page rule is the legacy evaluator.
+    const canViewCrm = await authorizeOperation({
+        actorId: user.id,
+        permission: 'customer.crm.view',
+        resource: organizationResource('crm_module', organizationId),
+        legacy: () => orgType === 'HQ' && roleLevel <= 50,
+    }).then(d => d.decision === 'ALLOW').catch(() => false)
 
     return { user, userProfile: transformedUserProfile, canViewCrm }
 }

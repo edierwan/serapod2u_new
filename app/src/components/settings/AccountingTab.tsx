@@ -28,6 +28,7 @@ import {
   ShieldAlert,
   Cog
 } from 'lucide-react'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 interface AccountingTabProps {
   userProfile: {
@@ -74,7 +75,9 @@ export default function AccountingTab({ userProfile }: AccountingTabProps) {
   const [resetConfirmation, setResetConfirmation] = useState('')
   const [resetting, setResetting] = useState(false)
 
-  const canManage = userProfile.roles.role_level <= 20
+  // Shown when Security & Access allows finance.settings.manage (the server decides the
+  // operation); the historical role-level rule applies until it is enforced.
+  const canManage = useSaCapability('finance.settings.manage', userProfile.roles.role_level <= 20)
 
   useEffect(() => {
     loadStatus()

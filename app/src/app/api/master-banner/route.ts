@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -97,7 +97,11 @@ export async function POST(request: NextRequest) {
     const org = Array.isArray(userData.organizations) ? userData.organizations[0] : userData.organizations
     const role = Array.isArray(userData.roles) ? userData.roles[0] : userData.roles
 
-    if (org?.org_type_code !== 'HQ' || (role?.role_level && role.role_level > 30)) {
+    // Master banner administration is an S&A decision (customer.banner.manage);
+    // the historical HQ / role_level <= 30 rule is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'customer.banner.manage',
+        () => !(org?.org_type_code !== 'HQ' || (role?.role_level && role.role_level > 30)),
+        { organizationId: userData.organization_id }))) {
         return NextResponse.json(
             { success: false, error: 'Only HQ administrators can manage master banner config' },
             { status: 403 }
@@ -181,7 +185,11 @@ export async function PUT(request: NextRequest) {
     const org = Array.isArray(userData.organizations) ? userData.organizations[0] : userData.organizations
     const role = Array.isArray(userData.roles) ? userData.roles[0] : userData.roles
 
-    if (org?.org_type_code !== 'HQ' || (role?.role_level && role.role_level > 30)) {
+    // Master banner administration is an S&A decision (customer.banner.manage);
+    // the historical HQ / role_level <= 30 rule is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'customer.banner.manage',
+        () => !(org?.org_type_code !== 'HQ' || (role?.role_level && role.role_level > 30)),
+        { organizationId: userData.organization_id }))) {
         return NextResponse.json(
             { success: false, error: 'Only HQ administrators can manage master banner config' },
             { status: 403 }

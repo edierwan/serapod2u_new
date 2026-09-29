@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { loadScopedShopUsers } from '../_user-management-scope'
@@ -31,11 +31,13 @@ export async function GET(_request: NextRequest) {
             .eq('id', user.id)
             .single()
 
-        if (!profile || !['SA', 'HQ', 'POWER_USER'].includes(profile.role_code)) {
+        // Cross-shop reports are an S&A decision (customer.report.view); the
+        // historical admin role list is the legacy evaluator.
+        if (!profile || !(await userAllowed(user.id, 'customer.report.view', () => ['SA', 'HQ', 'POWER_USER'].includes(profile.role_code)))) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 
-        const { shopUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id)
+        const { shopUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id, { userId: user.id, permission: 'customer.report.view' })
         const excludedUserIds = new Set(shopUsers.map((item) => item.id))
 
         const { data: consumerScanRows, error: consumerScanError } = await admin

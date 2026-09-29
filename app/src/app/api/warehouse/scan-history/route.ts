@@ -1,4 +1,5 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
+import { readableOrganizations, readableOrganizationsOfTypes } from '@/lib/security-access/scope'
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
@@ -28,16 +29,21 @@ export async function GET() {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    // Check if user is Super Admin (role_level = 1)
-    const isSuperAdmin = profile && (profile as any).roles && (profile as any).roles.role_level === 1
+    // Which warehouses' shipments are listed is an S&A scope decision
+    // (inventory.report.view readable organizations, HQ and WH) once enforced;
+    // until then the Super Admin sees every warehouse and others their own.
+    const warehouseScope = await readableOrganizationsOfTypes(
+      await readableOrganizations(user.id, 'inventory.report.view', () =>
+        (profile as any).roles?.role_level === 1
+          ? { all: true }
+          : { all: false, organizationIds: profile.organization_id ? [profile.organization_id] : [] }),
+      ['HQ', 'WH'])
 
-    if (!profile.organization_id && !isSuperAdmin) {
+    if (warehouseScope !== 'all' && warehouseScope.length === 0) {
       return NextResponse.json({ error: 'Organization not assigned' }, { status: 400 })
     }
 
-    const warehouseOrgId = profile.organization_id
-
-    console.log('🔍 Querying shipment history for warehouse org:', isSuperAdmin ? 'ALL (Super Admin)' : warehouseOrgId)
+    console.log('🔍 Querying shipment history for warehouse orgs:', warehouseScope === 'all' ? 'ALL' : warehouseScope)
 
     // Query qr_validation_reports to get shipment sessions
     // Show BOTH approved (completed) and pending/matched (current scanning) sessions
@@ -78,9 +84,8 @@ export async function GET() {
       .order('updated_at', { ascending: false })  // Most recent first
       .limit(100)  // Show more to include both current and recent history
 
-    // Only filter by warehouse_org_id if not Super Admin
-    if (!isSuperAdmin && warehouseOrgId) {
-      sessionQuery = sessionQuery.eq('warehouse_org_id', warehouseOrgId)
+    if (warehouseScope !== 'all') {
+      sessionQuery = sessionQuery.in('warehouse_org_id', warehouseScope)
     }
 
     const { data: sessions, error: sessionError } = await sessionQuery
@@ -545,9 +550,8 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(100)
 
-    // Only filter by warehouse_org_id if not Super Admin
-    if (!isSuperAdmin && warehouseOrgId) {
-      unshippedQuery = unshippedQuery.eq('warehouse_org_id', warehouseOrgId)
+    if (warehouseScope !== 'all') {
+      unshippedQuery = unshippedQuery.in('warehouse_org_id', warehouseScope)
     }
 
     const { data: unshippedMasters, error: unshippedError } = await unshippedQuery

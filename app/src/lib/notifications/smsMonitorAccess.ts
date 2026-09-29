@@ -1,4 +1,5 @@
 import { isCanonicalStaff } from '@/lib/identity/staff'
+import { userAllowed } from '@/lib/security-access/operation'
 
 /**
  * Shared authorization check for the SMS delivery monitor endpoints
@@ -7,6 +8,12 @@ import { isCanonicalStaff } from '@/lib/identity/staff'
  * drift out of sync on who is allowed to view/operate the monitor.
  */
 export async function canViewSmsMonitor(supabase: any, userId: string): Promise<boolean> {
+  // The delivery monitors are an S&A decision (platform.notification_monitor.view);
+  // the historical canonical-staff rule below is the legacy evaluator.
+  return userAllowed(userId, 'platform.notification_monitor.view', () => legacyCanViewSmsMonitor(supabase, userId))
+}
+
+async function legacyCanViewSmsMonitor(supabase: any, userId: string): Promise<boolean> {
   const { data } = await supabase
     .from('users')
     .select('organization_id, is_active, account_status, principal_type, roles:role_code(role_level, role_code), organizations:organization_id(org_type_code)')

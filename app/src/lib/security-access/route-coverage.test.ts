@@ -3,6 +3,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ROUTE_COVERAGE } from './route-coverage'
 import { FINAL_WAVE_PERMISSION_KEYS } from './catalog'
+import { IDENTITY_PERMISSION_KEYS } from './identity-catalog'
+import { STAGE2D_PERMISSION_KEYS } from './stage2d-catalog'
 
 const src = resolve(process.cwd(), 'src')
 const apiRoot = resolve(src, 'app/api')
@@ -16,7 +18,7 @@ const WAVE1_KEYS = [
   'inventory.transfer.view', 'inventory.transfer.request', 'inventory.transfer.approve', 'inventory.transfer.dispatch',
   'inventory.transfer.receive', 'security.access.view', 'security.role.assign', 'security.permission.manage',
 ]
-const KNOWN = new Set([...FINAL_WAVE_PERMISSION_KEYS, ...WAVE1_KEYS])
+const KNOWN = new Set([...FINAL_WAVE_PERMISSION_KEYS, ...WAVE1_KEYS, ...IDENTITY_PERMISSION_KEYS, ...STAGE2D_PERMISSION_KEYS])
 
 describe('authorization coverage gate', () => {
   it('classifies every API route (no UNKNOWN, no stale entries)', () => {
@@ -51,13 +53,11 @@ describe('authorization coverage gate', () => {
 
   it('keeps documented compatibility exceptions to the reviewed minimum', () => {
     const exceptions = Object.entries(ROUTE_COVERAGE).filter(([, c]) => c.kind === 'EXCEPTION').map(([r]) => r).sort()
-    // Outdoor store staff routes arrived on staging after the Final Wave was
-    // built; they keep their own staff rule until management decides who
-    // operates the Outdoor store (see route-coverage.ts).
+    // Outdoor store staff routes decide through S&A (ecommerce.outdoor.operate,
+    // Stage 2D); only the public Outdoor contact form keeps a documented
+    // exception (its staff inbox uses the same S&A decision).
     expect(exceptions).toEqual([
-      'orders/[orderId]/access', 'orders/actors',
-      'outdoor/contact', 'outdoor/fulfilment', 'outdoor/fulfilment/access', 'outdoor/products', 'outdoor/products/image',
-      'outdoor/requests', 'outdoor/updates', 'shipping/easyparcel/oauth/callback', 'shipping/easyparcel/oauth/connect',
+      'orders/[orderId]/access', 'orders/actors', 'outdoor/contact',
     ].sort())
   })
 

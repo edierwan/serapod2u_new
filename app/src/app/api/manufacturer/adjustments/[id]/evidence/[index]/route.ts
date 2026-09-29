@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -16,8 +16,8 @@ function canAccessIssue(adjustment: {
   organization_id?: string | null
   target_manufacturer_org_id?: string | null
   manufacturer_status?: string | null
-}, profile: { organization_id?: string | null; role_code?: string | null }) {
-  if (profile.role_code === 'SA') return true
+}, profile: { organization_id?: string | null }, isAdministrator: boolean) {
+  if (isAdministrator) return true
   if (!profile.organization_id) return false
 
   if (profile.organization_id === adjustment.organization_id) {
@@ -75,7 +75,10 @@ export async function GET(
       return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
     }
 
-    if (!canAccessIssue(adjustment, userProfile)) {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    const isAdministrator = (await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))
+    if (!canAccessIssue(adjustment, userProfile, isAdministrator)) {
       return NextResponse.json({ error: 'Not allowed to access this evidence' }, { status: 403 })
     }
 

@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
                 .eq('id', user.id)
                 .single();
 
-            if (!profile || !['SA', 'HQ', 'POWER_USER'].includes(profile.role_code)) {
+            if (!profile || !(await userAllowed(user.id, 'customer.messaging.manage', () => ['SA', 'HQ', 'POWER_USER'].includes(profile.role_code)))) {
                 return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
             }
 
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
 
                 const shopSummaryById = new Map((shopRows || []).map((row: any) => [row.shop_id, row]));
 
-                const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id);
+                const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id, { userId: user.id, permission: 'customer.messaging.manage' });
                 const shopUserIds = shopUsers.map((item) => item.id);
                 const shopOrgByUserId = new Map(shopUsers.map((item) => [item.id, item.organization_id]));
                 const lastScanByShopId = new Map<string, string>();
@@ -334,7 +334,7 @@ export async function POST(request: NextRequest) {
             }
 
             if (activeFilters.winback_category === 'shop_staff_performance') {
-                const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id);
+                const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id, { userId: user.id, permission: 'customer.messaging.manage' });
                 const userIds = shopUsers.map((item) => item.id);
                 const shopOrgIds = Array.from(new Set(shopUsers.map((item) => item.organization_id).filter(Boolean))) as string[];
                 const statsByUser = new Map<string, { current_balance: number; last_transaction_date: string | null; last_scan_at: string | null }>();

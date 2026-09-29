@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -55,6 +55,12 @@ function applyProviderTestFailure(
 }
 
 async function canViewEmailMonitor(supabase: any, userId: string) {
+  // The delivery monitors are an S&A decision (platform.notification_monitor.view);
+  // the historical canonical-staff rule below is the legacy evaluator.
+  return userAllowed(userId, 'platform.notification_monitor.view', () => legacyCanViewEmailMonitor(supabase, userId))
+}
+
+async function legacyCanViewEmailMonitor(supabase: any, userId: string) {
   const { data } = await supabase
     .from('users')
     .select('organization_id, is_active, account_status, principal_type, roles:role_code(role_level, role_code), organizations:organization_id(org_type_code)')
