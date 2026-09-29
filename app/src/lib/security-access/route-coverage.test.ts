@@ -57,7 +57,7 @@ describe('authorization coverage gate', () => {
     expect(exceptions).toEqual([
       'orders/[orderId]/access', 'orders/actors',
       'outdoor/contact', 'outdoor/fulfilment', 'outdoor/fulfilment/access', 'outdoor/products', 'outdoor/products/image',
-      'outdoor/updates', 'shipping/easyparcel/oauth/callback', 'shipping/easyparcel/oauth/connect',
+      'outdoor/requests', 'outdoor/updates', 'shipping/easyparcel/oauth/callback', 'shipping/easyparcel/oauth/connect',
     ].sort())
   })
 
