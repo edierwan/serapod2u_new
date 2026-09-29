@@ -7,6 +7,13 @@ export type OutdoorColorSwatch = {
   price?: number | null
   isDefault?: boolean
   variantId?: string
+  /** The variant names a real colour; otherwise the dot only stands for a variant. */
+  isColour?: boolean
+}
+
+/** A lone variant that is not a colour offers no choice, so it gets no dot. */
+export function showOutdoorSwatches(swatches: OutdoorColorSwatch[]) {
+  return swatches.length > 1 || Boolean(swatches[0]?.isColour)
 }
 
 const COLOR_RULES: Array<{ test: RegExp; hex: string; label: string; file: 'burgundy' | 'pink' | 'grey' }> = [
@@ -40,12 +47,6 @@ export function outdoorNavKey(saved: string, name = ''): OutdoorNavKey | '' {
   return outdoorNavFromName(name)
 }
 
-export const OUTDOOR_COLOURWAYS: Array<{ hex: string; label: string; file: 'burgundy' | 'pink' | 'grey' }> = [
-  { hex: '#76232F', label: 'Burgundy Sand', file: 'burgundy' },
-  { hex: '#5E6738', label: 'Matcha Berry', file: 'pink' },
-  { hex: '#7C878E', label: 'Orange Grey', file: 'grey' },
-]
-
 function hexFromName(name: string) {
   let hash = 0
   for (let index = 0; index < name.length; index += 1) hash = (hash * 31 + name.charCodeAt(index)) >>> 0
@@ -69,6 +70,10 @@ export function outdoorProductKind(name: string): 'chair' | 'tumbler' | 'mat' | 
   return null
 }
 
+/**
+ * Bundled photo of the original chair, mat, or tumbler. Only a last resort when
+ * master data has no photo, or its photo fails to load: master data always wins.
+ */
 export function outdoorStaticImage(productName: string, hexOrFile: string): string | null {
   const kind = outdoorProductKind(productName)
   if (!kind) return null
@@ -80,14 +85,6 @@ export function outdoorStaticImage(productName: string, hexOrFile: string): stri
         ? 'grey'
         : 'pink'
   return `/outdoor/products/${kind}-${file}.png`
-}
-
-export function outdoorFallbackSwatches(productName: string): OutdoorColorSwatch[] {
-  return OUTDOOR_COLOURWAYS.map((way) => ({
-    hex: way.hex,
-    label: way.label,
-    imageUrl: outdoorStaticImage(productName, way.file),
-  }))
 }
 
 export function outdoorColorFromText(text: string): { hex: string; label: string } | null {
@@ -134,9 +131,6 @@ export function outdoorSwatchesFromVariants(
     const amount = Number(variant.price)
     const price = Number.isFinite(amount) && amount > 0 ? amount : null
     if (!found) {
-      // Chair, mat, and tumbler keep their ready-made photos.
-      // A variant name that is not a colour must not replace those photos.
-      if (outdoorProductKind(productName || '')) continue
       const label = String(variant.variant_name || '').trim() || 'Variant'
       const imageUrl = photo(custom) || photo(String(variant.image_url || '')) || null
       const key = variant.id || label.toLowerCase()
@@ -149,14 +143,14 @@ export function outdoorSwatchesFromVariants(
         price,
         isDefault: Boolean(variant.is_default),
         variantId: variant.id || undefined,
+        isColour: false,
       })
       continue
     }
     const key = found.hex.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    const kindName = productName || String(variant.variant_name || '')
-    const imageUrl = photo(custom) || outdoorStaticImage(kindName, found.hex) || photo(String(variant.image_url || '')) || null
+    const imageUrl = photo(custom) || photo(String(variant.image_url || '')) || null
     out.push({
       hex: found.hex,
       label: found.label,
@@ -164,6 +158,7 @@ export function outdoorSwatchesFromVariants(
       price,
       isDefault: Boolean(variant.is_default),
       variantId: variant.id || undefined,
+      isColour: true,
     })
   }
   return out

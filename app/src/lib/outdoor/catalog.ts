@@ -1,8 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   OUTDOOR_NAV,
-  outdoorFallbackSwatches,
-  outdoorProductKind,
   outdoorSpecLabel,
   outdoorStaticImage,
 } from "@/lib/outdoor/merch";
@@ -29,29 +27,22 @@ function isOutdoorName(name: string | null | undefined) {
   return /outdoor/i.test(String(name || "").trim());
 }
 
+/** Photos come from master data; the bundled packshot only fills a product that has none. */
 function withOutdoorAppearance(product: StorefrontProduct): StorefrontProduct {
   const specLabel = product.specLabel || outdoorSpecLabel(product.product_name);
-  const readyMade = Boolean(outdoorProductKind(product.product_name));
-  const parsed = (product.colorSwatches || []).map((swatch) => {
-    const packshot = outdoorStaticImage(product.product_name, swatch.hex);
-    if (readyMade) return { ...swatch, imageUrl: packshot };
-    return {
-      ...swatch,
-      imageUrl:
-        swatch.imageUrl && !swatch.imageUrl.startsWith("/outdoor/products/")
-          ? swatch.imageUrl
-          : packshot || swatch.imageUrl,
-    };
-  });
-  const colorSwatches =
-    parsed.length > 0 ? parsed : outdoorFallbackSwatches(product.product_name);
+  const colorSwatches = (product.colorSwatches || []).map((swatch) => ({
+    ...swatch,
+    imageUrl:
+      swatch.imageUrl ||
+      product.image_url ||
+      outdoorStaticImage(product.product_name, swatch.hex),
+  }));
   return {
     ...product,
+    image_url: product.image_url || outdoorStaticImage(product.product_name, "burgundy"),
     outdoorNav: product.outdoorNav || "new",
     specLabel,
-    colorSwatches: colorSwatches.some((s) => s.imageUrl)
-      ? colorSwatches
-      : product.colorSwatches,
+    colorSwatches,
   };
 }
 

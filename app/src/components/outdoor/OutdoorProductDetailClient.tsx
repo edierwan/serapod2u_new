@@ -7,7 +7,8 @@ import { useCart } from '@/lib/storefront/cart-context'
 import { OUTDOOR_BUY_NOW_CHECKOUT, saveOutdoorBuyNow } from '@/lib/outdoor/buy-now'
 import { isSellablePrice } from '@/lib/storefront/price-rules'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
-import { outdoorColorFromText, outdoorFallbackSwatches, outdoorProductKind, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
+import { outdoorColorFromText, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants, showOutdoorSwatches } from '@/lib/outdoor/merch'
+import OutdoorPhoto from '@/components/outdoor/OutdoorPhoto'
 import { useRouter } from 'next/navigation'
 
 function formatPrice(price: number | null) {
@@ -18,32 +19,25 @@ function formatPrice(price: number | null) {
 export default function OutdoorProductDetailClient({ product }: { product: StorefrontProductDetail }) {
   const { addItem } = useCart()
   const router = useRouter()
-  const swatches = useMemo(() => {
-    const parsed = outdoorSwatchesFromVariants(
-      product.variants.map((v) => ({
-        id: v.id,
-        variant_name: v.variant_name,
-        image_url: v.image_url,
-        attributes: v.attributes,
-        price: v.suggested_retail_price,
-        is_default: v.is_default,
-      })),
-      product.product_name,
-    ).map((swatch) => {
-      const packshot = outdoorStaticImage(product.product_name, swatch.hex)
-      if (outdoorProductKind(product.product_name)) return { ...swatch, imageUrl: packshot }
-      return {
+  const swatches = useMemo(
+    () =>
+      outdoorSwatchesFromVariants(
+        product.variants.map((v) => ({
+          id: v.id,
+          variant_name: v.variant_name,
+          image_url: v.image_url || v.media?.find((m) => m.type === 'image')?.url || null,
+          attributes: v.attributes,
+          price: v.suggested_retail_price,
+          is_default: v.is_default,
+        })),
+        product.product_name,
+      ).map((swatch) => ({
         ...swatch,
-        imageUrl:
-          swatch.imageUrl && !swatch.imageUrl.startsWith('/outdoor/products/')
-            ? swatch.imageUrl
-            : packshot || swatch.imageUrl,
-      }
-    })
-    if (parsed.length > 0) return parsed
-    if (product.variants.length > 0 && !outdoorProductKind(product.product_name)) return []
-    return outdoorFallbackSwatches(product.product_name)
-  }, [product.product_name, product.variants])
+        imageUrl: swatch.imageUrl || product.image_url || outdoorStaticImage(product.product_name, swatch.hex),
+      })),
+    [product.product_name, product.variants, product.image_url],
+  )
+  const showSwatches = showOutdoorSwatches(swatches)
 
   const variantForSwatch = (hex: string | null) => {
     if (!hex) return product.variants.find((v) => v.is_default) || product.variants[0] || null
@@ -101,10 +95,13 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
       : swatch.hex.toLowerCase() === displayHex.toLowerCase(),
   )
   const slideIndex = activeIndex >= 0 ? activeIndex : 0
-  const fallbackImage = gallery[0] || product.image_url || ''
+  const fallbackImage = gallery[0] || product.image_url || outdoorStaticImage(product.product_name, 'burgundy') || ''
   const frames = swatches.length > 0
-    ? swatches.map((swatch) => swatch.imageUrl || product.image_url || fallbackImage)
+    ? swatches.map((swatch) => swatch.imageUrl || fallbackImage)
     : [fallbackImage]
+  const backups = swatches.length > 0
+    ? swatches.map((swatch) => outdoorStaticImage(product.product_name, swatch.hex))
+    : [outdoorStaticImage(product.product_name, 'burgundy')]
   const displayImage = frames[slideIndex] || fallbackImage || null
 
   const productPrice = selected?.suggested_retail_price && selected.suggested_retail_price > 0
@@ -160,8 +157,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             {frames.map((src, frame) => (
               <div key={`${frame}-${src}`} className="out-carousel-slide p-4 sm:p-6">
                 {src ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={src} alt={product.product_name} className="h-full w-full object-contain" />
+                  <OutdoorPhoto src={src} backup={backups[frame]} alt={product.product_name} className="h-full w-full object-contain" />
                 ) : (
                   <div className="h-full w-full bg-[var(--out-sand)]/30" />
                 )}
@@ -171,7 +167,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
         </div>
 
         <div className="lg:pt-4">
-          {swatches.length > 0 ? (
+          {showSwatches ? (
             <div className="flex items-center gap-2">
               {swatches.map((swatch) => {
                 const selectedSwatch = swatch.variantId

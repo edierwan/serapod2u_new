@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { outdoorColorFromText, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants } from '@/lib/outdoor/merch'
+import { outdoorColorFromText, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants, showOutdoorSwatches } from '@/lib/outdoor/merch'
 import { mergeStructuredAttributes } from '@/lib/products/structured-attributes'
 
 describe('outdoor merch appearance', () => {
@@ -10,28 +10,37 @@ describe('outdoor merch appearance', () => {
     expect(outdoorStaticImage('Moonchair', '#76232F')).toBe('/outdoor/products/chair-burgundy.png')
   })
 
-  it('dedupes swatches and prefers official packshots over CMS images', () => {
+  it('dedupes swatches and shows the photos uploaded in master data', () => {
     const swatches = outdoorSwatchesFromVariants(
       [
-        { variant_name: 'Moonchair Low Burgundy Sand', image_url: '/b.jpg' },
-        { variant_name: 'Moonchair High Burgundy Sand', image_url: '/b2.jpg' },
-        { variant_name: 'Moonchair Low Matcha Berry', image_url: '/g.jpg' },
+        { variant_name: 'Moonchair Low Burgundy Sand', image_url: 'https://cdn.example/b.jpg' },
+        { variant_name: 'Moonchair High Burgundy Sand', image_url: 'https://cdn.example/b2.jpg' },
+        { variant_name: 'Moonchair Low Matcha Berry', image_url: 'https://cdn.example/g.jpg' },
       ],
       'Serapod Camping Chair',
     )
     expect(swatches.map((s) => s.hex)).toEqual(['#76232F', '#5E6738'])
-    expect(swatches[0].imageUrl).toBe('/outdoor/products/chair-burgundy.png')
-    expect(swatches[1].imageUrl).toBe('/outdoor/products/chair-pink.png')
+    expect(swatches[0].imageUrl).toBe('https://cdn.example/b.jpg')
+    expect(swatches[1].imageUrl).toBe('https://cdn.example/g.jpg')
+    expect(swatches.every((s) => s.isColour)).toBe(true)
   })
 
-  it('keeps ready-made products on their packshots when the variant is not a colour', () => {
+  it('never invents colours: a lone non-colour variant keeps its photo but gets no dot', () => {
+    const swatches = outdoorSwatchesFromVariants(
+      [{ id: 'v1', variant_name: 'Default', image_url: 'https://cdn.example/mat.jpg', price: 70 }],
+      'Serapod Camping Mat',
+    )
+    expect(swatches).toHaveLength(1)
+    expect(swatches[0]).toMatchObject({ imageUrl: 'https://cdn.example/mat.jpg', variantId: 'v1', isColour: false })
+    expect(showOutdoorSwatches(swatches)).toBe(false)
+    expect(showOutdoorSwatches(outdoorSwatchesFromVariants([{ id: 'b', variant_name: 'Blue' }]))).toBe(true)
+  })
+
+  it('leaves the photo empty when master data has none, so the caller can fall back to the packshot', () => {
+    const [swatch] = outdoorSwatchesFromVariants([{ variant_name: 'Burgundy Sand' }], 'Serapod Camping Chair')
+    expect(swatch.imageUrl).toBeNull()
     expect(outdoorStaticImage('Serapod Camping Mat', '#112233')).toBe('/outdoor/products/mat-pink.png')
-    expect(
-      outdoorSwatchesFromVariants(
-        [{ id: 'v1', variant_name: 'Default', image_url: 'https://cdn.example/broken.jpg', price: 70 }],
-        'Serapod Camping Mat',
-      ),
-    ).toEqual([])
+    expect(outdoorStaticImage('Portable Speaker', '#76232F')).toBeNull()
   })
 
   it('keeps a separate price for colours that have no packshot', () => {

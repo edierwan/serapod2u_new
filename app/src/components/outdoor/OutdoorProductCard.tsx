@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Eye } from 'lucide-react'
 import type { StorefrontProduct } from '@/lib/storefront/products'
 import { isSellablePrice } from '@/lib/storefront/price-rules'
+import { outdoorStaticImage, showOutdoorSwatches } from '@/lib/outdoor/merch'
+import OutdoorPhoto from '@/components/outdoor/OutdoorPhoto'
 
 function formatPrice(price: number | null) {
   if (price == null || !isSellablePrice(price)) return 'Currently unavailable'
@@ -20,6 +22,9 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
   const frames = swatches.length > 0
     ? swatches.map((swatch) => swatch.imageUrl || product.image_url || '')
     : [product.image_url || '']
+  const backups = swatches.length > 0
+    ? swatches.map((swatch) => outdoorStaticImage(product.product_name, swatch.hex))
+    : [outdoorStaticImage(product.product_name, 'burgundy')]
   const swatchPrice = Number(activeSwatch?.price)
   const price = Number.isFinite(swatchPrice) && swatchPrice > 0
     ? swatchPrice
@@ -38,8 +43,7 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
             {frames.map((src, frame) => (
               <div key={`${frame}-${src}`} className="out-carousel-slide p-3 sm:p-4">
                 {src ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={src} alt={product.product_name} className="h-full w-full object-contain" />
+                  <OutdoorPhoto src={src} backup={backups[frame]} alt={product.product_name} className="h-full w-full object-contain" />
                 ) : (
                   <div className="h-full w-full rounded-xl bg-[var(--out-sand)]/40" />
                 )}
@@ -49,7 +53,7 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
         </div>
       </Link>
 
-      {swatches.length > 0 ? (
+      {showOutdoorSwatches(swatches) ? (
         <div className="mt-3 flex items-center gap-1.5 px-1">
           {swatches.map((swatch, i) => (
             <button

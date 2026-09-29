@@ -381,7 +381,13 @@ export async function listProducts(params: ListProductsParams = {}) {
       activeVariants.map((v: any) => ({
         id: v.id,
         variant_name: v.variant_name,
-        image_url: toStorefrontMediaUrl(v.image_url),
+        image_url: toStorefrontMediaUrl(
+          v.image_url ||
+            [...(v.variant_media || [])]
+              .filter((m: any) => m.type === "image" && hasMediaValue(m.url))
+              .sort(byPreferredOrder)[0]?.url ||
+            null,
+        ),
         attributes: mergeStructuredAttributes(v.attributes, v.product_attributes),
         price: v.suggested_retail_price,
         is_default: v.is_default,
