@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Check, Minus, Plus } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Minus, Play, Plus } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { OUTDOOR_BUY_NOW_CHECKOUT, saveOutdoorBuyNow } from '@/lib/outdoor/buy-now'
 import { isSellablePrice } from '@/lib/storefront/price-rules'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
 import { outdoorColorFromText, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants, showOutdoorSwatches } from '@/lib/outdoor/merch'
+import { outdoorGallery, outdoorSpecRows } from '@/lib/outdoor/product-page'
 import OutdoorPhoto, { OutdoorSoldOutTag } from '@/components/outdoor/OutdoorPhoto'
 import { useRouter } from 'next/navigation'
 
@@ -38,6 +39,10 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     [product.product_name, product.variants, product.image_url],
   )
   const showSwatches = showOutdoorSwatches(swatches)
+  const shownVariants = useMemo(() => {
+    const visible = product.variants.filter((v) => !v.attributes?.outdoor_hidden)
+    return visible.length > 0 ? visible : product.variants
+  }, [product.variants])
 
   const variantForSwatch = (hex: string | null) => {
     if (!hex) return product.variants.find((v) => v.is_default) || product.variants[0] || null
@@ -50,8 +55,30 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     return match || product.variants.find((v) => v.is_default) || product.variants[0] || null
   }
 
+  const swatchHexFor = (variantId: string | undefined) =>
+    swatches.find((swatch) => swatch.variantId === variantId)?.hex || 'burgundy'
+
+  const gallery = useMemo(() => {
+    const items = outdoorGallery(
+      shownVariants,
+      (variantId) =>
+        swatches.find((swatch) => swatch.variantId === variantId)?.imageUrl ||
+        product.image_url ||
+        outdoorStaticImage(product.product_name, 'burgundy'),
+    )
+    if (items.length > 0) return items
+    const fallback = product.image_url || outdoorStaticImage(product.product_name, 'burgundy')
+    return fallback ? [{ type: 'image' as const, url: fallback, thumbnailUrl: null, variantIds: [] as string[] }] : []
+  }, [shownVariants, swatches, product.image_url, product.product_name])
+
+  const firstFrameFor = (variantId: string | undefined) => {
+    if (!variantId) return -1
+    return gallery.findIndex((item) => item.variantIds.includes(variantId))
+  }
+
   const defaultVariant = product.variants.find((v) => v.is_default) || product.variants[0] || null
   const [selected, setSelected] = useState<StorefrontVariant | null>(defaultVariant)
+  const [frame, setFrame] = useState(() => Math.max(0, firstFrameFor(defaultVariant?.id)))
   const [qty, setQty] = useState(1)
   const [adding, setAdding] = useState(false)
   const [added, setAdded] = useState(false)
@@ -64,45 +91,43 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
 
   useEffect(() => {
     setSelected(defaultVariant)
-  }, [defaultVariant])
+    setFrame(Math.max(0, gallery.findIndex((item) => defaultVariant && item.variantIds.includes(defaultVariant.id))))
+  }, [defaultVariant, gallery])
 
-  const gallery = useMemo(() => {
-    const urls: string[] = []
-    const push = (u: string | null | undefined) => {
-      if (!u || urls.includes(u)) return
-      urls.push(u)
+  const chooseVariant = (variant: StorefrontVariant) => {
+    setSelected(variant)
+    const first = firstFrameFor(variant.id)
+    if (first >= 0) setFrame(first)
+  }
+
+  const showFrame = (next: number) => {
+    if (gallery.length === 0) return
+    const index = (next + gallery.length) % gallery.length
+    setFrame(index)
+    const owners = gallery[index].variantIds
+    if (owners.length > 0 && !(selected && owners.includes(selected.id))) {
+      const owner = product.variants.find((v) => v.id === owners[0])
+      if (owner) setSelected(owner)
     }
-    if (selected?.media?.length) {
-      selected.media.forEach((m) => push(m.url))
-    } else {
-      push(selected?.image_url)
-    }
-    product.variants.forEach((v) => {
-      if (v.media?.length) v.media.forEach((m) => push(m.url))
-      else push(v.image_url)
-    })
-    return urls
-  }, [product.variants, selected])
+  }
+
+  const touchStartX = useRef(0)
 
   const spec = outdoorSpecLabel(product.product_name, selected?.variant_name, selected?.attributes)
+  const specRows = outdoorSpecRows(selected?.attributes)
   const selectedHex =
     outdoorSwatchesFromVariants(selected ? [selected] : [])[0]?.hex || swatches[0]?.hex || null
   const [activeHex, setActiveHex] = useState<string | null>(selectedHex)
-  const displayHex = String(activeHex || selectedHex || '')
-  const activeIndex = swatches.findIndex((swatch) =>
-    swatch.variantId
-      ? selected?.id === swatch.variantId
-      : swatch.hex.toLowerCase() === displayHex.toLowerCase(),
-  )
-  const slideIndex = activeIndex >= 0 ? activeIndex : 0
-  const fallbackImage = gallery[0] || product.image_url || outdoorStaticImage(product.product_name, 'burgundy') || ''
-  const frames = swatches.length > 0
-    ? swatches.map((swatch) => swatch.imageUrl || fallbackImage)
-    : [fallbackImage]
-  const backups = swatches.length > 0
-    ? swatches.map((swatch) => outdoorStaticImage(product.product_name, swatch.hex))
-    : [outdoorStaticImage(product.product_name, 'burgundy')]
-  const displayImage = frames[slideIndex] || fallbackImage || null
+
+  const slideIndex = gallery.length > 0 ? Math.min(frame, gallery.length - 1) : 0
+  const activeItem = gallery[slideIndex]
+  const selectedImage = gallery.find((item) => item.type === 'image' && selected && item.variantIds.includes(selected.id))?.url
+  const displayImage =
+    (activeItem?.type === 'image' ? activeItem.url : null) ||
+    selectedImage ||
+    product.image_url ||
+    outdoorStaticImage(product.product_name, 'burgundy') ||
+    null
 
   const productPrice = selected?.suggested_retail_price && selected.suggested_retail_price > 0
     ? selected.suggested_retail_price
@@ -124,7 +149,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           productName: product.product_name,
           variantName: selected.variant_name,
           price: productPrice,
-          imageUrl: displayImage || selected.image_url || gallery[0] || null,
+          imageUrl: displayImage || selected.image_url || null,
         }
       : null
 
@@ -147,24 +172,117 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
     router.push('/outdoor/checkout')
   }
 
-  const description = String(product.product_description || product.short_description || '').trim()
+  const fullDescription = String(product.product_description || '').trim()
+  const shortDescription = String(product.short_description || '').trim()
+  const lead = fullDescription && shortDescription && shortDescription !== fullDescription ? shortDescription : ''
+  const description = lead ? '' : fullDescription || shortDescription
+  const sku = selected?.variant_code || product.product_code
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-8">
       <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
-        <div className={`relative aspect-square overflow-hidden rounded-[1.6rem] bg-white${soldOut ? ' out-sold-out' : ''}`}>
-          {soldOut ? <OutdoorSoldOutTag large /> : null}
-          <div className="out-carousel" style={{ transform: `translate3d(-${slideIndex * 100}%, 0, 0)` }}>
-            {frames.map((src, frame) => (
-              <div key={`${frame}-${src}`} className="out-carousel-slide p-4 sm:p-6">
-                {src ? (
-                  <OutdoorPhoto src={src} backup={backups[frame]} alt={product.product_name} className="h-full w-full object-contain" />
-                ) : (
+        <div>
+          <div
+            className={`relative aspect-square overflow-hidden rounded-[1.6rem] bg-white${soldOut ? ' out-sold-out' : ''}`}
+            onTouchStart={(event) => {
+              touchStartX.current = event.changedTouches[0].screenX
+            }}
+            onTouchEnd={(event) => {
+              const distance = touchStartX.current - event.changedTouches[0].screenX
+              if (Math.abs(distance) >= 50) showFrame(slideIndex + (distance > 0 ? 1 : -1))
+            }}
+          >
+            {soldOut ? <OutdoorSoldOutTag large /> : null}
+            <div className="out-carousel" style={{ transform: `translate3d(-${slideIndex * 100}%, 0, 0)` }}>
+              {gallery.length > 0 ? (
+                gallery.map((item, index) => (
+                  <div key={`${index}-${item.url}`} className="out-carousel-slide p-4 sm:p-6">
+                    {item.type === 'video' ? (
+                      index === slideIndex ? (
+                        <video src={item.url} className="h-full w-full object-contain" autoPlay loop muted playsInline />
+                      ) : (
+                        <div className="h-full w-full" />
+                      )
+                    ) : (
+                      <OutdoorPhoto
+                        src={item.url}
+                        backup={outdoorStaticImage(product.product_name, swatchHexFor(item.variantIds[0]))}
+                        alt={product.product_name}
+                        className="h-full w-full object-contain"
+                      />
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="out-carousel-slide p-4 sm:p-6">
                   <div className="h-full w-full bg-[var(--out-sand)]/30" />
-                )}
-              </div>
-            ))}
+                </div>
+              )}
+            </div>
+
+            {gallery.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => showFrame(slideIndex - 1)}
+                  className="absolute left-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[var(--out-bark)] shadow-sm backdrop-blur transition hover:bg-white"
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => showFrame(slideIndex + 1)}
+                  className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[var(--out-bark)] shadow-sm backdrop-blur transition hover:bg-white"
+                  aria-label="Next photo"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <span className="absolute bottom-3 right-3 z-20 rounded-full bg-[var(--out-bark)]/75 px-2.5 py-0.5 text-xs font-medium text-[var(--out-cream)]">
+                  {slideIndex + 1}/{gallery.length}
+                </span>
+              </>
+            ) : null}
           </div>
+
+          {gallery.length > 1 ? (
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="list" aria-label="Product photos">
+              {gallery.map((item, index) => (
+                <button
+                  key={`${index}-${item.url}`}
+                  type="button"
+                  role="listitem"
+                  aria-label={`Show photo ${index + 1}`}
+                  aria-current={index === slideIndex}
+                  onClick={() => showFrame(index)}
+                  className={`relative h-16 w-16 flex-none overflow-hidden rounded-xl border-2 bg-white transition ${
+                    index === slideIndex ? 'border-[var(--out-bark)]' : 'border-transparent opacity-80 hover:opacity-100'
+                  }`}
+                >
+                  {item.type === 'video' ? (
+                    <>
+                      {item.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                      )}
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <Play className="h-4 w-4 fill-white text-white" />
+                      </span>
+                    </>
+                  ) : (
+                    <OutdoorPhoto
+                      src={item.url}
+                      backup={outdoorStaticImage(product.product_name, swatchHexFor(item.variantIds[0]))}
+                      alt=""
+                      className="h-full w-full object-contain p-1"
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="lg:pt-4">
@@ -182,7 +300,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                     onClick={() => {
                       setActiveHex(swatch.hex)
                       const next = product.variants.find((variant) => variant.id === swatch.variantId) || variantForSwatch(swatch.hex)
-                      if (next) setSelected(next)
+                      if (next) chooseVariant(next)
                     }}
                     className={`h-4 w-4 rounded-full border ${
                       selectedSwatch ? 'border-[var(--out-bark)] ring-2 ring-[var(--out-bark)]/20' : 'border-black/10'
@@ -191,26 +309,6 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                   />
                 )
               })}
-            </div>
-          ) : product.variants.length > 1 ? (
-            <div className="flex flex-wrap gap-2">
-              {product.variants.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => setSelected(v)}
-                  className={`rounded-full border px-3 py-1.5 text-sm ${
-                    selected?.id === v.id
-                      ? 'border-[var(--out-bark)] bg-[var(--out-bark)] text-[var(--out-cream)]'
-                      : 'border-[var(--out-line)] text-[var(--out-bark)]'
-                  }`}
-                >
-                  {v.variant_name}
-                  {typeof v.available === 'number' && v.available <= 0 ? (
-                    <span className="ml-1 text-[10px] font-semibold uppercase opacity-70">Sold out</span>
-                  ) : null}
-                </button>
-              ))}
             </div>
           ) : null}
 
@@ -221,8 +319,34 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           <p key={productPrice ?? 'ask'} className="out-swap mt-1 text-lg font-semibold text-[var(--out-bark)]">
             {formatPrice(productPrice)}
           </p>
-          {description ? (
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[var(--out-muted)]">{description}</p>
+          {lead || description ? (
+            <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[var(--out-muted)]">{lead || description}</p>
+          ) : null}
+
+          {shownVariants.length > 1 ? (
+            <div className="mt-5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--out-muted)]">Variant</p>
+              <div className="flex flex-wrap gap-2">
+                {shownVariants.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => chooseVariant(v)}
+                    aria-pressed={selected?.id === v.id}
+                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                      selected?.id === v.id
+                        ? 'border-[var(--out-bark)] bg-[var(--out-bark)] text-[var(--out-cream)]'
+                        : 'border-[var(--out-line)] text-[var(--out-bark)] hover:border-[var(--out-bark)]/40'
+                    }`}
+                  >
+                    {v.variant_name}
+                    {typeof v.available === 'number' && v.available <= 0 ? (
+                      <span className="ml-1 text-[10px] font-semibold uppercase opacity-70">Sold out</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : null}
 
           <div className="mt-6 flex items-center gap-3">
@@ -278,6 +402,34 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
               </>
             ) : null}
           </p>
+
+          {lead ? (
+            <div className="mt-6 border-t border-[var(--out-line)] pt-5">
+              <h2 className="text-sm font-semibold text-[var(--out-bark)]">Description</h2>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--out-muted)]">{fullDescription}</p>
+            </div>
+          ) : null}
+
+          {specRows.length > 0 ? (
+            <div className="mt-6 border-t border-[var(--out-line)] pt-5">
+              <h2 className="text-sm font-semibold text-[var(--out-bark)]">Specifications</h2>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {specRows.map((row, index) => (
+                  <div key={`${index}-${row.label}`} className="contents">
+                    <dt className="text-[var(--out-muted)]">{row.label}</dt>
+                    <dd className="font-medium text-[var(--out-bark)]">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
+
+          {sku || selected?.barcode ? (
+            <p className="mt-5 space-x-3 text-xs text-[var(--out-muted)]/80">
+              {sku ? <span>SKU: {sku}</span> : null}
+              {selected?.barcode ? <span>Barcode: {selected.barcode}</span> : null}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

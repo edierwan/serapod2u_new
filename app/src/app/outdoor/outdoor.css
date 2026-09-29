@@ -127,11 +127,13 @@
   flex: 0 0 100%;
 }
 
-.sera-outdoor .out-carousel-slide img {
+.sera-outdoor .out-carousel-slide img,
+.sera-outdoor .out-carousel-slide video {
   transition: filter 0.3s ease, opacity 0.3s ease;
 }
 
-.sera-outdoor .out-sold-out .out-carousel-slide img {
+.sera-outdoor .out-sold-out .out-carousel-slide img,
+.sera-outdoor .out-sold-out .out-carousel-slide video {
   filter: grayscale(1);
   opacity: 0.45;
 }
