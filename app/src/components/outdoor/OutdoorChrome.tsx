@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import OutdoorBrandMark from "@/components/outdoor/OutdoorBrandMark";
 import OutdoorNewsletter from "@/components/outdoor/OutdoorNewsletter";
 import { OUTDOOR_HOME, outdoorAuthHref } from "@/lib/outdoor/auth-return";
+import { isOutdoorStaffPage } from "@/lib/outdoor/desk";
 
 const NAV = [
   { href: "/outdoor/shop", label: "Shop" },
@@ -40,9 +41,16 @@ function StaffTabs() {
   const inbox = onDesk && searchParams.get("tab") === "inbox";
   const requests = onDesk && searchParams.get("tab") === "requests";
   const orders = onDesk && !inbox && !requests;
+  const previewing = pathname.startsWith("/outdoor/shop");
   return (
     <div className="border-b border-[var(--out-line)] bg-[var(--out-cream)]">
       <div className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 py-3 sm:px-8">
+        <Link
+          href="/outdoor/admin"
+          className={staffTabClass(pathname.startsWith("/outdoor/admin"))}
+        >
+          Desk
+        </Link>
         <Link href="/outdoor/fulfilment" className={staffTabClass(orders)}>
           Follow orders
         </Link>
@@ -59,6 +67,11 @@ function StaffTabs() {
           Requests
         </Link>
       </div>
+      {previewing ? (
+        <p className="bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-900 sm:px-8">
+          Staff preview — this is the shop exactly as customers see it.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -165,12 +178,7 @@ export default function OutdoorChrome({
 
   useEffect(() => {
     if (!isStaff) return;
-    const staffPage =
-      pathname.startsWith("/outdoor/admin") ||
-      pathname.startsWith("/outdoor/fulfilment") ||
-      pathname.startsWith("/outdoor/unsubscribe") ||
-      pathname.startsWith("/outdoor/forgot-password");
-    if (!staffPage) router.replace("/outdoor/admin");
+    if (!isOutdoorStaffPage(pathname)) router.replace("/outdoor/admin");
   }, [isStaff, pathname, router]);
 
   const signedIn = Boolean(authEmail);
@@ -363,9 +371,16 @@ export default function OutdoorChrome({
                   {isStaff ? (
                     <>
                       <Link
-                        href="/outdoor/fulfilment"
+                        href="/outdoor/admin"
                         onClick={() => setOpen(false)}
                         className="py-1 font-semibold"
+                      >
+                        Desk
+                      </Link>
+                      <Link
+                        href="/outdoor/fulfilment"
+                        onClick={() => setOpen(false)}
+                        className="py-1"
                       >
                         Follow orders
                       </Link>

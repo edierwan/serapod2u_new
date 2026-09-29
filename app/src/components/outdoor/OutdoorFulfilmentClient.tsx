@@ -32,6 +32,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import OutdoorRequestsDesk from '@/components/outdoor/OutdoorRequestsDesk'
 import { EmailLogo, GoogleMapsLogo, PhoneCallLogo, WhatsAppLogo } from '@/components/outdoor/BrandIcons'
 import { hasShipmentDetails, isOwnDelivery } from '@/lib/storefront/delivery'
+import { useMainAppHref } from '@/lib/outdoor/use-main-app-href'
 import { UNPAID_ORDER_TTL_HOURS, unpaidOrderDeadline } from '@/lib/storefront/unpaid-order-deadline'
 
 type OrderItem = {
@@ -502,7 +503,11 @@ export default function OutdoorFulfilmentClient() {
   const tabParam = searchParams.get('tab')
   const tab = tabParam === 'inbox' ? 'inbox' : tabParam === 'requests' ? 'requests' : 'orders'
   const [requestsRefresh, setRequestsRefresh] = useState(0)
-  const [orderStatus, setOrderStatus] = useState('fulfilment')
+  const dashboardHref = useMainAppHref('/ecommerce/store-orders?channel=outdoor')
+  const statusParam = searchParams.get('status')
+  const [orderStatus, setOrderStatus] = useState(() =>
+    ORDER_FILTERS.some(({ value }) => value === statusParam) ? String(statusParam) : 'fulfilment',
+  )
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [messages, setMessages] = useState<ContactMessage[]>([])
@@ -627,7 +632,7 @@ export default function OutdoorFulfilmentClient() {
         </div>
         <div className="flex gap-2">
           <a
-            href="/ecommerce/store-orders?channel=outdoor"
+            href={dashboardHref}
             className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--out-line)] px-4 text-sm font-medium hover:bg-white"
           >
             <LayoutDashboard className="h-4 w-4" aria-hidden />
