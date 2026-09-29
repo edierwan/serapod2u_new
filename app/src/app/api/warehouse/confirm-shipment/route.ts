@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractMasterCode } from '@/lib/qr-code-utils'
-import { authorizeWarehouseShipment } from '@/lib/warehouse/shipment-authorization'
+import { authorizeShipmentActor } from '@/lib/warehouse/shipment-route-guard'
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,42 +40,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data: actorProfile, error: actorError } = await supabaseAdmin
-      .from('users')
-      .select(`
-        id,
-        organization_id,
-        is_active,
-        roles:role_code(role_level),
-        organizations!fk_users_organization(org_type_code)
-      `)
-      .eq('id', authenticatedUser.id)
-      .single()
-
-    if (actorError || !actorProfile) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const actorRole = Array.isArray(actorProfile.roles) ? actorProfile.roles[0] : actorProfile.roles
-    const actorOrganization = Array.isArray(actorProfile.organizations)
-      ? actorProfile.organizations[0]
-      : actorProfile.organizations
-    const authorization = authorizeWarehouseShipment(
-      {
-        id: authenticatedUser.id,
-        organization_id: actorProfile.organization_id ?? null,
-        is_active: actorProfile.is_active ?? false,
-        role_level: (actorRole as any)?.role_level ?? null,
-        organization_type: (actorOrganization as any)?.org_type_code ?? null,
-      },
-      {
-        warehouse_org_id: session.warehouse_org_id ?? null,
-        company_id: session.company_id ?? null,
-      },
-    )
+    // S&A decides warehouse.shipment.manage for the session's warehouse (a
+    // trusted row); the Phase 0A warehouse rule is the legacy evaluator.
+    const authorization = await authorizeShipmentActor(supabaseAdmin, authenticatedUser.id, {
+      warehouse_org_id: session.warehouse_org_id ?? null,
+      company_id: session.company_id ?? null,
+    })
 
     if (!authorization.allowed) {
-      return NextResponse.json({ error: authorization.reason }, { status: 403 })
+      return NextResponse.json({ error: authorization.message }, { status: authorization.status })
     }
 
     const actorUserId = authenticatedUser.id

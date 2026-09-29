@@ -11,7 +11,6 @@ import BrandsTab from './tabs/BrandsTab'
 import GroupsTab from './tabs/GroupsTab'
 import SubGroupsTab from './tabs/SubGroupsTab'
 import VariantsTab from './tabs/VariantsTab'
-import CreateProductTab from './tabs/CreateProductTab'
 
 interface ProductManagementProps {
   userProfile: any
@@ -27,6 +26,14 @@ export default function ProductManagement({ userProfile, onViewChange }: Product
 
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1)
+  }
+
+  const handleTabChange = (value: string) => {
+    if (value === 'create-product') {
+      onViewChange?.('add-product')
+      return
+    }
+    setActiveTab(value)
   }
 
   return (
@@ -49,7 +56,7 @@ export default function ProductManagement({ userProfile, onViewChange }: Product
 
       <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="p-4 sm:p-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             {/* !h-auto overrides shadcn TabsList h-10 so multi-row grid never overlaps content */}
             <TabsList className="mb-6 grid !h-auto w-full grid-cols-2 gap-2 rounded-2xl bg-transparent p-0 sm:grid-cols-3 lg:grid-cols-6 sm:gap-3">
               <TabsTrigger value="categories" className={TAB_TRIGGER_CLASS}>Categories</TabsTrigger>
@@ -74,9 +81,6 @@ export default function ProductManagement({ userProfile, onViewChange }: Product
             </TabsContent>
             <TabsContent value="variants" className="space-y-4">
               <VariantsTab userProfile={userProfile} onRefresh={handleRefresh} refreshTrigger={refreshTrigger} />
-            </TabsContent>
-            <TabsContent value="create-product" className="space-y-4">
-              <CreateProductTab userProfile={userProfile} onViewChange={onViewChange} onRefresh={handleRefresh} />
             </TabsContent>
           </Tabs>
         </CardContent>

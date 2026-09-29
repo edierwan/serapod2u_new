@@ -10,6 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { compressProductImage, formatFileSize } from '@/lib/utils/imageCompression'
+import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
+import {
+  syncStructuredAttributes,
+  validateStructuredAttributes,
+  type StructuredAttribute,
+} from '@/lib/products/structured-attributes'
 import { 
   ArrowLeft,
   Package,
@@ -35,6 +41,7 @@ interface FormData {
   is_vape: boolean
   age_restriction: number | null
   is_active: boolean
+  outdoor_store: boolean
   image_file?: File
 }
 
@@ -55,7 +62,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     manufacturer_id: '',
     is_vape: false,
     age_restriction: null,
-    is_active: true
+    is_active: true,
+    outdoor_store: false
   })
   
   const [loading, setLoading] = useState(false)
@@ -68,6 +76,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null)
   const [checkingName, setCheckingName] = useState(false)
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null)
+  const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
+  const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -400,8 +410,10 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setAttributeSaveAttempted(true)
 
-    if (!validateForm()) {
+    const attributeValidation = validateStructuredAttributes(structuredAttributes)
+    if (!validateForm() || !attributeValidation.isValid) {
       toast({
         title: 'Error',
         description: 'Please fix the errors in the form',
@@ -466,16 +478,30 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
             is_vape: formData.is_vape,
             age_restriction: formData.is_vape ? formData.age_restriction : null,
             is_active: formData.is_active,
+            ...(formData.outdoor_store ? { outdoor_only: true } : {}),
             created_by: userProfile.id
           }
         ])
         .select()
 
-      if (productError) throw productError
+      if (productError) {
+        if (formData.outdoor_store && /outdoor_only/i.test(productError.message || '')) {
+          toast({
+            title: 'Outdoor store option is not ready',
+            description: 'Apply the outdoor_only column, then create the product again.',
+            variant: 'destructive'
+          })
+          return
+        }
+        throw productError
+      }
+
+      const productId = productData?.[0]?.id
+      if (!productId) throw new Error('Product was created but its ID was not returned.')
+      await syncStructuredAttributes(supabase, { productId }, structuredAttributes)
 
       // Upload image if provided
       if (imagePreview && productData && productData.length > 0) {
-        const productId = productData[0].id
         const fileName = `product-${productId}-${Date.now()}`
         
         const { error: uploadError } = await supabase
@@ -862,7 +888,24 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                 />
                 <span className="text-sm font-medium text-gray-700">Product is active</span>
               </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <Checkbox
+                  checked={formData.outdoor_store}
+                  onCheckedChange={(checked) => handleChange('outdoor_store', checked === true)}
+                />
+                <span className="text-sm font-medium text-gray-700">Outdoor store</span>
+              </label>
+              <p className="text-xs text-gray-500 ml-7">Show this product on the Outdoor shop only. The main shop will not list it.</p>
             </div>
+
+            <AdditionalAttributesEditor
+              value={structuredAttributes}
+              onChange={setStructuredAttributes}
+              disabled={loading}
+              showValidationErrors={attributeSaveAttempted}
+              colourReferenceClient={supabase}
+            />
 
             {/* Action Buttons */}
             <div className="flex gap-3 pt-6 border-t">

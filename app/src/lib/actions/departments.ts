@@ -2,9 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { normalizePhone } from '@/lib/utils'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { userAllowed } from '@/lib/security-access/operation'
+import { provisionIdentity } from '@/lib/identity/provisioning'
 
 // ============================================================================
 // Types
@@ -617,22 +617,13 @@ interface UserContext {
 
 const HR_ROLE_CODES = new Set(['HR_MANAGER'])
 
-const generateTempPassword = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%'
-  let pwd = ''
-  for (let i = 0; i < 12; i += 1) {
-    pwd += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return pwd
-}
-
-const canManageDepartments = (ctx: UserContext) => {
+const legacyCanManageDepartments = (ctx: UserContext) => {
   if (!ctx) return false
   if (ctx.role_level !== null && ctx.role_level <= 20) return true
   return HR_ROLE_CODES.has(ctx.role_code)
 }
 
-const canManageOrgChart = async (ctx: UserContext) => {
+const legacyCanManageOrgChart = async (ctx: UserContext) => {
   if (!ctx) return false
   if (ctx.role_level !== null && ctx.role_level <= 20) return true
 
@@ -643,6 +634,16 @@ const canManageOrgChart = async (ctx: UserContext) => {
 
   return manageOrgChart.allowed || editOrgSettings.allowed
 }
+
+// Department and org-chart administration are S&A decisions
+// (hr.employee.manage) in the caller's organization; the historical admin /
+// HR-role / org-chart rules are the legacy evaluators. The same-organization
+// checks at each call site still apply.
+const canManageDepartments = (ctx: UserContext) =>
+  userAllowed(ctx.id, 'hr.employee.manage', () => legacyCanManageDepartments(ctx), { organizationId: ctx.organization_id })
+
+const canManageOrgChart = (ctx: UserContext) =>
+  userAllowed(ctx.id, 'hr.employee.manage', () => legacyCanManageOrgChart(ctx), { organizationId: ctx.organization_id })
 
 const getUserContext = async (supabase: any): Promise<{ success: boolean; data?: UserContext; error?: string }> => {
   const { data: authData, error: authError } = await supabase.auth.getUser()
@@ -773,7 +774,7 @@ export async function getOrgUsersForDepartmentManagement(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -848,7 +849,7 @@ export async function bulkAssignUsersToDepartment(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -916,7 +917,7 @@ export async function bulkMoveUsersToDepartment(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -975,7 +976,7 @@ export async function bulkRemoveUsersFromDepartment(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -1025,7 +1026,7 @@ export async function updateUserManager(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -1105,18 +1106,13 @@ export async function createUserForDepartment(
     role_code: string
     manager_user_id?: string | null
   }
-): Promise<{ success: boolean; userId?: string; tempPassword?: string; error?: string }> {
+): Promise<{ success: boolean; userId?: string; tempPassword?: string; reused?: boolean; error?: string }> {
   try {
     const supabase = (await createClient()) as any
-    const adminClient = createAdminClient()
 
     const ctxResult = await getUserContext(supabase)
     if (!ctxResult.success || !ctxResult.data) {
       return { success: false, error: ctxResult.error || 'Unauthorized' }
-    }
-
-    if (!canManageDepartments(ctxResult.data)) {
-      return { success: false, error: 'Unauthorized' }
     }
 
     const { data: dept, error: deptError } = await supabase
@@ -1129,69 +1125,49 @@ export async function createUserForDepartment(
       return { success: false, error: 'Department not found' }
     }
 
-    if (ctxResult.data.organization_id && dept.organization_id !== ctxResult.data.organization_id) {
+    // Employee management in the department's organization (S&A decision;
+    // the legacy department-management rule decides only in legacy modes).
+    const ctx = ctxResult.data
+    if (!(await userAllowed(ctx.id, 'hr.employee.manage', () => legacyCanManageDepartments(ctx) && (!ctx.organization_id || dept.organization_id === ctx.organization_id),
+      { organizationId: dept.organization_id }))) {
       return { success: false, error: 'Unauthorized' }
     }
 
-    const tempPassword = generateTempPassword()
-    const phone = payload.phone ? normalizePhone(payload.phone) : undefined
-
-    const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+    // Canonical provisioning. Employee management never implies privilege: a
+    // role code above the baseline is access administration, authorized in
+    // the database (platform.identity_access.manage, never above the actor's
+    // own level; Super Admin only by a Super Admin).
+    const provisioned = await provisionIdentity({
+      actorId: ctx.id,
       email: payload.email,
-      password: tempPassword,
-      email_confirm: true,
-      phone: phone,
-      phone_confirm: !!phone,
-      user_metadata: { full_name: payload.full_name }
+      phone: payload.phone || null,
+      fullName: payload.full_name,
+      organizationId: dept.organization_id,
+      accountScope: 'portal',
+      legacyRoleCode: payload.role_code || null,
+      authorizingPermission: 'hr.employee.manage',
+      hr: { departmentId, managerUserId: payload.manager_user_id || null },
+      source: 'department',
     })
+    if (!provisioned.ok) return { success: false, error: provisioned.message }
 
-    if (authError || !authUser?.user?.id) {
-      return { success: false, error: authError?.message || 'Failed to create user' }
-    }
-
-    const { error: syncError } = await adminClient
-      .rpc('sync_user_profile', {
-        p_user_id: authUser.user.id,
-        p_email: payload.email,
-        p_role_code: payload.role_code,
-        p_organization_id: dept.organization_id,
-        p_full_name: payload.full_name,
-        p_phone: phone
-      })
-
-    if (syncError) {
-      try {
-        await adminClient.auth.admin.deleteUser(authUser.user.id)
-      } catch (deleteError) {
-        console.error('Failed to rollback auth user:', deleteError)
-      }
-      return { success: false, error: syncError.message }
-    }
-
-    // Set account_scope to 'portal' since department users are always business users
-    const { error: scopeError } = await adminClient
-      .from('users')
-      .update({ account_scope: 'portal' })
-      .eq('id', authUser.user.id)
-
-    if (scopeError) {
-      console.error('Failed to set account_scope:', scopeError.message)
-    }
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        department_id: departmentId,
-        manager_user_id: payload.manager_user_id || null
-      })
-      .eq('id', authUser.user.id)
-
-    if (updateError) {
-      return { success: false, error: updateError.message }
+    if (provisioned.outcome === 'REUSED') {
+      // Existing identity in this organization: place it in the department
+      // (HR fact) without creating another account.
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ department_id: departmentId, manager_user_id: payload.manager_user_id || null })
+        .eq('id', provisioned.userId)
+      if (updateError) return { success: false, error: updateError.message }
     }
 
     revalidatePath('/dashboard')
-    return { success: true, userId: authUser.user.id, tempPassword }
+    return {
+      success: true,
+      userId: provisioned.userId,
+      tempPassword: provisioned.tempPassword,
+      reused: provisioned.outcome === 'REUSED',
+    }
   } catch (error) {
     console.error('Error in createUserForDepartment:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }

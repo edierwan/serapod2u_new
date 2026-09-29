@@ -2,6 +2,12 @@ import { userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
+import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
+import { getGatewayByProvider } from '@/lib/payments'
+import { refundStripeCheckout } from '@/lib/payments/stripe-refund'
+import { returnOrderStock, stockMoveNote, takeOrderStock, undoOrderStock } from '@/lib/storefront/order-stock'
+import { notifyOutdoorOrderStatus, outdoorOrderEmailFor } from '@/lib/outdoor/order-status-email'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -34,6 +40,25 @@ const orgScopeFilter = (orgId: string) => `organization_id.eq.${orgId},organizat
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const MONEY_TAKEN_STATUSES = ['paid', 'processing', 'shipped', 'delivered']
+
+function needsRefund(fromStatus: string, toStatus: string) {
+    return (toStatus === 'refunded' || toStatus === 'cancelled') && MONEY_TAKEN_STATUSES.includes(fromStatus)
+}
+
+function isStripeCheckout(order: { payment_provider?: string | null; payment_ref?: string | null }) {
+    return order.payment_provider === 'stripe' && String(order.payment_ref || '').startsWith('cs_')
+}
+
+function formatAmount(amount: unknown, currency: unknown) {
+    const code = String(currency || 'MYR').toUpperCase()
+    try {
+        return new Intl.NumberFormat('en-MY', { style: 'currency', currency: code }).format(Number(amount) || 0)
+    } catch {
+        return `${code} ${(Number(amount) || 0).toFixed(2)}`
+    }
+}
+
 // PostgREST or() filters are comma/parenthesis delimited; keep search text literal.
 const sanitizeSearch = (value: string) => value.replace(/[,()\\*%]/g, ' ').trim().slice(0, 100)
 
@@ -51,11 +76,40 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url)
         const status = searchParams.get('status')
         const search = searchParams.get('search')
+        const salesChannel = searchParams.get('salesChannel')
         const page = parseInt(searchParams.get('page') || '1', 10)
         const limit = parseInt(searchParams.get('limit') || '25', 10)
         const offset = (page - 1) * limit
 
         const adminClient: any = createAdminClient()
+
+        // History of one order, only when that order is inside the admin's scope.
+        const eventsFor = searchParams.get('eventsFor')
+        if (eventsFor) {
+            if (!UUID_PATTERN.test(eventsFor)) {
+                return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+            }
+            const { data: scoped } = await adminClient
+                .from('storefront_orders')
+                .select('id')
+                .eq('id', eventsFor)
+                .or(orgScopeFilter(admin.orgId))
+                .maybeSingle()
+            if (!scoped) {
+                return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+            }
+            const { data: events, error: eventsError } = await adminClient
+                .from('storefront_order_events')
+                .select('id, event_type, from_status, to_status, actor_type, actor_label, note, created_at')
+                .eq('order_id', eventsFor)
+                .order('created_at', { ascending: true })
+                .limit(200)
+            if (eventsError) {
+                console.warn('[admin/store/orders] history unavailable:', eventsError.message)
+                return NextResponse.json({ events: [], historyAvailable: false })
+            }
+            return NextResponse.json({ events: events ?? [], historyAvailable: true })
+        }
 
         // Build query
         let query = adminClient
@@ -64,6 +118,10 @@ export async function GET(request: NextRequest) {
 
         // Tenant scope (same filter as PUT)
         query = query.or(orgScopeFilter(admin.orgId))
+
+        if (salesChannel === 'outdoor' || salesChannel === 'store') {
+            query = query.eq('sales_channel', salesChannel)
+        }
 
         // Status filter
         if (status && status !== 'all') {
@@ -74,7 +132,7 @@ export async function GET(request: NextRequest) {
         const safeSearch = search ? sanitizeSearch(search) : ''
         if (safeSearch) {
             query = query.or(
-                `order_ref.ilike.%${safeSearch}%,customer_name.ilike.%${safeSearch}%,customer_email.ilike.%${safeSearch}%`
+                `order_ref.ilike.%${safeSearch}%,customer_name.ilike.%${safeSearch}%,customer_email.ilike.%${safeSearch}%,shipping_tracking_no.ilike.%${safeSearch}%`
             )
         }
 
@@ -136,8 +194,87 @@ export async function PUT(request: NextRequest) {
 
         const adminClient: any = createAdminClient()
 
+        const ownDelivery = body.deliveryMethod === 'own'
+        const trackingNo = ownDelivery ? '' : String(body.trackingNo ?? '').trim().slice(0, 60)
+        const courierName = ownDelivery ? OWN_DELIVERY_LABEL : String(body.courierName ?? '').trim().slice(0, 120)
+
+        const { data: current } = await adminClient
+            .from('storefront_orders')
+            .select('id, order_ref, status, sales_channel, shipping_tracking_no, shipping_courier_name, payment_provider, payment_ref, total_amount, currency')
+            .eq('id', id)
+            .or(orgScopeFilter(admin.orgId))
+            .maybeSingle()
+        if (!current) {
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        }
+
+        // Refunding or cancelling an order the customer already paid for returns the money
+        // first; the status only changes once the refund went through.
+        let refundNote: string | null = null
+        if (needsRefund(current.status, status)) {
+            if (isStripeCheckout(current)) {
+                const gateway = await getGatewayByProvider('stripe')
+                const refund = await refundStripeCheckout({
+                    sessionId: String(current.payment_ref),
+                    secretKey: String((gateway?.credentials as Record<string, string> | undefined)?.secret_key || ''),
+                    orderId: id,
+                    orderRef: String(current.order_ref || id),
+                })
+                if (!refund.ok) {
+                    return NextResponse.json(
+                        { error: `Stripe did not return the money (${refund.error}). The order was not changed.` },
+                        { status: 502 },
+                    )
+                }
+                refundNote = refund.alreadyRefunded
+                    ? 'Payment was already refunded on Stripe'
+                    : `Refunded ${formatAmount(refund.amountCents != null ? refund.amountCents / 100 : current.total_amount, current.currency)} to the customer on Stripe${refund.refundId ? ` (${refund.refundId})` : ''}`
+            } else if (body.refundedOutside === true) {
+                refundNote = `Money returned outside the dashboard${current.payment_provider ? ` via ${current.payment_provider}` : ''} (confirmed by staff)`
+            } else {
+                return NextResponse.json(
+                    {
+                        error: `This order was paid with ${current.payment_provider || 'another method'}, so the money can't be returned from here. Refund it there first, then confirm.`,
+                        needsManualRefund: true,
+                    },
+                    { status: 409 },
+                )
+            }
+        }
+
+        // An Outdoor order only counts as shipped once we know how it left: our own
+        // team, or a courier with a tracking number (same rule as the Outdoor staff desk).
+        if (status === 'shipped' && current.sales_channel === 'outdoor' && !ownDelivery) {
+            const hasTracking = Boolean(trackingNo || String(current.shipping_tracking_no || '').trim())
+            const hasCourier = Boolean(courierName || String(current.shipping_courier_name || '').trim())
+            if (!hasTracking || !hasCourier) {
+                return NextResponse.json(
+                    { error: 'Choose our own delivery, or add the courier and tracking number, before marking this order shipped.' },
+                    { status: 400 },
+                )
+            }
+        }
+
+        // Stock leaves the warehouse when a paid order ships; nothing changes if it can't.
+        let stockNote: string | null = null
+        const shipsNow = ['shipped', 'delivered'].includes(status) && ['paid', 'processing'].includes(current.status)
+        if (shipsNow) {
+            const taken = await takeOrderStock(adminClient, id, admin.userId)
+            if (!taken.ok) {
+                return NextResponse.json({ error: `${taken.error} The order was not changed.` }, { status: 409 })
+            }
+            stockNote = stockMoveNote(taken, 'out')
+        }
+
         const updateData: Record<string, any> = { status }
         if (notes !== undefined) updateData.admin_notes = notes
+        if (status === 'shipped' && ownDelivery) {
+            updateData.shipping_courier_name = OWN_DELIVERY_LABEL
+            updateData.shipping_tracking_no = null
+        } else {
+            if (status === 'shipped' && trackingNo) updateData.shipping_tracking_no = trackingNo
+            if (status === 'shipped' && courierName) updateData.shipping_courier_name = courierName
+        }
 
         // The tenant scope is part of the UPDATE itself, so an order outside the
         // admin's scope is indistinguishable from a non-existent one.
@@ -149,8 +286,18 @@ export async function PUT(request: NextRequest) {
             .select('*')
             .maybeSingle()
 
+        if ((error || !data) && stockNote) {
+            await undoOrderStock(adminClient, id, admin.userId)
+        }
+
         if (error) {
-            console.error('[admin/store/orders] PUT error:', error)
+            console.error('[admin/store/orders] PUT error:', error, refundNote ? `— after: ${refundNote}` : '')
+            if (refundNote) {
+                return NextResponse.json(
+                    { error: `${refundNote}, but the order status could not be saved. Try again — the customer will not be refunded twice.` },
+                    { status: 500 },
+                )
+            }
             throw error
         }
 
@@ -158,7 +305,50 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Order not found' }, { status: 404 })
         }
 
-        return NextResponse.json({ order: data })
+        // Goods only go back on the shelf when staff confirm they came back.
+        let stockWarning: string | null = null
+        if (refundNote && body.restock === true) {
+            const returned = await returnOrderStock(adminClient, id, admin.userId)
+            if (returned.ok) {
+                stockNote = stockMoveNote(returned, 'back')
+            } else {
+                stockWarning = `The refund went through, but the stock was not put back: ${returned.error}`
+            }
+        }
+
+        const shippingNote = status !== 'shipped'
+            ? null
+            : ownDelivery
+                ? 'Out for delivery with our own team'
+                : trackingNo
+                    ? `Sent by ${courierName || 'courier'} · tracking ${trackingNo}`
+                    : null
+        await recordOrderEvent(adminClient, {
+            orderId: id,
+            eventType: 'status_changed',
+            fromStatus: current.status,
+            toStatus: status,
+            actorType: 'staff',
+            actorId: admin.userId,
+            actorLabel: await staffActorLabel(adminClient, admin.userId),
+            note: [shippingNote, refundNote, stockNote, stockWarning, 'Changed in dashboard'].filter(Boolean).join(' — '),
+        })
+
+        const moneyReturned = Boolean(refundNote)
+        await notifyOutdoorOrderStatus(
+            id,
+            outdoorOrderEmailFor({
+                salesChannel: current.sales_channel,
+                fromStatus: current.status,
+                toStatus: status,
+                fromTracking: current.shipping_tracking_no,
+                toTracking: data.shipping_tracking_no,
+                moneyReturned,
+            }),
+            { moneyReturned },
+        )
+
+        return NextResponse.json(stockWarning ? { order: data, warning: stockWarning } : { order: data })
     } catch (err) {
         console.error('[admin/store/orders] PUT error:', err)
         return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })

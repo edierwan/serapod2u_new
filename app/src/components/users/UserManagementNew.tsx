@@ -6,6 +6,7 @@ import { useSupabaseAuth } from "@/lib/hooks/useSupabaseAuth";
 import { useToast } from "@/components/ui/use-toast";
 import {
   createUserWithAuth,
+  setUserAccountStatus,
   updateUserWithAuth,
 } from "@/lib/actions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1030,6 +1031,8 @@ export default function UserManagementNew({
           join_date: (userData as any).join_date || undefined,
           employment_status: (userData as any).employment_status || 'active',
           can_be_reference: Boolean((userData as any).can_be_reference),
+          initial_role_id: (userData as any).initial_role_id || null,
+          initial_access_reason: (userData as any).initial_access_reason || null,
         }, {
           id: userProfile.id,
           role_code: userProfile.role_code,
@@ -1052,6 +1055,15 @@ export default function UserManagementNew({
 
         if (!result.user_id) {
           throw new Error("No user ID returned after creating user");
+        }
+
+        if ((result as any).reused) {
+          // Identity resolution found this person already in the organization:
+          // nothing was duplicated and their existing profile is left untouched.
+          toast({ title: "Existing account kept", description: (result as any).message });
+          setDialogOpen(false);
+          await loadUsers();
+          return;
         }
 
         // Upload avatar if provided
@@ -1157,12 +1169,15 @@ export default function UserManagementNew({
         throw new Error("You cannot modify a user with a higher role level than your own.");
       }
 
-      const { error } = await (supabase as any)
-        .from("users")
-        .update({ is_active: !currentStatus })
-        .eq("id", userId);
+      // Account lifecycle runs on the server (S&A platform.identity.disable);
+      // the database rejects direct browser writes to is_active.
+      const result = await setUserAccountStatus(
+        userId,
+        currentStatus ? "DISABLED" : "ACTIVE",
+        currentStatus ? "Deactivated in User Management" : "Activated in User Management",
+      );
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error || "Failed to update user status");
 
       toast({
         title: "Success",
@@ -2414,7 +2429,7 @@ export default function UserManagementNew({
                     <p className="font-medium mb-1">A history check will run before removal.</p>
                     <ul className="list-disc ml-4 space-y-0.5 text-xs">
                       <li>Users without business history are deleted permanently.</li>
-                      <li>Users with orders or documents are archived to protect history.</li>
+                      <li>Users with orders or documents are archived to protect history. Their email and phone stay reserved; reactivate them if they return.</li>
                       <li>Archived users cannot sign in; their original email and phone are released for reuse.</li>
                     </ul>
                   </div>

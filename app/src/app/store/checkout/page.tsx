@@ -71,9 +71,20 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [landingAttribution, setLandingAttribution] = useState<LandingPageAttribution | null>(null)
+  const [payMethods, setPayMethods] = useState<{ key: string; label: string; isDefault: boolean }[]>([])
+  const [payProvider, setPayProvider] = useState('')
 
   useEffect(() => {
     setLandingAttribution(getStoredLandingPageAttribution())
+    void fetch('/api/storefront/payment/methods')
+      .then((res) => res.json())
+      .then((data) => {
+        const methods = Array.isArray(data?.methods) ? data.methods : []
+        setPayMethods(methods)
+        const def = methods.find((m: { isDefault: boolean }) => m.isDefault) || methods[0]
+        if (def?.key) setPayProvider(def.key)
+      })
+      .catch(() => setPayMethods([]))
   }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -116,6 +127,7 @@ export default function CheckoutPage() {
             quantity: i.quantity,
           })),
           landingPageAttribution,
+          paymentProvider: payProvider || undefined,
         }),
       })
 
@@ -336,6 +348,26 @@ export default function CheckoutPage() {
                   <span>{formatPrice(subtotal)}</span>
                 </div>
               </div>
+
+              {payMethods.length > 1 ? (
+                <div className="mt-5 space-y-2">
+                  <p className="text-sm font-semibold text-[var(--sera-ink)]">Pay with</p>
+                  {payMethods.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => setPayProvider(m.key)}
+                      className={`w-full rounded-xl border px-3 py-2.5 text-left text-sm ${
+                        payProvider === m.key
+                          ? 'border-[var(--sera-ink)] bg-white'
+                          : 'border-[var(--sera-line)]'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               {/* Error */}
               {error && (

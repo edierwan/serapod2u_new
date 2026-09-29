@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
     const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
     if (saDenied) return saDenied
 
@@ -86,8 +87,6 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
-    if (saDenied) return saDenied
 
     // Get user profile to check permissions
     const { data: profile, error: profileError } = await supabase
@@ -102,9 +101,13 @@ export async function POST(request: NextRequest) {
 
     // Only Super Admin (1) or HQ Admin (10) can run migration
     const roleLevel = (profile.roles as any)?.role_level
-    if (roleLevel > 10) {
-      return NextResponse.json({ error: 'Only administrators can run migration' }, { status: 403 })
-    }
+    // Running the document migration is an S&A decision
+    // (platform.data.destructive); the historical Super Admin / HQ Admin rule is
+    // the legacy evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive', {
+      legacy: () => !(roleLevel > 10),
+    })
+    if (saDenied) return saDenied
 
     // Get company ID - handle null organization_id
     if (!profile.organization_id) {

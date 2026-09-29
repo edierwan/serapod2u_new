@@ -1,4 +1,4 @@
-import { getProductDetail } from '@/lib/storefront/products'
+import { getProductDetail, isOutdoorStoreOnly } from '@/lib/storefront/products'
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { ArrowLeft, Package } from 'lucide-react'
@@ -12,6 +12,9 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params
   const product = await getProductDetail(id)
+  if (product && await isOutdoorStoreOnly(id)) {
+    return { title: 'Product Not Found' }
+  }
   return {
     title: product?.product_name ?? 'Product Not Found',
     description: product?.short_description ?? undefined,
@@ -22,7 +25,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const { id } = await params
   const product = await getProductDetail(id)
 
-  if (!product) return notFound()
+  if (!product || await isOutdoorStoreOnly(id)) return notFound()
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 sm:py-10">

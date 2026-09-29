@@ -10,9 +10,22 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
-import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Truck, Upload } from 'lucide-react'
+import {
+  OUTDOOR_FLAT_SHIPPING_RM,
+  OUTDOOR_SHIPPING_NOTE,
+  OUTDOOR_SHIPPING_TITLE,
+  outdoorShippingPrice,
+} from '@/lib/outdoor/shipping'
 import SafeImage from '@/components/shared/SafeImage'
 import { compressProductImage } from '@/lib/utils/imageCompression'
+import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
+import {
+  loadStructuredAttributes,
+  syncStructuredAttributes,
+  validateStructuredAttributes,
+  type StructuredAttribute,
+} from '@/lib/products/structured-attributes'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +52,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [uploadingImage, setUploadingImage] = useState(false)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
+  const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
+  const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -51,8 +66,11 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     manufacturer_id: '',
     is_vape: false,
     is_active: true,
-    age_restriction: 0
+    age_restriction: 0,
+    outdoor_store: false
   })
+  const [delivery, setDelivery] = useState({ title: '', note: '', price: '' })
+  const [savedDelivery, setSavedDelivery] = useState({ title: '', note: '', price: '' })
 
   useEffect(() => {
     if (isReady) {
@@ -111,8 +129,18 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         manufacturer_id: data.manufacturer_id || '',
         is_vape: data.is_vape || false,
         is_active: data.is_active !== false,
-        age_restriction: data.age_restriction || 0
+        age_restriction: data.age_restriction || 0,
+        outdoor_store: Boolean((data as any).outdoor_only)
       })
+      const row = data as any
+      const loadedDelivery = {
+        title: row.outdoor_shipping_title || '',
+        note: row.outdoor_shipping_note || '',
+        price: row.outdoor_shipping_price == null ? '' : String(row.outdoor_shipping_price),
+      }
+      setDelivery(loadedDelivery)
+      setSavedDelivery(loadedDelivery)
+      setStructuredAttributes(await loadStructuredAttributes(supabase, { productId }))
     } catch (error) {
       console.error('Error fetching product:', error)
       toast({
@@ -367,6 +395,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setAttributeSaveAttempted(true)
     
     if (!formData.product_name || !formData.product_code) {
       toast({
@@ -377,27 +406,84 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       return
     }
 
+    if (!validateStructuredAttributes(structuredAttributes).isValid) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please fix the Additional Attributes errors before saving.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     const productId = sessionStorage.getItem('selectedProductId')
     if (!productId) return
 
+    const deliveryPrice = outdoorShippingPrice(delivery.price)
+    if (delivery.price.trim() && deliveryPrice === null) {
+      toast({
+        title: 'Validation Error',
+        description: 'Delivery price must be 0 or more.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from('products')
-        .update({
-          product_name: formData.product_name,
-          product_description: formData.product_description || null,
-          brand_id: formData.brand_id || null,
-          category_id: formData.category_id || null,
-          manufacturer_id: formData.manufacturer_id || null,
-          is_vape: formData.is_vape,
-          is_active: formData.is_active,
-          age_restriction: formData.age_restriction || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', productId)
+      const changes: Record<string, unknown> = {
+        product_name: formData.product_name,
+        product_description: formData.product_description || null,
+        brand_id: formData.brand_id || null,
+        category_id: formData.category_id || null,
+        manufacturer_id: formData.manufacturer_id || null,
+        is_vape: formData.is_vape,
+        is_active: formData.is_active,
+        age_restriction: formData.age_restriction || null,
+        outdoor_only: formData.outdoor_store,
+        updated_at: new Date().toISOString()
+      }
+      let { error } = await supabase.from('products').update(changes).eq('id', productId)
+      if (error && /outdoor_only/i.test(error.message || '')) {
+        if (formData.outdoor_store) {
+          toast({
+            title: 'Outdoor store option is not ready',
+            description: 'Apply the outdoor_only column, then save again.',
+            variant: 'destructive'
+          })
+          return
+        }
+        delete changes.outdoor_only
+        const retry = await supabase.from('products').update(changes).eq('id', productId)
+        error = retry.error
+      }
 
       if (error) throw error
+      await syncStructuredAttributes(supabase, { productId }, structuredAttributes)
+
+      const deliveryChanged =
+        delivery.title !== savedDelivery.title ||
+        delivery.note !== savedDelivery.note ||
+        delivery.price !== savedDelivery.price
+      if (deliveryChanged) {
+        const { error: deliveryError } = await supabase
+          .from('products')
+          .update({
+            outdoor_shipping_title: delivery.title.trim() || null,
+            outdoor_shipping_note: delivery.note.trim() || null,
+            outdoor_shipping_price: deliveryPrice
+          } as any)
+          .eq('id', productId)
+        if (deliveryError) {
+          toast({
+            title: 'Product saved, delivery not saved',
+            description: /outdoor_shipping/i.test(deliveryError.message || '')
+              ? 'Apply the Outdoor delivery migration, then save again.'
+              : deliveryError.message,
+            variant: 'destructive'
+          })
+          return
+        }
+      }
 
       toast({
         title: 'Success',
@@ -691,7 +777,78 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                 />
                 <Label htmlFor="is_active" className="cursor-pointer">Active</Label>
               </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="outdoor_store"
+                  checked={formData.outdoor_store}
+                  onCheckedChange={(checked: boolean) => setFormData({ ...formData, outdoor_store: checked === true })}
+                />
+                <Label htmlFor="outdoor_store" className="cursor-pointer">Outdoor store</Label>
+              </div>
             </div>
+            <p className="text-xs text-gray-500">Outdoor store lists this product on the Outdoor shop only. The main shop will not show it.</p>
+
+            <AdditionalAttributesEditor
+              value={structuredAttributes}
+              onChange={setStructuredAttributes}
+              disabled={saving}
+              showValidationErrors={attributeSaveAttempted}
+              colourReferenceClient={supabase}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="w-5 h-5" />
+              Outdoor delivery
+            </CardTitle>
+            <CardDescription>
+              What the Outdoor checkout shows for this product. Leave empty for {OUTDOOR_SHIPPING_TITLE} at RM {OUTDOOR_FLAT_SHIPPING_RM.toFixed(2)}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="outdoor_shipping_title">Title</Label>
+                <Input
+                  id="outdoor_shipping_title"
+                  value={delivery.title}
+                  maxLength={60}
+                  placeholder={OUTDOOR_SHIPPING_TITLE}
+                  onChange={(e) => setDelivery({ ...delivery, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="outdoor_shipping_price">Price (RM)</Label>
+                <Input
+                  id="outdoor_shipping_price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={delivery.price}
+                  placeholder={OUTDOOR_FLAT_SHIPPING_RM.toFixed(2)}
+                  onChange={(e) => setDelivery({ ...delivery, price: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="outdoor_shipping_note">Text</Label>
+              <Textarea
+                id="outdoor_shipping_note"
+                value={delivery.note}
+                maxLength={200}
+                rows={2}
+                placeholder={OUTDOOR_SHIPPING_NOTE}
+                onChange={(e) => setDelivery({ ...delivery, note: e.target.value })}
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              Set the price to 0 to show Free shipping. When a bag has several products, checkout charges the highest delivery price.
+            </p>
           </CardContent>
         </Card>
 

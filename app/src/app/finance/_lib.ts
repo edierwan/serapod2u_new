@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
+import { isCanonicalStaff } from '@/lib/identity/staff'
 
 /**
  * Server-only context helper for Finance pages.
@@ -62,7 +63,7 @@ export async function getFinancePageContext() {
 
     const legacyCanViewFinance =
         viewSettings.allowed ||
-        (roles?.role_level != null && roles.role_level <= 40)
+        isCanonicalStaff(userProfile as any, roles?.role_level, 40)
     // Module entry is an S&A decision in the user's own company.
     const canViewFinance = await authorizeOperation({
         actorId: user.id,

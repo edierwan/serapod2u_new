@@ -6,6 +6,13 @@ const migration = readFileSync(
   path.resolve(__dirname, '../../../../supabase/migrations/20260720_hq_warehouse_return_posting_03.sql'),
   'utf8',
 )
+const skipExcludedMigration = readFileSync(
+  path.resolve(
+    __dirname,
+    '../../../../supabase/migrations/20260904120000_return_inventory_skip_historically_excluded.sql',
+  ),
+  'utf8',
+)
 const statusRoute = readFileSync(
   path.resolve(__dirname, '../../app/api/returns/[id]/status/route.ts'),
   'utf8',
@@ -23,5 +30,15 @@ describe('Return Product warehouse posting contract', () => {
     expect(migration).toContain('Return warehouse cannot be changed after inventory receipt/posting has started')
     expect(statusRoute).toContain("next === 'return_received'")
     expect(statusRoute).toContain('post_return_case_inventory')
+  })
+
+  it('skips inventory for returns historically excluded by a posted Opening Balance', () => {
+    expect(skipExcludedMigration).toContain('historically_excluded')
+    expect(skipExcludedMigration).toContain('inventory_cutoff_excluded_transactions')
+    expect(skipExcludedMigration).toContain("x.transaction_type = 'return'")
+    expect(skipExcludedMigration).toContain("c.status = 'posted'")
+    expect(skipExcludedMigration).toMatch(/posted_lines',\s*0/)
+    expect(skipExcludedMigration.toLowerCase()).toContain("notify pgrst, 'reload schema'")
+    expect(statusRoute).toContain('historically_excluded')
   })
 })

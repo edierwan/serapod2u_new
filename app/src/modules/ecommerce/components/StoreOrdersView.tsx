@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import {
     ArrowLeft,
     Loader2,
@@ -26,6 +27,16 @@ import {
     Filter,
 } from 'lucide-react'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { isOwnDelivery } from '@/lib/storefront/delivery'
+import { OutdoorMessagesPanel, OutdoorSubscribersPanel } from '@/modules/ecommerce/components/OutdoorInboxPanels'
+import { OutdoorCustomerMessagesPanel } from '@/modules/ecommerce/components/OutdoorCustomerMessagesPanel'
+import { OutdoorNewsletterComposer } from '@/modules/ecommerce/components/OutdoorNewsletterComposer'
+import {
+    OrderRequestBadge,
+    StoreOpenRequestsPanel,
+    StoreOrderRequestsSection,
+    useOpenRequestsByOrder,
+} from '@/modules/ecommerce/components/StoreOrderRequests'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -61,9 +72,82 @@ interface StorefrontOrder {
     payment_ref: string | null
     paid_at: string | null
     organization_id: string | null
+    sales_channel?: string | null
+    shipping_amount?: number | null
+    shipping_courier_name?: string | null
+    shipping_tracking_no?: string | null
+    easyparcel_order_no?: string | null
+    stock_out_at?: string | null
+    stock_returned_at?: string | null
     created_at: string
     updated_at: string
     storefront_order_items: StorefrontOrderItem[]
+}
+
+interface CourierEvent {
+    status: string
+    date: string | null
+    location: string | null
+}
+
+interface OrderEvent {
+    id: string
+    event_type: string
+    from_status: string | null
+    to_status: string | null
+    actor_type: string
+    actor_label: string | null
+    note: string | null
+    created_at: string
+}
+
+type ShipDetails = { deliveryMethod: 'own' } | { deliveryMethod: 'courier'; courierName: string; trackingNo: string }
+type UpdateExtra = ShipDetails | { refundedOutside?: boolean; restock?: boolean }
+
+const MONEY_TAKEN_STATUSES = ['paid', 'processing', 'shipped', 'delivered']
+
+/** Mirrors the server: refunding or cancelling a paid order sends the money back first. */
+function needsRefund(fromStatus: string, toStatus: string) {
+    return (toStatus === 'refunded' || toStatus === 'cancelled') && MONEY_TAKEN_STATUSES.includes(fromStatus)
+}
+
+function isStripeCheckout(order: { payment_provider?: string | null; payment_ref?: string | null }) {
+    return order.payment_provider === 'stripe' && String(order.payment_ref || '').startsWith('cs_')
+}
+
+/** The detail panel is portalled to <body>, outside `.sera-shell`, so it carries the shell palette itself. */
+const PORTAL_THEME = {
+    '--sera-ink': '#141210',
+    '--sera-ink-soft': '#2a2622',
+    '--sera-orange': '#e85d04',
+    '--sera-orange-deep': '#c44a00',
+    '--sera-mist': '#f2f3f5',
+    '--sera-line': '#e8eaed',
+    '--sera-muted': '#6b7280',
+    '--sera-paper': '#fafbfc',
+} as CSSProperties
+
+const CHANNEL_OPTIONS = [
+    { value: 'all', label: 'All stores' },
+    { value: 'outdoor', label: 'Outdoor' },
+    { value: 'store', label: 'Store' },
+]
+
+const COURIER_SUGGESTIONS = [
+    'J&T Express',
+    'Pos Laju',
+    'DHL eCommerce',
+    'Ninja Van',
+    'City-Link Express',
+    'GDEX',
+    'SPX Express',
+    'Flash Express',
+    'Skynet',
+    'Aramex',
+]
+
+function isOutdoorOrder(order: Pick<StorefrontOrder, 'sales_channel'>) {
+    return order.sales_channel === 'outdoor'
 }
 
 interface StoreOrdersViewProps {
@@ -175,6 +259,18 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [statusFilter, setStatusFilter] = useState('all')
+    const [channelFilter, setChannelFilter] = useState('all')
+    const [shipForm, setShipForm] = useState<{ method: 'own' | 'courier'; courier: string; tracking: string } | null>(null)
+    const [refundAsk, setRefundAsk] = useState<'refunded' | 'cancelled' | null>(null)
+    const [restock, setRestock] = useState(false)
+    const [notice, setNotice] = useState<string | null>(null)
+    const [history, setHistory] = useState<OrderEvent[]>([])
+    const [historyAvailable, setHistoryAvailable] = useState(true)
+    const [historyRefresh, setHistoryRefresh] = useState(0)
+    const [tab, setTab] = useState<'orders' | 'messages' | 'subscribers' | 'customer_messages'>('orders')
+    const [courierEvents, setCourierEvents] = useState<CourierEvent[]>([])
+    const [courierLatest, setCourierLatest] = useState<string | null>(null)
+    const [courierLoading, setCourierLoading] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [debouncedSearch, setDebouncedSearch] = useState('')
     const [page, setPage] = useState(1)
@@ -182,6 +278,13 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [totalOrders, setTotalOrders] = useState(0)
     const [selectedOrder, setSelectedOrder] = useState<StorefrontOrder | null>(null)
     const [updatingStatus, setUpdatingStatus] = useState(false)
+    const [requestsRefresh, setRequestsRefresh] = useState(0)
+    const openRequestsByOrder = useOpenRequestsByOrder(useMemo(() => orders.map(o => o.id), [orders]), requestsRefresh)
+
+    useEffect(() => {
+        const fromUrl = new URLSearchParams(window.location.search).get('channel')
+        if (fromUrl && CHANNEL_OPTIONS.some(option => option.value === fromUrl)) setChannelFilter(fromUrl)
+    }, [])
 
     // ── Debounce search ──────────────────────────────────────────
 
@@ -204,6 +307,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             params.set('page', String(page))
             params.set('limit', '25')
             if (statusFilter !== 'all') params.set('status', statusFilter)
+            if (channelFilter !== 'all') params.set('salesChannel', channelFilter)
             if (debouncedSearch) params.set('search', debouncedSearch)
 
             const res = await fetch(`/api/admin/store/orders?${params.toString()}`)
@@ -221,23 +325,28 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
         } finally {
             setLoading(false)
         }
-    }, [page, statusFilter, debouncedSearch])
+    }, [page, statusFilter, channelFilter, debouncedSearch])
 
     useEffect(() => { fetchOrders() }, [fetchOrders])
 
     // ── Update order status ──────────────────────────────────────
 
-    const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-        if (!confirm(`Change order status to "${STATUS_CONFIG[newStatus]?.label || newStatus}"?`)) return
+    const handleStatusUpdate = async (
+        orderId: string,
+        newStatus: string,
+        shipping?: UpdateExtra,
+    ) => {
+        if (!shipping && !confirm(`Change order status to "${STATUS_CONFIG[newStatus]?.label || newStatus}"?`)) return
 
         setUpdatingStatus(true)
         setError(null)
+        setNotice(null)
 
         try {
             const res = await fetch('/api/admin/store/orders', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: orderId, status: newStatus }),
+                body: JSON.stringify({ id: orderId, status: newStatus, ...shipping }),
             })
 
             if (!res.ok) {
@@ -251,12 +360,67 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             if (selectedOrder?.id === orderId) {
                 setSelectedOrder(prev => prev ? { ...prev, ...data.order, storefront_order_items: prev.storefront_order_items } : null)
             }
+            setShipForm(null)
+            setRefundAsk(null)
+            setNotice(typeof data.warning === 'string' ? data.warning : null)
+            setHistoryRefresh(n => n + 1)
         } catch (err: any) {
             setError(err.message)
         } finally {
             setUpdatingStatus(false)
         }
     }
+
+    // ── Courier tracking updates for the open order ──────────────
+
+    const selectedOrderRef = selectedOrder?.order_ref
+    const selectedOrderEmail = selectedOrder?.customer_email
+    const selectedTrackingNo = selectedOrder?.shipping_tracking_no?.trim() || ''
+
+    useEffect(() => {
+        setShipForm(null)
+        setRefundAsk(null)
+        setNotice(null)
+        if (selectedOrderRef) setError(null)
+    }, [selectedOrderRef])
+
+    const selectedOrderId = selectedOrder?.id
+    useEffect(() => {
+        setHistory([])
+        if (!selectedOrderId) return
+        let cancelled = false
+        fetch(`/api/admin/store/orders?eventsFor=${encodeURIComponent(selectedOrderId)}`)
+            .then(res => res.json().catch(() => null))
+            .then(data => {
+                if (cancelled) return
+                setHistory(Array.isArray(data?.events) ? data.events : [])
+                setHistoryAvailable(data?.historyAvailable !== false)
+            })
+            .catch(() => undefined)
+        return () => { cancelled = true }
+    }, [selectedOrderId, historyRefresh])
+
+    useEffect(() => {
+        setCourierEvents([])
+        setCourierLatest(null)
+        if (!selectedOrderRef || !selectedOrderEmail || !selectedTrackingNo) return
+        let cancelled = false
+        setCourierLoading(true)
+        fetch('/api/storefront/orders/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderRef: selectedOrderRef, email: selectedOrderEmail }),
+        })
+            .then(res => res.json().catch(() => null))
+            .then(data => {
+                if (cancelled) return
+                setCourierEvents(Array.isArray(data?.order?.courierEvents) ? data.order.courierEvents : [])
+                setCourierLatest(data?.order?.courierLatestStatus || null)
+            })
+            .catch(() => undefined)
+            .finally(() => { if (!cancelled) setCourierLoading(false) })
+        return () => { cancelled = true }
+    }, [selectedOrderRef, selectedOrderEmail, selectedTrackingNo])
 
     // ── Status summary counts ────────────────────────────────────
 
@@ -288,6 +452,18 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
         )
     }
 
+    const renderChannelBadge = (order: StorefrontOrder) => (
+        <span
+            className={`inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                isOutdoorOrder(order)
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                    : 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300'
+            }`}
+        >
+            {isOutdoorOrder(order) ? 'Outdoor' : 'Store'}
+        </span>
+    )
+
     // ── Order detail panel ───────────────────────────────────────
 
     const renderOrderDetail = () => {
@@ -297,7 +473,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
         const addr = selectedOrder.shipping_address || {}
 
         return (
-            <div className="fixed inset-0 z-50 flex items-start justify-end">
+            <div className="fixed inset-0 z-50 flex items-start justify-end" style={PORTAL_THEME}>
                 {/* Backdrop */}
                 <div
                     className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -309,7 +485,10 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     {/* Header */}
                     <div className="sticky top-0 z-10 bg-card border-b border-border px-5 py-4 flex items-center justify-between">
                         <div>
-                            <h2 className="font-semibold text-base text-foreground">{selectedOrder.order_ref}</h2>
+                            <h2 className="flex items-center gap-2 font-semibold text-base text-foreground">
+                                {selectedOrder.order_ref}
+                                {renderChannelBadge(selectedOrder)}
+                            </h2>
                             <p className="text-xs text-muted-foreground mt-0.5">
                                 Created {formatDate(selectedOrder.created_at)}
                             </p>
@@ -334,7 +513,22 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                         {transitions.map(nextStatus => (
                                             <button
                                                 key={nextStatus}
-                                                onClick={() => handleStatusUpdate(selectedOrder.id, nextStatus)}
+                                                onClick={() => {
+                                                    if (nextStatus === 'shipped') {
+                                                        setRefundAsk(null)
+                                                        setShipForm({
+                                                            method: selectedOrder.shipping_tracking_no ? 'courier' : 'own',
+                                                            courier: selectedOrder.shipping_tracking_no ? selectedOrder.shipping_courier_name || '' : '',
+                                                            tracking: selectedOrder.shipping_tracking_no || '',
+                                                        })
+                                                    } else if (needsRefund(selectedOrder.status, nextStatus)) {
+                                                        setShipForm(null)
+                                                        setRestock(false)
+                                                        setRefundAsk(nextStatus as 'refunded' | 'cancelled')
+                                                    } else {
+                                                        void handleStatusUpdate(selectedOrder.id, nextStatus)
+                                                    }
+                                                }}
                                                 disabled={updatingStatus}
                                                 className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-border hover:bg-accent hover:border-violet-300 dark:hover:border-violet-700 transition-colors disabled:opacity-50"
                                             >
@@ -344,6 +538,226 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                     </div>
                                 )}
                             </div>
+                            {shipForm && (
+                                <div className="mt-2 rounded-xl border border-border p-3 space-y-2">
+                                    <p className="text-xs font-medium text-foreground">How is this order being delivered?</p>
+                                    <div className="flex flex-wrap gap-3 text-xs">
+                                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="delivery-method"
+                                                checked={shipForm.method === 'own'}
+                                                onChange={() => setShipForm(f => f ? { ...f, method: 'own' } : f)}
+                                            />
+                                            Our own delivery team
+                                        </label>
+                                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="delivery-method"
+                                                checked={shipForm.method === 'courier'}
+                                                onChange={() => setShipForm(f => f ? { ...f, method: 'courier' } : f)}
+                                            />
+                                            Courier company
+                                        </label>
+                                    </div>
+                                    {shipForm.method === 'courier' && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {isOutdoorOrder(selectedOrder)
+                                                ? 'Courier and tracking number are required.'
+                                                : 'Courier and tracking number are optional.'}
+                                        </p>
+                                    )}
+                                    {shipForm.method === 'courier' && <div className="flex flex-col sm:flex-row gap-2">
+                                        <input
+                                            value={shipForm.courier}
+                                            onChange={(e) => setShipForm(f => f ? { ...f, courier: e.target.value } : f)}
+                                            list="store-orders-courier-suggestions"
+                                            maxLength={120}
+                                            placeholder="Courier (e.g. J&T Express)"
+                                            aria-label="Courier"
+                                            className="flex-1 text-sm border border-border rounded-lg bg-background px-3 py-1.5"
+                                        />
+                                        <input
+                                            value={shipForm.tracking}
+                                            onChange={(e) => setShipForm(f => f ? { ...f, tracking: e.target.value } : f)}
+                                            maxLength={60}
+                                            placeholder="Tracking no."
+                                            aria-label="Tracking number"
+                                            className="flex-1 text-sm border border-border rounded-lg bg-background px-3 py-1.5"
+                                        />
+                                    </div>}
+                                    <datalist id="store-orders-courier-suggestions">
+                                        {COURIER_SUGGESTIONS.map(name => <option key={name} value={name} />)}
+                                    </datalist>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleStatusUpdate(selectedOrder.id, 'shipped', shipForm.method === 'own'
+                                                ? { deliveryMethod: 'own' }
+                                                : {
+                                                    deliveryMethod: 'courier',
+                                                    courierName: shipForm.courier.trim(),
+                                                    trackingNo: shipForm.tracking.trim(),
+                                                })}
+                                            disabled={updatingStatus || (
+                                                shipForm.method === 'courier'
+                                                && isOutdoorOrder(selectedOrder)
+                                                && (!shipForm.courier.trim() || !shipForm.tracking.trim())
+                                            )}
+                                            className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--sera-orange,#f97316)] text-white disabled:opacity-50"
+                                        >
+                                            Mark shipped
+                                        </button>
+                                        <button
+                                            onClick={() => setShipForm(null)}
+                                            className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-accent"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {refundAsk && (() => {
+                                const viaStripe = isStripeCheckout(selectedOrder)
+                                const amount = formatCurrency(selectedOrder.total_amount, selectedOrder.currency)
+                                const provider = selectedOrder.payment_provider || 'another payment method'
+                                const stockIsOut = Boolean(selectedOrder.stock_out_at && !selectedOrder.stock_returned_at)
+                                return (
+                                    <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2 dark:border-amber-800 dark:bg-amber-950/30">
+                                        <p className="text-xs font-semibold text-foreground">
+                                            {refundAsk === 'refunded' ? `Refund ${amount} to the customer?` : `Cancel this order and refund ${amount}?`}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {viaStripe
+                                                ? 'The full amount goes back to the card or account they paid with, through Stripe. This can’t be undone. Banks usually show it within 5–10 business days.'
+                                                : `This order was paid with ${provider}, so the money can’t be sent back from here. Refund it in ${provider} first, then confirm to update the order.`}
+                                        </p>
+                                        {stockIsOut ? (
+                                            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-white/70 px-2.5 py-2 text-[11px] text-foreground cursor-pointer dark:border-amber-900 dark:bg-black/20">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={restock}
+                                                    onChange={(e) => setRestock(e.target.checked)}
+                                                    disabled={updatingStatus}
+                                                    className="mt-0.5"
+                                                />
+                                                <span>
+                                                    <span className="font-medium">The items came back to the warehouse</span>
+                                                    <span className="block text-muted-foreground">
+                                                        Tick only once the parcel is physically back — this puts the stock back into Inventory. Leave it unticked if the customer keeps the items or they were lost.
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        ) : (
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {selectedOrder.stock_returned_at
+                                                    ? 'The items are already back in warehouse stock.'
+                                                    : 'Nothing was taken out of warehouse stock for this order, so stock stays as it is.'}
+                                            </p>
+                                        )}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                onClick={() => handleStatusUpdate(
+                                                    selectedOrder.id,
+                                                    refundAsk,
+                                                    { ...(viaStripe ? {} : { refundedOutside: true }), ...(stockIsOut && restock ? { restock: true } : {}) },
+                                                )}
+                                                disabled={updatingStatus}
+                                                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--sera-orange,#f97316)] text-white disabled:opacity-50"
+                                            >
+                                                {updatingStatus
+                                                    ? viaStripe ? 'Refunding…' : 'Saving…'
+                                                    : viaStripe ? `Refund ${amount}` : 'I’ve refunded it — update the order'}
+                                            </button>
+                                            <button
+                                                onClick={() => setRefundAsk(null)}
+                                                disabled={updatingStatus}
+                                                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border hover:bg-accent"
+                                            >
+                                                Keep the order
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })()}
+                            {error && (
+                                <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                    {error}
+                                </p>
+                            )}
+                            {notice && (
+                                <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                                    {notice}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Shipping */}
+                        <div className="bg-accent/40 rounded-xl p-4 space-y-2.5">
+                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                                <Truck className="h-3.5 w-3.5" /> Shipping
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <span className="text-[11px] text-muted-foreground">Shipping fee</span>
+                                    <p className="text-sm text-foreground">
+                                        {Number(selectedOrder.shipping_amount) > 0
+                                            ? formatCurrency(Number(selectedOrder.shipping_amount), selectedOrder.currency)
+                                            : 'Free'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <span className="text-[11px] text-muted-foreground">Delivered by</span>
+                                    <p className="text-sm text-foreground">
+                                        {isOwnDelivery(selectedOrder.shipping_courier_name)
+                                            ? 'Our own team'
+                                            : selectedOrder.shipping_tracking_no && selectedOrder.shipping_courier_name
+                                                ? selectedOrder.shipping_courier_name
+                                                : '—'}
+                                    </p>
+                                </div>
+                                <div className="col-span-2">
+                                    <span className="text-[11px] text-muted-foreground">Tracking number</span>
+                                    <p className="text-sm font-mono text-foreground">{selectedOrder.shipping_tracking_no || '—'}</p>
+                                </div>
+                                {selectedOrder.easyparcel_order_no && (
+                                    <div className="col-span-2">
+                                        <span className="text-[11px] text-muted-foreground">EasyParcel order</span>
+                                        <p className="text-sm font-mono text-foreground">{selectedOrder.easyparcel_order_no}</p>
+                                    </div>
+                                )}
+                                {selectedOrder.stock_out_at && (
+                                    <div className="col-span-2">
+                                        <span className="text-[11px] text-muted-foreground">Warehouse stock</span>
+                                        <p className="text-sm text-foreground">
+                                            Taken out {formatDate(selectedOrder.stock_out_at)}
+                                            {selectedOrder.stock_returned_at ? ` · put back ${formatDate(selectedOrder.stock_returned_at)}` : ''}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                            {selectedOrder.shipping_tracking_no && (
+                                <div className="border-t border-border pt-2.5">
+                                    <span className="text-[11px] text-muted-foreground">Tracking updates</span>
+                                    {courierLoading ? (
+                                        <p className="text-xs text-muted-foreground mt-1">Loading…</p>
+                                    ) : courierEvents.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {courierLatest || 'No courier updates yet.'}
+                                        </p>
+                                    ) : (
+                                        <ul className="mt-1 space-y-1.5">
+                                            {courierEvents.map((ev, i) => (
+                                                <li key={`${ev.status}-${i}`} className="text-xs">
+                                                    <span className="font-medium text-foreground">{ev.status}</span>
+                                                    {ev.location ? <span className="text-muted-foreground"> · {ev.location}</span> : null}
+                                                    {ev.date ? <span className="text-muted-foreground"> · {ev.date}</span> : null}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Customer info */}
@@ -391,9 +805,9 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                     </p>
                                 </div>
                                 {selectedOrder.payment_ref && (
-                                    <div>
+                                    <div className="col-span-2 min-w-0">
                                         <span className="text-[11px] text-muted-foreground">Reference</span>
-                                        <p className="text-sm font-mono text-foreground">{selectedOrder.payment_ref}</p>
+                                        <p className="text-xs font-mono text-foreground break-all">{selectedOrder.payment_ref}</p>
                                     </div>
                                 )}
                                 {selectedOrder.paid_at && (
@@ -437,6 +851,51 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             </div>
                         </div>
 
+                        <StoreOrderRequestsSection
+                            key={selectedOrder.id}
+                            orderId={selectedOrder.id}
+                            onChanged={() => setRequestsRefresh(n => n + 1)}
+                        />
+
+                        {/* History */}
+                        <div className="space-y-2">
+                            <h3 className="text-sm font-semibold text-foreground">History</h3>
+                            {!historyAvailable ? (
+                                <p className="text-xs text-muted-foreground">History is not set up yet (database migration pending).</p>
+                            ) : history.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">No history recorded yet. Changes from now on appear here.</p>
+                            ) : (
+                                <ol className="relative border-l border-border ml-1.5 space-y-3">
+                                    {history.map(event => {
+                                        const to = event.to_status ? STATUS_CONFIG[event.to_status]?.label || event.to_status : null
+                                        const from = event.from_status ? STATUS_CONFIG[event.from_status]?.label || event.from_status : null
+                                        const title = event.event_type === 'created'
+                                            ? 'Order placed'
+                                            : event.event_type === 'shipping_updated'
+                                                ? 'Shipping details updated'
+                                                : to
+                                                    ? from ? `${from} → ${to}` : to
+                                                    : 'Update'
+                                        const who = event.actor_type === 'system'
+                                            ? 'Automatic'
+                                            : event.actor_type === 'payment'
+                                                ? 'Payment gateway'
+                                                : event.actor_type === 'customer'
+                                                    ? `Customer${event.actor_label ? ` · ${event.actor_label}` : ''}`
+                                                    : event.actor_label || 'Staff'
+                                        return (
+                                            <li key={event.id} className="ml-3">
+                                                <span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full border border-card bg-[var(--sera-orange,#f97316)]" />
+                                                <p className="text-xs font-medium text-foreground">{title}</p>
+                                                {event.note ? <p className="text-[11px] text-muted-foreground">{event.note}</p> : null}
+                                                <p className="text-[11px] text-muted-foreground">{who} · {formatDate(event.created_at)}</p>
+                                            </li>
+                                        )
+                                    })}
+                                </ol>
+                            )}
+                        </div>
+
                         {/* Timestamps */}
                         <div className="text-[11px] text-muted-foreground space-y-1 py-2 border-t border-border">
                             <div className="flex items-center gap-1.5">
@@ -464,7 +923,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 description="View and manage online storefront orders"
                 actions={
                     <button
-                        onClick={fetchOrders}
+                        onClick={() => { fetchOrders(); setRequestsRefresh(n => n + 1) }}
                         disabled={loading}
                         className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-[var(--sera-line)] rounded-lg bg-white hover:bg-[var(--sera-mist)] transition-colors disabled:opacity-50 text-[var(--sera-ink)]"
                     >
@@ -482,6 +941,30 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 </div>
             )}
 
+            <div className="flex gap-1 border-b border-[var(--sera-line)]">
+                {([
+                    ['orders', 'Orders'],
+                    ['messages', 'Outdoor messages'],
+                    ['subscribers', 'Newsletter subscribers'],
+                    ['customer_messages', 'Customer emails & SMS'],
+                ] as const).map(([value, label]) => (
+                    <button
+                        key={value}
+                        onClick={() => setTab(value)}
+                        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                            tab === value
+                                ? 'border-[var(--sera-orange,#f97316)] text-[var(--sera-ink)]'
+                                : 'border-transparent text-[var(--sera-muted)] hover:text-[var(--sera-ink)]'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {tab === 'messages' ? <OutdoorMessagesPanel /> : tab === 'subscribers' ? <div className="space-y-6"><OutdoorNewsletterComposer /><OutdoorSubscribersPanel /></div> : tab === 'customer_messages' ? <OutdoorCustomerMessagesPanel /> : (<>
+            <StoreOpenRequestsPanel refreshKey={requestsRefresh} onOpenOrder={(order) => setSelectedOrder(order)} />
+
             {/* Filters */}
             <div className="sera-sc-panel p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 {/* Search */}
@@ -491,7 +974,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search by order ref, name, or email…"
+                        placeholder="Search by order ref, name, email or tracking no…"
                         className="w-full pl-9 pr-3 py-2 text-sm border border-[var(--sera-line)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 transition-shadow"
                     />
                 </div>
@@ -499,6 +982,16 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 {/* Status filter */}
                 <div className="flex items-center gap-1.5">
                     <Filter className="h-3.5 w-3.5 text-[var(--sera-muted)]" />
+                    <select
+                        value={channelFilter}
+                        onChange={(e) => { setChannelFilter(e.target.value); setPage(1) }}
+                        aria-label="Store"
+                        className="text-sm border border-[var(--sera-line)] rounded-lg bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 text-[var(--sera-ink)]"
+                    >
+                        {CHANNEL_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
                     <select
                         value={statusFilter}
                         onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
@@ -544,7 +1037,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground/40 mb-3" />
                     <h3 className="font-semibold text-foreground mb-1">No orders found</h3>
                     <p className="text-sm text-muted-foreground mb-1">
-                        {statusFilter !== 'all' || debouncedSearch
+                        {statusFilter !== 'all' || channelFilter !== 'all' || debouncedSearch
                             ? 'Try adjusting your filters or search query.'
                             : 'Orders from your online storefront will appear here.'}
                     </p>
@@ -573,9 +1066,12 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                         onClick={() => setSelectedOrder(order)}
                                     >
                                         <td className="px-4 py-3">
-                                            <span className="font-mono text-xs font-medium text-foreground">
-                                                {order.order_ref}
-                                            </span>
+                                            <div className="flex flex-col items-start gap-1">
+                                                <span className="font-mono text-xs font-medium text-foreground">
+                                                    {order.order_ref}
+                                                </span>
+                                                {renderChannelBadge(order)}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="min-w-0">
@@ -588,7 +1084,10 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            {renderStatusBadge(order.status)}
+                                            <div className="flex flex-col items-start gap-1">
+                                                {renderStatusBadge(order.status)}
+                                                {openRequestsByOrder[order.id] ? <OrderRequestBadge status={openRequestsByOrder[order.id]} /> : null}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <span className="font-semibold text-foreground">
@@ -630,14 +1129,18 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                             >
                                 <div className="flex items-start justify-between gap-2 mb-2">
                                     <div>
-                                        <span className="font-mono text-xs font-medium text-foreground">
+                                        <span className="flex items-center gap-1.5 font-mono text-xs font-medium text-foreground">
                                             {order.order_ref}
+                                            {renderChannelBadge(order)}
                                         </span>
                                         <p className="text-sm font-medium text-foreground mt-1">
                                             {order.customer_name}
                                         </p>
                                     </div>
-                                    {renderStatusBadge(order.status)}
+                                    <div className="flex flex-col items-end gap-1">
+                                        {renderStatusBadge(order.status)}
+                                        {openRequestsByOrder[order.id] ? <OrderRequestBadge status={openRequestsByOrder[order.id]} /> : null}
+                                    </div>
                                 </div>
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                     <span>{formatShortDate(order.created_at)}</span>
@@ -676,8 +1179,10 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 </>
             )}
 
+            </>)}
+
             {/* Order detail slide-over panel */}
-            {renderOrderDetail()}
+            {selectedOrder && typeof document !== 'undefined' ? createPortal(renderOrderDetail(), document.body) : null}
         </div>
     )
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getDisallowedSelfServiceFields,
   pickSelfServiceProfileFields,
+  SELF_SERVICE_AUTH_METADATA_FIELDS,
 } from './user-profile-updates'
 
 describe('self-service profile update policy', () => {
@@ -45,5 +46,13 @@ describe('self-service profile update policy', () => {
   it('drops unknown and protected fields when selecting the self-service payload', () => {
     expect(pickSelfServiceProfileFields({ full_name: 'Liza', role_code: 'SA', unknown: true }))
       .toEqual({ full_name: 'Liza' })
+  })
+
+  it('allows storefront Auth metadata only when the endpoint declares it', () => {
+    const input = { outdoor_phone: '+60123456789', outdoor_location: 'Shah Alam' }
+
+    expect(getDisallowedSelfServiceFields(input, SELF_SERVICE_AUTH_METADATA_FIELDS)).toEqual([])
+    expect(getDisallowedSelfServiceFields(input)).toEqual(['outdoor_phone', 'outdoor_location'])
+    expect(pickSelfServiceProfileFields(input)).toEqual({})
   })
 })

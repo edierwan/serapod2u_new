@@ -7,6 +7,9 @@ const organizationUpdate = vi.fn()
 const bankRuleMaybeSingle = vi.fn()
 const createServerClientMock = vi.fn()
 const createAdminClientMock = vi.fn()
+const authGetUserById = vi.fn()
+const authUpdateUserById = vi.fn()
+const authListUsers = vi.fn()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: createServerClientMock,
@@ -59,11 +62,19 @@ describe('POST /api/user/update-profile', () => {
       },
       auth: {
         admin: {
-          updateUserById: vi.fn(),
-          listUsers: vi.fn(),
+          getUserById: authGetUserById,
+          updateUserById: authUpdateUserById,
+          listUsers: authListUsers,
         },
       },
     })
+
+    authGetUserById.mockResolvedValue({
+      data: { user: { user_metadata: { existing_key: 'keep-me' } } },
+      error: null,
+    })
+    authUpdateUserById.mockResolvedValue({ data: { user: {} }, error: null })
+    authListUsers.mockResolvedValue({ data: { users: [] }, error: null })
   })
 
   it('writes personal bank fields to users and does not touch organizations for shop-linked users', async () => {
@@ -130,6 +141,66 @@ describe('POST /api/user/update-profile', () => {
 
     expect(response.status).toBe(200)
     expect(userUpdateEq).toHaveBeenCalledWith('id', 'user-1')
+  })
+
+  it('updates outdoor_phone as storefront metadata and preserves unrelated metadata', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+
+    const { POST } = await import('./route')
+    const response = await POST(new Request('http://localhost/api/user/update-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1', outdoor_phone: '012-345 6789' }),
+    }) as any)
+
+    expect(response.status).toBe(200)
+    expect(authUpdateUserById).toHaveBeenCalledWith('user-1', {
+      user_metadata: {
+        existing_key: 'keep-me',
+        outdoor_phone: '+60123456789',
+      },
+    })
+    expect(usersUpdate).not.toHaveBeenCalled()
+  })
+
+  it('updates outdoor_location as storefront metadata and preserves unrelated metadata', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+
+    const { POST } = await import('./route')
+    const response = await POST(new Request('http://localhost/api/user/update-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1', outdoor_location: '  Shah Alam  ' }),
+    }) as any)
+
+    expect(response.status).toBe(200)
+    expect(authUpdateUserById).toHaveBeenCalledWith('user-1', {
+      user_metadata: {
+        existing_key: 'keep-me',
+        outdoor_location: 'Shah Alam',
+      },
+    })
+    expect(usersUpdate).not.toHaveBeenCalled()
+  })
+
+  it('preserves existing Auth metadata when updating full_name', async () => {
+    authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+    userUpdateEq.mockResolvedValue({ error: null })
+
+    const { POST } = await import('./route')
+    const response = await POST(new Request('http://localhost/api/user/update-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1', full_name: 'Updated Name' }),
+    }) as any)
+
+    expect(response.status).toBe(200)
+    expect(authUpdateUserById).toHaveBeenCalledWith('user-1', {
+      user_metadata: {
+        existing_key: 'keep-me',
+        full_name: 'Updated Name',
+      },
+    })
   })
 
   it.each([

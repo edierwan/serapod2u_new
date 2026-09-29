@@ -243,7 +243,7 @@ export default function PaymentGatewaySettingsView({ organizationId, canEdit }: 
         <div>
           <h2 className="text-lg font-bold text-gray-900">Payment Gateway</h2>
           <p className="text-xs text-gray-500">
-            Configure a payment provider for storefront checkout. Only one can be active at a time.
+            Save Stripe, Billplz, or ToyyibPay. The active one is the default; checkout can offer every saved gateway.
           </p>
         </div>
       </div>
