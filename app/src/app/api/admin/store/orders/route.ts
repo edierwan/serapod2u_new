@@ -7,6 +7,7 @@ import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events
 import { getGatewayByProvider } from '@/lib/payments'
 import { refundStripeCheckout } from '@/lib/payments/stripe-refund'
 import { returnOrderStock, stockMoveNote, takeOrderStock, undoOrderStock } from '@/lib/storefront/order-stock'
+import { notifyOutdoorOrderStatus, outdoorOrderEmailFor } from '@/lib/outdoor/order-status-email'
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -332,6 +333,20 @@ export async function PUT(request: NextRequest) {
             actorLabel: await staffActorLabel(adminClient, admin.userId),
             note: [shippingNote, refundNote, stockNote, stockWarning, 'Changed in dashboard'].filter(Boolean).join(' — '),
         })
+
+        const moneyReturned = Boolean(refundNote)
+        await notifyOutdoorOrderStatus(
+            id,
+            outdoorOrderEmailFor({
+                salesChannel: current.sales_channel,
+                fromStatus: current.status,
+                toStatus: status,
+                fromTracking: current.shipping_tracking_no,
+                toTracking: data.shipping_tracking_no,
+                moneyReturned,
+            }),
+            { moneyReturned },
+        )
 
         return NextResponse.json(stockWarning ? { order: data, warning: stockWarning } : { order: data })
     } catch (err) {

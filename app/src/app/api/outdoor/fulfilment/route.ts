@@ -12,6 +12,7 @@ import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
 import { hasShipmentDetails, OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
 import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
 import { stockMoveNote, takeOrderStock, undoOrderStock } from '@/lib/storefront/order-stock'
+import { notifyOutdoorOrderStatus, outdoorOrderEmailFor } from '@/lib/outdoor/order-status-email'
 
 /** Marked shipped, but no delivery, courier shipment or tracking number was ever recorded. */
 function isShippedWithoutShipment(order: any) {
@@ -114,6 +115,18 @@ export async function PUT(request: NextRequest) {
       })
     }
 
+    const emailCustomer = (toStatus: string, saved: any) =>
+      notifyOutdoorOrderStatus(
+        id,
+        outdoorOrderEmailFor({
+          salesChannel: order.sales_channel,
+          fromStatus: order.status,
+          toStatus,
+          fromTracking: order.shipping_tracking_no,
+          toTracking: saved?.shipping_tracking_no,
+        }),
+      )
+
     // A paid order leaving the warehouse takes its stock; re-saving an already
     // shipped order (e.g. adding a missed tracking number) does not take it twice.
     const takeStockForShipping = async (): Promise<{ ok: true; note: string | null } | { ok: false; response: NextResponse }> => {
@@ -162,6 +175,7 @@ export async function PUT(request: NextRequest) {
         throw error
       }
       await logStaff('shipped', ['Out for delivery with our own team', note, stock.note].filter(Boolean).join(' — '))
+      await emailCustomer('shipped', data)
       return NextResponse.json({ order: data })
     }
 
@@ -193,6 +207,7 @@ export async function PUT(request: NextRequest) {
         throw error
       }
       await logStaff('shipped', [`Sent by ${courier || 'courier'} · tracking ${tracking}`, stock.note].filter(Boolean).join(' — '))
+      await emailCustomer('shipped', data)
       return NextResponse.json({ order: data })
     }
 
@@ -274,6 +289,7 @@ export async function PUT(request: NextRequest) {
         throw error
       }
       await logStaff('shipped', [`Booked with EasyParcel ${submitted.orderNo || ''}`.trim(), stock.note].filter(Boolean).join(' — '))
+      await emailCustomer('shipped', data)
       return NextResponse.json({
         order: data,
         easyparcel: { orderNo: submitted.orderNo, awb: submitted.awb },
@@ -292,6 +308,7 @@ export async function PUT(request: NextRequest) {
         .single()
       if (error) throw error
       await logStaff('delivered', 'Marked delivered (Outdoor staff desk)')
+      await emailCustomer('delivered', data)
       return NextResponse.json({ order: data })
     }
 

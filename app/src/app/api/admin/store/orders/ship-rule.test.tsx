@@ -9,6 +9,12 @@ const maybeSingle = vi.fn()
 const updateCalls: Array<{ payload: any; filters: string[] }> = []
 const stockRpc = vi.fn()
 
+const notifyStatus = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/outdoor/order-status-email', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/outdoor/order-status-email')>()),
+  notifyOutdoorOrderStatus: notifyStatus,
+}))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({ auth: { getUser: authGetUser } })),
 }))
@@ -58,6 +64,7 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
     const response = await PUT(put({ id: ORDER_ID, status: 'shipped', trackingNo: 'JT123' }))
     expect(response.status).toBe(400)
     expect(updateCalls).toHaveLength(0)
+    expect(notifyStatus).not.toHaveBeenCalled()
   })
 
   it('saves the courier and tracking number when shipping an Outdoor order', async () => {
@@ -68,6 +75,7 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
     const response = await PUT(put({ id: ORDER_ID, status: 'shipped', trackingNo: ' JT123 ', courierName: 'J&T Express' }))
     expect(response.status).toBe(200)
     expect(updateCalls[0].payload).toEqual({ status: 'shipped', shipping_tracking_no: 'JT123', shipping_courier_name: 'J&T Express' })
+    expect(notifyStatus).toHaveBeenCalledWith(ORDER_ID, 'shipped', { moneyReturned: false })
   })
 
   it('keeps classic store orders shippable without tracking', async () => {
@@ -78,6 +86,7 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
     const response = await PUT(put({ id: ORDER_ID, status: 'shipped' }))
     expect(response.status).toBe(200)
     expect(updateCalls[0].payload).toEqual({ status: 'shipped' })
+    expect(notifyStatus).toHaveBeenCalledWith(ORDER_ID, null, { moneyReturned: false })
   })
 
   it('ships an Outdoor order with our own delivery team, without a tracking number', async () => {
@@ -154,5 +163,6 @@ describe('PUT /api/admin/store/orders — shipping an order', () => {
     const response = await PUT(put({ id: ORDER_ID, status: 'delivered', trackingNo: 'ignored', deliveryMethod: 'own' }))
     expect(response.status).toBe(200)
     expect(updateCalls[0].payload).toEqual({ status: 'delivered' })
+    expect(notifyStatus).toHaveBeenCalledWith(ORDER_ID, 'delivered', { moneyReturned: false })
   })
 })

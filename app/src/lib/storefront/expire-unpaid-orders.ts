@@ -3,6 +3,7 @@ import { getGatewayByProvider } from '@/lib/payments'
 import { applyStorefrontPaymentResult } from '@/lib/payments/apply-callback'
 import { EXPIRING_CHANNELS, UNPAID_ORDER_TTL_HOURS, unpaidOrderCutoff } from './unpaid-order-deadline'
 import { recordOrderEvent } from './order-events'
+import { notifyOutdoorOrderStatus } from '@/lib/outdoor/order-status-email'
 
 export { isUnpaidOrderExpired, UNPAID_ORDER_TTL_HOURS } from './unpaid-order-deadline'
 
@@ -77,6 +78,7 @@ async function cancelOrder(admin: any, order: ExpiringOrder): Promise<UnpaidExpi
       actorLabel: 'Automatic',
       note: `Not paid within ${UNPAID_ORDER_TTL_HOURS} hours — payment page closed`,
     })
+    await notifyOutdoorOrderStatus(order.id, 'auto_cancelled')
   }
   return {
     orderRef: order.order_ref,

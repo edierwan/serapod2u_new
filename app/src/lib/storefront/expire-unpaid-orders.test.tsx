@@ -4,6 +4,11 @@ const state = vi.hoisted(() => ({
   orders: [] as any[],
   updates: [] as Array<{ values: any; filters: Array<[string, ...any[]]> }>,
   applied: [] as any[],
+  emails: [] as Array<[string, string]>,
+}))
+
+vi.mock('@/lib/outdoor/order-status-email', () => ({
+  notifyOutdoorOrderStatus: async (orderId: string, kind: string) => { state.emails.push([orderId, kind]) },
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -90,6 +95,7 @@ describe('expireUnpaidOrders', () => {
     state.orders = [order]
     state.updates = []
     state.applied = []
+    state.emails = []
   })
   afterEach(() => vi.unstubAllGlobals())
 
@@ -105,6 +111,7 @@ describe('expireUnpaidOrders', () => {
     expect(state.updates[0].values).toEqual({ status: 'cancelled' })
     expect(state.updates[0].filters).toContainEqual(['eq', 'status', 'pending_payment'])
     expect(state.updates[0].filters).toContainEqual(['eq', 'payment_ref', 'cs_test_1'])
+    expect(state.emails).toEqual([['o1', 'auto_cancelled']])
   })
 
   it('marks the order paid instead when Stripe already took the money', async () => {
@@ -113,6 +120,7 @@ describe('expireUnpaidOrders', () => {
     expect(result.outcome).toBe('paid')
     expect(state.applied).toEqual([{ verified: true, orderId: 'o1', paid: true, transactionId: 'cs_test_1' }])
     expect(state.updates).toHaveLength(0)
+    expect(state.emails).toEqual([])
   })
 
   it('catches a payment that completes while the page is being closed', async () => {

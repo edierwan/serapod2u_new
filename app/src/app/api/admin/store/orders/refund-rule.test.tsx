@@ -20,6 +20,12 @@ vi.mock('@/lib/payments', () => ({
 
 vi.mock('@/lib/payments/stripe-refund', () => ({ refundStripeCheckout }))
 
+const notifyStatus = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/outdoor/order-status-email', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/outdoor/order-status-email')>()),
+  notifyOutdoorOrderStatus: notifyStatus,
+}))
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(() => ({
     rpc: stockRpc,
@@ -107,6 +113,7 @@ describe('PUT /api/admin/store/orders — refunds', () => {
     expect(response.status).toBe(200)
     expect(refundStripeCheckout).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'cs_live_abc', secretKey: 'sk_test_x', orderRef: 'ORD-1' }))
     expect(updateCalls[0].payload).toEqual({ status: 'refunded' })
+    expect(notifyStatus).toHaveBeenCalledWith(ORDER_ID, 'refunded', { moneyReturned: true })
   })
 
   it('also refunds when a paid order is cancelled', async () => {
@@ -118,6 +125,7 @@ describe('PUT /api/admin/store/orders — refunds', () => {
     const response = await PUT(put({ id: ORDER_ID, status: 'cancelled' }))
     expect(response.status).toBe(200)
     expect(refundStripeCheckout).toHaveBeenCalledTimes(1)
+    expect(notifyStatus).toHaveBeenCalledWith(ORDER_ID, 'cancelled', { moneyReturned: true })
   })
 
   it('leaves the order untouched when Stripe refuses the refund', async () => {
@@ -128,6 +136,7 @@ describe('PUT /api/admin/store/orders — refunds', () => {
     expect(response.status).toBe(502)
     expect((await response.json()).error).toContain('Insufficient balance')
     expect(updateCalls).toHaveLength(0)
+    expect(notifyStatus).not.toHaveBeenCalled()
   })
 
   it('asks staff to confirm a refund made outside the dashboard for other payment methods', async () => {
@@ -153,5 +162,6 @@ describe('PUT /api/admin/store/orders — refunds', () => {
     const response = await PUT(put({ id: ORDER_ID, status: 'cancelled' }))
     expect(response.status).toBe(200)
     expect(refundStripeCheckout).not.toHaveBeenCalled()
+    expect(notifyStatus).toHaveBeenCalledWith(ORDER_ID, 'cancelled', { moneyReturned: false })
   })
 })
