@@ -41,7 +41,10 @@ function absoluteImage(url: string, origin: string) {
   return getStorageUrl(trimmed) || trimmed
 }
 
+/** Links in Outdoor emails and SMS. OUTDOOR_SITE_URL is read at runtime, so production can point them at the Outdoor host. */
 export function outdoorPublicOrigin() {
+  const site = String(process.env.OUTDOOR_SITE_URL || '').trim().replace(/\/+$/, '')
+  if (/^https?:\/\//i.test(site)) return site
   const env = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
   if (env && !/0\.0\.0\.0|127\.0\.0\.1/i.test(env)) return env
   return 'https://stg.serapod2u.com'

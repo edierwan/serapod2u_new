@@ -1,9 +1,29 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   outdoorAuthHref,
+  outdoorPublicOrigin,
   outdoorReturnPathFromLocation,
   sanitizeOutdoorReturnPath,
 } from '@/lib/outdoor/auth-return'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+})
+
+describe('outdoor public origin in the browser', () => {
+  it('keeps social sign-in on outdoor.serapod2u.com when the shopper is there', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://serapod2u.com')
+    vi.stubGlobal('window', { location: { hostname: 'outdoor.serapod2u.com', origin: 'https://outdoor.serapod2u.com' } })
+    expect(outdoorPublicOrigin()).toBe('https://outdoor.serapod2u.com')
+  })
+
+  it('uses the app address on the main domain, as before', () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://serapod2u.com')
+    vi.stubGlobal('window', { location: { hostname: 'serapod2u.com', origin: 'https://serapod2u.com' } })
+    expect(outdoorPublicOrigin()).toBe('https://serapod2u.com')
+  })
+})
 
 describe('outdoor auth return path', () => {
   it('keeps the shopper on the Outdoor page they left', () => {
