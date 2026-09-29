@@ -5,6 +5,7 @@ import { outdoorPublicOrigin } from '@/lib/outdoor/auth-return'
 import { escapeHtml, money, OUTDOOR_FROM, shell } from '@/lib/outdoor/order-email-shell'
 import { OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
 import { UNPAID_ORDER_TTL_HOURS } from '@/lib/storefront/unpaid-order-deadline'
+import { notifyOutdoorOrderSms } from '@/lib/outdoor/order-sms'
 
 export type OutdoorOrderEmailKind = 'shipped' | 'tracking_updated' | 'delivered' | 'auto_cancelled' | 'cancelled' | 'refunded'
 
@@ -134,13 +135,23 @@ export function buildOutdoorOrderStatusEmail(
   }
 }
 
-/** Emails the customer about an Outdoor order change. Never throws: the change itself is already saved. */
+/**
+ * Emails the customer about an Outdoor order change; a delivery is also sent by SMS.
+ * Never throws: the change itself is already saved.
+ */
 export async function notifyOutdoorOrderStatus(
   orderId: string,
   kind: OutdoorOrderEmailKind | null,
   options: OutdoorOrderEmailOptions = {},
 ) {
   if (!kind) return
+  await Promise.all([
+    emailOutdoorOrderStatus(orderId, kind, options),
+    kind === 'delivered' ? notifyOutdoorOrderSms(orderId, 'delivered') : null,
+  ])
+}
+
+async function emailOutdoorOrderStatus(orderId: string, kind: OutdoorOrderEmailKind, options: OutdoorOrderEmailOptions) {
   try {
     const admin: any = createAdminClient()
     const { data: order } = await admin

@@ -53,12 +53,23 @@ export async function applyStorefrontPaymentResult(result: PaymentCallbackResult
     })
   }
   if (updated && result.paid) {
-    try {
-      const { notifyOutdoorOrderPaid } = await import('@/lib/outdoor/order-paid-email')
-      await notifyOutdoorOrderPaid(result.orderId)
-    } catch (err) {
-      console.error('[payments] order paid email failed:', err)
-    }
+    const email = (async () => {
+      try {
+        const { notifyOutdoorOrderPaid } = await import('@/lib/outdoor/order-paid-email')
+        await notifyOutdoorOrderPaid(result.orderId)
+      } catch (err) {
+        console.error('[payments] order paid email failed:', err)
+      }
+    })()
+    const sms = (async () => {
+      try {
+        const { notifyOutdoorOrderSms } = await import('@/lib/outdoor/order-sms')
+        await notifyOutdoorOrderSms(result.orderId, 'paid')
+      } catch (err) {
+        console.error('[payments] order paid SMS failed:', err)
+      }
+    })()
+    await Promise.all([email, sms])
   }
   if (!updated && result.paid) {
     const { data: current } = await supabase

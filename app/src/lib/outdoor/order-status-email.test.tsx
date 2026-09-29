@@ -4,6 +4,11 @@ const state = vi.hoisted(() => ({
   order: null as any,
   sent: [] as any[],
   sendResult: { success: true } as any,
+  sms: [] as Array<[string, string]>,
+}))
+
+vi.mock('@/lib/outdoor/order-sms', () => ({
+  notifyOutdoorOrderSms: async (orderId: string, kind: string) => { state.sms.push([orderId, kind]) },
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -114,7 +119,25 @@ describe('notifyOutdoorOrderStatus', () => {
   beforeEach(() => {
     state.order = { ...order, sales_channel: 'outdoor', customer_email: 'aina@example.com' }
     state.sent = []
+    state.sms = []
     state.sendResult = { success: true }
+  })
+
+  it('also texts the customer when the order is delivered, even without an email address', async () => {
+    await notifyOutdoorOrderStatus('o1', 'delivered')
+    state.order = { ...state.order, customer_email: null }
+    await notifyOutdoorOrderStatus('o2', 'delivered')
+    expect(state.sms).toEqual([['o1', 'delivered'], ['o2', 'delivered']])
+    expect(state.sent).toHaveLength(1)
+  })
+
+  it('sends no SMS for the other order emails', async () => {
+    for (const kind of ['shipped', 'tracking_updated', 'auto_cancelled', 'cancelled', 'refunded'] as const) {
+      await notifyOutdoorOrderStatus('o1', kind)
+    }
+    await notifyOutdoorOrderStatus('o1', null)
+    expect(state.sms).toEqual([])
+    expect(state.sent).toHaveLength(5)
   })
 
   it('sends from SeraOutdoor to the checkout email', async () => {
