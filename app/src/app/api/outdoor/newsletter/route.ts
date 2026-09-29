@@ -6,6 +6,7 @@ import {
   sendOutdoorSubscriberEmail,
   stampOutdoorUnsubscribe,
 } from '@/lib/outdoor/notify-subscribers'
+import { outdoorMessageChannels } from '@/lib/outdoor/customer-messages'
 
 function normalizeEmail(value: unknown) {
   return String(value || '').trim().toLowerCase()
@@ -107,7 +108,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const welcomed = await sendWelcome(admin, email, token)
+    const welcomeOn = (await outdoorMessageChannels(admin, 'newsletter_welcome')).email
+    const welcomed = welcomeOn ? await sendWelcome(admin, email, token) : false
     return NextResponse.json({ ok: true, welcomed })
   } catch (err) {
     console.error('[outdoor/newsletter]', err)

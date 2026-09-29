@@ -61,7 +61,7 @@ describe('/api/admin/store/customer-messages', () => {
   it('lists every event with its channels', async () => {
     const data = await (await GET()).json()
     expect(data.ready).toBe(true)
-    expect(data.events).toHaveLength(7)
+    expect(data.events).toHaveLength(8)
   })
 
   it('saves one event and returns the new list', async () => {
@@ -104,6 +104,14 @@ describe('/api/admin/store/customer-messages', () => {
       expect(res.status).toBe(400)
     }
     expect(state.upserts).toEqual([])
+  })
+
+  it('switches the welcome email, which has no SMS', async () => {
+    expect((await put({ event: 'newsletter_welcome', email: false, sms: false })).status).toBe(200)
+    expect(state.upserts[0][0]).toMatchObject({ event_code: 'newsletter_welcome', email_enabled: false, sms_enabled: false })
+    expect((await put({ event: 'newsletter_welcome', email: true, sms: true })).status).toBe(400)
+    expect((await put({ event: 'newsletter_welcome', email: true, sms: false, smsTemplate: 'Hi' })).status).toBe(400)
+    expect(state.upserts).toHaveLength(1)
   })
 
   it('explains that saving waits for the migration', async () => {

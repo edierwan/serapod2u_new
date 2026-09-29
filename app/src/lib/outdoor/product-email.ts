@@ -158,7 +158,7 @@ export function buildOutdoorWelcomeEmail() {
   const subject = 'You are subscribed to SeraOutdoor'
   const text = [
     'Welcome to SeraOutdoor.',
-    'We will email you when a product is added or updated.',
+    'We will email you about new products, new colours and Outdoor events.',
     shopUrl,
     '{{unsubscribe_url}}',
   ].join('\n')
@@ -184,7 +184,7 @@ export function buildOutdoorWelcomeEmail() {
           <tr>
             <td style="padding:28px 28px 8px;">
               <h1 style="margin:0;font-family:Georgia, 'Times New Roman', serif;font-size:32px;line-height:1.15;font-weight:500;color:${INK};">Welcome</h1>
-              <p style="margin:14px 0 0;font-family:Arial, Helvetica, sans-serif;font-size:15px;line-height:1.6;color:${INK};">You are subscribed. We will email you when a product is added or updated.</p>
+              <p style="margin:14px 0 0;font-family:Arial, Helvetica, sans-serif;font-size:15px;line-height:1.6;color:${INK};">You are subscribed. We will email you about new products, new colours and Outdoor events.</p>
             </td>
           </tr>
           <tr>

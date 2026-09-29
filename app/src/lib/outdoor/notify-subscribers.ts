@@ -46,33 +46,61 @@ export async function countOutdoorSubscribers(admin: any) {
   return 0
 }
 
+const SUBSCRIBER_PAGE = 500
+const SUBSCRIBER_MAX_PAGES = 200
+
+type SubscriberRow = { id?: string; email_normalized?: string; unsubscribe_token?: string }
+
+/** Every row, page by page; any failed page fails the whole load so nobody is silently skipped. */
+async function loadAllSubscribers(page: (from: number, to: number) => PromiseLike<{ data: SubscriberRow[] | null; error: any }>) {
+  const rows: SubscriberRow[] = []
+  for (let index = 0; index < SUBSCRIBER_MAX_PAGES; index += 1) {
+    const from = index * SUBSCRIBER_PAGE
+    const { data, error } = await page(from, from + SUBSCRIBER_PAGE - 1)
+    if (error) return { rows, error }
+    rows.push(...(data || []))
+    if (!data || data.length < SUBSCRIBER_PAGE) break
+  }
+  return { rows, error: null }
+}
+
 export async function emailOutdoorSubscribers(
   admin: any,
   input: { subject: string; text: string; html: string },
 ) {
-  let rows: Array<{ id?: string; email_normalized?: string; unsubscribe_token?: string }> | null = null
+  let rows: SubscriberRow[] | null = null
   let canUnsubscribe = true
-  const filtered = await admin
-    .from('outdoor_newsletter_subscribers')
-    .select('id, email_normalized, unsubscribe_token')
-    .eq('status', 'active')
-    .limit(500)
+  const filtered = await loadAllSubscribers((from, to) =>
+    admin
+      .from('outdoor_newsletter_subscribers')
+      .select('id, email_normalized, unsubscribe_token')
+      .eq('status', 'active')
+      .order('id')
+      .range(from, to),
+  )
 
   if (filtered.error && /status|unsubscribe_token/i.test(filtered.error.message || '')) {
     canUnsubscribe = false
-    const legacy = await admin
-      .from('outdoor_newsletter_subscribers')
-      .select('email_normalized')
-      .limit(500)
+    const legacy = await loadAllSubscribers((from, to) =>
+      admin.from('outdoor_newsletter_subscribers').select('email_normalized').order('id').range(from, to),
+    )
     if (legacy.error) {
       return { ok: false as const, error: 'Could not load subscribers.', emailed: 0, subscribers: 0 }
     }
-    rows = legacy.data
+    rows = legacy.rows
   } else if (filtered.error) {
     return { ok: false as const, error: 'Could not load subscribers.', emailed: 0, subscribers: 0 }
   } else {
-    rows = filtered.data
+    rows = filtered.rows
   }
+
+  const seen = new Set<string>()
+  rows = rows.filter((row) => {
+    const key = String(row.email_normalized || '').trim()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 
   const orgId = await resolveOrgForEmail(admin)
   const list = rows || []

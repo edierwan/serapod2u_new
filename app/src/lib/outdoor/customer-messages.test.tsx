@@ -5,6 +5,7 @@ import {
   isOutdoorMessageEvent,
   listOutdoorMessageSettings,
   outdoorMessageChannels,
+  outdoorEventHasSms,
   outdoorMessageSettings,
   outdoorSmsParts,
   outdoorSmsSampleValues,
@@ -42,7 +43,14 @@ describe('defaultOutdoorMessageChannels', () => {
     }
   })
 
+  it('sends the welcome email by default, never by SMS', () => {
+    expect(defaultOutdoorMessageChannels('newsletter_welcome')).toEqual({ email: true, sms: false })
+    expect(outdoorEventHasSms('newsletter_welcome')).toBe(false)
+    expect(outdoorEventHasSms('paid')).toBe(true)
+  })
+
   it('only knows the listed events', () => {
+    expect(isOutdoorMessageEvent('newsletter_welcome')).toBe(true)
     expect(isOutdoorMessageEvent('shipped')).toBe(true)
     expect(isOutdoorMessageEvent('processing')).toBe(false)
     expect(isOutdoorMessageEvent(undefined)).toBe(false)
@@ -61,6 +69,11 @@ describe('outdoorMessageSettings', () => {
     expect(await outdoorMessageChannels(fakeAdmin({ error: { code: 'PGRST205' } }), 'shipped')).toEqual({ email: true, sms: false })
     expect(await outdoorMessageChannels(fakeAdmin(new Error('network')), 'delivered')).toEqual({ email: true, sms: true })
     expect(await outdoorMessageSettings(fakeAdmin({ data: { email_enabled: 'no', sms_template: '   ' } }), 'refunded')).toEqual({ email: true, sms: false, smsTemplate: null })
+  })
+
+  it('never turns on SMS for an email-only event, whatever is stored', async () => {
+    const admin = fakeAdmin({ data: { email_enabled: false, sms_enabled: true, sms_template: 'Hi' } })
+    expect(await outdoorMessageSettings(admin, 'newsletter_welcome')).toEqual({ email: false, sms: false, smsTemplate: null })
   })
 
   it('keeps the saved switches while the SMS text column does not exist yet', async () => {
@@ -116,7 +129,8 @@ describe('listOutdoorMessageSettings', () => {
   it('lists every event, saved choices over defaults', async () => {
     const list = await listOutdoorMessageSettings(fakeAdmin({ data: [{ event_code: 'shipped', email_enabled: false, sms_enabled: true, sms_template: 'Hi', updated_at: 't' }] }))
     expect(list).toMatchObject({ ready: true, templatesReady: true })
-    expect(list.events.map((e) => e.event)).toEqual(['paid', 'shipped', 'tracking_updated', 'delivered', 'auto_cancelled', 'cancelled', 'refunded'])
+    expect(list.events.map((e) => e.event)).toEqual(['paid', 'shipped', 'tracking_updated', 'delivered', 'auto_cancelled', 'cancelled', 'refunded', 'newsletter_welcome'])
+    expect(list.events[7]).toMatchObject({ group: 'newsletter', smsAvailable: false, email: true, sms: false })
     expect(list.events[1]).toMatchObject({ email: false, sms: true, smsTemplate: 'Hi', defaults: { email: true, sms: false }, updated_at: 't' })
     expect(list.events[0]).toMatchObject({ email: true, sms: true, smsTemplate: null, updated_at: null })
     expect(list.events[0].defaults.smsTemplate).toBe(defaultOutdoorSmsTemplate('paid'))

@@ -11,10 +11,13 @@ import {
   outdoorSmsTemplateProblem,
   renderOutdoorSms,
   type OutdoorMessageEvent,
+  type OutdoorMessageGroup,
 } from '@/lib/outdoor/customer-messages'
 
 interface EventSetting {
   event: OutdoorMessageEvent
+  group?: OutdoorMessageGroup
+  smsAvailable?: boolean
   label: string
   when: string
   email: boolean
@@ -26,6 +29,19 @@ interface EventSetting {
 type Channel = 'email' | 'sms'
 
 const API = '/api/admin/store/customer-messages'
+
+const SECTIONS: Array<{ group: OutdoorMessageGroup; title: string; note: string }> = [
+  {
+    group: 'order',
+    title: 'Order messages',
+    note: 'The Outdoor inbox always gets its own notice when an order is paid.',
+  },
+  {
+    group: 'newsletter',
+    title: 'Newsletter',
+    note: 'Updates you publish from the Outdoor admin office always go to every active subscriber.',
+  },
+]
 
 function SmsEditor({
   setting,
@@ -121,7 +137,7 @@ function SmsEditor({
   )
 }
 
-/** Which Outdoor order events email or text the customer, and what the SMS says. */
+/** Which Outdoor events email or text the customer, and what the SMS says. */
 export function OutdoorCustomerMessagesPanel() {
   const [events, setEvents] = useState<EventSetting[]>([])
   const [ready, setReady] = useState(true)
@@ -188,7 +204,7 @@ export function OutdoorCustomerMessagesPanel() {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Choose which order events send the Outdoor customer an email or an SMS, and what each SMS says. SMS only goes to Malaysian mobile numbers and needs an active SMS provider in Notification Providers.
+        Choose which events send Outdoor customers an email or an SMS, and what each SMS says. SMS only goes to Malaysian mobile numbers and needs an active SMS provider in Notification Providers.
       </p>
       {!ready ? (
         <p className="sera-sc-panel p-3 text-sm text-amber-700">
@@ -200,76 +216,88 @@ export function OutdoorCustomerMessagesPanel() {
         </p>
       ) : null}
       {error ? <p className="sera-sc-panel p-3 text-sm text-destructive">{error}</p> : null}
-      {events.length === 0 ? null : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-accent/30">
-                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Event</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground w-24">Email</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground w-24">SMS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {events.map(setting => (
-                <Fragment key={setting.event}>
-                  <tr>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{setting.label}</p>
-                      <p className="text-xs text-muted-foreground">{setting.when}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditing(editing === setting.event ? null : setting.event)}
-                          className="text-xs font-medium text-[var(--sera-orange,#f97316)] hover:underline"
-                        >
-                          {editing === setting.event ? 'Close SMS text' : 'Edit SMS text'}
-                        </button>
-                        {setting.smsTemplate ? (
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">Custom SMS text</span>
-                        ) : null}
-                      </div>
-                    </td>
-                    {(['email', 'sms'] as const).map(channel => (
-                      <td key={channel} className="px-4 py-3 text-center align-top">
-                        <div className="inline-flex flex-col items-center gap-1">
-                          <Switch
-                            checked={setting[channel]}
-                            disabled={!ready || saving !== null}
-                            onCheckedChange={value => save(setting, { [channel]: value } as Partial<Record<Channel, boolean>>, `${setting.event}:${channel}`)}
-                            aria-label={`${channel === 'email' ? 'Email' : 'SMS'} for ${setting.label}`}
-                          />
-                          {setting[channel] !== setting.defaults[channel] ? (
-                            <span className="text-[10px] text-muted-foreground">Changed</span>
-                          ) : null}
-                        </div>
-                      </td>
-                    ))}
+      {SECTIONS.map(section => {
+        const list = events.filter(setting => (setting.group ?? 'order') === section.group)
+        return list.length === 0 ? null : (
+          <section key={section.group} className="space-y-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">{section.title}</h3>
+              <p className="text-xs text-muted-foreground">{section.note}</p>
+            </div>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-accent/30">
+                    <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Event</th>
+                    <th className="px-4 py-2.5 font-medium text-muted-foreground w-24">Email</th>
+                    <th className="px-4 py-2.5 font-medium text-muted-foreground w-24">SMS</th>
                   </tr>
-                  {editing === setting.event ? (
-                    <tr className="bg-accent/10">
-                      <td colSpan={3} className="px-4 py-4">
-                        <SmsEditor
-                          setting={setting}
-                          enabled={ready && templatesReady}
-                          saving={saving === `${setting.event}:template`}
-                          onCancel={() => setEditing(null)}
-                          onSave={async text => {
-                            if (await save(setting, { smsTemplate: text }, `${setting.event}:template`)) setEditing(null)
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <p className="text-xs text-muted-foreground">
-        The Outdoor inbox always gets its own notice when an order is paid.
-      </p>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {list.map(setting => (
+                    <Fragment key={setting.event}>
+                      <tr>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-foreground">{setting.label}</p>
+                          <p className="text-xs text-muted-foreground">{setting.when}</p>
+                          {setting.smsAvailable === false ? null : (
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditing(editing === setting.event ? null : setting.event)}
+                                className="text-xs font-medium text-[var(--sera-orange,#f97316)] hover:underline"
+                              >
+                                {editing === setting.event ? 'Close SMS text' : 'Edit SMS text'}
+                              </button>
+                              {setting.smsTemplate ? (
+                                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">Custom SMS text</span>
+                              ) : null}
+                            </div>
+                          )}
+                        </td>
+                        {(['email', 'sms'] as const).map(channel => channel === 'sms' && setting.smsAvailable === false ? (
+                          <td key={channel} className="px-4 py-3 text-center align-top text-xs text-muted-foreground">
+                            <span aria-label="Email only">—</span>
+                          </td>
+                        ) : (
+                          <td key={channel} className="px-4 py-3 text-center align-top">
+                            <div className="inline-flex flex-col items-center gap-1">
+                              <Switch
+                                checked={setting[channel]}
+                                disabled={!ready || saving !== null}
+                                onCheckedChange={value => save(setting, { [channel]: value } as Partial<Record<Channel, boolean>>, `${setting.event}:${channel}`)}
+                                aria-label={`${channel === 'email' ? 'Email' : 'SMS'} for ${setting.label}`}
+                              />
+                              {setting[channel] !== setting.defaults[channel] ? (
+                                <span className="text-[10px] text-muted-foreground">Changed</span>
+                              ) : null}
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                      {editing === setting.event ? (
+                        <tr className="bg-accent/10">
+                          <td colSpan={3} className="px-4 py-4">
+                            <SmsEditor
+                              setting={setting}
+                              enabled={ready && templatesReady}
+                              saving={saving === `${setting.event}:template`}
+                              onCancel={() => setEditing(null)}
+                              onSave={async text => {
+                                if (await save(setting, { smsTemplate: text }, `${setting.event}:template`)) setEditing(null)
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )
+      })}
     </div>
   )
 }

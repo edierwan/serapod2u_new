@@ -1,6 +1,6 @@
 import { UNPAID_ORDER_TTL_HOURS } from '@/lib/storefront/unpaid-order-deadline'
 
-export type OutdoorMessageEvent =
+export type OutdoorOrderMessageEvent =
   | 'paid'
   | 'shipped'
   | 'tracking_updated'
@@ -8,6 +8,10 @@ export type OutdoorMessageEvent =
   | 'auto_cancelled'
   | 'cancelled'
   | 'refunded'
+
+export type OutdoorMessageEvent = OutdoorOrderMessageEvent | 'newsletter_welcome'
+
+export type OutdoorMessageGroup = 'order' | 'newsletter'
 
 export interface OutdoorMessageChannels {
   email: boolean
@@ -21,8 +25,11 @@ export interface OutdoorMessageSettings extends OutdoorMessageChannels {
 
 export interface OutdoorMessageEventInfo extends OutdoorMessageChannels {
   event: OutdoorMessageEvent
+  group: OutdoorMessageGroup
   label: string
   when: string
+  /** Whether this event can be sent by SMS at all. */
+  smsAvailable: boolean
   smsTemplate: string
 }
 
@@ -32,59 +39,83 @@ export const OUTDOOR_MESSAGE_SETTINGS_TABLE = 'outdoor_customer_message_settings
 export const OUTDOOR_MESSAGE_EVENTS: OutdoorMessageEventInfo[] = [
   {
     event: 'paid',
+    group: 'order',
     label: 'Payment received',
     when: 'The customer pays for an order.',
     email: true,
     sms: true,
+    smsAvailable: true,
     smsTemplate: '[SeraOutdoor] Payment received for order {{order_no}}. Thank you! Track it here: {{track_url}}',
   },
   {
     event: 'shipped',
+    group: 'order',
     label: 'Order shipped',
     when: 'The order leaves the warehouse, by courier or our own team.',
     email: true,
     sms: false,
+    smsAvailable: true,
     smsTemplate: '[SeraOutdoor] Order {{order_no}} is on its way. Track it here: {{track_url}}',
   },
   {
     event: 'tracking_updated',
+    group: 'order',
     label: 'New tracking number',
     when: 'The tracking number changes on an order that already shipped.',
     email: true,
     sms: false,
+    smsAvailable: true,
     smsTemplate: '[SeraOutdoor] New tracking number for order {{order_no}}. See it here: {{track_url}}',
   },
   {
     event: 'delivered',
+    group: 'order',
     label: 'Order delivered',
     when: 'The order is marked as delivered.',
     email: true,
     sms: true,
+    smsAvailable: true,
     smsTemplate: '[SeraOutdoor] Order {{order_no}} has been delivered. Enjoy! Any problem? Report it from your order: {{account_url}}',
   },
   {
     event: 'auto_cancelled',
+    group: 'order',
     label: 'Cancelled, not paid',
     when: 'The order is cancelled because it was not paid in time.',
     email: true,
     sms: false,
+    smsAvailable: true,
     smsTemplate: `[SeraOutdoor] Order {{order_no}} was cancelled because payment was not completed within ${UNPAID_ORDER_TTL_HOURS} hours. You have not been charged.`,
   },
   {
     event: 'cancelled',
+    group: 'order',
     label: 'Cancelled by staff',
     when: 'Staff cancel the order.',
     email: true,
     sms: false,
+    smsAvailable: true,
     smsTemplate: '[SeraOutdoor] Order {{order_no}} has been cancelled. {{payment_note}} Questions? {{contact_url}}',
   },
   {
     event: 'refunded',
+    group: 'order',
     label: 'Refunded',
     when: 'The money goes back to the customer.',
     email: true,
     sms: false,
+    smsAvailable: true,
     smsTemplate: '[SeraOutdoor] Your refund for order {{order_no}} is on its way. It can take 5-10 business days to show.',
+  },
+  {
+    event: 'newsletter_welcome',
+    group: 'newsletter',
+    label: 'Welcome email',
+    when: 'Someone subscribes to Outdoor updates. Sent once per sign-up.',
+    email: true,
+    sms: false,
+    smsAvailable: false,
+    smsTemplate: '',
   },
 ]
 
@@ -169,13 +200,18 @@ export function outdoorSmsParts(text: string): { plain: boolean; parts: number }
   return { plain, parts: length === 0 ? 0 : length <= single ? 1 : Math.ceil(length / multi) }
 }
 
+export function outdoorEventHasSms(event: OutdoorMessageEvent) {
+  return OUTDOOR_MESSAGE_EVENTS.find((item) => item.event === event)?.smsAvailable ?? false
+}
+
 function withDefaults(event: OutdoorMessageEvent, row: any): OutdoorMessageSettings {
   const defaults = defaultOutdoorMessageChannels(event)
+  const hasSms = outdoorEventHasSms(event)
   const template = typeof row?.sms_template === 'string' ? row.sms_template.trim() : ''
   return {
     email: typeof row?.email_enabled === 'boolean' ? row.email_enabled : defaults.email,
-    sms: typeof row?.sms_enabled === 'boolean' ? row.sms_enabled : defaults.sms,
-    smsTemplate: template || null,
+    sms: hasSms && (typeof row?.sms_enabled === 'boolean' ? row.sms_enabled : defaults.sms),
+    smsTemplate: (hasSms && template) || null,
   }
 }
 
@@ -223,8 +259,10 @@ export async function listOutdoorMessageSettings(admin: any) {
       const current = withDefaults(info.event, rows.get(info.event))
       return {
         event: info.event,
+        group: info.group,
         label: info.label,
         when: info.when,
+        smsAvailable: info.smsAvailable,
         email: current.email,
         sms: current.sms,
         smsTemplate: current.smsTemplate,

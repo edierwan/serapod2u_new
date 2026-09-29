@@ -8,6 +8,8 @@ vi.mock('@/lib/outdoor/auth-return', () => ({ outdoorPublicOrigin: () => 'https:
 
 const events = OUTDOOR_MESSAGE_EVENTS.map((info) => ({
   event: info.event,
+  group: info.group,
+  smsAvailable: info.smsAvailable,
   label: info.label,
   when: info.when,
   email: info.email,
@@ -54,6 +56,18 @@ describe('OutdoorCustomerMessagesPanel', () => {
     expect(await screen.findByText('Order shipped')).toBeTruthy()
     expect(screen.getByRole('switch', { name: 'SMS for Payment received' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('switch', { name: 'SMS for Order shipped' }).getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('shows the welcome email under Newsletter, with no SMS switch or SMS text', async () => {
+    const calls = mockFetch(echo)
+    render(<OutdoorCustomerMessagesPanel />)
+    expect(await screen.findByText('Newsletter')).toBeTruthy()
+    expect(screen.getByText('Order messages')).toBeTruthy()
+    expect(screen.queryByRole('switch', { name: 'SMS for Welcome email' })).toBeNull()
+    expect(screen.getByLabelText('Email only')).toBeTruthy()
+    expect(screen.getAllByText('Edit SMS text')).toHaveLength(7)
+    fireEvent.click(screen.getByRole('switch', { name: 'Email for Welcome email' }))
+    await waitFor(() => expect(calls).toEqual([{ event: 'newsletter_welcome', email: false, sms: false }]))
   })
 
   it('saves a switch for one event without touching its SMS text', async () => {

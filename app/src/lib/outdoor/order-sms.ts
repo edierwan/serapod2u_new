@@ -7,11 +7,11 @@ import {
   defaultOutdoorSmsTemplate,
   outdoorMessageSettings,
   renderOutdoorSms,
-  type OutdoorMessageEvent,
+  type OutdoorOrderMessageEvent,
   type OutdoorSmsValues,
 } from '@/lib/outdoor/customer-messages'
 
-export type OutdoorOrderSmsKind = OutdoorMessageEvent
+export type OutdoorOrderSmsKind = OutdoorOrderMessageEvent
 
 export interface OutdoorOrderSmsOptions {
   /** The customer's money was returned as part of this change. */

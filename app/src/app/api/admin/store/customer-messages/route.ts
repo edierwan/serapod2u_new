@@ -8,6 +8,7 @@ import {
   isOutdoorMessageEvent,
   listOutdoorMessageSettings,
   OUTDOOR_MESSAGE_SETTINGS_TABLE,
+  outdoorEventHasSms,
   outdoorSmsTemplateProblem,
 } from '@/lib/outdoor/customer-messages'
 
@@ -54,6 +55,11 @@ export async function PUT(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     if (!isOutdoorMessageEvent(body.event) || typeof body.email !== 'boolean' || typeof body.sms !== 'boolean') {
       return NextResponse.json({ error: 'Choose an event and whether it sends an email and an SMS.' }, { status: 400 })
+    }
+
+    const hasSms = outdoorEventHasSms(body.event)
+    if (!hasSms && (body.sms || 'smsTemplate' in body)) {
+      return NextResponse.json({ error: 'This message is sent by email only.' }, { status: 400 })
     }
 
     const row: Record<string, unknown> = {
