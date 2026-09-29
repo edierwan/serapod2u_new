@@ -127,6 +127,15 @@
   flex: 0 0 100%;
 }
 
+.sera-outdoor .out-thumb-strip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sera-outdoor .out-thumb-strip::-webkit-scrollbar {
+  display: none;
+}
+
 .sera-outdoor .out-carousel-slide img,
 .sera-outdoor .out-carousel-slide video {
   transition: filter 0.3s ease, opacity 0.3s ease;

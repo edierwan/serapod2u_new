@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
 
@@ -102,6 +102,71 @@ describe('OutdoorProductDetailClient', () => {
     fireEvent.click(screen.getByRole('listitem', { name: 'Show photo 2' }))
     expect(screen.getByText('SKU: SER-GREEN')).toBeTruthy()
     expect(screen.getByText('2/3')).toBeTruthy()
+  })
+
+  describe('slideshow', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('moves to the next photo on its own and loops back to the first', () => {
+      vi.useFakeTimers()
+      render(<OutdoorProductDetailClient product={mat} />)
+      expect(screen.getByText('1/3')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(screen.getByText('2/3')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(screen.getByText('3/3')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(screen.getByText('1/3')).toBeTruthy()
+    })
+
+    it('never changes the chosen variant or the cart photo', () => {
+      vi.useFakeTimers()
+      render(<OutdoorProductDetailClient product={mat} />)
+      act(() => { vi.advanceTimersByTime(10000) })
+      expect(screen.getByText('3/3')).toBeTruthy()
+      expect(screen.getByText('SKU: SER-GREEN')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Dark Green', pressed: true })).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }))
+      expect(addItem).toHaveBeenCalledWith(expect.objectContaining({ variantId: 'green', imageUrl: 'https://cdn/green.png' }), 1)
+    })
+
+    it('waits longer after the customer picks a photo', () => {
+      vi.useFakeTimers()
+      render(<OutdoorProductDetailClient product={mat} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+      expect(screen.getByText('2/3')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(6000) })
+      expect(screen.getByText('2/3')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(screen.getByText('3/3')).toBeTruthy()
+    })
+
+    it('stands still for one photo', () => {
+      vi.useFakeTimers()
+      render(<OutdoorProductDetailClient product={{ ...mat, variants: [mat.variants[1]] }} />)
+      act(() => { vi.advanceTimersByTime(20000) })
+      expect(screen.queryByText(/\/1$/)).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Next photo' })).toBeNull()
+    })
+  })
+
+  it('shows round arrows only when there are more thumbnails than fit', () => {
+    const proto = HTMLElement.prototype
+    Object.defineProperty(proto, 'scrollWidth', { configurable: true, get: () => 600 })
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 300 })
+    try {
+      render(<OutdoorProductDetailClient product={mat} />)
+      expect(screen.getByRole('button', { name: 'More photos' })).toBeTruthy()
+      expect(screen.queryByRole('button', { name: 'Earlier photos' })).toBeNull()
+    } finally {
+      delete (proto as any).scrollWidth
+      delete (proto as any).clientWidth
+    }
+    cleanup()
+    render(<OutdoorProductDetailClient product={mat} />)
+    expect(screen.queryByRole('button', { name: 'More photos' })).toBeNull()
   })
 
   it('adds the variant on screen to the cart', () => {

@@ -12,6 +12,18 @@ import { outdoorGallery, outdoorSpecRows } from '@/lib/outdoor/product-page'
 import OutdoorPhoto, { OutdoorSoldOutTag } from '@/components/outdoor/OutdoorPhoto'
 import { useRouter } from 'next/navigation'
 
+const AUTOPLAY_PHOTO_MS = 4500
+const AUTOPLAY_VIDEO_MS = 9000
+const AUTOPLAY_HOLD_AFTER_TOUCH_MS = 9000
+
+function isKeyboardFocus(target: EventTarget) {
+  try {
+    return target instanceof HTMLElement && target.matches(':focus-visible')
+  } catch {
+    return false
+  }
+}
+
 function formatPrice(price: number | null) {
   if (price == null || !isSellablePrice(price)) return 'Currently unavailable'
   return `RM ${price.toFixed(2)}`
@@ -95,6 +107,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   }, [defaultVariant, gallery])
 
   const chooseVariant = (variant: StorefrontVariant) => {
+    holdAutoplayUntil.current = Date.now() + AUTOPLAY_HOLD_AFTER_TOUCH_MS
     setSelected(variant)
     const first = firstFrameFor(variant.id)
     if (first >= 0) setFrame(first)
@@ -113,6 +126,16 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
 
   const touchStartX = useRef(0)
 
+  // The slideshow only moves the photo; the customer's chosen variant, price and cart item stay put.
+  const holdAutoplayUntil = useRef(0)
+  const galleryHovered = useRef(false)
+  const galleryFocused = useRef(false)
+  const lastSlideChange = useRef(Date.now())
+  const userShowFrame = (next: number) => {
+    holdAutoplayUntil.current = Date.now() + AUTOPLAY_HOLD_AFTER_TOUCH_MS
+    showFrame(next)
+  }
+
   const spec = outdoorSpecLabel(product.product_name, selected?.variant_name, selected?.attributes)
   const specRows = outdoorSpecRows(selected?.attributes)
   const selectedHex =
@@ -121,6 +144,60 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
 
   const slideIndex = gallery.length > 0 ? Math.min(frame, gallery.length - 1) : 0
   const activeItem = gallery[slideIndex]
+  const activeIsVideo = activeItem?.type === 'video'
+
+  useEffect(() => {
+    lastSlideChange.current = Date.now()
+  }, [slideIndex])
+
+  useEffect(() => {
+    if (gallery.length < 2) return
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      if (galleryHovered.current || galleryFocused.current || document.hidden || now < holdAutoplayUntil.current) return
+      if (now - lastSlideChange.current < (activeIsVideo ? AUTOPLAY_VIDEO_MS : AUTOPLAY_PHOTO_MS)) return
+      lastSlideChange.current = now
+      setFrame((current) => (Math.min(current, gallery.length - 1) + 1) % gallery.length)
+    }, 400)
+    return () => window.clearInterval(timer)
+  }, [gallery.length, activeIsVideo])
+
+  const thumbStrip = useRef<HTMLDivElement>(null)
+  const [thumbScroll, setThumbScroll] = useState({ left: false, right: false })
+  const updateThumbScroll = () => {
+    const strip = thumbStrip.current
+    if (!strip) return
+    const left = strip.scrollLeft > 2
+    const right = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 2
+    setThumbScroll((prev) => (prev.left === left && prev.right === right ? prev : { left, right }))
+  }
+  const scrollThumbs = (direction: 1 | -1) => {
+    const strip = thumbStrip.current
+    if (strip && typeof strip.scrollBy === 'function') strip.scrollBy({ left: direction * Math.max(strip.clientWidth * 0.8, 72), behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    const strip = thumbStrip.current
+    if (!strip) return
+    updateThumbScroll()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(updateThumbScroll)
+    observer.observe(strip)
+    return () => observer.disconnect()
+  }, [gallery.length])
+
+  useEffect(() => {
+    const strip = thumbStrip.current
+    const thumb = strip?.children[slideIndex] as HTMLElement | undefined
+    if (!strip || !thumb || typeof strip.scrollTo !== 'function') return
+    const pad = 8
+    if (thumb.offsetLeft < strip.scrollLeft + pad) {
+      strip.scrollTo({ left: Math.max(0, thumb.offsetLeft - pad), behavior: 'smooth' })
+    } else if (thumb.offsetLeft + thumb.offsetWidth > strip.scrollLeft + strip.clientWidth - pad) {
+      strip.scrollTo({ left: thumb.offsetLeft + thumb.offsetWidth - strip.clientWidth + pad, behavior: 'smooth' })
+    }
+  }, [slideIndex])
   const selectedImage = gallery.find((item) => item.type === 'image' && selected && item.variantIds.includes(selected.id))?.url
   const displayImage =
     (activeItem?.type === 'image' ? activeItem.url : null) ||
@@ -149,7 +226,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           productName: product.product_name,
           variantName: selected.variant_name,
           price: productPrice,
-          imageUrl: displayImage || selected.image_url || null,
+          imageUrl: selectedImage || displayImage || selected.image_url || null,
         }
       : null
 
@@ -181,7 +258,12 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   return (
     <div className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-8">
       <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
-        <div>
+        <div
+          onPointerEnter={(event) => { galleryHovered.current = event.pointerType === 'mouse' }}
+          onPointerLeave={() => { galleryHovered.current = false }}
+          onFocus={(event) => { galleryFocused.current = isKeyboardFocus(event.target) }}
+          onBlur={() => { galleryFocused.current = false }}
+        >
           <div
             className={`relative aspect-square overflow-hidden rounded-[1.6rem] bg-white${soldOut ? ' out-sold-out' : ''}`}
             onTouchStart={(event) => {
@@ -189,7 +271,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
             }}
             onTouchEnd={(event) => {
               const distance = touchStartX.current - event.changedTouches[0].screenX
-              if (Math.abs(distance) >= 50) showFrame(slideIndex + (distance > 0 ? 1 : -1))
+              if (Math.abs(distance) >= 50) userShowFrame(slideIndex + (distance > 0 ? 1 : -1))
             }}
           >
             {soldOut ? <OutdoorSoldOutTag large /> : null}
@@ -224,7 +306,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
               <>
                 <button
                   type="button"
-                  onClick={() => showFrame(slideIndex - 1)}
+                  onClick={() => userShowFrame(slideIndex - 1)}
                   className="absolute left-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[var(--out-bark)] shadow-sm backdrop-blur transition hover:bg-white"
                   aria-label="Previous photo"
                 >
@@ -232,7 +314,7 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
                 </button>
                 <button
                   type="button"
-                  onClick={() => showFrame(slideIndex + 1)}
+                  onClick={() => userShowFrame(slideIndex + 1)}
                   className="absolute right-3 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-[var(--out-bark)] shadow-sm backdrop-blur transition hover:bg-white"
                   aria-label="Next photo"
                 >
@@ -246,41 +328,64 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
           </div>
 
           {gallery.length > 1 ? (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="list" aria-label="Product photos">
-              {gallery.map((item, index) => (
-                <button
-                  key={`${index}-${item.url}`}
-                  type="button"
-                  role="listitem"
-                  aria-label={`Show photo ${index + 1}`}
-                  aria-current={index === slideIndex}
-                  onClick={() => showFrame(index)}
-                  className={`relative h-16 w-16 flex-none overflow-hidden rounded-xl border-2 bg-white transition ${
-                    index === slideIndex ? 'border-[var(--out-bark)]' : 'border-transparent opacity-80 hover:opacity-100'
-                  }`}
-                >
-                  {item.type === 'video' ? (
-                    <>
-                      {item.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
-                      )}
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/20">
-                        <Play className="h-4 w-4 fill-white text-white" />
-                      </span>
-                    </>
-                  ) : (
-                    <OutdoorPhoto
-                      src={item.url}
-                      backup={outdoorStaticImage(product.product_name, swatchHexFor(item.variantIds[0]))}
-                      alt=""
-                      className="h-full w-full object-contain p-1"
-                    />
-                  )}
-                </button>
-              ))}
+            <div className="relative mt-3">
+              <div
+                ref={thumbStrip}
+                onScroll={updateThumbScroll}
+                className="out-thumb-strip relative flex gap-2 overflow-x-auto py-0.5"
+                role="list"
+                aria-label="Product photos"
+              >
+                {gallery.map((item, index) => (
+                  <button
+                    key={`${index}-${item.url}`}
+                    type="button"
+                    role="listitem"
+                    aria-label={`Show photo ${index + 1}`}
+                    aria-current={index === slideIndex}
+                    onClick={() => userShowFrame(index)}
+                    className={`relative h-16 w-16 flex-none overflow-hidden rounded-xl border-2 bg-white transition ${
+                      index === slideIndex ? 'border-[var(--out-bark)]' : 'border-transparent opacity-80 hover:opacity-100'
+                    }`}
+                  >
+                    {item.type === 'video' ? (
+                      <>
+                        {item.thumbnailUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <video src={item.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                        )}
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+                          <Play className="h-4 w-4 fill-white text-white" />
+                        </span>
+                      </>
+                    ) : (
+                      <OutdoorPhoto
+                        src={item.url}
+                        backup={outdoorStaticImage(product.product_name, swatchHexFor(item.variantIds[0]))}
+                        alt=""
+                        className="h-full w-full object-contain p-1"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+              {(['left', 'right'] as const).map((side) =>
+                thumbScroll[side] ? (
+                  <button
+                    key={side}
+                    type="button"
+                    onClick={() => scrollThumbs(side === 'left' ? -1 : 1)}
+                    className={`absolute top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[var(--out-bark)] shadow-md ring-1 ring-black/5 backdrop-blur transition hover:scale-105 hover:bg-white ${
+                      side === 'left' ? '-left-2' : '-right-2'
+                    }`}
+                    aria-label={side === 'left' ? 'Earlier photos' : 'More photos'}
+                  >
+                    {side === 'left' ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  </button>
+                ) : null,
+              )}
             </div>
           ) : null}
         </div>
