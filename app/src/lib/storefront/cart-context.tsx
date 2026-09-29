@@ -1,6 +1,7 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -27,19 +28,107 @@ interface CartContextType {
 
 const CART_STORAGE_KEY = 'serapod2u_cart'
 
+export function accountCartKey(storageKey: string, userId: string | null) {
+  return userId ? `${storageKey}:user:${userId}` : storageKey
+}
+
+/** Guest items are added on top of the account bag; the same variant keeps the larger quantity. */
+export function mergeCartItems(account: CartItem[], guest: CartItem[]) {
+  const merged = account.map((item) => ({ ...item }))
+  for (const item of guest) {
+    const existing = merged.find((i) => i.variantId === item.variantId)
+    if (existing) existing.quantity = Math.max(existing.quantity, item.quantity)
+    else merged.push({ ...item })
+  }
+  return merged
+}
+
+function readStoredCart(key: string): CartItem[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 // ── Context ──────────────────────────────────────────────────────
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({
+  children,
+  storageKey = CART_STORAGE_KEY,
+  accountScoped = false,
+}: {
+  children: ReactNode
+  /** Override for isolated storefronts (e.g. Outdoor). Default keeps Serapod2U Store behaviour. */
+  storageKey?: string
+  /** Keep a separate bag per signed-in account; the guest bag moves into the account on sign-in. */
+  accountScoped?: boolean
+}) {
   const [items, setItems] = useState<CartItem[]>([])
   const [mounted, setMounted] = useState(false)
+  const [scopedKey, setScopedKey] = useState<string | null>(null)
+  const scopedKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!accountScoped) return
+    const supabase = createClient()
+    let cancelled = false
+
+    const switchTo = (userId: string | null) => {
+      if (cancelled) return
+      const key = accountCartKey(storageKey, userId)
+      if (scopedKeyRef.current === key) return
+      let next = readStoredCart(key)
+      if (userId) {
+        const guest = readStoredCart(storageKey)
+        if (guest.length > 0) {
+          next = mergeCartItems(next, guest)
+          try {
+            localStorage.setItem(key, JSON.stringify(next))
+            localStorage.removeItem(storageKey)
+          } catch {
+            // Storage full / private mode
+          }
+        }
+      }
+      const firstLoad = scopedKeyRef.current === null
+      scopedKeyRef.current = key
+      setItems((current) => (firstLoad && current.length > 0 ? mergeCartItems(next, current) : next))
+      setScopedKey(key)
+    }
+
+    void supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => switchTo(session?.user?.id ?? null))
+      .catch(() => switchTo(null))
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => switchTo(session?.user?.id ?? null))
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
+  }, [accountScoped, storageKey])
+
+  useEffect(() => {
+    if (!accountScoped || !scopedKey) return
+    try {
+      localStorage.setItem(scopedKey, JSON.stringify(items))
+    } catch {
+      // Storage full / private mode
+    }
+  }, [accountScoped, items, scopedKey])
 
   // Load cart from localStorage on mount
   useEffect(() => {
+    if (accountScoped) return
     setMounted(true)
     try {
-      const stored = localStorage.getItem(CART_STORAGE_KEY)
+      const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed)) {
@@ -49,13 +138,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore parse errors
     }
-  }, [])
+  }, [accountScoped, storageKey])
 
   // Persist cart to localStorage on change
   useEffect(() => {
-    if (!mounted) return
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
-  }, [items, mounted])
+    if (accountScoped || !mounted) return
+    localStorage.setItem(storageKey, JSON.stringify(items))
+  }, [accountScoped, items, mounted, storageKey])
 
   const addItem = useCallback((item: Omit<CartItem, 'quantity'>, qty = 1) => {
     setItems(prev => {

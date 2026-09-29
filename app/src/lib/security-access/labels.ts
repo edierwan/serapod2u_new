@@ -14,7 +14,7 @@ const ACTIONS: Record<string, string> = {
   approve: 'Approve', dispatch: 'Dispatch', receive: 'Receive', assign: 'Assign', manage: 'Manage',
   prepare: 'Prepare', release: 'Release', adjust: 'Adjust', perform: 'Perform', acknowledge: 'Acknowledge',
   use: 'Use', cancel: 'Cancel', reverse: 'Reverse', grant: 'Grant', reset: 'Reset', view_sensitive: 'View sensitive',
-  destructive: 'Run destructive',
+  destructive: 'Run destructive', disable: 'Suspend / Disable', delete: 'Archive',
 }
 
 const MODULE_GROUPS: Record<string, string> = {
@@ -49,12 +49,15 @@ const RESOURCES: Record<string, { noun: string; group: string; resourceType: str
   'inventory.opening_balance': { noun: 'Opening Balance', group: 'Inventory', resourceType: 'opening_balance' },
   'inventory.stock_config': { noun: 'Stock Configurations', group: 'Inventory', resourceType: 'stock_config' },
   'platform.data': { noun: 'Data Maintenance', group: 'Platform', resourceType: 'data_maintenance' },
+  'platform.user': { noun: 'User Profiles', group: 'Identity', resourceType: 'identity' },
+  'platform.identity': { noun: 'Identities', group: 'Identity', resourceType: 'identity' },
+  'platform.identity_access': { noun: 'Identity Access (role / organization)', group: 'Identity', resourceType: 'identity' },
 }
 
 export const PERMISSION_GROUP_ORDER = [
   'Finance', 'HR & Payroll', 'Supply Chain', 'Stock Count', 'Stock Transfer', 'Inventory', 'Warehouse', 'Manufacturing',
   'QR & Traceability', 'Product Catalogue', 'RoadTour', 'Customer & Growth', 'E-Commerce', 'Reporting', 'Platform',
-  'Security Administration',
+  'Identity', 'Security Administration',
 ]
 
 const titleCase = (value: string) => value.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())

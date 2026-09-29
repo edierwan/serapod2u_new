@@ -1,0 +1,320 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOutdoorStaff } from '@/lib/outdoor/staff'
+import {
+  easyParcelSubmitOrder,
+  easyParcelWalletBalance,
+  isEasyParcelBookingEnabled,
+  isEasyParcelConfigured,
+} from '@/lib/shipping/easyparcel'
+import { isEasyParcelAppConfigured } from '@/lib/shipping/easyparcel-oauth'
+import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
+import { hasShipmentDetails, OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
+import { recordOrderEvent, staffActorLabel } from '@/lib/storefront/order-events'
+import { stockMoveNote, takeOrderStock, undoOrderStock } from '@/lib/storefront/order-stock'
+import { notifyOutdoorOrderStatus, outdoorOrderEmailFor } from '@/lib/outdoor/order-status-email'
+
+/** Marked shipped, but no delivery, courier shipment or tracking number was ever recorded. */
+function isShippedWithoutShipment(order: any) {
+  return order?.status === 'shipped' && !hasShipmentDetails(order || {})
+}
+
+/** GET — Outdoor paid/processing orders for fulfilment desk. */
+export async function GET(request: NextRequest) {
+  try {
+    const staff = await requireOutdoorStaff()
+    if (!staff) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get('status') || 'fulfilment'
+    const search = searchParams.get('search') || ''
+
+    const admin: any = createAdminClient()
+    let query = admin
+      .from('storefront_orders')
+      .select(
+        'id, order_ref, status, customer_name, customer_email, customer_phone, shipping_address, total_amount, shipping_amount, shipping_courier_name, shipping_service_id, shipping_tracking_no, easyparcel_order_no, paid_at, created_at, storefront_order_items(id, product_name, variant_name, quantity, unit_price, subtotal)',
+      )
+      .eq('sales_channel', 'outdoor')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (status === 'fulfilment') {
+      query = query.in('status', ['paid', 'processing', 'shipped'])
+    } else if (status !== 'all') {
+      query = query.eq('status', status)
+    }
+
+    if (search) {
+      query = query.or(
+        `order_ref.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,shipping_tracking_no.ilike.%${search}%`,
+      )
+    }
+
+    const { data, error } = await query
+    if (error) {
+      console.error('[outdoor/fulfilment] GET', error)
+      return NextResponse.json({ error: 'Failed to load orders' }, { status: 500 })
+    }
+
+    const connected = await isEasyParcelConfigured()
+    const booking = isEasyParcelBookingEnabled()
+    const wallet = connected && booking ? await easyParcelWalletBalance() : null
+    return NextResponse.json({
+      orders: data || [],
+      easyParcelConfigured: connected,
+      easyParcelBooking: booking,
+      easyParcelNeedsConnect: isEasyParcelAppConfigured() && !connected,
+      easyParcelCredit: wallet?.ok ? wallet.balance + wallet.freeCredit : null,
+    })
+  } catch (err) {
+    console.error('[outdoor/fulfilment] GET', err)
+    return NextResponse.json({ error: 'Failed to load orders' }, { status: 500 })
+  }
+}
+
+/** PUT — update status and/or create EasyParcel shipment. */
+export async function PUT(request: NextRequest) {
+  try {
+    const staff = await requireOutdoorStaff()
+    if (!staff) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const id = String(body.id || '').trim()
+    const action = String(body.action || '').trim()
+    if (!id || !action) {
+      return NextResponse.json({ error: 'Missing id or action' }, { status: 400 })
+    }
+
+    const admin: any = createAdminClient()
+    const { data: order, error: loadErr } = await admin
+      .from('storefront_orders')
+      .select('*, storefront_order_items(product_name, quantity)')
+      .eq('id', id)
+      .eq('sales_channel', 'outdoor')
+      .single()
+
+    if (loadErr || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+
+    const logStaff = async (toStatus: string, note?: string) => {
+      await recordOrderEvent(admin, {
+        orderId: id,
+        eventType: toStatus === order.status ? 'shipping_updated' : 'status_changed',
+        fromStatus: order.status,
+        toStatus,
+        actorType: 'staff',
+        actorId: staff.userId,
+        actorLabel: await staffActorLabel(admin, staff.userId),
+        note,
+      })
+    }
+
+    const emailCustomer = (toStatus: string, saved: any) =>
+      notifyOutdoorOrderStatus(
+        id,
+        outdoorOrderEmailFor({
+          salesChannel: order.sales_channel,
+          fromStatus: order.status,
+          toStatus,
+          fromTracking: order.shipping_tracking_no,
+          toTracking: saved?.shipping_tracking_no,
+        }),
+      )
+
+    // A paid order leaving the warehouse takes its stock; re-saving an already
+    // shipped order (e.g. adding a missed tracking number) does not take it twice.
+    const takeStockForShipping = async (): Promise<{ ok: true; note: string | null } | { ok: false; response: NextResponse }> => {
+      if (!['paid', 'processing'].includes(order.status)) return { ok: true, note: null }
+      const taken = await takeOrderStock(admin, id, staff.userId)
+      if (!taken.ok) {
+        return { ok: false, response: NextResponse.json({ error: `${taken.error} The order was not changed.` }, { status: 409 }) }
+      }
+      return { ok: true, note: stockMoveNote(taken, 'out') }
+    }
+
+    if (action === 'mark_processing') {
+      if (!['paid', 'processing'].includes(order.status)) {
+        return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
+      }
+      const { data, error } = await admin
+        .from('storefront_orders')
+        .update({ status: 'processing' })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (error) throw error
+      await logStaff('processing', 'Packing started (Outdoor staff desk)')
+      return NextResponse.json({ order: data })
+    }
+
+    if (action === 'ship_own') {
+      if (!['paid', 'processing'].includes(order.status) && !isShippedWithoutShipment(order)) {
+        return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
+      }
+      const note = String(body.note || '').trim().slice(0, 200)
+      const stock = await takeStockForShipping()
+      if (!stock.ok) return stock.response
+      const { data, error } = await admin
+        .from('storefront_orders')
+        .update({
+          status: 'shipped',
+          shipping_courier_name: OWN_DELIVERY_LABEL,
+          shipping_tracking_no: null,
+        })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (error) {
+        if (stock.note) await undoOrderStock(admin, id, staff.userId)
+        throw error
+      }
+      await logStaff('shipped', ['Out for delivery with our own team', note, stock.note].filter(Boolean).join(' — '))
+      await emailCustomer('shipped', data)
+      return NextResponse.json({ order: data })
+    }
+
+    if (action === 'set_tracking') {
+      const tracking = String(body.trackingNo || '').trim().slice(0, 60)
+      // A checkout-time EasyParcel quote only names the courier when EasyParcel books it.
+      const fallbackCourier = isEasyParcelBookingEnabled() ? order.shipping_courier_name : ''
+      const courier = String(body.courierName || fallbackCourier || '').trim().slice(0, 120)
+      if (!tracking) {
+        return NextResponse.json({ error: 'Tracking number required' }, { status: 400 })
+      }
+      if (!['paid', 'processing', 'shipped'].includes(order.status)) {
+        return NextResponse.json({ error: 'Order must be paid first' }, { status: 400 })
+      }
+      const stock = await takeStockForShipping()
+      if (!stock.ok) return stock.response
+      const { data, error } = await admin
+        .from('storefront_orders')
+        .update({
+          status: 'shipped',
+          shipping_tracking_no: tracking,
+          shipping_courier_name: courier || null,
+        })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (error) {
+        if (stock.note) await undoOrderStock(admin, id, staff.userId)
+        throw error
+      }
+      await logStaff('shipped', [`Sent by ${courier || 'courier'} · tracking ${tracking}`, stock.note].filter(Boolean).join(' — '))
+      await emailCustomer('shipped', data)
+      return NextResponse.json({ order: data })
+    }
+
+    if (action === 'ship_easyparcel') {
+      if (!isEasyParcelBookingEnabled()) {
+        return NextResponse.json(
+          { error: 'We deliver Outdoor orders ourselves. Add the courier and tracking number instead.' },
+          { status: 400 },
+        )
+      }
+      if (!['paid', 'processing'].includes(order.status) && !isShippedWithoutShipment(order)) {
+        return NextResponse.json({ error: 'Order must be paid or processing' }, { status: 400 })
+      }
+      const serviceId = String(body.serviceId || order.shipping_service_id || '').trim()
+      if (!serviceId) {
+        return NextResponse.json({ error: 'No shipping service selected on this order' }, { status: 400 })
+      }
+      if (!(await isEasyParcelConfigured())) {
+        return NextResponse.json({ error: 'EasyParcel is not configured' }, { status: 503 })
+      }
+      const wallet = await easyParcelWalletBalance()
+      if (wallet.ok && wallet.balance + wallet.freeCredit <= 0) {
+        return NextResponse.json(
+          { error: 'EasyParcel credit is RM 0.00. Top up in EasyParcel, then ship again.' },
+          { status: 402 },
+        )
+      }
+
+      const stock = await takeStockForShipping()
+      if (!stock.ok) return stock.response
+      const giveStockBack = async () => {
+        if (stock.note) await undoOrderStock(admin, id, staff.userId)
+      }
+
+      const addr = order.shipping_address || {}
+      const items = order.storefront_order_items || []
+      const content = items
+        .map((i: any) => `${i.product_name}×${i.quantity}`)
+        .join(', ')
+        .slice(0, 35) || 'Outdoor order'
+
+      const submitted = await easyParcelSubmitOrder({
+        serviceId,
+        content,
+        value: Number(order.total_amount) || 0,
+        reference: order.order_ref,
+        receiver: {
+          name: order.customer_name,
+          phone: order.customer_phone,
+          email: order.customer_email,
+          addr1: String(addr.line1 || ''),
+          addr2: String(addr.line2 || ''),
+          city: String(addr.city || ''),
+          state: toEasyParcelState(String(addr.state || '')),
+          postcode: String(addr.postcode || ''),
+          country: 'MY',
+        },
+      })
+
+      if (!submitted.ok) {
+        await giveStockBack()
+        return NextResponse.json({ error: submitted.error }, { status: 502 })
+      }
+
+      const { data, error } = await admin
+        .from('storefront_orders')
+        .update({
+          status: 'shipped',
+          easyparcel_order_no: submitted.orderNo,
+          shipping_tracking_no: submitted.awb || order.shipping_tracking_no,
+          shipping_service_id: serviceId,
+        })
+        .eq('id', id)
+        .select('*')
+        .single()
+
+      if (error) {
+        await giveStockBack()
+        throw error
+      }
+      await logStaff('shipped', [`Booked with EasyParcel ${submitted.orderNo || ''}`.trim(), stock.note].filter(Boolean).join(' — '))
+      await emailCustomer('shipped', data)
+      return NextResponse.json({
+        order: data,
+        easyparcel: { orderNo: submitted.orderNo, awb: submitted.awb },
+      })
+    }
+
+    if (action === 'mark_delivered') {
+      if (order.status !== 'shipped') {
+        return NextResponse.json({ error: 'Order must be shipped first' }, { status: 400 })
+      }
+      const { data, error } = await admin
+        .from('storefront_orders')
+        .update({ status: 'delivered' })
+        .eq('id', id)
+        .select('*')
+        .single()
+      if (error) throw error
+      await logStaff('delivered', 'Marked delivered (Outdoor staff desk)')
+      await emailCustomer('delivered', data)
+      return NextResponse.json({ order: data })
+    }
+
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+  } catch (err) {
+    console.error('[outdoor/fulfilment] PUT', err)
+    return NextResponse.json({ error: 'Failed to update order' }, { status: 500 })
+  }
+}

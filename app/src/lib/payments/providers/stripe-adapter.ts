@@ -3,6 +3,7 @@
 // Flow: Create Checkout Session → redirect → webhook callback
 
 import type { PaymentProviderAdapter, PaymentIntentInput, PaymentIntentResult, PaymentCallbackResult } from '../types'
+import { stripeReturnResult } from './stripe-webhook'
 
 export const stripe: PaymentProviderAdapter = {
   name: 'Stripe',
@@ -15,8 +16,19 @@ export const stripe: PaymentProviderAdapter = {
 
     const params = new URLSearchParams()
     params.append('mode', 'payment')
-    params.append('success_url', `${input.returnUrl}?session_id={CHECKOUT_SESSION_ID}`)
-    params.append('cancel_url', `${input.returnUrl}?cancelled=true`)
+    params.append('ui_mode', 'hosted_page')
+    params.append('billing_address_collection', 'auto')
+    params.append('phone_number_collection[enabled]', 'false')
+    params.append('automatic_tax[enabled]', 'false')
+    params.append('allow_promotion_codes', 'false')
+    params.append('submit_type', 'auto')
+    params.append('integration_identifier', 'hosted_web_0001')
+    params.append('origin_context', 'web')
+    // returnUrl already contains ?ref=. A second ? makes Stripe's back link invalid.
+    // Keep {CHECKOUT_SESSION_ID} raw so Stripe can replace it.
+    const joinQuery = (url: string, query: string) => `${url}${url.includes('?') ? '&' : '?'}${query}`
+    params.append('success_url', joinQuery(input.returnUrl, 'session_id={CHECKOUT_SESSION_ID}'))
+    params.append('cancel_url', input.cancelUrl || joinQuery(input.returnUrl, 'cancelled=true'))
     params.append('client_reference_id', input.orderRef)
     params.append('customer_email', input.customerEmail)
     params.append('line_items[0][price_data][currency]', (input.currency ?? 'myr').toLowerCase())
@@ -25,6 +37,8 @@ export const stripe: PaymentProviderAdapter = {
     params.append('line_items[0][quantity]', '1')
     params.append('metadata[order_ref]', input.orderRef)
     params.append('metadata[order_id]', input.orderId)
+    params.append('payment_intent_data[metadata][order_ref]', input.orderRef)
+    params.append('payment_intent_data[metadata][order_id]', input.orderId)
 
     try {
       const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
@@ -57,36 +71,9 @@ export const stripe: PaymentProviderAdapter = {
   },
 
   async verifyCallback(payload: Record<string, string>, credentials: Record<string, string>): Promise<PaymentCallbackResult> {
-    // Stripe sends webhook events — the payload is flattened from the parsed event body
-    // Expected fields: type, session_id, payment_status, client_reference_id, metadata.order_ref, etc.
-    const eventType = payload.type || ''
-    const sessionId = payload.session_id || payload.id || ''
-    const paymentStatus = payload.payment_status || ''
-    const orderRef = payload.client_reference_id || payload['metadata.order_ref'] || ''
-
-    if (eventType && eventType !== 'checkout.session.completed') {
-      return {
-        verified: true,
-        orderId: '',
-        paid: false,
-        transactionId: sessionId,
-      }
-    }
-
-    // Resolve orderId from the external reference
-    const { createAdminClient } = await import('@/lib/supabase/admin')
-    const supabase: any = createAdminClient()
-    const { data: order } = await supabase
-      .from('storefront_orders')
-      .select('id')
-      .eq('order_ref', orderRef)
-      .maybeSingle()
-
-    return {
-      verified: true,
-      orderId: order?.id || '',
-      paid: paymentStatus === 'paid',
-      transactionId: sessionId,
-    }
+    // Webhooks go through handleStripeCheckoutWebhook. Anything else is only trusted
+    // after reading the session from Stripe.
+    const sessionId = payload.session_id || payload['data.object.id'] || payload.id || ''
+    return stripeReturnResult(sessionId, credentials)
   },
 }

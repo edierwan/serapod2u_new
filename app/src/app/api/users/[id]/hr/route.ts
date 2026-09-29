@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
+import { getHrAuthContext, hrCan, hrCanIn } from '@/lib/server/hrAccess'
 
 const EMPLOYMENT_TYPES = new Set(['Full-time', 'Part-time', 'Contract', 'Intern'])
 const EMPLOYMENT_STATUSES = new Set(['active', 'resigned', 'terminated'])
@@ -73,7 +73,8 @@ export async function PATCH(
             return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 })
         }
 
-        if (target.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20)) {
+        if (target.organization_id !== ctx.organizationId
+            && !(await hrCanIn(ctx, 'hr.employee.manage', target.organization_id, () => ctx.roleLevel !== null && ctx.roleLevel <= 20))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 
@@ -84,7 +85,8 @@ export async function PATCH(
                 .eq('id', updateData.department_id)
                 .single()
 
-            if (!dept || (dept.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20))) {
+            if (!dept || (dept.organization_id !== ctx.organizationId
+                && !(await hrCanIn(ctx, 'hr.employee.manage', dept.organization_id, () => ctx.roleLevel !== null && ctx.roleLevel <= 20)))) {
                 return NextResponse.json({ success: false, error: 'Invalid department' }, { status: 400 })
             }
         }
@@ -96,7 +98,8 @@ export async function PATCH(
                 .eq('id', updateData.position_id)
                 .single()
 
-            if (!position || (position.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20))) {
+            if (!position || (position.organization_id !== ctx.organizationId
+                && !(await hrCanIn(ctx, 'hr.employee.manage', position.organization_id, () => ctx.roleLevel !== null && ctx.roleLevel <= 20)))) {
                 return NextResponse.json({ success: false, error: 'Invalid position' }, { status: 400 })
             }
         }
@@ -108,7 +111,8 @@ export async function PATCH(
                 .eq('id', updateData.manager_user_id)
                 .single()
 
-            if (!manager || (manager.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20))) {
+            if (!manager || (manager.organization_id !== ctx.organizationId
+                && !(await hrCanIn(ctx, 'hr.employee.manage', manager.organization_id, () => ctx.roleLevel !== null && ctx.roleLevel <= 20)))) {
                 return NextResponse.json({ success: false, error: 'Invalid manager' }, { status: 400 })
             }
         }

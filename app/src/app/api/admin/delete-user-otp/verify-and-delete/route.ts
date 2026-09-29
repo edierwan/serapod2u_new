@@ -3,79 +3,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hashOtp, logNotificationEvent } from '@/server/auth/passwordResetService'
+import { identityHistoryReferences } from '@/lib/identity/provisioning'
 
 const PURPOSE = 'user_deletion'
 type UserRemovalMode = 'delete' | 'archive'
 
 async function getUserRemovalMode(admin: any, userId: string): Promise<UserRemovalMode> {
-    const checks = await Promise.all([
-        admin.from('orders').select('id', { count: 'exact', head: true })
-            .or(`created_by.eq.${userId},approved_by.eq.${userId},updated_by.eq.${userId}`),
-        admin.from('documents').select('id', { count: 'exact', head: true })
-            .or(`created_by.eq.${userId},acknowledged_by.eq.${userId}`),
-        admin.from('document_files').select('id', { count: 'exact', head: true })
-            .eq('uploaded_by', userId),
-        admin.from('document_signatures').select('id', { count: 'exact', head: true })
-            .eq('signer_user_id', userId),
-    ])
-
+    // One definition of "history" for every removal path: any business or
+    // audit reference except the identity's own memberships, sessions and
+    // consumer loyalty data (public.identity_history_references). The database
+    // refuses a hard delete of such an identity (users_history_delete_guard).
+    const references = await identityHistoryReferences(userId)
     // A failed check must never fall through to hard deletion.
-    if (checks.some(({ error }: { error: unknown }) => Boolean(error))) return 'archive'
-    return checks.some(({ count }: { count: number | null }) => (count ?? 0) > 0)
-        ? 'archive'
-        : 'delete'
+    if (references === null) return 'archive'
+    return references.length > 0 ? 'archive' : 'delete'
 }
 
-function archivedEmailFor(userId: string): string {
-    return `archived-${userId}@deleted.serapod.local`
-}
-
-function archivedPhoneFor(userId: string): string {
-    // A syntactically-valid, non-routable identifier. It preserves uniqueness in
-    // Supabase Auth while freeing the person's actual phone number.
-    const numericId = BigInt(`0x${userId.replace(/-/g, '')}`) % 1_000_000_000_000n
-    return `+999${numericId.toString().padStart(12, '0')}`
-}
-
-async function archiveUserAndReleaseIdentifiers(
+/**
+ * Archive keeps the identity whole (management decision 2026-09-29): the real
+ * email and phone stay reserved on the archived identity, so the same person
+ * is never re-created as a second identity — a returning person is
+ * reactivated. The login is banned so the archived account cannot sign in.
+ */
+async function archiveUserKeepingIdentifiers(
     admin: any,
-    targetUser: { id: string; email: string; phone: string | null; is_active: boolean },
+    targetUser: { id: string },
 ): Promise<{ error: string | null }> {
-    const archivedEmail = archivedEmailFor(targetUser.id)
-    const archivedPhone = archivedPhoneFor(targetUser.id)
-
-    // Archive the profile first. If Auth cannot release the credentials, roll
-    // the profile back so the identifiers remain consistently unavailable.
     const { error: profileError } = await admin
         .from('users')
         .update({
-            email: archivedEmail,
-            phone: null,
-            is_active: false,
+            account_status: 'ARCHIVED',
+            account_status_reason: 'Archived by administrator (history retained; identifiers reserved)',
             updated_at: new Date().toISOString(),
         })
         .eq('id', targetUser.id)
-
     if (profileError) return { error: profileError.message || 'Unable to archive user profile' }
 
-    const { error: authError } = await admin.auth.admin.updateUserById(targetUser.id, {
-        email: archivedEmail,
-        phone: archivedPhone,
-        email_confirm: true,
-        phone_confirm: true,
-    })
-    if (authError) {
-        await admin
-            .from('users')
-            .update({
-                email: targetUser.email,
-                phone: targetUser.phone,
-                is_active: targetUser.is_active,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', targetUser.id)
-        return { error: authError.message || 'Unable to release authentication identifiers' }
-    }
+    const { error: authError } = await admin.auth.admin.updateUserById(targetUser.id, { ban_duration: '876000h' })
+    if (authError) console.error('Archived user login could not be banned; account status still blocks access:', authError.message)
 
     // Prevent an archived business user from continuing to submit Telegram orders.
     await admin
@@ -220,10 +185,10 @@ export async function POST(request: NextRequest) {
         const removalMode = await getUserRemovalMode(admin, targetUserId)
 
         if (removalMode === 'archive') {
-            const archiveResult = await archiveUserAndReleaseIdentifiers(admin, targetUser)
+            const archiveResult = await archiveUserKeepingIdentifiers(admin, targetUser)
             if (archiveResult.error) {
                 return NextResponse.json({
-                    error: `Unable to archive this user and release their contact details: ${archiveResult.error}`,
+                    error: `Unable to archive this user: ${archiveResult.error}`,
                 }, { status: 500 })
             }
 
@@ -233,18 +198,18 @@ export async function POST(request: NextRequest) {
                 .eq('id', codeId)
 
             await logDeletionAudit(admin, {
-                operation: 'archive_user_release_identifiers',
+                operation: 'archive_user_keep_identifiers',
                 userId: user.id,
                 userEmail: user.email || null,
                 allowed: true,
-                reason: `Archived ${targetUser.full_name || targetUser.email}; retained business history and released email/phone`,
+                reason: `Archived ${targetUser.full_name || targetUser.email}; retained business history; email/phone remain reserved`,
                 ip,
             })
 
             return NextResponse.json({
                 success: true,
                 mode: 'archive',
-                message: `${targetUser.full_name || targetUser.email} was archived. Their original email and phone can now be reused.`,
+                message: `${targetUser.full_name || targetUser.email} was archived. Their history is kept and their email/phone stay reserved; reactivate the account if they return.`,
             })
         }
 

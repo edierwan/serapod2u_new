@@ -33,6 +33,8 @@ const CRON_JOBS: CronJob[] = [
   // stale requests every 15 minutes; the worker re-syncs the Joiner/Mover/
   // Leaver lifecycle once a day (contract end dates, missed triggers).
   { path: '/api/cron/sa-governance-maintenance', schedule: '*/15 * * * *' },
+  // Outdoor orders unpaid for 24 hours are cancelled and their Stripe page closed.
+  { path: '/api/cron/storefront-unpaid-expiry', schedule: '*/15 * * * *' },
   // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release
   // stock. Opt-in: see serappHoldExpiryEnabled.
   {

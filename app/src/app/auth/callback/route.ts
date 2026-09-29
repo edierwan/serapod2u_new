@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ensureUserRow } from '@/server/auth/ensureUserRow'
 import { getPostLoginRedirect } from '@/server/auth/getPostLoginRedirect'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OUTDOOR_OAUTH_NEXT_COOKIE, sanitizeOutdoorReturnPath } from '@/lib/outdoor/auth-return'
+import { publicOriginFromRequest } from '@/lib/http/public-origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,17 +26,31 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code')
   const errorParam = requestUrl.searchParams.get('error')
   const errorDescription = requestUrl.searchParams.get('error_description')
+  const rawNext = requestUrl.searchParams.get('next') || request.cookies.get(OUTDOOR_OAUTH_NEXT_COOKIE)?.value || null
+  const nextPath = rawNext?.startsWith('/outdoor') ? sanitizeOutdoorReturnPath(rawNext) : rawNext
+  const origin = publicOriginFromRequest(request)
+  const failLoginPath = nextPath?.startsWith('/outdoor') ? '/outdoor/login' : '/login'
+  const successRedirect = (path: string) => {
+    const res = NextResponse.redirect(new URL(path, origin))
+    res.cookies.set(OUTDOOR_OAUTH_NEXT_COOKIE, '', { path: '/', maxAge: 0 })
+    return res
+  }
+  const failRedirect = (errorCode: string, message?: string) => {
+    const url = new URL(failLoginPath, origin)
+    url.searchParams.set('error', errorCode)
+    if (message) url.searchParams.set('message', message)
+    if (nextPath?.startsWith('/outdoor')) url.searchParams.set('next', nextPath)
+    return NextResponse.redirect(url)
+  }
 
   if (errorParam) {
     console.error('[auth/callback] OAuth error:', errorParam, errorDescription)
-    return NextResponse.redirect(
-      new URL(`/login?error=oauth_failed&message=${encodeURIComponent(errorDescription || errorParam)}`, requestUrl.origin)
-    )
+    return failRedirect('oauth_failed', errorDescription || errorParam)
   }
 
   if (!code) {
     console.error('[auth/callback] No code parameter received')
-    return NextResponse.redirect(new URL('/login?error=no_code', requestUrl.origin))
+    return failRedirect('no_code')
   }
 
   try {
@@ -64,15 +80,13 @@ export async function GET(request: NextRequest) {
 
     if (sessionError) {
       console.error('[auth/callback] Session exchange error:', sessionError.message)
-      return NextResponse.redirect(
-        new URL(`/login?error=session_failed&message=${encodeURIComponent(sessionError.message)}`, requestUrl.origin)
-      )
+      return failRedirect('session_failed', sessionError.message)
     }
 
     const user = sessionData?.user
     if (!user) {
       console.error('[auth/callback] No user after session exchange')
-      return NextResponse.redirect(new URL('/login?error=no_user', requestUrl.origin))
+      return failRedirect('no_user')
     }
 
     // 2. Determine provider info
@@ -98,11 +112,17 @@ export async function GET(request: NextRequest) {
     if (wasCreated) {
       console.log(`[auth/callback] New user row created for ${email}, scope=${ensuredUser.account_scope}`)
 
-      // If new portal user needs phone, redirect to store with welcome flag
+      // If new store user needs phone, still honour Outdoor/Store return path when provided
       if (ensuredUser.account_scope === 'store' && !phone) {
-        return NextResponse.redirect(
-          new URL('/store?welcome=true', requestUrl.origin)
-        )
+        const welcomeBase =
+          nextPath && nextPath.startsWith('/') && !nextPath.startsWith('//')
+            ? nextPath
+            : '/store'
+        const welcomeUrl = new URL(welcomeBase, origin)
+        welcomeUrl.searchParams.set('welcome', 'true')
+        const welcomeRes = NextResponse.redirect(welcomeUrl)
+        welcomeRes.cookies.set(OUTDOOR_OAUTH_NEXT_COOKIE, '', { path: '/', maxAge: 0 })
+        return welcomeRes
       }
     } else {
       // Existing user — update avatar & last_login
@@ -122,11 +142,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4. Redirect based on account_scope (single path, no duplication)
-    const { redirectTo } = await getPostLoginRedirect()
-    return NextResponse.redirect(new URL(redirectTo, requestUrl.origin))
+    // 4. Redirect based on account_scope (honour ?next= for Outdoor/Store return)
+    const { redirectTo } = await getPostLoginRedirect(nextPath)
+    return successRedirect(redirectTo)
   } catch (error) {
     console.error('[auth/callback] Unexpected error:', error)
-    return NextResponse.redirect(new URL('/login?error=unexpected', requestUrl.origin))
+    return failRedirect('unexpected')
   }
 }

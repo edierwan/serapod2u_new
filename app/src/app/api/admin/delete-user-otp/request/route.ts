@@ -2,6 +2,7 @@ import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { identityHistoryReferences } from '@/lib/identity/provisioning'
 import { generateOtp, hashOtp } from '@/server/auth/passwordResetService'
 import { maskEmail } from '@/lib/auth/registration-otp-email'
 import { maskPhone, normalizePhoneE164 } from '@/utils/phone'
@@ -17,24 +18,14 @@ const PURPOSE = 'user_deletion'
 const MAX_SENDS_PER_15MIN = 3
 type UserRemovalMode = 'delete' | 'archive'
 
-async function getUserRemovalMode(admin: any, userId: string): Promise<UserRemovalMode> {
-    const checks = await Promise.all([
-        admin.from('orders').select('id', { count: 'exact', head: true })
-            .or(`created_by.eq.${userId},approved_by.eq.${userId},updated_by.eq.${userId}`),
-        admin.from('documents').select('id', { count: 'exact', head: true })
-            .or(`created_by.eq.${userId},acknowledged_by.eq.${userId}`),
-        admin.from('document_files').select('id', { count: 'exact', head: true })
-            .eq('uploaded_by', userId),
-        admin.from('document_signatures').select('id', { count: 'exact', head: true })
-            .eq('signer_user_id', userId),
-    ])
-
-    // Conservatively retain the account if a dependency check itself fails.
-    // This avoids hard-deleting a user when the dependency picture is incomplete.
-    if (checks.some(({ error }: { error: unknown }) => Boolean(error))) return 'archive'
-    return checks.some(({ count }: { count: number | null }) => (count ?? 0) > 0)
-        ? 'archive'
-        : 'delete'
+async function getUserRemovalMode(_admin: any, userId: string): Promise<UserRemovalMode> {
+    // Same definition of "history" as the confirmation step and the database
+    // delete guard (public.identity_history_references): orders, documents,
+    // signatures, Supply Chain movements, finance and audit references all
+    // mean archive. A failed check never falls through to hard deletion.
+    const references = await identityHistoryReferences(userId)
+    if (references === null) return 'archive'
+    return references.length > 0 ? 'archive' : 'delete'
 }
 
 function normalizeOrgEmail(email: string | null | undefined): string | null {

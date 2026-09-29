@@ -49,8 +49,6 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
-    if (saDenied) return saDenied
 
     const { data: profile, error: profileError } = await admin
       .from('users')
@@ -58,7 +56,13 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !canDeleteOrganizations(profile)) {
+    // Deleting an organization is an S&A decision (platform.data.destructive);
+    // the historical HQ Admin / Super Admin rule is the legacy evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive', {
+      legacy: () => canDeleteOrganizations(profile),
+    })
+    if (saDenied) return saDenied
+    if (profileError || !profile) {
       return NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
     }
 

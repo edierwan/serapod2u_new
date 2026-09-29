@@ -1,0 +1,31 @@
+/* Serapod corporate brand hub — isolated from storefront */
+.sera-corporate {
+  --corp-ink: #121417;
+  --corp-muted: #5c6570;
+  --corp-line: #d7dbe0;
+  --corp-paper: #f7f8fa;
+  --corp-accent: #e85d04;
+  --corp-accent-deep: #c44a00;
+  --font-display: var(--font-corp-display), 'Syne', sans-serif;
+  --font-body: var(--font-corp-body), 'Manrope', sans-serif;
+  font-family: var(--font-body);
+  color: var(--corp-ink);
+  background: var(--corp-paper);
+}
+
+.sera-corporate .font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes corp-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sera-corporate .corp-rise {
+  animation: corp-rise 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sera-corporate .corp-rise-d1 { animation-delay: 0.08s; }
+.sera-corporate .corp-rise-d2 { animation-delay: 0.16s; }
+.sera-corporate .corp-rise-d3 { animation-delay: 0.28s; }

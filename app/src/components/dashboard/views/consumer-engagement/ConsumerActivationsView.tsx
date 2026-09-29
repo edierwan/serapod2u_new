@@ -1348,11 +1348,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         onSave={async (userData) => {
           try {
             if (!selectedConsumerUser?.id) return
-            const { error } = await supabase
-              .from('users')
-              .update(userData)
-              .eq('id', selectedConsumerUser.id)
-            if (error) throw error
+            // Server-side: profile fields only through the admin whitelist;
+            // role/organization/status through the identity functions.
+            const { updateUserWithAuth } = await import('@/lib/actions')
+            const result = await updateUserWithAuth(selectedConsumerUser.id, userData as any)
+            if (!result.success) throw new Error(result.error || 'Failed to update consumer.')
             toast({ title: 'Success', description: 'Consumer details updated.' })
             setConsumerDialogOpen(false)
             setSelectedConsumerUser(null)

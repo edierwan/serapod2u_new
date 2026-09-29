@@ -55,16 +55,64 @@ async function getActiveGateway() {
 
 // ── Public API ────────────────────────────────────────────────────
 
-export async function createPaymentIntent(input: PaymentIntentInput): Promise<PaymentIntentResult> {
-  const gateway = await getActiveGateway()
+function hasGatewayCredentials(provider: string, credentials: Record<string, string> | null | undefined) {
+  const creds = credentials || {}
+  if (provider === 'stripe') return Boolean(creds.secret_key)
+  if (provider === 'billplz') return Boolean(creds.api_key && creds.collection_id)
+  if (provider === 'toyyibpay') return Boolean(creds.secret_key && creds.category_code)
+  return Object.keys(creds).length > 0
+}
+
+export function paymentMethodLabel(provider: string) {
+  if (provider === 'billplz') return 'FPX / e-Wallet (Billplz)'
+  if (provider === 'stripe') return 'Card (Stripe)'
+  if (provider === 'toyyibpay') return 'FPX (ToyyibPay)'
+  return provider
+}
+
+export async function listCheckoutPaymentMethods() {
+  const supabase: any = createAdminClient()
+  const { data, error } = await supabase
+    .from('payment_gateway_settings')
+    .select('provider, is_active, credentials')
+
+  if (error || !data) {
+    console.error('[payments] failed to list gateways:', error)
+    return [] as { key: string; name: string; label: string; isDefault: boolean }[]
+  }
+
+  const seen = new Set<string>()
+  return data
+    .filter((row: any) => hasGatewayCredentials(row.provider, row.credentials))
+    .filter((row: any) => {
+      const key = String(row.provider)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .map((row: any) => ({
+      key: String(row.provider),
+      name: providers[row.provider]?.name || String(row.provider),
+      label: paymentMethodLabel(String(row.provider)),
+      isDefault: Boolean(row.is_active),
+    }))
+}
+
+export async function createPaymentIntent(
+  input: PaymentIntentInput,
+  providerHint?: string | null,
+): Promise<PaymentIntentResult> {
+  const hinted = providerHint ? await getGatewayByProvider(providerHint) : null
+  const gateway =
+    hinted && hasGatewayCredentials(hinted.provider, hinted.credentials)
+      ? hinted
+      : await getActiveGateway()
 
   if (!gateway) {
-    // No gateway configured — fallback: mark as "manual payment"
     return {
       success: true,
       provider: 'manual',
       paymentRef: `MANUAL-${input.orderRef}`,
-      // No paymentUrl → checkout page goes to success directly
     }
   }
 
@@ -81,20 +129,34 @@ export async function createPaymentIntent(input: PaymentIntentInput): Promise<Pa
   return adapter.createPayment(input, credentials)
 }
 
+export async function getGatewayByProvider(provider: string) {
+  const supabase: any = createAdminClient()
+  const { data, error } = await supabase
+    .from('payment_gateway_settings')
+    .select('*')
+    .eq('provider', provider)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[payments] failed to load gateway for', provider, error)
+    return null
+  }
+  return data
+}
+
 export async function verifyPaymentCallback(
   providerHint: string,
   payload: Record<string, string>,
 ): Promise<PaymentCallbackResult> {
-  // Try the hinted provider first, then look up from DB
-  let gateway = await getActiveGateway()
-
-  const providerKey = providerHint || gateway?.provider || 'unknown'
+  const providerKey = providerHint || (await getActiveGateway())?.provider || 'unknown'
   const adapter = providers[providerKey]
 
   if (!adapter) {
     return { verified: false, orderId: '', paid: false, error: `Unknown provider: ${providerKey}` }
   }
 
+  const gateway = (await getGatewayByProvider(providerKey)) || (await getActiveGateway())
   const credentials = (gateway?.credentials as Record<string, string>) || {}
   return adapter.verifyCallback(payload, credentials)
 }

@@ -38,7 +38,12 @@ function setup(userOverrides: Record<string, any> = {}) {
         ...userOverrides,
     }
     const fake = createFakeAdminClient({ users: [user], organizations: [{ ...SHOP_A }, { ...SHOP_B }] })
-    fake.client.auth = { admin: { updateUserById: vi.fn(async () => ({ error: null })) } }
+    fake.client.auth = {
+        admin: {
+            getUserById: vi.fn(async () => ({ data: { user: { user_metadata: {} } }, error: null })),
+            updateUserById: vi.fn(async () => ({ error: null })),
+        },
+    }
     createAdminClientMock.mockReturnValue(fake.client)
     return { user, fake }
 }

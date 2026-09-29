@@ -7,7 +7,7 @@ import DecisionLog from './DecisionLog'
 import PeopleAccessPanel from './PeopleAccessPanel'
 import RolesPoliciesPanel from './RolesPoliciesPanel'
 import GovernancePanel from './GovernancePanel'
-import TechnicalAccessPanel from './TechnicalAccessPanel'
+import TechnicalAccessPanel, { LegacyCompatibilityPanel } from './TechnicalAccessPanel'
 import AccessChangeLog from './AccessChangeLog'
 import { callApi } from './client-api'
 import { PERMISSION_GROUP_ORDER, modeLabel, permissionLabel } from '@/lib/security-access/labels'
@@ -68,7 +68,7 @@ export default function SecurityAccessView({ userProfile }: { userProfile: any }
       {tab === 'people' && <PeopleAccessPanel data={data} onChanged={load} />}
       {tab === 'roles' && <RolesPoliciesPanel data={data} governance={governance} onChanged={load} />}
       {tab === 'governance' && <GovernancePanel data={data} governance={governance} />}
-      {tab === 'technical' && <TechnicalAccessPanel governance={governance} />}
+      {tab === 'technical' && <div className="space-y-4"><TechnicalAccessPanel governance={governance} /><LegacyCompatibilityPanel governance={governance} /></div>}
       {tab === 'audit' && <div className="space-y-6"><AccessSimulator userProfile={userProfile} people={data.people || []} actors={data.actors || []} permissions={data.permissions || []} organizations={data.organizations || []} disabled={!data.schemaReady} /><DecisionLog decisions={data.recentDecisions?.length ? data.recentDecisions : data.decisions || []} actors={data.actors || []} people={data.people || []} organizations={data.organizations || []} /><AccessChangeLog governance={governance} people={data.people || []} actors={data.actors || []} /></div>}
     </div>
   </div>

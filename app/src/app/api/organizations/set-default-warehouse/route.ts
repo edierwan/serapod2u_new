@@ -3,10 +3,53 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { DEFAULT_DISTRIBUTOR_FULFILLMENT_WAREHOUSE_SETTING_KEY } from '@/lib/orders/hq-fulfillment-warehouses'
 
+function onlineShopSaveError(error: { message?: string }) {
+  console.error('Failed to set online shop warehouse:', error)
+  if (/storefront_warehouse_org_id/i.test(String(error.message || ''))) {
+    return NextResponse.json(
+      { error: 'The online shop warehouse setting is not installed yet. Apply the storefront online shop warehouse migration first.' },
+      { status: 503 },
+    )
+  }
+  return NextResponse.json({ error: error.message || 'Failed to set the online shop warehouse' }, { status: 400 })
+}
+
+async function followDefaultForOnlineShop(supabase: any, userId: string, hqOrgId: string) {
+  const { data: isHqAdmin, error: adminError } = await supabase.rpc('is_hq_admin')
+  if (adminError) {
+    return NextResponse.json({ error: 'Unable to verify admin permissions.' }, { status: 500 })
+  }
+  if (!(await userAllowed(userId, 'platform.organization.manage', () => Boolean(isHqAdmin)))) {
+    return NextResponse.json({ error: 'Only HQ Admin can change the online shop warehouse.' }, { status: 403 })
+  }
+  const { data: hq } = await supabase
+    .from('organizations')
+    .select('id, org_type_code, is_active')
+    .eq('id', hqOrgId)
+    .maybeSingle()
+  if (!hq || hq.org_type_code !== 'HQ') {
+    return NextResponse.json({ error: 'HQ organization not found' }, { status: 404 })
+  }
+  const { error } = await supabase
+    .from('organizations')
+    .update({ storefront_warehouse_org_id: null, updated_at: new Date().toISOString() })
+    .eq('id', hqOrgId)
+  if (error) return onlineShopSaveError(error)
+  return NextResponse.json({
+    success: true,
+    message: 'Website orders now follow the default fulfillment warehouse.',
+    hq_org_id: hqOrgId,
+    warehouse_org_id: null,
+  })
+}
+
 /**
  * POST /api/organizations/set-default-warehouse
  * Sets organizations.default_warehouse_org_id for an HQ.
  * Application setting key: default_distributor_fulfillment_warehouse_id
+ *
+ * With purpose 'online_shop' it sets organizations.storefront_warehouse_org_id
+ * instead (website orders only); warehouse_org_id null = follow the default.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +62,11 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { hq_org_id, warehouse_org_id } = body
+    const onlineShop = body.purpose === 'online_shop'
+
+    if (onlineShop && hq_org_id && warehouse_org_id === null) {
+      return followDefaultForOnlineShop(supabase, user.id, hq_org_id)
+    }
 
     if (!hq_org_id || !warehouse_org_id) {
       return NextResponse.json(
@@ -72,6 +120,21 @@ export async function POST(request: NextRequest) {
         { error: 'Warehouse must be an active child of this HQ' },
         { status: 400 },
       )
+    }
+
+    if (onlineShop) {
+      const { error: shopError } = await supabase
+        .from('organizations')
+        .update({ storefront_warehouse_org_id: warehouse_org_id, updated_at: new Date().toISOString() })
+        .eq('id', hq_org_id)
+      if (shopError) return onlineShopSaveError(shopError)
+      return NextResponse.json({
+        success: true,
+        message: `Website orders now ship from ${warehouse.org_name}. Distributor orders are unchanged.`,
+        hq_org_id,
+        warehouse_org_id,
+        warehouse_name: warehouse.org_name,
+      })
     }
 
     const { error: updateError } = await supabase

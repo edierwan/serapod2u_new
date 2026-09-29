@@ -172,9 +172,11 @@ export default function ProductDetailClient({ product }: Props) {
   }
 
   const formattedPrice = selectedVariant ? formatPrice(selectedVariant.suggested_retail_price) : null
+  const stockLeft = typeof selectedVariant?.available === 'number' ? selectedVariant.available : null
+  const soldOut = stockLeft !== null && stockLeft <= 0
 
   const handleAddToCart = () => {
-    if (!selectedVariant) return
+    if (!selectedVariant || soldOut) return
     addItem(
       {
         productId: product.id,
@@ -205,7 +207,7 @@ export default function ProductDetailClient({ product }: Props) {
               <video
                 key={active.url}
                 src={active.url}
-                className="object-contain w-full h-full p-4"
+                className={`object-contain w-full h-full p-4 transition-[filter,opacity] duration-300${soldOut ? ' grayscale opacity-50' : ''}`}
                 autoPlay
                 loop
                 muted
@@ -216,11 +218,19 @@ export default function ProductDetailClient({ product }: Props) {
               <img
                 src={active.url}
                 alt={product.product_name}
-                className="object-contain w-full h-full p-4"
+                className={`object-contain w-full h-full p-4 transition-[filter,opacity] duration-300${soldOut ? ' grayscale opacity-50' : ''}`}
               />
             )
           ) : (
             <Package className="h-24 w-24 text-[var(--sera-muted)]/40" />
+          )}
+
+          {soldOut && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center" role="status">
+              <span className="rounded-full bg-[var(--sera-ink)]/90 px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow-lg">
+                Sold out
+              </span>
+            </span>
           )}
 
           {/* Navigation arrows */}
@@ -376,6 +386,9 @@ export default function ProductDetailClient({ product }: Props) {
                   }`}
                 >
                   {v.variant_name}
+                  {typeof v.available === 'number' && v.available <= 0 && (
+                    <span className="ml-1.5 text-[10px] font-semibold uppercase opacity-70">Sold out</span>
+                  )}
                   {selectedVariant?.id === v.id && (
                     <span className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-green-500 flex items-center justify-center">
                       <Check className="h-2.5 w-2.5 text-white" />
@@ -401,25 +414,31 @@ export default function ProductDetailClient({ product }: Props) {
               {quantity}
             </span>
             <button
-              onClick={() => setQuantity((q) => q + 1)}
-              className="h-10 w-10 flex items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition"
+              onClick={() => setQuantity((q) => (stockLeft !== null ? Math.min(stockLeft, q + 1) : q + 1))}
+              disabled={stockLeft !== null && quantity >= stockLeft}
+              className="h-10 w-10 flex items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus className="h-4 w-4" />
             </button>
           </div>
+          {stockLeft !== null && stockLeft > 0 && stockLeft <= 5 && (
+            <p className="mt-2 text-xs font-medium text-amber-600">Only {stockLeft} left</p>
+          )}
         </div>
 
         {/* Add to Cart */}
         <button
           onClick={handleAddToCart}
-          disabled={!selectedVariant || justAdded}
+          disabled={!selectedVariant || justAdded || soldOut}
           className={`w-full h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
             justAdded
               ? 'bg-green-500 text-white'
               : 'bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)] active:scale-[0.98]'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          {justAdded ? (
+          {soldOut ? (
+            <>Out of stock</>
+          ) : justAdded ? (
             <>
               <Check className="h-4 w-4" /> Added to Cart
             </>

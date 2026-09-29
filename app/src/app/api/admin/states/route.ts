@@ -25,8 +25,6 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.settings.manage')
-    if (saDenied) return saDenied
 
     // Check admin role
     const { data: userData, error: userError } = await supabaseAdmin
@@ -35,9 +33,13 @@ export async function GET(request: NextRequest) {
         .eq('id', user.id)
         .single()
         
-    if (userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)) {
-         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Reference-data administration is an S&A decision
+    // (platform.settings.manage); the historical admin role list is the legacy
+    // evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.settings.manage', {
+      legacy: () => !(userError || !userData || !['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)),
+    })
+    if (saDenied) return saDenied
 
     // Fetch all states
     const { data: states, error } = await supabaseAdmin

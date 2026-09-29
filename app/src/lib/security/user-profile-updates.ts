@@ -14,6 +14,14 @@ export const SELF_SERVICE_PROFILE_FIELDS = [
   'bank_account_holder_name',
 ] as const
 
+// Storefront-only values persisted in Supabase Auth user_metadata. These are
+// accepted only by the profile endpoint and must never be spread into
+// public.users by updateUserWithAuth.
+export const SELF_SERVICE_AUTH_METADATA_FIELDS = [
+  'outdoor_phone',
+  'outdoor_location',
+] as const
+
 const SELF_SERVICE_PROFILE_FIELD_SET = new Set<string>(SELF_SERVICE_PROFILE_FIELDS)
 
 export const PROTECTED_USER_ACCESS_FIELDS = [
@@ -47,6 +55,39 @@ export function pickSelfServiceProfileFields(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const key of SELF_SERVICE_PROFILE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(input, key)) {
+      result[key] = input[key]
+    }
+  }
+  return result
+}
+
+/**
+ * Fields an authorized administrator may submit for ANOTHER user through
+ * updateUserWithAuth. Anything else (email, password, principal/account
+ * status, verification timestamps, arbitrary columns) is dropped. role_code,
+ * organization_id and is_active are accepted here but applied only through the
+ * identity functions (access administration / account lifecycle).
+ */
+export const ADMIN_EDITABLE_USER_FIELDS = [
+  ...SELF_SERVICE_PROFILE_FIELDS,
+  'role_code',
+  'organization_id',
+  'is_active',
+  'department_id',
+  'manager_user_id',
+  'position_id',
+  'employment_type',
+  'join_date',
+  'employment_status',
+  'can_be_reference',
+] as const
+
+export function pickAdminEditableUserFields(
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const key of ADMIN_EDITABLE_USER_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(input, key)) {
       result[key] = input[key]
     }

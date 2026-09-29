@@ -11,7 +11,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getHrAuthContext, hrSelfCan } from '@/lib/server/hrAccess'
-import { resolveHrRole, type Viewer, type HrRole } from '@/lib/server/hr/assistant/policy'
+import { type Viewer, type HrRole } from '@/lib/server/hr/assistant/policy'
+import { resolveHrRoleForCaller } from '@/lib/server/hr/assistant/access'
 import { routeIntent, detectLang, getCasualResponse, type Lang } from '@/lib/server/hr/assistant/intentRouter'
 import { executeTool, type ToolResult, type ToolName } from '@/lib/server/hr/assistant/tools'
 import { generateSuggestions, getWelcomeSuggestions } from '@/lib/server/hr/assistant/suggestions'
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // Build viewer
     const lang = detectLang(userMessage)
-    const hrRole = resolveHrRole(ctx.roleCode, ctx.roleLevel)
+    const hrRole = await resolveHrRoleForCaller(ctx)
     const viewer: Viewer = {
       userId: ctx.userId,
       orgId: ctx.organizationId,

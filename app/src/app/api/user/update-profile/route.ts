@@ -5,7 +5,10 @@ import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { buildPersonalBankUpdateData, validateMsiaBankAccount } from '@/lib/engagement/personal-bank-details'
-import { getDisallowedSelfServiceFields } from '@/lib/security/user-profile-updates'
+import {
+  getDisallowedSelfServiceFields,
+  SELF_SERVICE_AUTH_METADATA_FIELDS,
+} from '@/lib/security/user-profile-updates'
 
 /**
  * POST /api/user/update-profile
@@ -42,6 +45,8 @@ export async function POST(request: NextRequest) {
     const {
       full_name,
       phone,
+      outdoor_phone,
+      outdoor_location,
       referral_phone,
       reference_user_id,
       address,
@@ -51,7 +56,10 @@ export async function POST(request: NextRequest) {
       bank_account_holder_name,
     } = body
 
-    const disallowedFields = getDisallowedSelfServiceFields(body, ['userId'])
+    const disallowedFields = getDisallowedSelfServiceFields(body, [
+      'userId',
+      ...SELF_SERVICE_AUTH_METADATA_FIELDS,
+    ])
     if (disallowedFields.length > 0) {
       return NextResponse.json(
         {
@@ -92,10 +100,14 @@ export async function POST(request: NextRequest) {
     if (full_name !== undefined) {
       updateData.full_name = full_name?.trim() || null
 
-      // Sync full_name to Supabase Auth user_metadata (display_name)
+      // Sync full_name to Supabase Auth user_metadata without dropping other fields.
       try {
+        const { data: authRecord } = await adminClient.auth.admin.getUserById(userId)
         const { error: authMetaError } = await adminClient.auth.admin.updateUserById(userId, {
-          user_metadata: { full_name: full_name?.trim() || null }
+          user_metadata: {
+            ...(authRecord?.user?.user_metadata || {}),
+            full_name: full_name?.trim() || null,
+          },
         })
 
         if (authMetaError) {
@@ -107,6 +119,66 @@ export async function POST(request: NextRequest) {
       } catch (metaErr) {
         console.error('Auth metadata update exception:', metaErr)
         // Don't fail the whole operation for metadata sync failure
+      }
+    }
+
+    // Outdoor delivery phone is per storefront profile. It is not a login phone,
+    // so it must not use the shared users.phone uniqueness check or Auth phone.
+    if (outdoor_phone !== undefined) {
+      const raw = typeof outdoor_phone === 'string' ? outdoor_phone.trim() : ''
+      let stored: string | null = null
+      if (raw) {
+        const validation = validatePhoneNumber(raw)
+        if (!validation.isValid) {
+          return NextResponse.json(
+            { success: false, error: validation.error || 'Invalid phone number format' },
+            { status: 400 }
+          )
+        }
+        stored = normalizePhone(raw)
+      }
+
+      const { data: authRecord } = await adminClient.auth.admin.getUserById(userId)
+      const { error: outdoorPhoneError } = await adminClient.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...(authRecord?.user?.user_metadata || {}),
+          outdoor_phone: stored,
+        },
+      })
+
+      if (outdoorPhoneError) {
+        console.error('Outdoor phone metadata update failed:', outdoorPhoneError)
+        return NextResponse.json(
+          { success: false, error: 'Could not save the delivery phone.' },
+          { status: 500 }
+        )
+      }
+    }
+
+    // Outdoor city stays on this storefront profile and does not write users.location.
+    if (outdoor_location !== undefined) {
+      const raw = typeof outdoor_location === 'string' ? outdoor_location.trim() : ''
+      if (raw.length > 120) {
+        return NextResponse.json(
+          { success: false, error: 'City must be 120 characters or less' },
+          { status: 400 }
+        )
+      }
+
+      const { data: authRecord } = await adminClient.auth.admin.getUserById(userId)
+      const { error: outdoorLocationError } = await adminClient.auth.admin.updateUserById(userId, {
+        user_metadata: {
+          ...(authRecord?.user?.user_metadata || {}),
+          outdoor_location: raw || null,
+        },
+      })
+
+      if (outdoorLocationError) {
+        console.error('Outdoor location metadata update failed:', outdoorLocationError)
+        return NextResponse.json(
+          { success: false, error: 'Could not save the city.' },
+          { status: 500 }
+        )
       }
     }
 
@@ -180,7 +252,8 @@ export async function POST(request: NextRequest) {
         }
 
         updateData.phone = normalizedPhone
-        updateData.phone_verified_at = new Date().toISOString()
+        // A changed number is not a verified number: phone_verified_at is
+        // cleared by the database on change and set only by an OTP flow.
       } else {
         // Clearing phone
         const { error: authPhoneError } = await adminClient.auth.admin.updateUserById(userId, {

@@ -46,6 +46,7 @@ import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from 
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 import UserPasswordResetSection from './UserPasswordResetSection'
+import { listInitialAccessRoles } from '@/lib/actions'
 
 interface Bank {
   id: string
@@ -312,15 +313,28 @@ export default function UserDialogNew({
   const selectedPosition = positions.find(position => position.id === formData.position_id)
   const selectedManager = orgUsers.find(orgUser => orgUser.id === formData.manager_user_id)
   const isGuest = selectedRoleLevel === 50
+  // Optional initial Security & Access business role (create mode only; the
+  // list is empty unless the administrator may assign roles in that org).
+  const [initialRoles, setInitialRoles] = useState<Array<{ id: string; name: string; description: string | null }>>([])
+  useEffect(() => {
+    if (user || !open || isGuest || !formData.organization_id) { setInitialRoles([]); return }
+    let cancelled = false
+    listInitialAccessRoles(formData.organization_id).then(r => { if (!cancelled) setInitialRoles(r.roles || []) }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [user, open, isGuest, formData.organization_id])
   const showBusinessStep = organizationType === 'SHOP' || selectedOrgIsShop
   const showHrFields = Boolean(
     formData.organization_id &&
     selectedOrg &&
     [1, 10, 20, 30, 40].includes(selectedRoleLevel || 0)
   )
+  // Identity onboarding (create) does not collect banking: payee details
+  // belong to an employee/vendor/beneficiary domain. Existing banking data is
+  // still shown and editable on an existing user.
+  const showBankingStep = Boolean(user)
   const steps = useMemo<WizardStep[]>(() => {
-    return ['basic', 'access', ...(showBusinessStep ? ['business' as WizardStep] : []), 'banking', 'review']
-  }, [showBusinessStep])
+    return ['basic', 'access', ...(showBusinessStep ? ['business' as WizardStep] : []), ...(showBankingStep ? ['banking' as WizardStep] : []), 'review']
+  }, [showBusinessStep, showBankingStep])
   const filteredOrganizations = filterOrganizationsForType(organizations, organizationType, organizationSearch)
 
   useEffect(() => {
@@ -728,7 +742,7 @@ export default function UserDialogNew({
   }
 
   const validateAll = () => {
-    const next = { ...validateBasic(), ...validateAccess(), ...validateBanking() }
+    const next = { ...validateBasic(), ...validateAccess(), ...(showBankingStep ? validateBanking() : {}) }
     setErrors(next)
     if (Object.keys(next).length > 0) {
       const first = Object.keys(next)[0]
@@ -1121,6 +1135,23 @@ export default function UserDialogNew({
           </div>
         </div>
       ) : null}
+      {!user && initialRoles.length > 0 ? (
+        <div className="space-y-2 rounded-lg border border-[var(--sera-line)] p-4">
+          <Label>Initial access (optional)</Label>
+          <p className="text-xs text-[var(--sera-muted)]">Grant a Security &amp; Access business role now. The legacy role above is compatibility only; access comes from business roles.</p>
+          <Select value={(formData as any).initial_role_id || 'none'} onValueChange={v => setFormData(prev => ({ ...prev, initial_role_id: v === 'none' ? '' : v } as any))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Employee self-service only</SelectItem>
+              {initialRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {(formData as any).initial_role_id ? (
+            <Input placeholder="Reason (recorded in the access audit)" value={(formData as any).initial_access_reason || ''}
+              onChange={e => setFormData(prev => ({ ...prev, initial_access_reason: e.target.value } as any))} />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 
@@ -1233,11 +1264,13 @@ export default function UserDialogNew({
             <p>Notes: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.notes)}</span></p>
           </SummaryCard>
         ) : null}
-        <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-[var(--sera-orange)]" />} step="banking">
-          <p>Bank: <span className="font-medium text-[var(--sera-ink)]">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
-          <p>Account No: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_number)}</span></p>
-          <p>Account Holder: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_holder_name)}</span></p>
-        </SummaryCard>
+        {showBankingStep ? (
+          <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-[var(--sera-orange)]" />} step="banking">
+            <p>Bank: <span className="font-medium text-[var(--sera-ink)]">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
+            <p>Account No: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_number)}</span></p>
+            <p>Account Holder: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_holder_name)}</span></p>
+          </SummaryCard>
+        ) : null}
         <SummaryCard title="Account/Security Status" icon={<CheckCircle2 className="h-4 w-4 text-[var(--sera-orange)]" />} step="access">
           <div className="flex items-center gap-2">
             <span>Status:</span>

@@ -7,6 +7,7 @@ const actions = repoFile('app/src/lib/actions.ts')
 const departmentActions = repoFile('app/src/lib/actions/departments.ts')
 const hrEmployees = repoFile('app/src/app/api/hr/employees/route.ts')
 const confirmShipment = repoFile('app/src/app/api/warehouse/confirm-shipment/route.ts')
+const shipmentRouteGuard = repoFile('app/src/lib/warehouse/shipment-route-guard.ts')
 
 describe('Phase 0A containment contract', () => {
   it('makes sync_user_profile service-role-only with an internal role check and safe search path', () => {
@@ -25,10 +26,17 @@ describe('Phase 0A containment contract', () => {
     }
   })
 
-  it('routes every application provisioning caller through an admin client', () => {
-    expect(actions.match(/adminClient\s*\n?\s*\.rpc\('sync_user_profile'/g)?.length).toBe(2)
-    expect(departmentActions).toMatch(/adminClient\s*\n?\s*\.rpc\('sync_user_profile'/)
-    expect(hrEmployees).toMatch(/adminClient\.rpc\('sync_user_profile'/)
+  it('routes every application provisioning caller through a trusted server path', () => {
+    // Enterprise onboarding (User Management, departments, HR) uses the
+    // canonical provisioning service (Identity Foundation Stage 1); only the
+    // OTP-verified consumer registration still syncs directly.
+    expect(actions.match(/adminClient\s*\n?\s*\.rpc\('sync_user_profile'/g)?.length).toBe(1)
+    expect(actions).toContain('await provisionIdentity({')
+    expect(departmentActions).toContain('await provisionIdentity({')
+    expect(departmentActions).not.toContain("rpc('sync_user_profile'")
+    expect(hrEmployees).toContain('await provisionIdentity({')
+    expect(hrEmployees).not.toContain("rpc('sync_user_profile'")
+    expect(hrEmployees).not.toContain('crypto.randomUUID()')
   })
 
   it('does not use request-supplied callerInfo as server-action identity', () => {
@@ -40,7 +48,10 @@ describe('Phase 0A containment contract', () => {
 
   it('authenticates shipment confirmation and attributes writes to the session actor', () => {
     expect(confirmShipment).toContain('supabase.auth.getUser()')
-    expect(confirmShipment).toContain('authorizeWarehouseShipment')
+    // Phase 0A rule, now the legacy evaluator of the shared S&A shipment guard
+    // (authorizeShipmentActor → authorizeWarehouseShipment).
+    expect(confirmShipment).toContain('authorizeShipmentActor(supabaseAdmin, authenticatedUser.id')
+    expect(shipmentRouteGuard).toContain('authorizeWarehouseShipment(')
     expect(confirmShipment).not.toMatch(/const \{ session_id, user_id \}/)
     expect(confirmShipment).toContain('approved_by: actorUserId')
     expect(confirmShipment).toContain('shipped_by: actorUserId')

@@ -61,8 +61,6 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.organization.manage')
-    if (saDenied) return saDenied
 
     const { data: profile, error: profileError } = await admin
       .from('users')
@@ -71,7 +69,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     const roleLevel = getRoleLevel(profile)
-    if (profileError || !canDeleteOrganizations(profile)) {
+    // Organization deletion is an S&A decision (platform.organization.manage);
+    // the historical HQ Admin / Super Admin rule is the legacy evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.organization.manage', {
+      legacy: () => canDeleteOrganizations(profile),
+    })
+    if (profileError || saDenied) {
       await logOrganizationDeletionAudit(admin, {
         operation: 'delete_organization_otp_request',
         userId: user.id,
@@ -79,10 +82,10 @@ export async function POST(request: NextRequest) {
         allowed: false,
         reason: profileError
           ? `Profile lookup failed: ${profileError.message}`
-          : `Insufficient role (role_level=${roleLevel}, role_code=${getRoleCodes(profile).join(',') || 'null'})`,
+          : `Security & Access denied platform.organization.manage (legacy role_level=${roleLevel}, role_code=${getRoleCodes(profile).join(',') || 'null'})`,
         ip,
       })
-      return NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
+      return saDenied ?? NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
     }
 
     const { orgId } = await request.json()

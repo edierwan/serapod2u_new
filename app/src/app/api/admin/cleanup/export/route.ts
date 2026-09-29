@@ -40,8 +40,6 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
-    if (saDenied) return saDenied
 
     // Get user profile to check role
     const { data: userProfile, error: profileError } = await supabase
@@ -50,12 +48,13 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (profileError || !userProfile || (userProfile.roles as any)?.role_level !== 1) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Access denied. Super Admin only.' 
-      }, { status: 403 })
-    }
+    // Super Admin data operations are an S&A decision
+    // (platform.data.destructive); the historical Super Admin rule is the legacy
+    // evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive', {
+      legacy: () => !(profileError || !userProfile || (userProfile.roles as any)?.role_level !== 1),
+    })
+    if (saDenied) return saDenied
 
     // Parse request body
     const body = await request.json().catch(() => ({}))
@@ -86,7 +85,7 @@ export async function POST(request: NextRequest) {
       runtime_report: runtime_report || null,
       cleanup_plan: cleanupPlan,
       metadata: {
-        generated_by: userProfile.email || 'unknown',
+        generated_by: userProfile?.email || user.email || 'unknown',
         tool_version: '1.0.0',
         notes: [
           'Reports only - no auto-deletion',

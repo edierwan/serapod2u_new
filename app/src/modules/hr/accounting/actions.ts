@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { financeAllowed } from '@/lib/security-access/finance'
 import { PAYROLL_MAPPING_KEYS, CLAIMS_MAPPING_KEYS } from './types'
 import type { HrGlMapping, GlAccountOption, HrAccountingConfig } from './types'
 
@@ -31,6 +32,18 @@ async function getAuthContext(supabase: any) {
       role_level: (profile.roles as any)?.role_level ?? null,
     },
   }
+}
+
+// HR→GL configuration is an S&A decision (finance.payroll_integration.manage)
+// for the organization being configured; S&A scopes decide whether the caller
+// reaches it. The historical role_level <= 20 rule is the legacy evaluator
+// (a missing role level no longer passes).
+async function canManagePayrollIntegration(
+  ctx: { id: string; role_level: number | null },
+  organizationId: string
+): Promise<boolean> {
+  return financeAllowed(ctx.id, 'finance.payroll_integration.manage',
+    () => ctx.role_level !== null && ctx.role_level <= 20, organizationId)
 }
 
 // ── Load HR Accounting Config ────────────────────────────────────
@@ -112,7 +125,7 @@ export async function applyHrCoaTemplate(
     const ctx = await getAuthContext(supabase)
     if (!ctx.success || !ctx.data) return { success: false, error: ctx.error }
 
-    if (ctx.data.role_level !== null && ctx.data.role_level > 20) {
+    if (!(await canManagePayrollIntegration(ctx.data, organizationId))) {
       return { success: false, error: 'Insufficient permissions' }
     }
 
@@ -158,7 +171,7 @@ export async function setupDefaultHrGlMappings(
     const ctx = await getAuthContext(supabase)
     if (!ctx.success || !ctx.data) return { success: false, error: ctx.error }
 
-    if (ctx.data.role_level !== null && ctx.data.role_level > 20) {
+    if (!(await canManagePayrollIntegration(ctx.data, organizationId))) {
       return { success: false, error: 'Insufficient permissions' }
     }
 
@@ -196,7 +209,7 @@ export async function saveHrGlMapping(
     const ctx = await getAuthContext(supabase)
     if (!ctx.success || !ctx.data) return { success: false, error: ctx.error }
 
-    if (ctx.data.role_level !== null && ctx.data.role_level > 20) {
+    if (!(await canManagePayrollIntegration(ctx.data, organizationId))) {
       return { success: false, error: 'Insufficient permissions' }
     }
 

@@ -826,8 +826,9 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                 <div>
                                     <CardTitle>Authorization Management</CardTitle>
                                     <CardDescription>
-                                        Legacy role permissions and department overrides (compatibility input). Enterprise access is administered in{' '}
-                                        <a href="/security-access" className="font-medium text-[var(--sera-orange)] underline">Security &amp; Access</a>.
+                                        Legacy role permissions and department overrides (compatibility input only; a legacy role level never makes anyone staff). Enterprise access is administered in{' '}
+                                        <a href="/security-access" className="font-medium text-[var(--sera-orange)] underline">Security &amp; Access</a>
+                                        {' '}— the read-only view of these values is under Technical Access → Legacy compatibility.
                                     </CardDescription>
                                     {legacyReadOnly && (
                                         <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
