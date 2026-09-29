@@ -13,8 +13,6 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
-    if (saDenied) return saDenied
 
     // Check if user is Super Admin (role_level 1)
     const { data: userData, error: userError } = await supabase
@@ -23,9 +21,13 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (userError || !userData?.roles?.role_level || userData.roles.role_level !== 1) {
-      return NextResponse.json({ error: 'Forbidden: Super Admin access required' }, { status: 403 })
-    }
+    // Super Admin data operations are an S&A decision
+    // (platform.data.destructive); the historical Super Admin rule is the legacy
+    // evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive', {
+      legacy: () => !(userError || !userData?.roles?.role_level || userData.roles.role_level !== 1),
+    })
+    if (saDenied) return saDenied
 
     // 2. Process Form Data
     const formData = await request.formData()

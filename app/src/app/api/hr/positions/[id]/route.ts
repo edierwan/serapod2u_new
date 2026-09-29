@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { canManageHr, getHrAuthContext, hrCan } from '@/lib/server/hrAccess'
+import { canManageHr, getHrAuthContext, hrCan, hrCanIn } from '@/lib/server/hrAccess'
 
 export async function PATCH(
     request: NextRequest,
@@ -35,7 +35,8 @@ export async function PATCH(
             return NextResponse.json({ success: false, error: 'Position not found' }, { status: 404 })
         }
 
-        if (current.organization_id !== ctx.organizationId && ctx.roleLevel !== 1) {
+        if (current.organization_id !== ctx.organizationId
+            && !(await hrCanIn(ctx, 'hr.employee.manage', current.organization_id, () => ctx.roleLevel === 1))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 
@@ -101,7 +102,8 @@ export async function DELETE(
             return NextResponse.json({ success: false, error: 'Position not found' }, { status: 404 })
         }
 
-        if (current.organization_id !== ctx.organizationId && ctx.roleLevel !== 1) {
+        if (current.organization_id !== ctx.organizationId
+            && !(await hrCanIn(ctx, 'hr.employee.manage', current.organization_id, () => ctx.roleLevel === 1))) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 

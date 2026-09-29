@@ -9,7 +9,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const auth = await getKpiAuthContext(supabase)
     if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })
 
-    const allowed = isKpiHrManager(auth.data) || (await kpiCan(auth.data, 'hr.performance.manage', () => canApproveReview(auth.data)))
+    // S&A decides (hr.performance.manage); the historical HR-manager /
+    // review-approver rules are the legacy evaluator, never a bypass.
+    const allowed = await kpiCan(auth.data, 'hr.performance.manage',
+        async () => isKpiHrManager(auth.data) || (await canApproveReview(auth.data)))
     if (!allowed) return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json().catch(() => ({}))

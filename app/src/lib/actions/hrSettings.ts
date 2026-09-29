@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { userAllowed } from '@/lib/security-access/operation'
 
 export interface HrSettingsConfig {
     work_week?: string[]
@@ -40,7 +41,13 @@ async function getAuthContext(supabase: any) {
     }
 }
 
-async function canManageSettings(userId: string, roleLevel: number | null) {
+// HR settings are an S&A decision (hr.settings.manage) in the caller's
+// organization; the historical admin / org-chart rule is the legacy evaluator.
+async function canManageSettings(userId: string, organizationId: string | null, roleLevel: number | null) {
+    return userAllowed(userId, 'hr.settings.manage', () => legacyCanManageSettings(userId, roleLevel), { organizationId })
+}
+
+async function legacyCanManageSettings(userId: string, roleLevel: number | null) {
     if (roleLevel !== null && roleLevel <= 20) return true
     const [manageOrgChart, editOrgSettings] = await Promise.all([
         checkPermissionForUser(userId, 'manage_org_chart'),
@@ -81,7 +88,7 @@ export async function saveHrSettings(
         const ctx = await getAuthContext(supabase)
         if (!ctx.success || !ctx.data) return { success: false, error: ctx.error }
 
-        if (!(await canManageSettings(ctx.data.id, ctx.data.role_level))) {
+        if (!(await canManageSettings(ctx.data.id, ctx.data.organization_id, ctx.data.role_level))) {
             return { success: false, error: 'Unauthorized' }
         }
 

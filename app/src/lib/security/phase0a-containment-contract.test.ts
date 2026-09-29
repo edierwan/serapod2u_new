@@ -7,6 +7,7 @@ const actions = repoFile('app/src/lib/actions.ts')
 const departmentActions = repoFile('app/src/lib/actions/departments.ts')
 const hrEmployees = repoFile('app/src/app/api/hr/employees/route.ts')
 const confirmShipment = repoFile('app/src/app/api/warehouse/confirm-shipment/route.ts')
+const shipmentRouteGuard = repoFile('app/src/lib/warehouse/shipment-route-guard.ts')
 
 describe('Phase 0A containment contract', () => {
   it('makes sync_user_profile service-role-only with an internal role check and safe search path', () => {
@@ -47,7 +48,10 @@ describe('Phase 0A containment contract', () => {
 
   it('authenticates shipment confirmation and attributes writes to the session actor', () => {
     expect(confirmShipment).toContain('supabase.auth.getUser()')
-    expect(confirmShipment).toContain('authorizeWarehouseShipment')
+    // Phase 0A rule, now the legacy evaluator of the shared S&A shipment guard
+    // (authorizeShipmentActor → authorizeWarehouseShipment).
+    expect(confirmShipment).toContain('authorizeShipmentActor(supabaseAdmin, authenticatedUser.id')
+    expect(shipmentRouteGuard).toContain('authorizeWarehouseShipment(')
     expect(confirmShipment).not.toMatch(/const \{ session_id, user_id \}/)
     expect(confirmShipment).toContain('approved_by: actorUserId')
     expect(confirmShipment).toContain('shipped_by: actorUserId')

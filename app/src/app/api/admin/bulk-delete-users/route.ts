@@ -147,39 +147,14 @@ export async function POST(request: NextRequest) {
                 );
 
                 const body = await request.json();
-                const { userIds, callerId } = body;
+                const { userIds } = body;
+                // The caller is the verified session user from the guard
+                // (never a body field); authorization was decided there by
+                // S&A platform.data.destructive.
+                const callerId = guard.userId as string;
 
                 if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
                     sendEvent("error", { message: "No user IDs provided" });
-                    if (keepAliveInterval) clearInterval(keepAliveInterval);
-                    controller.close();
-                    return;
-                }
-
-                // Verify caller has permission
-                if (!callerId) {
-                    sendEvent("error", { message: "Caller ID required" });
-                    if (keepAliveInterval) clearInterval(keepAliveInterval);
-                    controller.close();
-                    return;
-                }
-
-                const { data: callerProfile } = await supabaseAdmin
-                    .from("users")
-                    .select("id, role_code, roles(role_level)")
-                    .eq("id", callerId)
-                    .single();
-
-                if (!callerProfile) {
-                    sendEvent("error", { message: "Caller not found" });
-                    if (keepAliveInterval) clearInterval(keepAliveInterval);
-                    controller.close();
-                    return;
-                }
-
-                const roleLevel = (callerProfile.roles as any)?.role_level;
-                if (roleLevel !== 1 && roleLevel !== 10) {
-                    sendEvent("error", { message: "Unauthorized: Only administrators can delete users" });
                     if (keepAliveInterval) clearInterval(keepAliveInterval);
                     controller.close();
                     return;
