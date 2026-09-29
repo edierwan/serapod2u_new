@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon, Store } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
 import DistributorOrderFulfillmentCard from './DistributorOrderFulfillmentCard'
+import OnlineShopWarehouseCard from './OnlineShopWarehouseCard'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import {
   getOwnedOrganizationLogoPath,
@@ -924,6 +925,18 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 })
                 setFulfillmentCardKey((value) => value + 1)
               }}
+            />
+          )}
+
+          {organization?.org_type_code === 'WH' && parentHqDetails?.org_type_code === 'HQ' && (
+            <OnlineShopWarehouseCard
+              key={`shop:${organization.id}:${fulfillmentCardKey}`}
+              warehouse={{
+                id: organization.id,
+                org_name: formData.org_name || organization.org_name,
+                is_active: formData.is_active ?? organization.is_active ?? true,
+              }}
+              parentHq={{ id: parentHqDetails.id, org_name: parentHqDetails.org_name }}
             />
           )}
 

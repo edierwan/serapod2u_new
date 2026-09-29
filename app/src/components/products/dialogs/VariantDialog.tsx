@@ -28,10 +28,18 @@ import {
   normalizeProductCode,
   validateProductCode,
 } from '@/lib/products/product-code'
+import { retailPriceError } from '@/lib/storefront/price-rules'
 import { cleanAlternativeName } from '@/lib/products/alternative-name'
 import VariantStockConfigurationsPanel from '@/components/products/VariantStockConfigurationsPanel'
 import KkmApprovalCertificate from '@/components/products/KkmApprovalCertificate'
 import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
+import AdditionalAttributesEditor from '@/components/products/AdditionalAttributesEditor'
+import {
+  isRawHexVariantName,
+  suggestVariantName,
+  validateStructuredAttributes,
+  type StructuredAttribute,
+} from '@/lib/products/structured-attributes'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -64,6 +72,7 @@ export interface Variant {
   variant_name: string
   alternative_name: string | null
   attributes: Record<string, any>
+  structured_attributes?: StructuredAttribute[]
   barcode: string | null
   product_code: string | null
   manufacturer_sku: string | null
@@ -90,6 +99,7 @@ interface VariantDialogProps {
   onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[]; certificateFile?: File | null }) => void
   canManageStockConfigurations?: boolean
   canManageCertificates?: boolean
+  colourReferenceClient?: any
 }
 
 const MAX_MEDIA = 10
@@ -172,6 +182,7 @@ export default function VariantDialog({
   onSave,
   canManageStockConfigurations = false,
   canManageCertificates = false,
+  colourReferenceClient,
 }: VariantDialogProps) {
   const mkInitial = useCallback(
     (): Partial<Variant> =>
@@ -219,6 +230,8 @@ export default function VariantDialog({
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [configurationProfile, setConfigurationProfile] = useState<'new_standard' | 'transition'>('new_standard')
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
+  const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>(variant?.structured_attributes || [])
+  const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -227,6 +240,8 @@ export default function VariantDialog({
     setErrors({})
     setConfigurationProfile('new_standard')
     setCertificateFile(null)
+    setStructuredAttributes(variant?.structured_attributes || [])
+    setAttributeSaveAttempted(false)
     const items: MediaItem[] = []
     if (variant?.media && variant.media.length > 0) {
       items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
@@ -245,6 +260,7 @@ export default function VariantDialog({
   const selectedProduct = products.find((p) => p.id === (formData.product_id || variant?.product_id)) || null
   const isVapeCategory = selectedProduct?.is_vape === true
   const isNewCelleraVariant = !variant && isCelleraVapeVariant(selectedProduct)
+  const variantNameSuggestion = suggestVariantName(structuredAttributes)
 
   const generateBarcode = useCallback(() => {
     if (!formData.product_id || !formData.variant_name) return ''
@@ -275,11 +291,19 @@ export default function VariantDialog({
   }, [formData.product_id, formData.variant_name, variant])
 
   const validate = (): boolean => {
+    setAttributeSaveAttempted(true)
     const e: Record<string, string> = {}
     if (!(formData.product_id || variant?.product_id)) e.product_id = 'Product is required'
-    if (!formData.variant_name) e.variant_name = 'Name is required'
+    if (!formData.variant_name?.trim()) e.variant_name = 'Name is required'
+    const nameChanged = formData.variant_name?.trim() !== variant?.variant_name?.trim()
+    if (formData.variant_name && isRawHexVariantName(formData.variant_name) && (!variant || nameChanged)) {
+      e.variant_name = 'Use a readable Variant Name (for example, Black) and store the hex under Colour Hex.'
+    }
+    if (!validateStructuredAttributes(structuredAttributes).isValid) e.attributes = 'Please fix the Additional Attributes errors.'
     const productCodeError = validateProductCode(formData.product_code)
     if (productCodeError) e.product_code = productCodeError
+    const priceError = retailPriceError(formData.suggested_retail_price)
+    if (priceError) e.suggested_retail_price = priceError
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -387,6 +411,7 @@ export default function VariantDialog({
       alternative_name: alternativeName,
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
+      structured_attributes: structuredAttributes,
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
       ...(certificateFile ? { certificateFile } : {}),
       ...(isNewCelleraVariant ? { configurationProfile } : {}),
@@ -396,7 +421,7 @@ export default function VariantDialog({
   if (!open) return null
 
   return (
-    <SeraModalOverlay onBackdropClick={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}>
+    <SeraModalOverlay>
       <SeraModalPanel className="overflow-y-auto">
         <SeraModalHeader
           sticky
@@ -471,6 +496,25 @@ export default function VariantDialog({
             <p className="text-xs text-gray-500">Alternative name commonly used by distributors.</p>
             {errors.alternative_name && <p className="text-xs text-red-500">{errors.alternative_name}</p>}
           </div>
+
+          <AdditionalAttributesEditor
+            value={structuredAttributes}
+            onChange={(attributes) => {
+              setStructuredAttributes(attributes)
+              if (errors.attributes) setErrors((current) => ({ ...current, attributes: '' }))
+            }}
+            disabled={isSaving || isValidatingProductCode}
+            showValidationErrors={attributeSaveAttempted}
+            colourReferenceClient={colourReferenceClient}
+          />
+          {errors.attributes && <p className="text-xs text-red-500">{errors.attributes}</p>}
+
+          {variantNameSuggestion && variantNameSuggestion !== formData.variant_name?.trim() && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              <span>Suggested Variant Name: <strong>{variantNameSuggestion}</strong></span>
+              <Button type="button" variant="outline" size="sm" onClick={() => setFormData((current) => ({ ...current, variant_name: variantNameSuggestion }))} disabled={isSaving || isValidatingProductCode}>Use suggestion</Button>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode <span className="text-xs text-gray-500">(Auto-generated)</span></Label>
@@ -559,7 +603,8 @@ export default function VariantDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="retailPrice">Retail Price (RM)</Label>
-              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="retailPrice" type="number" step="0.01" placeholder="0.00" value={formData.suggested_retail_price ?? ''} onChange={(e) => setFormData((p) => ({ ...p, suggested_retail_price: e.target.value ? parseFloat(e.target.value) : null }))} className="flex-1" /></div>
+              <div className="flex items-center"><span className="text-gray-600 mr-2">RM</span><Input id="retailPrice" type="number" step="0.01" placeholder="0.00" value={formData.suggested_retail_price ?? ''} onChange={(e) => { setFormData((p) => ({ ...p, suggested_retail_price: e.target.value ? parseFloat(e.target.value) : null })); if (errors.suggested_retail_price) setErrors((p) => ({ ...p, suggested_retail_price: '' })) }} className={`flex-1 ${errors.suggested_retail_price ? 'border-red-500' : ''}`} aria-invalid={Boolean(errors.suggested_retail_price)} /></div>
+              {errors.suggested_retail_price && <p className="text-xs text-red-500">{errors.suggested_retail_price}</p>}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

@@ -6,6 +6,13 @@ const migration = readFileSync(
   path.resolve(__dirname, '../../../../supabase/migrations/20260720_hq_warehouse_return_posting_03.sql'),
   'utf8',
 )
+const skipExcludedMigration = readFileSync(
+  path.resolve(
+    __dirname,
+    '../../../../supabase/migrations/20260904120000_return_inventory_skip_historically_excluded.sql',
+  ),
+  'utf8',
+)
 const statusRoute = readFileSync(
   path.resolve(__dirname, '../../app/api/returns/[id]/status/route.ts'),
   'utf8',
@@ -23,5 +30,34 @@ describe('Return Product warehouse posting contract', () => {
     expect(migration).toContain('Return warehouse cannot be changed after inventory receipt/posting has started')
     expect(statusRoute).toContain("next === 'return_received'")
     expect(statusRoute).toContain('post_return_case_inventory')
+  })
+
+  it('skips inventory for returns historically excluded by a posted Opening Balance', () => {
+    expect(skipExcludedMigration).toContain('historically_excluded')
+    expect(skipExcludedMigration).toContain('inventory_cutoff_excluded_transactions')
+    expect(skipExcludedMigration).toContain("x.transaction_type = 'return'")
+    expect(skipExcludedMigration).toContain("c.status = 'posted'")
+    expect(skipExcludedMigration).toMatch(/posted_lines',\s*0/)
+    expect(skipExcludedMigration.toLowerCase()).toContain("notify pgrst, 'reload schema'")
+    expect(statusRoute).toContain('historically_excluded')
+  })
+
+  it('keeps the canonical operational stock configuration resolver', () => {
+    expect(skipExcludedMigration).toContain('public.resolve_operational_stock_config(v_item.variant_id)')
+    expect(skipExcludedMigration).not.toContain('resolve_default_stock_config(')
+  })
+
+  it('restores the exact S&A return guard after replacing the function', () => {
+    const saModules = readFileSync(
+      path.resolve(__dirname, '../../../../supabase/migrations/20260928120000_sa_final_modules_supply_chain.sql'),
+      'utf8',
+    )
+    const guardOf = (sql: string) =>
+      sql.match(/'public\.post_return_case_inventory\(uuid\)'::regprocedure, 'inventory\.return\.manage',\s*(\$g\$[\s\S]*?\$g\$)/)?.[1]
+    expect(guardOf(saModules)).toBeTruthy()
+    expect(guardOf(skipExcludedMigration)).toBe(guardOf(saModules))
+    expect(skipExcludedMigration.indexOf('sa_inject_operation_guard')).toBeGreaterThan(
+      skipExcludedMigration.indexOf('CREATE OR REPLACE FUNCTION public.post_return_case_inventory'),
+    )
   })
 })

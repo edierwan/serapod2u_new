@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { createPaymentIntent } from '@/lib/payments'
+import { MIN_ORDER_TOTAL, customerPaymentError, isSellablePrice } from '@/lib/storefront/price-rules'
+import { normalizeMalaysianPhone, validateCheckoutCustomer } from '@/lib/storefront/customer-validation'
+import { publicOriginFromRequest } from '@/lib/http/public-origin'
+import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
+import { easyParcelRateCheck, isEasyParcelBookingEnabled, isEasyParcelConfigured } from '@/lib/shipping/easyparcel'
+import { toEasyParcelState } from '@/lib/shipping/malaysia-states'
+import { recordOrderEvent } from '@/lib/storefront/order-events'
+import { sellableStock, stockShortfall } from '@/lib/storefront/order-stock'
 
 // NOTE: storefront_orders / storefront_order_items are not in the
 // auto-generated database types yet. After running STOREFRONT_MIGRATION.sql
@@ -24,6 +33,15 @@ interface CheckoutBody {
     variantId: string
     quantity: number
   }[]
+  /** Optional success-path base. Default `/store` keeps existing storefront behaviour. */
+  returnBasePath?: string
+  /** store (default) | outdoor — tags the order channel without affecting /store. */
+  salesChannel?: 'store' | 'outdoor'
+  shipping?: {
+    serviceId?: string
+    courierName?: string
+    amount?: number
+  }
   landingPageAttribution?: {
     landingPageId?: string
     landingPageSlug?: string
@@ -37,6 +55,25 @@ interface CheckoutBody {
     fbclid?: string
     referrerDomain?: string
   } | null
+  paymentProvider?: string
+}
+
+const MAX_LINE_QUANTITY = 999
+
+async function cheapestOutdoorCourier(postcode: string, state: string) {
+  try {
+    if (!isEasyParcelBookingEnabled() || !(await isEasyParcelConfigured())) return null
+    const quoted = await easyParcelRateCheck({
+      sendCode: String(postcode || '').trim(),
+      sendState: toEasyParcelState(state),
+      sendCountry: 'MY',
+    })
+    if (!quoted.ok || quoted.rates.length === 0) return null
+    return quoted.rates[0]
+  } catch (err) {
+    console.error('[checkout] outdoor courier quote', err)
+    return null
+  }
 }
 
 function cleanAttributionText(value: unknown, max = 300) {
@@ -84,6 +121,27 @@ export async function POST(request: NextRequest) {
     if (!body.items?.length) {
       return NextResponse.json({ error: 'Cart is empty' }, { status: 400 })
     }
+    if (body.items.some((item) => !Number.isInteger(item?.quantity) || item.quantity < 1 || item.quantity > MAX_LINE_QUANTITY)) {
+      return NextResponse.json({ error: `Each quantity must be a whole number from 1 to ${MAX_LINE_QUANTITY}` }, { status: 400 })
+    }
+    if (body.salesChannel === 'outdoor') {
+      const fieldErrors = validateCheckoutCustomer(body.customer)
+      const firstError = Object.values(fieldErrors)[0]
+      if (firstError) {
+        return NextResponse.json({ error: firstError, fieldErrors }, { status: 400 })
+      }
+      const c = body.customer
+      body.customer = {
+        ...c,
+        name: c.name.trim(),
+        phone: normalizeMalaysianPhone(c.phone) || c.phone,
+        addressLine1: c.addressLine1.trim(),
+        addressLine2: c.addressLine2?.trim() || '',
+        city: c.city.trim(),
+        state: c.state.trim(),
+        postcode: c.postcode.trim(),
+      }
+    }
 
     // Cast to any: new tables not in generated types until migration runs
     const supabase: any = createAdminClient()
@@ -124,9 +182,9 @@ export async function POST(request: NextRequest) {
         )
       }
       const unitPrice = variant.suggested_retail_price || 0
-      if (unitPrice <= 0) {
+      if (!isSellablePrice(unitPrice)) {
         return NextResponse.json(
-          { error: `${variant.variant_name} does not have a valid price` },
+          { error: `${variant.products?.product_name || variant.variant_name} is not available to buy online right now.` },
           { status: 400 },
         )
       }
@@ -142,37 +200,115 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // ── 2. Generate order reference ──────────────────────────────
+    const shortfall = stockShortfall(
+      lineItems.map((li) => ({
+        variantId: li.variant_id,
+        quantity: li.quantity,
+        name: [li.product_name, li.variant_name].filter(Boolean).join(' · '),
+      })),
+      await sellableStock(supabase, lineItems.map((li) => li.variant_id)),
+    )
+    if (shortfall) {
+      return NextResponse.json({ error: shortfall }, { status: 409 })
+    }
+
+    // ── 2. Shipping (Outdoor may pass EasyParcel quote; /store stays free/zero) ──
+    const salesChannel = body.salesChannel === 'outdoor' ? 'outdoor' : 'store'
+    if (salesChannel === 'store') {
+      const productIds = [...new Set(variants.map((variant: any) => variant.product_id).filter(Boolean))]
+      if (productIds.length > 0) {
+        const flagged = await supabase.from('products').select('id, outdoor_only').in('id', productIds)
+        if (!flagged.error) {
+          const outdoorIds = new Set((flagged.data || []).filter((row: any) => row.outdoor_only).map((row: any) => row.id))
+          if (variants.some((variant: any) => outdoorIds.has(variant.product_id))) {
+            return NextResponse.json({ error: 'That product is sold on the Outdoor shop.' }, { status: 400 })
+          }
+        }
+      }
+    }
+    if (salesChannel === 'outdoor') {
+      const session = await createClient()
+      const { data: { user } } = await session.auth.getUser()
+      const accountEmail = String(user?.email || '').trim()
+      if (!accountEmail) {
+        return NextResponse.json({ error: 'Sign in before paying.' }, { status: 401 })
+      }
+      body.customer.email = accountEmail
+    }
+    let shippingAmount = 0
+    let shippingServiceId: string | null = null
+    let shippingCourierName: string | null = null
+    if (salesChannel === 'outdoor') {
+      const delivery = await resolveOutdoorShipping(
+        supabase,
+        variants.map((variant: any) => String(variant.product_id || '')),
+        orderTotal,
+      )
+      shippingAmount = delivery.amount
+      const quote = await cheapestOutdoorCourier(body.customer.postcode, body.customer.state)
+      if (quote) {
+        shippingServiceId = quote.serviceId.slice(0, 80)
+        shippingCourierName = `${quote.courierName} — ${quote.serviceName}`.slice(0, 120)
+      }
+    }
+    const payableTotal = orderTotal + shippingAmount
+    if (payableTotal < MIN_ORDER_TOTAL) {
+      return NextResponse.json(
+        { error: `The order total must be at least RM ${MIN_ORDER_TOTAL.toFixed(2)} to pay online.` },
+        { status: 400 },
+      )
+    }
+
+    // ── 3. Generate order reference ──────────────────────────────
     const orderRef = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
 
-    // ── 3. Create order ──────────────────────────────────────────
-    const { data: order, error: orderErr } = await supabase
-      .from('storefront_orders')
-      .insert({
-        order_ref: orderRef,
-        status: 'pending_payment',
-        customer_name: body.customer.name,
-        customer_email: body.customer.email,
-        customer_phone: body.customer.phone,
-        shipping_address: {
-          line1: body.customer.addressLine1,
-          line2: body.customer.addressLine2 || '',
-          city: body.customer.city,
-          state: body.customer.state,
-          postcode: body.customer.postcode,
-        },
-        total_amount: orderTotal,
-        currency: 'MYR',
-      })
-      .select('id, order_ref')
-      .single()
+    // ── 4. Create order ──────────────────────────────────────────
+    const orderPayload: Record<string, unknown> = {
+      order_ref: orderRef,
+      status: 'pending_payment',
+      sales_channel: salesChannel,
+      customer_name: body.customer.name,
+      customer_email: body.customer.email,
+      customer_phone: body.customer.phone,
+      shipping_address: {
+        line1: body.customer.addressLine1,
+        line2: body.customer.addressLine2 || '',
+        city: body.customer.city,
+        state: body.customer.state,
+        postcode: body.customer.postcode,
+      },
+      shipping_amount: shippingAmount,
+      shipping_service_id: shippingServiceId,
+      shipping_courier_name: shippingCourierName,
+      total_amount: payableTotal,
+      currency: 'MYR',
+    }
+
+    let order: { id: string; order_ref: string } | null = null
+    let orderErr: any = null
+    {
+      const first = await supabase.from('storefront_orders').insert(orderPayload).select('id, order_ref').single()
+      order = first.data
+      orderErr = first.error
+      // Pre-migration fallback: keep /store checkout working if Outdoor columns are not applied yet.
+      if (orderErr && /sales_channel|shipping_amount|shipping_service|shipping_courier/i.test(String(orderErr.message || ''))) {
+        const legacy = { ...orderPayload }
+        delete legacy.sales_channel
+        delete legacy.shipping_amount
+        delete legacy.shipping_service_id
+        delete legacy.shipping_courier_name
+        const retry = await supabase.from('storefront_orders').insert(legacy).select('id, order_ref').single()
+        order = retry.data
+        orderErr = retry.error
+      }
+    }
 
     if (orderErr || !order) {
       console.error('Order creation failed:', orderErr)
       return NextResponse.json({ error: 'Could not create order' }, { status: 500 })
     }
 
-    // ── 4. Insert line items ─────────────────────────────────────
+    // ── 5. Insert line items ─────────────────────────────────────
     const { error: lineErr } = await supabase.from('storefront_order_items').insert(
       lineItems.map((li) => ({
         order_id: order.id,
@@ -192,6 +328,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Could not create order items' }, { status: 500 })
     }
 
+    await recordOrderEvent(supabase, {
+      orderId: order.id,
+      eventType: 'created',
+      toStatus: 'pending_payment',
+      actorType: 'customer',
+      actorLabel: String(body.customer.email || ''),
+      note: `Order placed on the ${salesChannel === 'outdoor' ? 'Outdoor' : 'online'} store`,
+    })
+
     if (landingPageAttribution) {
       const { error: attributionErr } = await supabase
         .from('landing_page_order_attributions')
@@ -199,7 +344,7 @@ export async function POST(request: NextRequest) {
           ...landingPageAttribution,
           order_id: order.id,
           order_ref: order.order_ref,
-          order_total: orderTotal,
+          order_total: payableTotal,
           currency: 'MYR',
         })
 
@@ -213,25 +358,40 @@ export async function POST(request: NextRequest) {
             landing_page_slug: landingPageAttribution.landing_page_slug,
             landing_page_session_id: landingPageAttribution.landing_page_session_id,
             event_type: 'order_created',
-            metadata: { orderId: order.id, orderRef: order.order_ref, orderTotal },
+            metadata: {
+              orderId: order.id,
+              orderRef: order.order_ref,
+              orderTotal: payableTotal,
+              salesChannel,
+            },
           })
       }
     }
 
-    // ── 5. Create payment intent via gateway adapter ─────────────
-    const origin = request.nextUrl.origin
-    const paymentResult = await createPaymentIntent({
-      orderId: order.id,
-      orderRef: order.order_ref,
-      amount: orderTotal,
-      currency: 'MYR',
-      customerName: body.customer.name,
-      customerEmail: body.customer.email,
-      customerPhone: body.customer.phone,
-      description: `Order ${order.order_ref}`,
-      returnUrl: `${origin}/store/orders/success?ref=${order.order_ref}`,
-      callbackUrl: `${origin}/api/storefront/payment/webhook`,
-    })
+    // ── 6. Create payment intent via gateway adapter ─────────────
+    const origin = publicOriginFromRequest(request)
+    const returnBase =
+      typeof body.returnBasePath === 'string' && body.returnBasePath.startsWith('/')
+        ? body.returnBasePath.replace(/\/$/, '')
+        : '/store'
+    const paymentResult = await createPaymentIntent(
+      {
+        orderId: order.id,
+        orderRef: order.order_ref,
+        amount: payableTotal,
+        currency: 'MYR',
+        customerName: body.customer.name,
+        customerEmail: body.customer.email,
+        customerPhone: body.customer.phone,
+        description: `Order ${order.order_ref}`,
+        returnUrl: `${origin}${returnBase}/orders/success?ref=${order.order_ref}`,
+        cancelUrl: returnBase === '/outdoor'
+          ? `${origin}/outdoor/account?tab=orders&pending=${encodeURIComponent(order.order_ref)}`
+          : undefined,
+        callbackUrl: `${origin}/api/storefront/payment/webhook`,
+      },
+      body.paymentProvider,
+    )
 
     if (!paymentResult.success) {
       // Update order as failed
@@ -241,7 +401,7 @@ export async function POST(request: NextRequest) {
         .eq('id', order.id)
 
       return NextResponse.json(
-        { error: paymentResult.error || 'Payment gateway error' },
+        { error: customerPaymentError(paymentResult.error) },
         { status: 502 },
       )
     }

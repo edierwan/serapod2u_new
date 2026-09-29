@@ -14,6 +14,14 @@ export const SELF_SERVICE_PROFILE_FIELDS = [
   'bank_account_holder_name',
 ] as const
 
+// Storefront-only values persisted in Supabase Auth user_metadata. These are
+// accepted only by the profile endpoint and must never be spread into
+// public.users by updateUserWithAuth.
+export const SELF_SERVICE_AUTH_METADATA_FIELDS = [
+  'outdoor_phone',
+  'outdoor_location',
+] as const
+
 const SELF_SERVICE_PROFILE_FIELD_SET = new Set<string>(SELF_SERVICE_PROFILE_FIELDS)
 
 export const PROTECTED_USER_ACCESS_FIELDS = [

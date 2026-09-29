@@ -57,6 +57,7 @@ export default function StorefrontProductCard({ product }: { product: Storefront
   const fallbackUrl = animationUrl ? imageUrl : null
   const displayUrl = useFallback ? fallbackUrl : primaryUrl
   const mediaType = displayUrl ? getMediaType(displayUrl) : 'image'
+  const soldOutLook = product.sold_out ? ' grayscale opacity-50' : ''
 
   const handleMediaError = () => {
     if (!useFallback && fallbackUrl) {
@@ -81,14 +82,14 @@ export default function StorefrontProductCard({ product }: { product: Storefront
               loop
               playsInline
               autoPlay
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]${soldOutLook}`}
               onError={handleMediaError}
             />
           ) : (
             <img
               src={displayUrl}
               alt={product.product_name}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]${soldOutLook}`}
               loading="lazy"
               onError={handleMediaError}
             />
@@ -104,6 +105,14 @@ export default function StorefrontProductCard({ product }: { product: Storefront
           <div className="absolute bottom-3 left-3 rounded-full bg-[var(--sera-ink)]/70 p-1.5 backdrop-blur-sm">
             <Play className="h-3 w-3 fill-white text-white" />
           </div>
+        )}
+
+        {product.sold_out && (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center" role="status">
+            <span className="rounded-full bg-[var(--sera-ink)]/90 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-lg">
+              Sold out
+            </span>
+          </span>
         )}
 
         {product.variant_count > 1 && (
