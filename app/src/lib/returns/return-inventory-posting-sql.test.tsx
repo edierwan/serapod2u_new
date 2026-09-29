@@ -41,4 +41,9 @@ describe('Return Product warehouse posting contract', () => {
     expect(skipExcludedMigration.toLowerCase()).toContain("notify pgrst, 'reload schema'")
     expect(statusRoute).toContain('historically_excluded')
   })
+
+  it('keeps the canonical operational stock configuration resolver', () => {
+    expect(skipExcludedMigration).toContain('public.resolve_operational_stock_config(v_item.variant_id)')
+    expect(skipExcludedMigration).not.toContain('resolve_default_stock_config(')
+  })
 })
