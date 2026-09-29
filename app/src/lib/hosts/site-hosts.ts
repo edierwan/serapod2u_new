@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { OUTDOOR_HOSTS } from '@/lib/hosts/outdoor-hosts'
 
 /**
  * Marketing host → internal App Router prefix.
@@ -7,12 +8,10 @@ import { NextResponse } from 'next/server'
  * their `/` still redirects to `/store` via app/src/app/page.tsx.
  */
 export const MARKETING_HOST_PREFIX: Record<string, '/outdoor' | '/corporate'> = {
-  'outdoor.serapod.com': '/outdoor',
-  'www.outdoor.serapod.com': '/outdoor',
+  ...Object.fromEntries(OUTDOOR_HOSTS.map((host) => [host, '/outdoor' as const])),
   'serapod.com': '/corporate',
   'www.serapod.com': '/corporate',
   // Local DNS / hosts-file previews (optional)
-  'outdoor.localhost': '/outdoor',
   'corporate.localhost': '/corporate',
 }
 

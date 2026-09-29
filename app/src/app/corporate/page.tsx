@@ -1,8 +1,9 @@
 import Link from 'next/link'
+import { OUTDOOR_SITE_DEFAULT } from '@/lib/hosts/outdoor-hosts'
 
 const OUTDOOR_URL =
   process.env.NEXT_PUBLIC_OUTDOOR_SITE_URL?.replace(/\/$/, '')
-  || 'https://outdoor.serapod.com'
+  || OUTDOOR_SITE_DEFAULT
 
 const BRANDS = [
   {

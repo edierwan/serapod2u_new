@@ -1,3 +1,5 @@
+import { isOutdoorHost } from '@/lib/hosts/outdoor-hosts'
+
 export const OUTDOOR_OAUTH_NEXT_COOKIE = 'outdoor_oauth_next'
 export const OUTDOOR_AUTH_NEXT_STORAGE = 'outdoor_auth_next'
 export const OUTDOOR_HOME = '/outdoor'
@@ -97,6 +99,7 @@ export function resolveOutdoorReturnPath(nextParam: string | null, redirectParam
 }
 
 export function outdoorPublicOrigin() {
+  if (typeof window !== 'undefined' && isOutdoorHost(window.location.hostname)) return window.location.origin
   const env = String(process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
   if (env && !/0\.0\.0\.0|127\.0\.0\.1/i.test(env)) return env
   if (typeof window !== 'undefined') {

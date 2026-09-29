@@ -3,6 +3,7 @@ import { Manrope, Syne } from 'next/font/google'
 import { CartProvider } from '@/lib/storefront/cart-context'
 import OutdoorChrome from '@/components/outdoor/OutdoorChrome'
 import OutdoorAnalytics from '@/components/outdoor/OutdoorAnalytics'
+import { OUTDOOR_SITE_DEFAULT } from '@/lib/hosts/outdoor-hosts'
 import './outdoor.css'
 
 const display = Syne({
@@ -18,7 +19,7 @@ const body = Manrope({
 })
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_OUTDOOR_SITE_URL?.replace(/\/$/, '') || 'https://outdoor.serapod.com'
+  process.env.NEXT_PUBLIC_OUTDOOR_SITE_URL?.replace(/\/$/, '') || OUTDOOR_SITE_DEFAULT
 
 const gsc = String(process.env.NEXT_PUBLIC_OUTDOOR_GSC_VERIFICATION || '').trim()
 

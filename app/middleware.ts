@@ -92,7 +92,7 @@ export async function middleware(request: NextRequest) {
   const qrRedirect = await handleQRSecurityRedirect(request);
   if (qrRedirect) return qrRedirect;
 
-  // 2) Marketing hosts (serapod.com / outdoor.serapod.com) → isolated trees.
+  // 2) Marketing hosts (serapod.com / outdoor.serapod2u.com) → isolated trees.
   // Default app hosts keep `/` → `/store` behaviour unchanged.
   const marketingRewrite = resolveMarketingHostRewrite(request)
   if (marketingRewrite) return marketingRewrite
