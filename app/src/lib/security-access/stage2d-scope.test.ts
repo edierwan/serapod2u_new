@@ -35,9 +35,16 @@ describe('readableOrganizations', () => {
     await expect(readableOrganizationsOfTypes(scope, ['HQ', 'WH'])).resolves.toEqual(['hq', 'wh-1'])
   })
 
-  it('returns nothing when the S&A lookup fails (never the legacy "all")', async () => {
+  it('keeps the legacy rule until the Stage 2D migration creates the function', async () => {
     mode = 'NEW_ENFORCED'
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202' } })
+    const { readableOrganizations } = await import('./scope')
+    await expect(readableOrganizations('u', 'inventory.report.view', () => ({ all: true }))).resolves.toEqual({ all: true })
+  })
+
+  it('returns nothing when the S&A lookup fails (never the legacy "all")', async () => {
+    mode = 'NEW_ENFORCED'
+    rpc.mockResolvedValue({ data: null, error: { code: 'XX000' } })
     const { readableOrganizations } = await import('./scope')
     await expect(readableOrganizations('u', 'inventory.report.view', () => ({ all: true }))).resolves.toEqual({ all: false, organizationIds: [] })
   })

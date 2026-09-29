@@ -6,6 +6,8 @@ import { isNewAuthoritative } from './enforcement'
 export type ReadableOrganizations = { all: true } | { all: false; organizationIds: string[] }
 
 const NONE: ReadableOrganizations = { all: false, organizationIds: [] }
+/** PostgREST / Postgres "function does not exist" (migration not applied yet). */
+const FUNCTION_MISSING = new Set(['PGRST202', '42883'])
 
 /**
  * Which organizations a list may show for `permission`.
@@ -30,6 +32,10 @@ export async function readableOrganizations(
   if (!isNewAuthoritative(mode)) return legacy()
   const admin = createAdminClient() as any
   const { data, error } = await admin.rpc('sa_readable_organizations', { p_actor: userId, p_permission: permission })
+  // Code-before-migration rollout only: until the Stage 2D migration creates
+  // the function, the historical rule keeps deciding (as authorization.ts does
+  // for its evaluator). Any other failure returns nothing.
+  if (error && FUNCTION_MISSING.has(error.code)) return legacy()
   if (error || !Array.isArray(data)) {
     console.error('[sa-scope] readable organizations unavailable', { permission, code: error?.code })
     return NONE
@@ -62,6 +68,7 @@ export async function targetProtectionAllows(
     if (!isNewAuthoritative(mode)) return Boolean(await legacy())
     const admin = createAdminClient() as any
     const { data, error } = await admin.rpc('sa_actor_dominates', { p_actor: actorId, p_target: targetId })
+    if (error && FUNCTION_MISSING.has(error.code)) return Boolean(await legacy())
     return !error && data === true
   } catch {
     return false
