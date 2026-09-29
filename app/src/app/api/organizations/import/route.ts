@@ -101,8 +101,6 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.organization.manage')
-    if (saDenied) return saDenied
 
     const { data: profile } = await supabase
       .from('users')
@@ -111,7 +109,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     const roleLevel = (profile?.roles as any)?.role_level
-    if (!profile || (roleLevel > 50 && profile.role_code !== 'MANAGER')) {
+    // Organization import is an S&A decision (platform.organization.manage);
+    // the historical role rule is the legacy evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.organization.manage', {
+      legacy: () => !(!profile || (roleLevel > 50 && profile.role_code !== 'MANAGER')),
+    })
+    if (saDenied) return saDenied
+    if (!profile) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 

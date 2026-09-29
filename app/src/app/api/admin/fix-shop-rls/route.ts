@@ -15,8 +15,6 @@ export async function POST() {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
-    if (saDenied) return saDenied
 
     const { data: profile } = await supabase
       .from('users')
@@ -24,9 +22,12 @@ export async function POST() {
       .eq('id', user.id)
       .single()
 
-    if (!profile || !['SA', 'HQ'].includes(profile.role_code)) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-    }
+    // Data maintenance is an S&A decision (platform.data.destructive); the
+    // historical SA/HQ rule is the legacy evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive', {
+      legacy: () => !(!profile || !['SA', 'HQ'].includes(profile.role_code)),
+    })
+    if (saDenied) return saDenied
 
     // Execute the migration SQL
     // Note: This requires a database function or direct SQL access

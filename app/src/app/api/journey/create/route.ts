@@ -22,8 +22,6 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
-    if (saDenied) return saDenied
 
     // Get user profile with relationships
     const { data: profile, error: profileError } = await supabase
@@ -58,14 +56,12 @@ export async function POST(request: NextRequest) {
     const orgTypeCode = organizations.length > 0 ? organizations[0].org_type_code : null
     const roleLevel = roles.length > 0 ? roles[0].role_level : null
 
-    // Check if user has admin permissions (role_level <= 30)
-    // Journeys can be created by any organization (HQ, DIST, MFR) for their orders
-    if (!roleLevel || roleLevel > 30) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions. Admin access required to create journeys.' },
-        { status: 403 }
-      )
-    }
+    // Journey administration is an S&A decision (customer.campaign.manage);
+    // the historical role_level <= 30 rule is the legacy evaluator.
+    const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage', {
+      legacy: () => Boolean(roleLevel && roleLevel <= 30),
+    })
+    if (saDenied) return saDenied
 
     const body = await request.json()
     const {

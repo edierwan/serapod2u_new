@@ -21,8 +21,6 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive')
-    if (saDenied) return saDenied
 
     // Check if user is Super Admin
     const { data: profile } = await supabase
@@ -31,12 +29,13 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1) {
-      return NextResponse.json(
-        { error: 'Access denied. Super Admin only.' },
-        { status: 403 }
-      )
-    }
+    // Super Admin data operations are an S&A decision
+    // (platform.data.destructive); the historical Super Admin rule is the legacy
+    // evaluator.
+    const saDenied = await guardUserOperation(user.id, 'platform.data.destructive', {
+      legacy: () => !(!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1),
+    })
+    if (saDenied) return saDenied
 
     console.log('📦 EXPORTING DATA - Started by:', user.email)
 

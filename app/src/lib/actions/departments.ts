@@ -617,13 +617,13 @@ interface UserContext {
 
 const HR_ROLE_CODES = new Set(['HR_MANAGER'])
 
-const canManageDepartments = (ctx: UserContext) => {
+const legacyCanManageDepartments = (ctx: UserContext) => {
   if (!ctx) return false
   if (ctx.role_level !== null && ctx.role_level <= 20) return true
   return HR_ROLE_CODES.has(ctx.role_code)
 }
 
-const canManageOrgChart = async (ctx: UserContext) => {
+const legacyCanManageOrgChart = async (ctx: UserContext) => {
   if (!ctx) return false
   if (ctx.role_level !== null && ctx.role_level <= 20) return true
 
@@ -634,6 +634,16 @@ const canManageOrgChart = async (ctx: UserContext) => {
 
   return manageOrgChart.allowed || editOrgSettings.allowed
 }
+
+// Department and org-chart administration are S&A decisions
+// (hr.employee.manage) in the caller's organization; the historical admin /
+// HR-role / org-chart rules are the legacy evaluators. The same-organization
+// checks at each call site still apply.
+const canManageDepartments = (ctx: UserContext) =>
+  userAllowed(ctx.id, 'hr.employee.manage', () => legacyCanManageDepartments(ctx), { organizationId: ctx.organization_id })
+
+const canManageOrgChart = (ctx: UserContext) =>
+  userAllowed(ctx.id, 'hr.employee.manage', () => legacyCanManageOrgChart(ctx), { organizationId: ctx.organization_id })
 
 const getUserContext = async (supabase: any): Promise<{ success: boolean; data?: UserContext; error?: string }> => {
   const { data: authData, error: authError } = await supabase.auth.getUser()
@@ -764,7 +774,7 @@ export async function getOrgUsersForDepartmentManagement(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -839,7 +849,7 @@ export async function bulkAssignUsersToDepartment(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -907,7 +917,7 @@ export async function bulkMoveUsersToDepartment(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -966,7 +976,7 @@ export async function bulkRemoveUsersFromDepartment(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -1016,7 +1026,7 @@ export async function updateUserManager(
       return { success: false, error: ctxResult.error || 'Unauthorized' }
     }
 
-    if (!canManageDepartments(ctxResult.data)) {
+    if (!(await canManageDepartments(ctxResult.data))) {
       return { success: false, error: 'Unauthorized' }
     }
 
@@ -1118,7 +1128,7 @@ export async function createUserForDepartment(
     // Employee management in the department's organization (S&A decision;
     // the legacy department-management rule decides only in legacy modes).
     const ctx = ctxResult.data
-    if (!(await userAllowed(ctx.id, 'hr.employee.manage', () => canManageDepartments(ctx) && (!ctx.organization_id || dept.organization_id === ctx.organization_id),
+    if (!(await userAllowed(ctx.id, 'hr.employee.manage', () => legacyCanManageDepartments(ctx) && (!ctx.organization_id || dept.organization_id === ctx.organization_id),
       { organizationId: dept.organization_id }))) {
       return { success: false, error: 'Unauthorized' }
     }

@@ -155,6 +155,20 @@ export const hrCan = async (
     }
 }
 
+/**
+ * S&A decision for an HR operation on a record that belongs to
+ * `organizationId` — taken from a row the server loaded, never from the
+ * request. Replaces the historical "same organization, or role_level <= N"
+ * rule for cross-organization edits: S&A scopes decide whether the caller
+ * reaches that organization (an organization scope covers its descendants).
+ */
+export const hrCanIn = (
+    ctx: Pick<HrAuthContext, 'userId' | 'organizationId' | 'roleCode' | 'roleLevel'>,
+    permission: string,
+    organizationId: string | null,
+    legacy: LegacyEvaluator,
+): Promise<boolean> => hrCan({ ...ctx, organizationId }, permission, legacy)
+
 /** Employee self-service on the caller's own record (own_record scope). */
 export const hrSelfCan = async (
     ctx: Pick<HrAuthContext, 'userId' | 'organizationId'>,
