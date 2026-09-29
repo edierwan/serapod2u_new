@@ -196,6 +196,19 @@ $$;
 COMMENT ON FUNCTION public.post_return_case_inventory(uuid) IS
   'Posts Stock IN to the selected return warehouse once at Return Received. Idempotent; skips inventory (no stock movement) when the return was historically excluded by a posted Opening Balance; does not post during Draft/Submitted.';
 
+-- CREATE OR REPLACE drops the S&A operation guard that
+-- 20260928120000_sa_final_modules_supply_chain injects; restore the same guard
+-- where that migration has already run.
+DO $sa_guard$
+BEGIN
+  IF to_regprocedure('public.sa_inject_operation_guard(regprocedure,text,text,jsonb)') IS NOT NULL THEN
+    PERFORM public.sa_inject_operation_guard(
+      'public.post_return_case_inventory(uuid)'::regprocedure, 'inventory.return.manage',
+      $g$PERFORM public.sa_require_operation('inventory.return.manage', jsonb_build_object('organization_id', (SELECT rc.return_warehouse_id FROM public.return_cases rc WHERE rc.id = p_return_case_id), 'warehouse_id', (SELECT rc.return_warehouse_id FROM public.return_cases rc WHERE rc.id = p_return_case_id)), 'return_case', p_return_case_id::text);$g$);
+  END IF;
+END
+$sa_guard$;
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
