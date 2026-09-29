@@ -46,4 +46,18 @@ describe('Return Product warehouse posting contract', () => {
     expect(skipExcludedMigration).toContain('public.resolve_operational_stock_config(v_item.variant_id)')
     expect(skipExcludedMigration).not.toContain('resolve_default_stock_config(')
   })
+
+  it('restores the exact S&A return guard after replacing the function', () => {
+    const saModules = readFileSync(
+      path.resolve(__dirname, '../../../../supabase/migrations/20260928120000_sa_final_modules_supply_chain.sql'),
+      'utf8',
+    )
+    const guardOf = (sql: string) =>
+      sql.match(/'public\.post_return_case_inventory\(uuid\)'::regprocedure, 'inventory\.return\.manage',\s*(\$g\$[\s\S]*?\$g\$)/)?.[1]
+    expect(guardOf(saModules)).toBeTruthy()
+    expect(guardOf(skipExcludedMigration)).toBe(guardOf(saModules))
+    expect(skipExcludedMigration.indexOf('sa_inject_operation_guard')).toBeGreaterThan(
+      skipExcludedMigration.indexOf('CREATE OR REPLACE FUNCTION public.post_return_case_inventory'),
+    )
+  })
 })
