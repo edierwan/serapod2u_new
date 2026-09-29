@@ -6,7 +6,7 @@ describe('order stock', () => {
     expect(stockErrorMessage({ message: 'storefront_stock_short: Cellera (Mango) has 1 in the warehouse, this order needs 3.' }))
       .toBe('Not enough stock to ship: Cellera (Mango) has 1 in the warehouse, this order needs 3. Add stock in Inventory first.')
     expect(stockErrorMessage({ message: 'inventory_cutoff_warehouse_frozen: ...' })).toContain('stock count')
-    expect(stockErrorMessage({ message: 'storefront_no_fulfilment_warehouse: none' })).toContain('default warehouse')
+    expect(stockErrorMessage({ message: 'storefront_no_fulfilment_warehouse: none' })).toContain('Ship Website Orders From This Warehouse')
   })
 
   it('keeps shipping when the stock functions are not deployed yet', async () => {

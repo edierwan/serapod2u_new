@@ -4,7 +4,8 @@
 -- Business decision:
 --   * Stock leaves the warehouse when staff mark a website order shipped.
 --   * It ships from the seller HQ's default fulfilment warehouse
---     (organizations.default_warehouse_org_id; Serapod Warehouse Balakong).
+--     (organizations.default_warehouse_org_id). 20260929200000 lets the HQ
+--     pick a separate online shop warehouse.
 --   * A refund/cancel after shipping puts stock back only when staff confirm
 --     the goods came back. Before shipping nothing was taken, so nothing returns.
 --   * The website stops selling a variant the warehouse cannot cover.

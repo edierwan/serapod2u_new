@@ -23,7 +23,7 @@ export function stockErrorMessage(error: any): string {
     return 'The warehouse is in the middle of a stock count, so nothing can leave it until the count is posted.'
   }
   if (/storefront_no_fulfilment_warehouse/.test(message)) {
-    return 'The online shop has no default warehouse. Set one for the HQ in Organizations, then try again.'
+    return 'The online shop has no active warehouse. Open the warehouse in Organizations and choose “Ship Website Orders From This Warehouse”, then try again.'
   }
   if (/canonical operational stock configuration/i.test(message)) {
     return 'One of the products has no stock configuration in master data, so its stock cannot be moved.'
