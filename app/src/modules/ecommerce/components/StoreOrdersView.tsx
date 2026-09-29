@@ -282,8 +282,11 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const openRequestsByOrder = useOpenRequestsByOrder(useMemo(() => orders.map(o => o.id), [orders]), requestsRefresh)
 
     useEffect(() => {
-        const fromUrl = new URLSearchParams(window.location.search).get('channel')
+        const params = new URLSearchParams(window.location.search)
+        const fromUrl = params.get('channel')
         if (fromUrl && CHANNEL_OPTIONS.some(option => option.value === fromUrl)) setChannelFilter(fromUrl)
+        const tabFromUrl = params.get('tab')
+        if (tabFromUrl === 'messages' || tabFromUrl === 'subscribers' || tabFromUrl === 'customer_messages') setTab(tabFromUrl)
     }, [])
 
     // ── Debounce search ──────────────────────────────────────────
