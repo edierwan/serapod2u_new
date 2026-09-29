@@ -70,6 +70,12 @@ describe('buildOutdoorOrderSms', () => {
     }
   })
 
+  it('keeps the exact texts customers received before', () => {
+    expect(buildOutdoorOrderSms('paid', ref, origin)).toBe(`[SeraOutdoor] Payment received for order ${ref}. Thank you! Track it here: ${origin}/outdoor/track?order=${ref}`)
+    expect(buildOutdoorOrderSms('delivered', ref, origin)).toBe(`[SeraOutdoor] Order ${ref} has been delivered. Enjoy! Any problem? Report it from your order: ${origin}/outdoor/account`)
+    expect(buildOutdoorOrderSms('cancelled', ref, origin)).toBe(`[SeraOutdoor] Order ${ref} has been cancelled. You have not been charged. Questions? ${origin}/outdoor/contact`)
+  })
+
   it('tells a cancelled customer whether money is coming back', () => {
     expect(buildOutdoorOrderSms('cancelled', ref, origin)).toContain('You have not been charged.')
     expect(buildOutdoorOrderSms('cancelled', ref, origin, { moneyReturned: true })).toContain('Your refund is on its way.')
@@ -142,6 +148,24 @@ describe('notifyOutdoorOrderSms', () => {
     state.settings = { email_enabled: true, sms_enabled: false }
     await notifyOutdoorOrderSms('o1', 'paid')
     expect(state.sent).toHaveLength(1)
+  })
+
+  it('sends the wording staff saved, filled with the order details', async () => {
+    state.order = { ...state.order, customer_name: 'Aina Rahman', total_amount: 189, currency: 'MYR', shipping_courier_name: 'J&T Express', shipping_tracking_no: 'JT9' }
+    state.settings = { email_enabled: true, sms_enabled: true, sms_template: 'Hi {{first_name}}, {{order_no}} ({{amount}}) is with {{courier}}: {{tracking_no}}' }
+    await notifyOutdoorOrderSms('o1', 'shipped')
+    expect(state.sent[0].text).toBe('Hi Aina, ORD-1 (RM 189.00) is with J&T Express: JT9')
+  })
+
+  it('falls back to the built-in text when the saved wording is empty', async () => {
+    state.settings = { email_enabled: true, sms_enabled: true, sms_template: '   ' }
+    await notifyOutdoorOrderSms('o1', 'delivered')
+    state.settings = { email_enabled: true, sms_enabled: true, sms_template: '{{nope}}' }
+    await notifyOutdoorOrderSms('o1', 'delivered')
+    expect(state.sent.map((s) => s.text)).toEqual([
+      buildOutdoorOrderSms('delivered', 'ORD-1', 'https://stg.serapod2u.com'),
+      buildOutdoorOrderSms('delivered', 'ORD-1', 'https://stg.serapod2u.com'),
+    ])
   })
 
   it('keeps the default when the settings cannot be read', async () => {

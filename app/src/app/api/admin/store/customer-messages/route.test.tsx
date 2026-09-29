@@ -19,8 +19,12 @@ vi.mock('@/lib/supabase/admin', () => ({
         const chain: any = { select: () => chain, eq: () => chain, single: async () => ({ data: { id: 'u1', organization_id: 'hq', organizations: { org_type_code: 'HQ' }, roles: { role_level: 10 } } }) }
         return chain
       }
+      const listed = { data: state.rows, error: null }
       return {
-        select: async () => ({ data: state.rows, error: null }),
+        select: () => ({
+          then: (ok: any) => Promise.resolve(listed).then(ok),
+          limit: async () => ({ data: [], error: null }),
+        }),
         upsert: async (row: any, options: any) => {
           state.upserts.push([row, options])
           if (!state.upsertError) state.rows = [row]
@@ -32,6 +36,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { GET, PUT } from './route'
+import { defaultOutdoorSmsTemplate } from '@/lib/outdoor/customer-messages'
 
 const put = (body: unknown) => PUT(new Request('http://x/api/admin/store/customer-messages', { method: 'PUT', body: JSON.stringify(body) }) as any)
 
@@ -72,6 +77,32 @@ describe('/api/admin/store/customer-messages', () => {
     expect((await put({ event: 'processing', email: true, sms: true })).status).toBe(400)
     expect((await put({ event: 'shipped', email: 'yes', sms: true })).status).toBe(400)
     expect((await put({ event: 'shipped', email: true })).status).toBe(400)
+    expect(state.upserts).toEqual([])
+  })
+
+  it('leaves the SMS text alone when only a switch changes', async () => {
+    await put({ event: 'paid', email: true, sms: false })
+    expect('sms_template' in state.upserts[0][0]).toBe(false)
+  })
+
+  it('saves SMS wording, and stores the built-in text as no custom text', async () => {
+    await put({ event: 'delivered', email: true, sms: true, smsTemplate: '  Hi {{first_name}}, {{order_no}} arrived.  ' })
+    expect(state.upserts[0][0]).toMatchObject({ event_code: 'delivered', sms_template: 'Hi {{first_name}}, {{order_no}} arrived.' })
+    const res = await put({ event: 'delivered', email: true, sms: true, smsTemplate: defaultOutdoorSmsTemplate('delivered') })
+    expect(state.upserts[1][0].sms_template).toBeNull()
+    expect((await res.json()).events.find((e: any) => e.event === 'delivered').smsTemplate).toBeNull()
+    await put({ event: 'delivered', email: true, sms: true, smsTemplate: '' })
+    await put({ event: 'delivered', email: true, sms: true, smsTemplate: null })
+    expect(state.upserts[2][0].sms_template).toBeNull()
+    expect(state.upserts[3][0].sms_template).toBeNull()
+  })
+
+  it('refuses SMS wording with unknown placeholders, too long or not text', async () => {
+    const bad = [{ smsTemplate: 'Hi {{name}}' }, { smsTemplate: 'x'.repeat(481) }, { smsTemplate: 5 }, { smsTemplate: 'Hi {{order_no}' }]
+    for (const extra of bad) {
+      const res = await put({ event: 'delivered', email: true, sms: true, ...extra })
+      expect(res.status).toBe(400)
+    }
     expect(state.upserts).toEqual([])
   })
 
