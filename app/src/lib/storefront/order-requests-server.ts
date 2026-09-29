@@ -1,5 +1,6 @@
 import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
 import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
+import { withStorageApiKey } from '@/lib/utils'
 import {
   ORDER_REQUEST_CUSTOMER_LABELS,
   ORDER_REQUEST_MAX_PHOTO_BYTES,
@@ -61,7 +62,7 @@ async function signedPhotoMap(admin: any, rows: any[]) {
     return map
   }
   for (const item of data || []) {
-    if (item?.path && item?.signedUrl) map.set(item.path, item.signedUrl)
+    if (item?.path && item?.signedUrl) map.set(item.path, withStorageApiKey(item.signedUrl))
   }
   return map
 }
