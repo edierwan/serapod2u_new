@@ -19,6 +19,10 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
   const [active, setActive] = useState(defaultIndex >= 0 ? defaultIndex : 0)
   const index = swatches.length === 0 ? 0 : Math.min(active, swatches.length - 1)
   const activeSwatch = swatches[index]
+  const soldOutVariants = product.sold_out_variant_ids || []
+  const showingSoldOut =
+    Boolean(product.sold_out) ||
+    Boolean(activeSwatch?.variantId && soldOutVariants.includes(activeSwatch.variantId))
   const frames = swatches.length > 0
     ? swatches.map((swatch) => swatch.imageUrl || product.image_url || '')
     : [product.image_url || '']
@@ -32,8 +36,8 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
 
   return (
     <article className="flex h-full flex-col">
-      <Link href={`/outdoor/shop/${product.id}`} className={`relative block${product.sold_out ? ' out-sold-out' : ''}`}>
-        {product.sold_out ? <OutdoorSoldOutTag /> : null}
+      <Link href={`/outdoor/shop/${product.id}`} className={`relative block${showingSoldOut ? ' out-sold-out' : ''}`}>
+        {showingSoldOut ? <OutdoorSoldOutTag /> : null}
         <div className="aspect-[4/5] overflow-hidden rounded-[1.35rem] bg-white">
           <div className="out-carousel" style={{ transform: `translate3d(-${index * 100}%, 0, 0)` }}>
             {frames.map((src, frame) => (

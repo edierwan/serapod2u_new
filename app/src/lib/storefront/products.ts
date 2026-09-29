@@ -51,6 +51,8 @@ export interface StorefrontProduct {
   outdoorNav?: string;
   /** Every variant is out of stock in the online shop's warehouse. */
   sold_out?: boolean;
+  /** Variants out of stock in the online shop's warehouse, so a card can grey out that colour. */
+  sold_out_variant_ids?: string[];
 }
 
 export interface StorefrontProductDetail {
@@ -430,6 +432,12 @@ export async function listProducts(params: ListProductsParams = {}) {
         stock !== null &&
         activeVariants.length > 0 &&
         activeVariants.every((v: any) => (stock.get(v.id) ?? 0) <= 0),
+      sold_out_variant_ids:
+        stock === null
+          ? []
+          : activeVariants
+              .filter((v: any) => (stock.get(v.id) ?? 0) <= 0)
+              .map((v: any) => String(v.id)),
     };
   });
 
