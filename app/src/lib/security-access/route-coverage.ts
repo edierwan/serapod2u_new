@@ -432,6 +432,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "organizations/set-default-warehouse": { kind: 'ENTERPRISE', permissions: ["platform.organization.manage"] },
   "outdoor/checkout-prefill": { kind: 'CONSUMER', reason: "Signed-in Outdoor shopper's own delivery details (own profile and own orders)" },
   "outdoor/contact": { kind: 'EXCEPTION', reason: "Public contact form (POST); the staff inbox (GET) is the S&A decision ecommerce.outdoor.operate (lib/outdoor/staff.ts)" },
+  "outdoor/desk": { kind: 'ENTERPRISE', permissions: ["ecommerce.outdoor.operate"], via: ["lib/outdoor/staff.ts"] },
   "outdoor/fulfilment": { kind: 'ENTERPRISE', permissions: ["ecommerce.outdoor.operate"], via: ["lib/outdoor/staff.ts"] },
   "outdoor/fulfilment/access": { kind: 'ENTERPRISE', permissions: ["ecommerce.outdoor.operate"], via: ["lib/outdoor/staff.ts"] },
   "outdoor/newsletter": { kind: 'PUBLIC', reason: "Public newsletter sign-up (email capture, no account data returned)" },
