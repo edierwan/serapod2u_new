@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /** Centred label over a sold-out photo; the parent needs `relative` and `out-sold-out` to fade the image. */
 export function OutdoorSoldOutTag({ large = false }: { large?: boolean }) {
@@ -17,7 +17,10 @@ export function OutdoorSoldOutTag({ large = false }: { large?: boolean }) {
   )
 }
 
-/** A master-data photo that swaps to the bundled packshot, if there is one, when it fails to load. */
+/**
+ * A master-data photo that swaps to the bundled packshot, if there is one, when it fails
+ * to load, and to a plain panel when that fails too, never a broken-image icon.
+ */
 export default function OutdoorPhoto({
   src,
   backup,
@@ -29,17 +32,26 @@ export default function OutdoorPhoto({
   alt: string
   className?: string
 }) {
-  const [failed, setFailed] = useState(false)
-  const shown = failed && backup ? backup : src
+  const [stage, setStage] = useState<'photo' | 'backup' | 'none'>('photo')
+  const ref = useRef<HTMLImageElement>(null)
+  const shown = stage === 'photo' ? src : stage === 'backup' ? backup || '' : ''
+
+  const fail = () => {
+    setStage((current) => (current === 'photo' && backup && backup !== src ? 'backup' : 'none'))
+  }
+
+  // A photo that failed before hydration never fires onError, so check it once mounted.
+  useEffect(() => {
+    const img = ref.current
+    if (img && img.complete && img.naturalWidth === 0 && !/\.svg($|\?)/i.test(img.currentSrc || img.src)) fail()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (stage === 'none' || !shown) {
+    return <div role="img" aria-label={alt} className={`${className || ''} rounded-xl bg-[var(--out-sand)]/30`} />
+  }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={shown}
-      alt={alt}
-      className={className}
-      onError={() => {
-        if (!failed && backup && backup !== src) setFailed(true)
-      }}
-    />
+    <img ref={ref} src={shown} alt={alt} className={className} onError={fail} />
   )
 }
