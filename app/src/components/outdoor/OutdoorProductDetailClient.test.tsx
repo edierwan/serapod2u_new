@@ -22,7 +22,6 @@ const variant = (extra: Partial<StorefrontVariant>): StorefrontVariant => ({
   image_url: null,
   animation_url: null,
   suggested_retail_price: 70,
-  base_cost: null,
   is_active: true,
   is_default: false,
   attributes: {},

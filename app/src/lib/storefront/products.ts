@@ -85,7 +85,6 @@ export interface StorefrontVariant {
   image_url: string | null;
   animation_url: string | null;
   suggested_retail_price: number | null;
-  base_cost: number | null;
   is_active: boolean | null;
   is_default: boolean | null;
   attributes: Record<string, unknown> | null;
@@ -495,7 +494,6 @@ export async function getProductDetail(
         image_url,
         animation_url,
         suggested_retail_price,
-        base_cost,
         is_active,
         is_default,
         attributes,
@@ -589,7 +587,6 @@ export async function getProductDetail(
           image_url: toStorefrontMediaUrl(v.image_url),
           animation_url: toStorefrontMediaUrl(v.animation_url),
           suggested_retail_price: v.suggested_retail_price,
-          base_cost: v.base_cost,
           is_active: v.is_active,
           is_default: v.is_default,
           attributes: mergeStructuredAttributes(v.attributes, v.product_attributes),
