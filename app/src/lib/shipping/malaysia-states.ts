@@ -19,13 +19,33 @@ export const MALAYSIA_STATES = [
   { label: 'Putrajaya', code: 'putrajaya', iso: 'MY-16' },
 ] as const
 
+/** Official and everyday names written on Malaysian addresses. */
+const STATE_ALIASES: Record<string, string> = {
+  'pulau pinang': 'penang',
+  'pulau-pinang': 'penang',
+  'p. pinang': 'penang',
+  'p.pinang': 'penang',
+  pinang: 'penang',
+  malacca: 'melaka',
+  'negri sembilan': 'negeri-sembilan',
+  'wilayah persekutuan kuala lumpur': 'kuala-lumpur',
+  'wp kuala lumpur': 'kuala-lumpur',
+  'w.p. kuala lumpur': 'kuala-lumpur',
+  kl: 'kuala-lumpur',
+  'wilayah persekutuan labuan': 'labuan',
+  'wp labuan': 'labuan',
+  'wilayah persekutuan putrajaya': 'putrajaya',
+  'wp putrajaya': 'putrajaya',
+}
+
 export function toEasyParcelState(labelOrCode: string): string {
-  const raw = String(labelOrCode || '').trim().toLowerCase()
+  const raw = String(labelOrCode || '').trim().toLowerCase().replace(/\s+/g, ' ')
   if (!raw) return ''
   const byCode = MALAYSIA_STATES.find((s) => s.code === raw)
   if (byCode) return byCode.code
   const byLabel = MALAYSIA_STATES.find((s) => s.label.toLowerCase() === raw)
   if (byLabel) return byLabel.code
+  if (STATE_ALIASES[raw]) return STATE_ALIASES[raw]
   return raw.replace(/\s+/g, '-')
 }
 

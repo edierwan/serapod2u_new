@@ -10,6 +10,14 @@ describe('malaysia states for EasyParcel OpenAPI', () => {
     expect(toEasyParcelSubdivisionCode('MY-07')).toBe('MY-07')
     expect(toEasyParcelState('Penang')).toBe('penang')
   })
+
+  it('understands the official names written on addresses', () => {
+    expect(toEasyParcelSubdivisionCode('PULAU PINANG')).toBe('MY-07')
+    expect(toEasyParcelSubdivisionCode('Pulau  Pinang')).toBe('MY-07')
+    expect(toEasyParcelSubdivisionCode('Wilayah Persekutuan Kuala Lumpur')).toBe('MY-14')
+    expect(toEasyParcelSubdivisionCode('Malacca')).toBe('MY-04')
+    expect(toEasyParcelSubdivisionCode('Atlantis')).toBe('')
+  })
 })
 
 describe('Malaysia phone normalisation', () => {
