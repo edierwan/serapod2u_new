@@ -51,7 +51,7 @@ describe('POST /api/outdoor/newsletter', () => {
     expect(state.inserts[0]).toMatchObject({ email_normalized: 'aina@example.com', status: 'active' })
     expect(state.welcomes).toHaveLength(1)
     expect(state.welcomes[0].to).toBe('aina@example.com')
-    expect(state.welcomes[0].text).toContain('new products, new colours and Outdoor events')
+    expect(state.welcomes[0].text).toContain('new products, new colours, offers and Outdoor events')
     expect(state.welcomes[0].text).not.toContain('added or updated')
     expect(state.welcomes[0].text).toContain('/outdoor/unsubscribe?token=')
   })

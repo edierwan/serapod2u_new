@@ -1,26 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOutdoorStaff } from '@/lib/outdoor/staff'
-import { countOutdoorSubscribers, emailOutdoorSubscribers } from '@/lib/outdoor/notify-subscribers'
+import {
+  countOutdoorSubscribers,
+  emailOutdoorSubscribers,
+  sendOutdoorSubscriberEmail,
+  stampOutdoorUnsubscribe,
+} from '@/lib/outdoor/notify-subscribers'
+import { buildOutdoorUpdateEmail, outdoorPublicOrigin } from '@/lib/outdoor/product-email'
+import {
+  OUTDOOR_UPDATE_BODY_MAX,
+  OUTDOOR_UPDATE_LEGACY_KINDS,
+  OUTDOOR_UPDATE_TITLE_MAX,
+  isOutdoorUpdateKind,
+  outdoorUpdateLink,
+} from '@/lib/outdoor/newsletter-updates'
 
-const KINDS = ['product', 'color', 'event', 'other'] as const
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>'"]/g, (char) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    "'": '&#39;',
-    '"': '&quot;',
-  }[char]!))
-}
-
-const KIND_LABEL: Record<string, string> = {
-  product: 'New product',
-  color: 'New color',
-  event: 'Event',
-  other: 'Update',
-}
+const DUPLICATE_WINDOW_MS = 10 * 60 * 1000
 
 /** GET — recent Outdoor updates for staff; `?list=subscribers` returns the newsletter list. */
 export async function GET(request: NextRequest) {
@@ -60,7 +56,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** POST — staff publishes an update and emails every newsletter subscriber. */
+/**
+ * POST — staff publishes an update and emails every active newsletter subscriber.
+ * `test: true` sends the same email only to the signed-in staff member and saves nothing.
+ */
 export async function POST(request: NextRequest) {
   try {
     const staff = await requireOutdoorStaff()
@@ -68,32 +67,54 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}))
     const kind = String(body.kind || '')
-    const title = String(body.title || '').trim().slice(0, 140)
-    const text = String(body.body || '').trim().slice(0, 4000)
-    if (!KINDS.includes(kind as typeof KINDS[number]) || !title || text.length < 2) {
+    const title = String(body.title || '').trim().slice(0, OUTDOOR_UPDATE_TITLE_MAX)
+    const text = String(body.body || '').trim().slice(0, OUTDOOR_UPDATE_BODY_MAX)
+    if (!isOutdoorUpdateKind(kind) || !title || text.length < 2) {
       return NextResponse.json({ error: 'Choose a type, title, and message.' }, { status: 400 })
     }
+    const link = outdoorUpdateLink(String(body.link || ''), outdoorPublicOrigin())
+    if (link.error !== undefined) return NextResponse.json({ error: link.error }, { status: 400 })
 
+    const email = buildOutdoorUpdateEmail({ kind, title, body: text, link: link.url })
     const admin: any = createAdminClient()
-    const { data: created, error: insertError } = await admin.from('outdoor_admin_updates').insert({
-      kind,
-      title,
-      body: text,
-      created_by: staff.userId,
-      emailed_count: 0,
-    }).select('id').single()
 
-    if (insertError || !created) {
-      console.error('[outdoor/updates] insert', insertError)
+    if (body.test === true) {
+      const { data: me } = await admin.from('users').select('email').eq('id', staff.userId).maybeSingle()
+      const to = String(me?.email || '').trim()
+      if (!to.includes('@')) {
+        return NextResponse.json({ error: 'Your account has no email address for the test.' }, { status: 400 })
+      }
+      const stamped = stampOutdoorUnsubscribe(email.html, email.text, '')
+      const sent = await sendOutdoorSubscriberEmail(admin, to, {
+        subject: `[Test] ${email.subject}`,
+        text: stamped.text,
+        html: stamped.html,
+      })
+      if (!sent.success) {
+        return NextResponse.json({ error: sent.error || 'Could not send the test email.' }, { status: 500 })
+      }
+      return NextResponse.json({ ok: true, test: true, to })
+    }
+
+    const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString()
+    const recent = await admin.from('outdoor_admin_updates').select('id').eq('title', title).gte('created_at', since).limit(1)
+    if (!recent.error && Array.isArray(recent.data) && recent.data.length > 0) {
+      return NextResponse.json({ error: 'An update with this title was sent a few minutes ago. Change the title if you really want to send it again.' }, { status: 409 })
+    }
+
+    const row = { kind, title, body: text, created_by: staff.userId, emailed_count: 0 }
+    let saved = await admin.from('outdoor_admin_updates').insert(row).select('id').single()
+    if (saved.error?.code === '23514' && !OUTDOOR_UPDATE_LEGACY_KINDS.includes(kind)) {
+      saved = await admin.from('outdoor_admin_updates').insert({ ...row, kind: 'other' }).select('id').single()
+    }
+    const created = saved.data
+
+    if (saved.error || !created) {
+      console.error('[outdoor/updates] insert', saved.error)
       return NextResponse.json({ error: 'Could not save the update. Apply the outdoor admin updates table first.' }, { status: 500 })
     }
 
-    const label = KIND_LABEL[kind] || 'Update'
-    const mailed = await emailOutdoorSubscribers(admin, {
-      subject: `SeraOutdoor: ${title}`,
-      text: `${label}\n\n${text}`,
-      html: `<p><strong>${escapeHtml(label)}</strong></p><p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>`,
-    })
+    const mailed = await emailOutdoorSubscribers(admin, email)
     if (!mailed.ok) {
       return NextResponse.json({ error: mailed.error }, { status: 500 })
     }

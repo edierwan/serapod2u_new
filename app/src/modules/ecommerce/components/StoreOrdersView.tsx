@@ -30,6 +30,7 @@ import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChain
 import { isOwnDelivery } from '@/lib/storefront/delivery'
 import { OutdoorMessagesPanel, OutdoorSubscribersPanel } from '@/modules/ecommerce/components/OutdoorInboxPanels'
 import { OutdoorCustomerMessagesPanel } from '@/modules/ecommerce/components/OutdoorCustomerMessagesPanel'
+import { OutdoorNewsletterComposer } from '@/modules/ecommerce/components/OutdoorNewsletterComposer'
 import {
     OrderRequestBadge,
     StoreOpenRequestsPanel,
@@ -961,7 +962,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 ))}
             </div>
 
-            {tab === 'messages' ? <OutdoorMessagesPanel /> : tab === 'subscribers' ? <OutdoorSubscribersPanel /> : tab === 'customer_messages' ? <OutdoorCustomerMessagesPanel /> : (<>
+            {tab === 'messages' ? <OutdoorMessagesPanel /> : tab === 'subscribers' ? <div className="space-y-6"><OutdoorNewsletterComposer /><OutdoorSubscribersPanel /></div> : tab === 'customer_messages' ? <OutdoorCustomerMessagesPanel /> : (<>
             <StoreOpenRequestsPanel refreshKey={requestsRefresh} onOpenOrder={(order) => setSelectedOrder(order)} />
 
             {/* Filters */}

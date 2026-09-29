@@ -39,7 +39,7 @@ const SECTIONS: Array<{ group: OutdoorMessageGroup; title: string; note: string 
   {
     group: 'newsletter',
     title: 'Newsletter',
-    note: 'Updates you publish from the Outdoor admin office always go to every active subscriber.',
+    note: 'Emails about new products, offers or events are written and sent from the Newsletter subscribers tab.',
   },
 ]
 
