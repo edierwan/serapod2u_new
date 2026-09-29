@@ -6,7 +6,7 @@ import { Eye } from 'lucide-react'
 import type { StorefrontProduct } from '@/lib/storefront/products'
 import { isSellablePrice } from '@/lib/storefront/price-rules'
 import { outdoorStaticImage, showOutdoorSwatches } from '@/lib/outdoor/merch'
-import OutdoorPhoto from '@/components/outdoor/OutdoorPhoto'
+import OutdoorPhoto, { OutdoorSoldOutTag } from '@/components/outdoor/OutdoorPhoto'
 
 function formatPrice(price: number | null) {
   if (price == null || !isSellablePrice(price)) return 'Currently unavailable'
@@ -32,12 +32,8 @@ export default function OutdoorProductCard({ product }: { product: StorefrontPro
 
   return (
     <article className="flex h-full flex-col">
-      <Link href={`/outdoor/shop/${product.id}`} className="relative block">
-        {product.sold_out ? (
-          <span className="absolute left-3 top-3 z-10 rounded-full bg-[var(--out-bark)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--out-cream)]">
-            Sold out
-          </span>
-        ) : null}
+      <Link href={`/outdoor/shop/${product.id}`} className={`relative block${product.sold_out ? ' out-sold-out' : ''}`}>
+        {product.sold_out ? <OutdoorSoldOutTag /> : null}
         <div className="aspect-[4/5] overflow-hidden rounded-[1.35rem] bg-white">
           <div className="out-carousel" style={{ transform: `translate3d(-${index * 100}%, 0, 0)` }}>
             {frames.map((src, frame) => (

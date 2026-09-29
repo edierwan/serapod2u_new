@@ -2,6 +2,21 @@
 
 import { useState } from 'react'
 
+/** Centred label over a sold-out photo; the parent needs `relative` and `out-sold-out` to fade the image. */
+export function OutdoorSoldOutTag({ large = false }: { large?: boolean }) {
+  return (
+    <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center" role="status">
+      <span
+        className={`rounded-full bg-[var(--out-bark)] font-semibold uppercase tracking-[0.18em] text-[var(--out-cream)] shadow-lg ${
+          large ? 'px-5 py-2 text-sm' : 'px-3.5 py-1.5 text-[11px]'
+        }`}
+      >
+        Sold out
+      </span>
+    </span>
+  )
+}
+
 /** A master-data photo that swaps to the bundled packshot, if there is one, when it fails to load. */
 export default function OutdoorPhoto({
   src,

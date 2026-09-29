@@ -57,6 +57,7 @@ export default function StorefrontProductCard({ product }: { product: Storefront
   const fallbackUrl = animationUrl ? imageUrl : null
   const displayUrl = useFallback ? fallbackUrl : primaryUrl
   const mediaType = displayUrl ? getMediaType(displayUrl) : 'image'
+  const soldOutLook = product.sold_out ? ' grayscale opacity-50' : ''
 
   const handleMediaError = () => {
     if (!useFallback && fallbackUrl) {
@@ -81,14 +82,14 @@ export default function StorefrontProductCard({ product }: { product: Storefront
               loop
               playsInline
               autoPlay
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]${soldOutLook}`}
               onError={handleMediaError}
             />
           ) : (
             <img
               src={displayUrl}
               alt={product.product_name}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]${soldOutLook}`}
               loading="lazy"
               onError={handleMediaError}
             />
@@ -107,8 +108,10 @@ export default function StorefrontProductCard({ product }: { product: Storefront
         )}
 
         {product.sold_out && (
-          <span className="absolute top-3 left-3 rounded-lg bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--sera-ink)] backdrop-blur-sm">
-            Sold out
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center" role="status">
+            <span className="rounded-full bg-[var(--sera-ink)]/90 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-lg">
+              Sold out
+            </span>
           </span>
         )}
 

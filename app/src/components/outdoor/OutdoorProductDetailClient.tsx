@@ -8,7 +8,7 @@ import { OUTDOOR_BUY_NOW_CHECKOUT, saveOutdoorBuyNow } from '@/lib/outdoor/buy-n
 import { isSellablePrice } from '@/lib/storefront/price-rules'
 import type { StorefrontProductDetail, StorefrontVariant } from '@/lib/storefront/products'
 import { outdoorColorFromText, outdoorSpecLabel, outdoorStaticImage, outdoorSwatchesFromVariants, showOutdoorSwatches } from '@/lib/outdoor/merch'
-import OutdoorPhoto from '@/components/outdoor/OutdoorPhoto'
+import OutdoorPhoto, { OutdoorSoldOutTag } from '@/components/outdoor/OutdoorPhoto'
 import { useRouter } from 'next/navigation'
 
 function formatPrice(price: number | null) {
@@ -152,7 +152,8 @@ export default function OutdoorProductDetailClient({ product }: { product: Store
   return (
     <div className="mx-auto w-full max-w-5xl px-4 pb-10 pt-4 sm:px-8">
       <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
-        <div className="aspect-square overflow-hidden rounded-[1.6rem] bg-white">
+        <div className={`relative aspect-square overflow-hidden rounded-[1.6rem] bg-white${soldOut ? ' out-sold-out' : ''}`}>
+          {soldOut ? <OutdoorSoldOutTag large /> : null}
           <div className="out-carousel" style={{ transform: `translate3d(-${slideIndex * 100}%, 0, 0)` }}>
             {frames.map((src, frame) => (
               <div key={`${frame}-${src}`} className="out-carousel-slide p-4 sm:p-6">

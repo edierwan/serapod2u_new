@@ -207,7 +207,7 @@ export default function ProductDetailClient({ product }: Props) {
               <video
                 key={active.url}
                 src={active.url}
-                className="object-contain w-full h-full p-4"
+                className={`object-contain w-full h-full p-4 transition-[filter,opacity] duration-300${soldOut ? ' grayscale opacity-50' : ''}`}
                 autoPlay
                 loop
                 muted
@@ -218,11 +218,19 @@ export default function ProductDetailClient({ product }: Props) {
               <img
                 src={active.url}
                 alt={product.product_name}
-                className="object-contain w-full h-full p-4"
+                className={`object-contain w-full h-full p-4 transition-[filter,opacity] duration-300${soldOut ? ' grayscale opacity-50' : ''}`}
               />
             )
           ) : (
             <Package className="h-24 w-24 text-[var(--sera-muted)]/40" />
+          )}
+
+          {soldOut && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center" role="status">
+              <span className="rounded-full bg-[var(--sera-ink)]/90 px-5 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow-lg">
+                Sold out
+              </span>
+            </span>
           )}
 
           {/* Navigation arrows */}
