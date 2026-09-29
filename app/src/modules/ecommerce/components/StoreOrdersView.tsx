@@ -29,6 +29,7 @@ import {
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import { isOwnDelivery } from '@/lib/storefront/delivery'
 import { OutdoorMessagesPanel, OutdoorSubscribersPanel } from '@/modules/ecommerce/components/OutdoorInboxPanels'
+import { OutdoorCustomerMessagesPanel } from '@/modules/ecommerce/components/OutdoorCustomerMessagesPanel'
 import {
     OrderRequestBadge,
     StoreOpenRequestsPanel,
@@ -265,7 +266,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     const [history, setHistory] = useState<OrderEvent[]>([])
     const [historyAvailable, setHistoryAvailable] = useState(true)
     const [historyRefresh, setHistoryRefresh] = useState(0)
-    const [tab, setTab] = useState<'orders' | 'messages' | 'subscribers'>('orders')
+    const [tab, setTab] = useState<'orders' | 'messages' | 'subscribers' | 'customer_messages'>('orders')
     const [courierEvents, setCourierEvents] = useState<CourierEvent[]>([])
     const [courierLatest, setCourierLatest] = useState<string | null>(null)
     const [courierLoading, setCourierLoading] = useState(false)
@@ -944,6 +945,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                     ['orders', 'Orders'],
                     ['messages', 'Outdoor messages'],
                     ['subscribers', 'Newsletter subscribers'],
+                    ['customer_messages', 'Customer emails & SMS'],
                 ] as const).map(([value, label]) => (
                     <button
                         key={value}
@@ -959,7 +961,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
                 ))}
             </div>
 
-            {tab === 'messages' ? <OutdoorMessagesPanel /> : tab === 'subscribers' ? <OutdoorSubscribersPanel /> : (<>
+            {tab === 'messages' ? <OutdoorMessagesPanel /> : tab === 'subscribers' ? <OutdoorSubscribersPanel /> : tab === 'customer_messages' ? <OutdoorCustomerMessagesPanel /> : (<>
             <StoreOpenRequestsPanel refreshKey={requestsRefresh} onOpenOrder={(order) => setSelectedOrder(order)} />
 
             {/* Filters */}

@@ -3,8 +3,12 @@ import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email
 import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
 import { outdoorPublicOrigin } from '@/lib/outdoor/auth-return'
 import { escapeHtml, money, OUTDOOR_FROM, OUTDOOR_INBOX, shell } from '@/lib/outdoor/order-email-shell'
+import { outdoorMessageChannels } from '@/lib/outdoor/customer-messages'
 
-/** Sent once, when an Outdoor order first becomes paid. /store orders are left alone. */
+/**
+ * Sent once, when an Outdoor order first becomes paid. /store orders are left alone.
+ * Staff can switch off the customer's copy; the Outdoor inbox always gets its notice.
+ */
 export async function notifyOutdoorOrderPaid(orderId: string) {
   const admin: any = createAdminClient()
   const { data: order } = await admin
@@ -45,7 +49,8 @@ export async function notifyOutdoorOrderPaid(orderId: string) {
   ].join('\n')
 
   const trackLink = `${origin}/outdoor/track?order=${encodeURIComponent(ref)}`
-  const customer = await sendTransactionalHtmlEmail(admin, orgId, {
+  const emailCustomer = (await outdoorMessageChannels(admin, 'paid')).email
+  const customer = !emailCustomer ? null : await sendTransactionalHtmlEmail(admin, orgId, {
     to: order.customer_email,
     subject: `Order ${ref} confirmed — thank you!`,
     text: [
@@ -67,7 +72,7 @@ ${address ? `<p style="margin:0 0 12px;line-height:1.55;font-size:13px;color:#7c
     ),
     ...OUTDOOR_FROM,
   })
-  if (!customer.success) console.error('[outdoor-order-paid] customer email failed:', customer.error)
+  if (customer && !customer.success) console.error('[outdoor-order-paid] customer email failed:', customer.error)
 
   const deskLink = `${origin}/outdoor/fulfilment`
   const staff = await sendTransactionalHtmlEmail(admin, orgId, {

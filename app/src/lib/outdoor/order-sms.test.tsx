@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({
   order: null as any,
+  settings: null as any,
+  settingsError: null as any,
   smsOrg: 'hq' as string | null,
   sent: [] as Array<{ orgId: string; to: string; text: string }>,
   logged: [] as any[],
@@ -10,8 +12,11 @@ const state = vi.hoisted(() => ({
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
-    from: () => {
-      const chain: any = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: state.order }) }
+    from: (table: string) => {
+      const result = () => (table === 'outdoor_customer_message_settings'
+        ? { data: state.settingsError ? null : state.settings, error: state.settingsError }
+        : { data: state.order })
+      const chain: any = { select: () => chain, eq: () => chain, maybeSingle: async () => result() }
       return chain
     },
   }),
@@ -54,11 +59,21 @@ describe('buildOutdoorOrderSms', () => {
   const origin = 'https://stg.serapod2u.com'
 
   it('fits each message in a single plain-text SMS', () => {
-    for (const kind of ['paid', 'delivered'] as const) {
-      const text = buildOutdoorOrderSms(kind, ref, origin)
-      expect(text.length).toBeLessThanOrEqual(160)
-      expect(/^[\x20-\x7E]+$/.test(text)).toBe(true)
+    const kinds = ['paid', 'shipped', 'tracking_updated', 'delivered', 'auto_cancelled', 'cancelled', 'refunded'] as const
+    for (const kind of kinds) {
+      for (const moneyReturned of [false, true]) {
+        const text = buildOutdoorOrderSms(kind, ref, 'https://www.serapod2u.com', { moneyReturned })
+        expect(text.length).toBeLessThanOrEqual(160)
+        expect(/^[\x20-\x7E]+$/.test(text)).toBe(true)
+        expect(text).toContain(ref)
+      }
     }
+  })
+
+  it('tells a cancelled customer whether money is coming back', () => {
+    expect(buildOutdoorOrderSms('cancelled', ref, origin)).toContain('You have not been charged.')
+    expect(buildOutdoorOrderSms('cancelled', ref, origin, { moneyReturned: true })).toContain('Your refund is on its way.')
+    expect(buildOutdoorOrderSms('auto_cancelled', ref, origin)).toContain('within 24 hours')
   })
 
   it('confirms the payment with a tracking link', () => {
@@ -77,6 +92,8 @@ describe('buildOutdoorOrderSms', () => {
 describe('notifyOutdoorOrderSms', () => {
   beforeEach(() => {
     state.order = { order_ref: 'ORD-1', sales_channel: 'outdoor', customer_phone: '012-345 6789' }
+    state.settings = null
+    state.settingsError = null
     state.smsOrg = 'hq'
     state.sent = []
     state.logged = []
@@ -106,6 +123,32 @@ describe('notifyOutdoorOrderSms', () => {
     await notifyOutdoorOrderSms('o1', 'paid')
     expect(state.sent).toEqual([])
     expect(state.logged).toEqual([])
+  })
+
+  it('only texts payment and delivery while nobody has changed the settings', async () => {
+    for (const kind of ['shipped', 'tracking_updated', 'auto_cancelled', 'cancelled', 'refunded'] as const) {
+      await notifyOutdoorOrderSms('o1', kind)
+    }
+    expect(state.sent).toEqual([])
+    await notifyOutdoorOrderSms('o1', 'paid')
+    await notifyOutdoorOrderSms('o1', 'delivered')
+    expect(state.sent).toHaveLength(2)
+  })
+
+  it('follows the staff switch for each event', async () => {
+    state.settings = { email_enabled: true, sms_enabled: true }
+    await notifyOutdoorOrderSms('o1', 'shipped')
+    expect(state.logged[0].eventCode).toBe('outdoor_order_shipped')
+    state.settings = { email_enabled: true, sms_enabled: false }
+    await notifyOutdoorOrderSms('o1', 'paid')
+    expect(state.sent).toHaveLength(1)
+  })
+
+  it('keeps the default when the settings cannot be read', async () => {
+    state.settingsError = { code: 'PGRST205', message: 'missing table' }
+    await notifyOutdoorOrderSms('o1', 'paid')
+    await notifyOutdoorOrderSms('o1', 'shipped')
+    expect(state.sent).toHaveLength(1)
   })
 
   it('logs a failed SMS and never throws', async () => {

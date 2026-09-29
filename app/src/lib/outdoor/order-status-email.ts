@@ -6,6 +6,7 @@ import { escapeHtml, money, OUTDOOR_FROM, shell } from '@/lib/outdoor/order-emai
 import { OWN_DELIVERY_LABEL } from '@/lib/storefront/delivery'
 import { UNPAID_ORDER_TTL_HOURS } from '@/lib/storefront/unpaid-order-deadline'
 import { notifyOutdoorOrderSms } from '@/lib/outdoor/order-sms'
+import { outdoorMessageChannels } from '@/lib/outdoor/customer-messages'
 
 export type OutdoorOrderEmailKind = 'shipped' | 'tracking_updated' | 'delivered' | 'auto_cancelled' | 'cancelled' | 'refunded'
 
@@ -136,8 +137,8 @@ export function buildOutdoorOrderStatusEmail(
 }
 
 /**
- * Emails the customer about an Outdoor order change; a delivery is also sent by SMS.
- * Never throws: the change itself is already saved.
+ * Emails and texts the customer about an Outdoor order change, on the channels
+ * staff switched on for it. Never throws: the change itself is already saved.
  */
 export async function notifyOutdoorOrderStatus(
   orderId: string,
@@ -147,7 +148,7 @@ export async function notifyOutdoorOrderStatus(
   if (!kind) return
   await Promise.all([
     emailOutdoorOrderStatus(orderId, kind, options),
-    kind === 'delivered' ? notifyOutdoorOrderSms(orderId, 'delivered') : null,
+    notifyOutdoorOrderSms(orderId, kind, options),
   ])
 }
 
@@ -160,6 +161,7 @@ async function emailOutdoorOrderStatus(orderId: string, kind: OutdoorOrderEmailK
       .eq('id', orderId)
       .maybeSingle()
     if (!order || order.sales_channel !== 'outdoor' || !order.customer_email) return
+    if (!(await outdoorMessageChannels(admin, kind)).email) return
 
     const orgId = await resolveOrgForEmail(admin)
     if (!orgId) return
