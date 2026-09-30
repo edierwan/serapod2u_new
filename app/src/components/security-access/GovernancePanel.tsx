@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ClipboardCheck, GitBranch, KeyRound, Lock, Send, XCircle } from 'lucide-react'
 import SearchableSelect from './SearchableSelect'
 import { callApi, formatDate, toIso } from './client-api'
+import { DisclosurePanel, EmptyState, FilterChips, SectionTabs, ToggleButton } from './ui'
 import { permissionLabel } from '@/lib/security-access/labels'
 
 type Section = 'requests' | 'delegations' | 'reviews' | 'sod' | 'emergency'
@@ -46,8 +47,7 @@ export default function GovernancePanel({ data, governance }: Props) {
   const roleName = useMemo(() => new Map((data.roles || []).map((r: any) => [r.id, r.name])), [data.roles])
 
   return <div className="space-y-4">
-    <div className="flex flex-wrap gap-2">{SECTIONS.map(s => <button key={s.id} onClick={() => setSection(s.id)}
-      className={`rounded-full px-3 py-1.5 text-sm ${section === s.id ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700'}`}>{s.label}</button>)}</div>
+    <SectionTabs label="Governance sections" value={section} onChange={setSection} items={SECTIONS} />
     {section === 'requests' && <AccessRequests data={data} nameOf={nameOf} orgName={orgName} roleName={roleName} />}
     {section === 'delegations' && <Delegations data={data} nameOf={nameOf} orgName={orgName} />}
     {section === 'reviews' && <Reviews data={data} nameOf={nameOf} orgName={orgName} roleName={roleName} />}
@@ -76,6 +76,10 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
   const { state, error, reload } = useList('/api/security-access/access-requests')
   const [form, setForm] = useState({ targetUserId: '', roleId: '', organizationId: '', scopeId: '', until: '', reason: '' })
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [status, setStatus] = useState<'pending' | 'decided' | 'all'>('pending')
+  const allRequests: any[] = state?.requests || []
+  const requests = allRequests.filter((r: any) => status === 'all' || (status === 'pending') === (r.status === 'requested'))
   const roles = (data.roles || []).filter((r: any) => r.source !== 'legacy' && r.status === 'active')
   const target = (data.people || []).find((p: any) => p.id === (form.targetUserId || data.viewerId))
   const memberships = (target?.membership || []).filter((m: any) => m.status === 'active')
@@ -88,7 +92,7 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
       scopeIds: form.scopeId ? [form.scopeId] : [], effectiveUntil: toIso(form.until), reason: form.reason,
     } })
     setMessage(result.ok ? { tone: 'ok', text: 'Request submitted. Nothing is granted until it is approved.' } : { tone: 'error', text: result.error || 'Unable to submit' })
-    if (result.ok) { setForm({ targetUserId: '', roleId: '', organizationId: '', scopeId: '', until: '', reason: '' }); reload() }
+    if (result.ok) { setForm({ targetUserId: '', roleId: '', organizationId: '', scopeId: '', until: '', reason: '' }); setFormOpen(false); reload() }
   }
   async function act(body: any, ok: string) {
     const result = await callApi('/api/security-access/access-requests', { body })
@@ -98,9 +102,8 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
 
   return <div className="space-y-4">
     <Feedback message={message} />
-    <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="font-semibold">Request access</h3>
-        <p className="text-sm text-gray-500">Request a business role for yourself or a colleague. Temporary requests must end; the requester and the person receiving access cannot approve.</p></div>
+    <DisclosurePanel title="Request access" open={formOpen} onToggle={() => setFormOpen(!formOpen)} actionLabel="New request"
+      description="Request a business role for yourself or a colleague. Temporary requests must end; the requester and the person receiving access cannot approve.">
       <div className="grid gap-4 p-4 md:grid-cols-3">
         <SearchableSelect label="For" value={form.targetUserId} onChange={v => setForm({ ...form, targetUserId: v, organizationId: '', scopeId: '' })}
           options={(data.people || []).map((p: any) => ({ value: p.id, label: p.id === data.viewerId ? `${p.full_name || p.email} (me)` : p.full_name || p.email }))} placeholder="Myself" allowClear />
@@ -115,11 +118,16 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
       </div>
       <div className="border-t p-4"><button onClick={submit} disabled={!form.roleId || !form.organizationId || !form.scopeId || form.reason.trim().length < 10}
         className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"><Send className="h-4 w-4" />Submit request</button></div>
-    </section>
+    </DisclosurePanel>
     <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="font-semibold">{state?.canApprove ? 'All access requests' : 'My access requests'}</h3></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><h3 className="font-semibold">{state?.canApprove ? 'All access requests' : 'My access requests'}</h3>
+        <FilterChips label="Request status" value={status} onChange={setStatus} items={[
+          { id: 'pending', label: 'Waiting for a decision', count: allRequests.filter((r: any) => r.status === 'requested').length },
+          { id: 'decided', label: 'Decided', count: allRequests.filter((r: any) => r.status !== 'requested').length },
+          { id: 'all', label: 'All', count: allRequests.length },
+        ]} /></div>
       {error && <div className="p-4 text-sm text-red-700">{error}</div>}
-      <div className="divide-y">{(state?.requests || []).map((r: any) => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <div className="divide-y">{requests.map((r: any) => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
         <div>
           <div className="font-medium">{roleName.get(r.role_id) || 'Role'} for {nameOf(r.target_user_id)}</div>
           <div className="text-xs text-gray-500">{orgName.get(r.organization_id) || 'Organization'} · requested by {nameOf(r.requester_id)} · {formatDate(r.created_at)}{r.effective_until ? ` · until ${formatDate(r.effective_until)}` : ''}</div>
@@ -133,7 +141,7 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
           {r.status === 'requested' && r.requester_id === data.viewerId && <button onClick={() => act({ action: 'cancel', requestId: r.id }, 'Request cancelled.')} className="rounded-md border px-2 py-1 text-xs">Cancel</button>}
         </div>
       </div>)}
-        {state && !(state.requests || []).length && <div className="p-4 text-sm text-gray-500">No access requests.</div>}</div>
+        {state && !requests.length && <EmptyState>{status === 'pending' ? 'Nothing is waiting for a decision.' : 'No access requests.'}</EmptyState>}</div>
     </section>
   </div>
 }
@@ -142,13 +150,14 @@ function Delegations({ data, nameOf, orgName }: any) {
   const { state, error, reload } = useList('/api/security-access/delegations')
   const [form, setForm] = useState({ delegateId: '', organizationId: data.viewerOrganizationId || '', permission: '', until: '', reason: '' })
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
   async function create() {
     const result = await callApi('/api/security-access/delegations', { body: {
       action: 'create', delegateId: form.delegateId, organizationId: form.organizationId, permissionKeys: [form.permission],
       effectiveUntil: toIso(form.until), reason: form.reason,
     } })
     setMessage(result.ok ? { tone: 'ok', text: 'Delegation created.' } : { tone: 'error', text: result.error || 'Unable to delegate' })
-    if (result.ok) reload()
+    if (result.ok) { setFormOpen(false); reload() }
   }
   async function revoke(id: string) {
     const reason = window.prompt('Reason for revoking this delegation?')
@@ -159,9 +168,8 @@ function Delegations({ data, nameOf, orgName }: any) {
   }
   return <div className="space-y-4">
     <Feedback message={message} />
-    <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="flex items-center gap-2 font-semibold"><GitBranch className="h-4 w-4" />Delegate one of your permissions</h3>
-        <p className="text-sm text-gray-500">Scoped and time-boxed. A delegate can never exceed what you currently hold, and cannot delegate onward.</p></div>
+    <DisclosurePanel title="Delegate one of your permissions" open={formOpen} onToggle={() => setFormOpen(!formOpen)} actionLabel="New delegation"
+      description="Scoped and time-boxed. A delegate can never exceed what you currently hold, and cannot delegate onward.">
       <div className="grid gap-4 p-4 md:grid-cols-3">
         <SearchableSelect label="Delegate" value={form.delegateId} onChange={v => setForm({ ...form, delegateId: v })}
           options={(data.people || []).filter((p: any) => p.id !== data.viewerId).map((p: any) => ({ value: p.id, label: p.full_name || p.email }))} />
@@ -176,7 +184,7 @@ function Delegations({ data, nameOf, orgName }: any) {
       </div>
       <div className="border-t p-4"><button onClick={create} disabled={!form.delegateId || !form.organizationId || !form.permission || !form.until || form.reason.trim().length < 5}
         className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Create delegation</button></div>
-    </section>
+    </DisclosurePanel>
     <section className="rounded-xl border border-gray-200 bg-white">
       <div className="border-b p-4"><h3 className="font-semibold">{state?.canManage ? 'All delegations' : 'My delegations'}</h3></div>
       {error && <div className="p-4 text-sm text-red-700">{error}</div>}
@@ -187,7 +195,7 @@ function Delegations({ data, nameOf, orgName }: any) {
         <div className="flex items-center gap-2"><Pill value={d.status} />
           {d.status === 'active' && <button onClick={() => revoke(d.id)} className="rounded-md border px-2 py-1 text-xs">Revoke</button>}</div>
       </div>)}
-        {state && !(state.delegations || []).length && <div className="p-4 text-sm text-gray-500">No delegations.</div>}</div>
+        {state && !(state.delegations || []).length && <EmptyState>No delegations.</EmptyState>}</div>
     </section>
   </div>
 }
@@ -196,6 +204,9 @@ function Reviews({ data, nameOf, orgName, roleName }: any) {
   const { state, error, reload } = useList('/api/security-access/reviews')
   const [form, setForm] = useState({ name: '', organizationId: '', roleId: '', reviewerId: '', due: '' })
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  // Active campaigns with pending items start open; everything else is folded.
+  const [openCampaigns, setOpenCampaigns] = useState<Set<string> | null>(null)
   async function post(body: any, ok: string) {
     const result = await callApi('/api/security-access/reviews', { body })
     setMessage(result.ok ? { tone: 'ok', text: ok } : { tone: 'error', text: result.error || 'Unable to complete' })
@@ -208,9 +219,8 @@ function Reviews({ data, nameOf, orgName, roleName }: any) {
   }, [state])
   return <div className="space-y-4">
     <Feedback message={message} />
-    {state?.canManage && <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="flex items-center gap-2 font-semibold"><ClipboardCheck className="h-4 w-4" />Start an access review</h3>
-        <p className="text-sm text-gray-500">Snapshots current assignments for certification. Reviewers retain, revoke or shorten access; nobody certifies their own access.</p></div>
+    {state?.canManage && <DisclosurePanel title="Start an access review" open={formOpen} onToggle={() => setFormOpen(!formOpen)} actionLabel="New review"
+      description="Snapshots current assignments for certification. Reviewers retain, revoke or shorten access; nobody certifies their own access.">
       <div className="grid gap-4 p-4 md:grid-cols-3">
         <label className="text-sm"><span className="text-gray-600">Name</span><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
         <SearchableSelect label="Organization (optional)" value={form.organizationId} onChange={v => setForm({ ...form, organizationId: v })} options={(data.organizations || []).map((o: any) => ({ value: o.id, label: o.org_name }))} allowClear />
@@ -220,19 +230,24 @@ function Reviews({ data, nameOf, orgName, roleName }: any) {
       </div>
       <div className="border-t p-4"><button onClick={() => post({ action: 'create', name: form.name, organizationId: form.organizationId || null, roleId: form.roleId || null, reviewerId: form.reviewerId, dueAt: toIso(form.due) }, 'Review started.')}
         disabled={form.name.trim().length < 3 || !form.reviewerId} className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Start review</button></div>
-    </section>}
+    </DisclosurePanel>}
     {error && <div className="p-4 text-sm text-red-700">{error}</div>}
     {(state?.campaigns || []).map((c: any) => {
       const items = itemsByCampaign.get(c.id) || []
       const pending = items.filter((i: any) => i.decision === 'pending').length
+      const isOpen = openCampaigns ? openCampaigns.has(c.id) : c.status === 'active' && pending > 0
+      const toggleCampaign = () => setOpenCampaigns(prev => {
+        const base = prev ?? new Set((state?.campaigns || []).filter((x: any) => x.status === 'active' && (itemsByCampaign.get(x.id) || []).some((i: any) => i.decision === 'pending')).map((x: any) => x.id))
+        const n = new Set(base); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n
+      })
       return <section key={c.id} className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-          <div><h3 className="font-semibold">{c.name}</h3>
+        <div className={`flex flex-wrap items-center justify-between gap-3 p-4 ${isOpen ? 'border-b' : ''}`}>
+          <div><ToggleButton open={isOpen} onClick={toggleCampaign} label={`${c.name}, ${pending} pending`}><h3 className="font-semibold">{c.name}</h3></ToggleButton>
             <p className="text-xs text-gray-500">Reviewer {nameOf(c.reviewer_id)} · {items.length} items · {pending} pending{c.due_at ? ` · due ${formatDate(c.due_at)}` : ''}</p></div>
           <div className="flex items-center gap-2"><Pill value={c.status} />
             {c.status === 'active' && pending === 0 && <button onClick={() => post({ action: 'complete', campaignId: c.id }, 'Review completed.')} className="rounded-md bg-emerald-600 px-2 py-1 text-xs text-white">Complete</button>}</div>
         </div>
-        <div className="divide-y">{items.map((i: any) => <div key={i.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+        {isOpen && <div className="divide-y">{items.map((i: any) => <div key={i.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
           <div><div className="font-medium">{nameOf(i.user_id)} — {i.snapshot?.role_name || roleName.get(i.role_id)}</div>
             <div className="text-xs text-gray-500">{orgName.get(i.snapshot?.organization_id) || ''} · {(i.snapshot?.scopes || []).map((s: any) => s.name).join(', ')}</div></div>
           <div className="flex items-center gap-2"><Pill value={i.decision} />
@@ -241,7 +256,7 @@ function Reviews({ data, nameOf, orgName, roleName }: any) {
               <button onClick={() => { const reason = window.prompt('Reason for revoking?') || ''; post({ action: 'decide', itemId: i.id, decision: 'revoke', reason }, 'Revoked.') }} className="rounded-md border px-2 py-1 text-xs text-red-700">Revoke</button>
               <button onClick={() => { const until = window.prompt('New end date (YYYY-MM-DD)?'); const reason = window.prompt('Reason?') || ''; const iso = until ? toIso(`${until}T23:59`) : null; if (iso) post({ action: 'decide', itemId: i.id, decision: 'modify', reason, newEffectiveUntil: iso }, 'End date set.') }} className="rounded-md border px-2 py-1 text-xs">Set end date</button></>}
           </div>
-        </div>)}</div>
+        </div>)}</div>}
       </section>
     })}
     {state && !(state.campaigns || []).length && <div className="rounded-xl border bg-white p-4 text-sm text-gray-500">No access review campaigns.</div>}

@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { SearchInput, ShowMore, useLimit } from './ui'
 import { comparisonLabel, modeLabel, permissionLabel, reasonLabel, resourceTypeLabel, type DirectoryOrganization } from '@/lib/security-access/labels'
 
 interface DecisionLogProps {
@@ -18,6 +19,8 @@ const DIFFERENCE = (comparison: string) => !['MATCH_ALLOW', 'MATCH_DENY'].includ
 export default function DecisionLog({ decisions, actors, people, organizations, initialFilter = 'all' }: DecisionLogProps) {
   const [filter, setFilter] = useState<'all' | 'differences'>(initialFilter)
   const [open, setOpen] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const page = useLimit(25)
   const orgById = useMemo(() => new Map(organizations.map(o => [o.id, o.org_name])), [organizations])
   const userById = useMemo(() => {
     const map = new Map<string, { name: string; role?: string }>()
@@ -25,7 +28,9 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
     for (const a of actors) map.set(a.id, { name: a.full_name || a.email, role: a.role_code })
     return map
   }, [people, actors])
-  const rows = filter === 'differences' ? decisions.filter(d => DIFFERENCE(d.comparison)) : decisions
+  const q = query.trim().toLowerCase()
+  const rows = (filter === 'differences' ? decisions.filter(d => DIFFERENCE(d.comparison)) : decisions)
+    .filter(d => !q || `${permissionLabel(d.permission_key).label} ${d.permission_key} ${userById.get(d.actor_id)?.name ?? ''} ${comparisonLabel(d.comparison).label}`.toLowerCase().includes(q))
 
   const place = (d: any) => {
     const scopes: any[] = Array.isArray(d.resolved_scopes) ? d.resolved_scopes : []
@@ -44,6 +49,8 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
           <h2 className="font-semibold">Authorization Decisions</h2>
           <p className="text-sm text-gray-500">Most recent recorded decisions. Legacy and new Security & Access outcomes side by side.</p>
         </div>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <SearchInput value={query} onChange={v => { setQuery(v); page.reset() }} placeholder="Search user or permission" label="Search decisions" />
         <div className="flex rounded-lg border p-0.5 text-xs font-medium">
           {(['all', 'differences'] as const).map(f => (
             <button key={f} type="button" onClick={() => setFilter(f)} className={`rounded-md px-3 py-1.5 ${filter === f ? 'bg-gray-950 text-white' : 'text-gray-600'}`}>
@@ -51,9 +58,10 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
             </button>
           ))}
         </div>
+        </div>
       </div>
       {rows.length === 0 ? (
-        <p className="p-6 text-sm text-gray-500">{filter === 'differences' ? 'No differences between legacy and new decisions.' : 'No decisions recorded yet.'}</p>
+        <p className="p-6 text-sm text-gray-500">{q ? 'No decisions match.' : filter === 'differences' ? 'No differences between legacy and new decisions.' : 'No decisions recorded yet.'}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -62,34 +70,41 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
                 <th className="w-8 px-3 py-2" />
                 <th className="px-3 py-2">Time</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Action</th>
                 <th className="px-3 py-2">Resource</th><th className="px-3 py-2">Organization / Warehouse</th>
-                <th className="px-3 py-2">Legacy</th><th className="px-3 py-2">New S&A</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Mode</th>
+                <th className="px-3 py-2">Legacy</th><th className="px-3 py-2">New S&A</th><th className="px-3 py-2">Result</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map(d => {
+              {rows.slice(0, page.limit).map(d => {
                 const user = userById.get(d.actor_id)
                 const cmp = comparisonLabel(d.comparison)
                 const expanded = open === d.id
                 return (
                   <Fragment key={d.id}>
-                    <tr className="cursor-pointer align-top hover:bg-gray-50" onClick={() => setOpen(expanded ? null : d.id)} aria-expanded={expanded}>
-                      <td className="px-3 py-2 text-gray-400">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-gray-600">{new Date(d.occurred_at).toLocaleString()}</td>
-                      <td className="px-3 py-2"><div>{user?.name ?? 'Unknown user'}</div>{user?.role && <div className="text-xs text-gray-500">{user.role}</div>}</td>
-                      <td className="px-3 py-2"><div>{permissionLabel(d.permission_key).label}</div><div className="font-mono text-[11px] text-gray-400">{d.permission_key}</div></td>
-                      <td className="px-3 py-2">{resourceTypeLabel(d.resource_type)}</td>
-                      <td className="px-3 py-2 text-gray-700">{place(d)}</td>
-                      <td className="px-3 py-2">{pill(d.legacy_decision)}</td>
-                      <td className="px-3 py-2">{pill(d.new_decision)}</td>
-                      <td className="px-3 py-2"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${cmp.tone}`}>{cmp.label}</span></td>
-                      <td className="px-3 py-2"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${modeLabel(d.migration_mode).tone}`}>{modeLabel(d.migration_mode).label}</span></td>
+                    <tr className="cursor-pointer align-top hover:bg-gray-50" onClick={() => setOpen(expanded ? null : d.id)}>
+                      <td className="px-3 py-1.5 text-gray-400">
+                        <button type="button" onClick={e => { e.stopPropagation(); setOpen(expanded ? null : d.id) }} aria-expanded={expanded}
+                          aria-label={`${expanded ? 'Hide' : 'Show'} details of ${permissionLabel(d.permission_key).label} for ${user?.name ?? 'unknown user'}`}
+                          className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
+                          {expanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
+                        </button>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-gray-600">{new Date(d.occurred_at).toLocaleString()}</td>
+                      <td className="px-3 py-1.5"><div className="whitespace-nowrap">{user?.name ?? 'Unknown user'}</div>{user?.role && <div className="text-xs text-gray-500">{user.role}</div>}</td>
+                      <td className="min-w-[11rem] px-3 py-1.5">{permissionLabel(d.permission_key).label}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5">{resourceTypeLabel(d.resource_type)}</td>
+                      <td className="px-3 py-1.5 text-gray-700">{place(d)}</td>
+                      <td className="px-3 py-1.5">{pill(d.legacy_decision)}</td>
+                      <td className="px-3 py-1.5">{pill(d.new_decision)}</td>
+                      <td className="px-3 py-1.5"><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${cmp.tone}`}>{cmp.label}</span></td>
                     </tr>
                     {expanded && (
                       <tr className="bg-gray-50/60">
                         <td />
-                        <td colSpan={9} className="px-3 pb-4 pt-1">
+                        <td colSpan={8} className="px-3 pb-4 pt-1">
                           <p className="text-sm text-gray-700">{reasonLabel(d.reason_code)}</p>
+                          <p className="mt-1 text-xs text-gray-500">Mode when decided: <span className={`rounded-full px-2 py-0.5 font-semibold ${modeLabel(d.migration_mode).tone}`}>{modeLabel(d.migration_mode).label}</span></p>
                           <dl className="mt-2 grid gap-2 font-mono text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                            <Tech term="Permission key" value={d.permission_key} />
                             <Tech term="Decision ID" value={d.id} />
                             <Tech term="Actor ID" value={d.actor_id} />
                             <Tech term="Resource ID" value={d.resource_id} />
@@ -107,6 +122,7 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
               })}
             </tbody>
           </table>
+          <ShowMore shown={Math.min(page.limit, rows.length)} total={rows.length} onMore={page.more} />
         </div>
       )}
     </section>
