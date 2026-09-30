@@ -16,6 +16,7 @@ import {
   validateStructuredAttributes,
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
+import { needsUniqueCombination } from '@/lib/products/combination-rule'
 import { 
   ArrowLeft,
   Package,
@@ -433,7 +434,9 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     }
 
     // Check for duplicate combination (Brand + Category + Group + SubGroup + Manufacturer)
-    const combinationCheck = await checkDuplicateCombination()
+    const combinationCheck = needsUniqueCombination(formData)
+      ? await checkDuplicateCombination()
+      : { isDuplicate: false, existingProduct: undefined }
     if (combinationCheck.isDuplicate) {
       const brand = brands.find(b => b.id === formData.brand_id)
       const category = categories.find(c => c.id === formData.category_id)
