@@ -5,7 +5,7 @@ import { ensureUserRow } from '@/server/auth/ensureUserRow'
 import { getPostLoginRedirect } from '@/server/auth/getPostLoginRedirect'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OUTDOOR_OAUTH_NEXT_COOKIE, sanitizeOutdoorReturnPath } from '@/lib/outdoor/auth-return'
-import { publicOriginFromRequest } from '@/lib/http/public-origin'
+import { sameHostOriginFromRequest } from '@/lib/http/public-origin'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   const errorDescription = requestUrl.searchParams.get('error_description')
   const rawNext = requestUrl.searchParams.get('next') || request.cookies.get(OUTDOOR_OAUTH_NEXT_COOKIE)?.value || null
   const nextPath = rawNext?.startsWith('/outdoor') ? sanitizeOutdoorReturnPath(rawNext) : rawNext
-  const origin = publicOriginFromRequest(request)
+  const origin = sameHostOriginFromRequest(request)
   const failLoginPath = nextPath?.startsWith('/outdoor') ? '/outdoor/login' : '/login'
   const successRedirect = (path: string) => {
     const res = NextResponse.redirect(new URL(path, origin))

@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { isOutdoorHost } from '@/lib/hosts/outdoor-hosts'
+import { sameHostOrigin } from '@/lib/hosts/same-host'
 
 /** A request that arrived on the Outdoor store host keeps that host, so sign-in and payment returns stay on it. */
 function outdoorOriginFromRequest(request?: NextRequest) {
@@ -26,4 +27,10 @@ export function publicOriginFromRequest(request?: NextRequest) {
     }
   }
   return 'https://stg.serapod2u.com'
+}
+
+/** Public origin on the host this request came to, for sign-in flows that must end where they began. */
+export function sameHostOriginFromRequest(request: NextRequest) {
+  const host = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0]
+  return sameHostOrigin(publicOriginFromRequest(request), host)
 }

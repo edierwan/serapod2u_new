@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { outdoorPublicOrigin, persistOutdoorReturnPath } from '@/lib/outdoor/auth-return'
+import { oauthReturnOrigin, persistOutdoorReturnPath } from '@/lib/outdoor/auth-return'
 import {
   GoogleIcon,
   XIcon,
@@ -50,7 +50,7 @@ export default function SocialAuthButtons({
         return
       }
       const supabase = createClient()
-      const callback = `${outdoorPublicOrigin()}/auth/callback?next=${encodeURIComponent(returnTo)}`
+      const callback = `${oauthReturnOrigin()}/auth/callback?next=${encodeURIComponent(returnTo)}`
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
