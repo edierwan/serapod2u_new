@@ -4,27 +4,27 @@
  * (labels.ts) and summarises recorded access differences. Nothing here
  * participates in an authorization decision.
  */
-import { PERMISSION_GROUP_ORDER, permissionLabel } from './labels'
+import { permissionLabel } from './labels'
 
 /** Overview wording for each migration mode (enum values unchanged). */
-export const ROLLOUT_MODES: Record<string, { label: string; help: string; dot: string; text: string }> = {
+export const ROLLOUT_MODES: Record<string, { label: string; shortLabel: string; help: string; dot: string; text: string }> = {
   NEW_ENFORCED: {
-    label: 'New Access Active',
+    label: 'New Access Active', shortLabel: 'Active',
     help: 'The new authorization model determines decisions.',
     dot: 'bg-emerald-500', text: 'text-emerald-700',
   },
   SHADOW: {
-    label: 'Monitoring',
+    label: 'Monitoring', shortLabel: 'Monitoring',
     help: 'Legacy access still determines decisions; the new model is evaluated for comparison.',
     dot: 'bg-blue-500', text: 'text-blue-700',
   },
   LEGACY_RETIRED: {
-    label: 'Legacy Retired',
+    label: 'Legacy Retired', shortLabel: 'Retired',
     help: 'The corresponding legacy authorization checks have been retired.',
     dot: 'bg-purple-500', text: 'text-purple-700',
   },
   LEGACY_ENFORCED: {
-    label: 'Legacy Active',
+    label: 'Legacy Active', shortLabel: 'Legacy',
     help: 'Legacy access determines decisions; the new model is not used for the outcome.',
     dot: 'bg-gray-400', text: 'text-gray-700',
   },
@@ -34,7 +34,7 @@ export const ROLLOUT_MODES: Record<string, { label: string; help: string; dot: s
 export const PRIMARY_ROLLOUT_MODES = ['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED'] as const
 
 export function rolloutMode(mode: string) {
-  return ROLLOUT_MODES[mode] ?? { label: mode, help: 'Unrecognised mode.', dot: 'bg-gray-400', text: 'text-gray-700' }
+  return ROLLOUT_MODES[mode] ?? { label: mode, shortLabel: mode, help: 'Unrecognised mode.', dot: 'bg-gray-400', text: 'text-gray-700' }
 }
 
 export interface ModeRow {
@@ -50,55 +50,173 @@ export interface RolloutPermission {
   enforcementReady: boolean
 }
 
-export interface RolloutModule {
+export interface RolloutNode {
+  /** Stable identifier (derived from permission-key modules/resources, never display text). */
+  id: string
   name: string
-  permissions: RolloutPermission[]
+  level: 'group' | 'subgroup'
   counts: Record<string, number>
   total: number
+  /** Subgroups (main groups with meaningful subcategories). */
+  children: RolloutNode[]
+  /** Permissions (subgroups, and main groups that expand directly). */
+  permissions: RolloutPermission[]
 }
 
 export interface Rollout {
-  modules: RolloutModule[]
+  groups: RolloutNode[]
   /** Every mode present, primary rollout modes first (never drops a mode). */
   columns: string[]
   totals: Record<string, number>
   total: number
 }
 
-export function aggregateRollout(modes: ModeRow[]): Rollout {
-  const byGroup = new Map<string, RolloutPermission[]>()
-  for (const m of modes) {
-    const { label, group } = permissionLabel(m.permission_key)
-    const list = byGroup.get(group) ?? []
-    list.push({ key: m.permission_key, label, mode: m.mode, enforcementReady: Boolean(m.enforcementReady) })
-    byGroup.set(group, list)
-  }
-  const rank = (group: string) => {
-    const i = PERMISSION_GROUP_ORDER.indexOf(group)
-    return i < 0 ? PERMISSION_GROUP_ORDER.length : i
-  }
-  const totals: Record<string, number> = {}
-  const modules = Array.from(byGroup.entries())
-    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
-    .map(([name, permissions]) => {
-      const counts: Record<string, number> = {}
-      for (const p of permissions) {
-        counts[p.mode] = (counts[p.mode] ?? 0) + 1
-        totals[p.mode] = (totals[p.mode] ?? 0) + 1
-      }
-      permissions.sort((a, b) => a.label.localeCompare(b.label))
-      return { name, permissions, counts, total: permissions.length }
-    })
-  const extra = Object.keys(totals).filter(m => !(PRIMARY_ROLLOUT_MODES as readonly string[]).includes(m)).sort()
-  return { modules, columns: [...PRIMARY_ROLLOUT_MODES, ...extra], totals, total: modes.length }
+type Matcher = (module: string, resource: string) => boolean
+interface SubgroupDef { id: string; name: string; match: Matcher }
+interface GroupDef { id: string; name: string; match: Matcher; subgroups?: SubgroupDef[] }
+
+const mod = (...modules: string[]): Matcher => (m) => modules.includes(m)
+const res = (m: string, ...resources: string[]): Matcher => (mm, r) => mm === m && resources.includes(r)
+
+/**
+ * Overview display hierarchy (presentation only). Classification uses the
+ * permission key's module / resource — the same identifiers labels.ts uses —
+ * so stored categories and keys are unchanged. Subgroup order is display
+ * order; the first matching subgroup wins.
+ */
+export const ROLLOUT_HIERARCHY: readonly GroupDef[] = [
+  {
+    id: 'supply_chain', name: 'Supply Chain', match: mod('supply_chain', 'inventory', 'warehouse', 'manufacturing', 'product', 'qr'),
+    subgroups: [
+      { id: 'orders', name: 'Orders & Documents', match: mod('supply_chain') },
+      { id: 'stock_count', name: 'Stock Count', match: res('inventory', 'stock_count') },
+      { id: 'stock_transfer', name: 'Stock Transfer', match: res('inventory', 'transfer') },
+      { id: 'inventory', name: 'Inventory', match: mod('inventory') },
+      { id: 'warehouse', name: 'Warehouse', match: mod('warehouse') },
+      { id: 'manufacturing', name: 'Manufacturing', match: mod('manufacturing') },
+      { id: 'product_catalogue', name: 'Product Catalogue', match: mod('product') },
+      { id: 'qr', name: 'QR & Traceability', match: mod('qr') },
+    ],
+  },
+  {
+    id: 'customer_growth', name: 'Customer & Growth', match: mod('customer', 'roadtour', 'ecommerce', 'marketing'),
+    subgroups: [
+      { id: 'customer_engagement', name: 'Customer Engagement', match: mod('customer') },
+      { id: 'roadtour', name: 'RoadTour', match: mod('roadtour') },
+      { id: 'ecommerce', name: 'E-Commerce', match: mod('ecommerce') },
+      { id: 'marketing', name: 'Marketing', match: mod('marketing') },
+    ],
+  },
+  { id: 'hr_payroll', name: 'HR & Payroll', match: mod('hr') },
+  { id: 'finance', name: 'Finance', match: mod('finance') },
+  {
+    id: 'platform_security', name: 'Platform & Security', match: mod('platform', 'security'),
+    subgroups: [
+      { id: 'identity', name: 'Identity', match: res('platform', 'identity', 'identity_access', 'user') },
+      { id: 'platform', name: 'Platform', match: mod('platform') },
+      { id: 'security_admin', name: 'Security Administration', match: mod('security') },
+    ],
+  },
+  { id: 'reporting', name: 'Reporting', match: mod('reporting') },
+]
+
+/** Unmapped modules stay visible here until they are added to the hierarchy. */
+export const OTHER_GROUP = { id: 'other', name: 'Other (not yet grouped)' }
+
+export function classifyPermission(permissionKey: string): { groupId: string; subgroupId: string | null } {
+  const [module = '', resource = ''] = permissionKey.split('.')
+  const group = ROLLOUT_HIERARCHY.find(g => g.match(module, resource))
+  if (!group) return { groupId: OTHER_GROUP.id, subgroupId: null }
+  const sub = group.subgroups?.find(sg => sg.match(module, resource))
+  return { groupId: group.id, subgroupId: group.subgroups ? (sub?.id ?? null) : null }
 }
 
-/** Case-insensitive match on module name, permission name or technical key. */
-export function filterModules(modules: RolloutModule[], query: string): RolloutModule[] {
+const tally = (permissions: RolloutPermission[]) => {
+  const counts: Record<string, number> = {}
+  for (const p of permissions) counts[p.mode] = (counts[p.mode] ?? 0) + 1
+  return counts
+}
+
+function node(id: string, name: string, level: 'group' | 'subgroup', children: RolloutNode[], permissions: RolloutPermission[]): RolloutNode {
+  const all = [...permissions, ...children.flatMap(c => c.permissions)]
+  return { id, name, level, children, permissions, counts: tally(all), total: all.length }
+}
+
+/** Builds the tree; each unique permission key appears exactly once. */
+export function buildRollout(permissions: RolloutPermission[]): Rollout {
+  const unique = Array.from(new Map(permissions.map(p => [p.key, p])).values())
+  const defs = [...ROLLOUT_HIERARCHY, { ...OTHER_GROUP, match: () => false } as GroupDef]
+  const groups: RolloutNode[] = []
+  for (const def of defs) {
+    const mine = unique.filter(p => classifyPermission(p.key).groupId === def.id)
+    if (mine.length === 0) continue
+    const byLabel = (a: RolloutPermission, b: RolloutPermission) => a.label.localeCompare(b.label)
+    if (!def.subgroups) {
+      groups.push(node(def.id, def.name, 'group', [], [...mine].sort(byLabel)))
+      continue
+    }
+    const children = def.subgroups
+      .map(sg => node(`${def.id}/${sg.id}`, sg.name, 'subgroup', [],
+        mine.filter(p => classifyPermission(p.key).subgroupId === sg.id).sort(byLabel)))
+      .filter(c => c.total > 0)
+    // A permission of this group matching no subgroup stays directly under it.
+    const loose = mine.filter(p => classifyPermission(p.key).subgroupId === null).sort(byLabel)
+    groups.push(node(def.id, def.name, 'group', children, loose))
+  }
+  const totals = tally(unique)
+  const extra = Object.keys(totals).filter(m => !(PRIMARY_ROLLOUT_MODES as readonly string[]).includes(m)).sort()
+  return { groups, columns: [...PRIMARY_ROLLOUT_MODES, ...extra], totals, total: unique.length }
+}
+
+export function aggregateRollout(modes: ModeRow[]): Rollout {
+  return buildRollout(modes.map(m => ({
+    key: m.permission_key,
+    label: permissionLabel(m.permission_key).label,
+    mode: m.mode,
+    enforcementReady: Boolean(m.enforcementReady),
+  })))
+}
+
+export interface FilteredRollout {
+  rollout: Rollout
+  /** Ancestors to open so every match is visible. */
+  autoOpen: string[]
+}
+
+/**
+ * Search across group, subgroup and permission names and technical keys.
+ * A matching group or subgroup keeps all its descendants; a matching
+ * permission keeps only matching siblings. Counts are recomputed for the
+ * filtered tree.
+ */
+export function filterRollout(rollout: Rollout, query: string): FilteredRollout {
   const q = query.trim().toLowerCase()
-  if (!q) return modules
-  return modules.filter(m => m.name.toLowerCase().includes(q)
-    || m.permissions.some(p => p.label.toLowerCase().includes(q) || p.key.toLowerCase().includes(q)))
+  if (!q) return { rollout, autoOpen: [] }
+  const hit = (text: string) => text.toLowerCase().includes(q)
+  const permHit = (p: RolloutPermission) => hit(p.label) || hit(p.key)
+  const autoOpen: string[] = []
+  const groups: RolloutNode[] = []
+  for (const g of rollout.groups) {
+    if (hit(g.name)) {
+      groups.push(g)
+      autoOpen.push(g.id)
+      continue
+    }
+    const children: RolloutNode[] = []
+    for (const c of g.children) {
+      if (hit(c.name)) { children.push(c); autoOpen.push(c.id); continue }
+      const perms = c.permissions.filter(permHit)
+      if (perms.length) { children.push(node(c.id, c.name, 'subgroup', [], perms)); autoOpen.push(c.id) }
+    }
+    const loose = g.permissions.filter(permHit)
+    if (children.length || loose.length) {
+      groups.push(node(g.id, g.name, 'group', children, loose))
+      autoOpen.push(g.id)
+    }
+  }
+  const all = groups.flatMap(g => [...g.permissions, ...g.children.flatMap(c => c.permissions)])
+  const totals = tally(all)
+  return { rollout: { groups, columns: rollout.columns, totals, total: all.length }, autoOpen }
 }
 
 export interface DecisionRow {

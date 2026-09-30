@@ -15,13 +15,14 @@ const ACTIONS: Record<string, string> = {
   prepare: 'Prepare', release: 'Release', adjust: 'Adjust', perform: 'Perform', acknowledge: 'Acknowledge',
   use: 'Use', cancel: 'Cancel', reverse: 'Reverse', grant: 'Grant', reset: 'Reset', view_sensitive: 'View sensitive',
   destructive: 'Run destructive', disable: 'Suspend / Disable', delete: 'Archive',
+  profile_edit: 'Edit', view_internal: 'View internal details of', administer: 'Administer', operate: 'Operate',
 }
 
 const MODULE_GROUPS: Record<string, string> = {
   finance: 'Finance', hr: 'HR & Payroll', supply_chain: 'Supply Chain', inventory: 'Inventory',
   warehouse: 'Warehouse', manufacturing: 'Manufacturing', qr: 'QR & Traceability', product: 'Product Catalogue',
   roadtour: 'RoadTour', customer: 'Customer & Growth', ecommerce: 'E-Commerce', platform: 'Platform',
-  reporting: 'Reporting', security: 'Security Administration',
+  reporting: 'Reporting', security: 'Security Administration', marketing: 'Marketing',
 }
 
 const RESOURCES: Record<string, { noun: string; group: string; resourceType: string }> = {
@@ -44,6 +45,11 @@ const RESOURCES: Record<string, { noun: string; group: string; resourceType: str
   'hr.self_service': { noun: 'Employee Self-Service', group: 'HR & Payroll', resourceType: 'employee_record' },
   'hr.module': { noun: 'HR Module', group: 'HR & Payroll', resourceType: 'hr_module' },
   'finance.module': { noun: 'Finance Module', group: 'Finance', resourceType: 'finance_module' },
+  'marketing.module': { noun: 'Marketing Module', group: 'Marketing', resourceType: 'marketing_module' },
+  'ecommerce.module': { noun: 'E-Commerce Module', group: 'E-Commerce', resourceType: 'ecommerce_module' },
+  'ecommerce.outdoor': { noun: 'Outdoor Store', group: 'E-Commerce', resourceType: 'outdoor_store' },
+  'customer.crm': { noun: 'CRM Module', group: 'Customer & Growth', resourceType: 'crm_module' },
+  'platform.notification_monitor': { noun: 'Delivery Monitors', group: 'Platform', resourceType: 'notification_monitor' },
   'supply_chain.order': { noun: 'Orders', group: 'Supply Chain', resourceType: 'order' },
   'supply_chain.document': { noun: 'Order Documents', group: 'Supply Chain', resourceType: 'document' },
   'inventory.opening_balance': { noun: 'Opening Balance', group: 'Inventory', resourceType: 'opening_balance' },

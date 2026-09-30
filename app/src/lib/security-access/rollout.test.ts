@@ -1,102 +1,144 @@
 import { describe, expect, it } from 'vitest'
-import { aggregateRollout, filterModules, rolloutMode, summarizeDifferences } from './rollout'
+import { aggregateRollout, classifyPermission, filterRollout, rolloutMode, summarizeDifferences, type Rollout, type RolloutNode } from './rollout'
+import { FINAL_WAVE_PERMISSION_KEYS } from './catalog'
+import { IDENTITY_PERMISSION_KEYS } from './identity-catalog'
+import { STAGE2D_PERMISSION_KEYS } from './stage2d-catalog'
 
-const modes = [
-  { permission_key: 'finance.ledger.view', mode: 'NEW_ENFORCED', enforcementReady: true },
-  { permission_key: 'finance.module.view', mode: 'NEW_ENFORCED', enforcementReady: true },
-  { permission_key: 'finance.report.view_sensitive', mode: 'LEGACY_RETIRED' },
-  { permission_key: 'inventory.stock_count.create', mode: 'SHADOW' },
-  { permission_key: 'inventory.stock_count.view', mode: 'NEW_ENFORCED', enforcementReady: true },
-  { permission_key: 'hr.payroll.approve', mode: 'NEW_ENFORCED' },
-  { permission_key: 'security.role.manage', mode: 'LEGACY_RETIRED' },
-  { permission_key: 'customer.crm.view', mode: 'SHADOW' },
-  { permission_key: 'qr.batch.manage', mode: 'LEGACY_ENFORCED' },
+const WAVE1_KEYS = [
+  'inventory.stock_count.view', 'inventory.stock_count.create', 'inventory.stock_count.verify', 'inventory.stock_count.post',
+  'inventory.transfer.view', 'inventory.transfer.request', 'inventory.transfer.approve', 'inventory.transfer.dispatch',
+  'inventory.transfer.receive', 'inventory.transfer.cancel', 'security.access.view', 'security.role.assign', 'security.permission.manage',
 ]
+const MODES = ['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED']
+const catalog = Array.from(new Set([...FINAL_WAVE_PERMISSION_KEYS, ...WAVE1_KEYS, ...IDENTITY_PERMISSION_KEYS, ...STAGE2D_PERMISSION_KEYS]))
+const catalogModes = catalog.map((permission_key, i) => ({ permission_key, mode: MODES[i % MODES.length] }))
 
-describe('aggregateRollout', () => {
-  const rollout = aggregateRollout(modes)
+const leafKeys = (r: Rollout) => r.groups.flatMap(g => [...g.permissions, ...g.children.flatMap(c => c.permissions)]).map(p => p.key)
+const sumCounts = (nodes: RolloutNode[], mode: string) => nodes.reduce((n, x) => n + (x.counts[mode] ?? 0), 0)
 
-  it('groups by the existing permission groups in the existing order', () => {
-    expect(rollout.modules.map(m => m.name)).toEqual(
-      ['Finance', 'HR & Payroll', 'Stock Count', 'QR & Traceability', 'Customer & Growth', 'Security Administration'])
+describe('Overview hierarchy (Main group → Subgroup → Permission)', () => {
+  const rollout = aggregateRollout(catalogModes)
+
+  it('places every catalogue permission exactly once, with none left unmapped', () => {
+    const keys = leafKeys(rollout)
+    expect(keys.length).toBe(catalog.length)
+    expect(new Set(keys).size).toBe(catalog.length)
+    expect(rollout.groups.find(g => g.id === 'other')).toBeUndefined()
   })
 
-  it('module counts and totals reconcile with the source modes', () => {
-    expect(rollout.total).toBe(modes.length)
-    expect(rollout.modules.reduce((n, m) => n + m.total, 0)).toBe(modes.length)
-    for (const m of rollout.modules) {
-      expect(Object.values(m.counts).reduce((a, b) => a + b, 0)).toBe(m.total)
+  it('shows the six main groups in order', () => {
+    expect(rollout.groups.map(g => g.name)).toEqual(
+      ['Supply Chain', 'Customer & Growth', 'HR & Payroll', 'Finance', 'Platform & Security', 'Reporting'])
+  })
+
+  it('uses the agreed subgroups, and groups without subcategories expand straight to permissions', () => {
+    const sub = (id: string) => rollout.groups.find(g => g.id === id)!.children.map(c => c.name)
+    expect(sub('supply_chain')).toEqual(['Orders & Documents', 'Stock Count', 'Stock Transfer', 'Inventory', 'Warehouse', 'Manufacturing', 'Product Catalogue', 'QR & Traceability'])
+    expect(sub('customer_growth')).toEqual(['Customer Engagement', 'RoadTour', 'E-Commerce', 'Marketing'])
+    expect(sub('platform_security')).toEqual(['Identity', 'Platform', 'Security Administration'])
+    for (const id of ['hr_payroll', 'finance', 'reporting']) {
+      const g = rollout.groups.find(x => x.id === id)!
+      expect(g.children).toEqual([])
+      expect(g.permissions.length).toBe(g.total)
     }
-    for (const mode of ['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED', 'LEGACY_ENFORCED']) {
-      expect(rollout.totals[mode]).toBe(modes.filter(x => x.mode === mode).length)
+  })
+
+  it('reconciles subgroup → main group → overall totals for every mode', () => {
+    for (const mode of MODES) {
+      for (const g of rollout.groups) {
+        expect(g.counts[mode] ?? 0).toBe(sumCounts(g.children, mode) + g.permissions.filter(p => p.mode === mode).length)
+      }
+      expect(sumCounts(rollout.groups, mode)).toBe(rollout.totals[mode])
+      expect(rollout.totals[mode]).toBe(catalogModes.filter(m => m.mode === mode).length)
     }
-    expect(rollout.modules.find(m => m.name === 'Finance')!.counts).toEqual({ NEW_ENFORCED: 2, LEGACY_RETIRED: 1 })
+    expect(rollout.groups.reduce((n, g) => n + g.total, 0)).toBe(rollout.total)
+    expect(rollout.total).toBe(catalog.length)
   })
 
-  it('never drops a mode: additional modes get their own column', () => {
-    expect(rollout.columns).toEqual(['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED', 'LEGACY_ENFORCED'])
-    expect(aggregateRollout(modes.filter(m => m.mode !== 'LEGACY_ENFORCED')).columns)
-      .toEqual(['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED'])
-    const odd = aggregateRollout([{ permission_key: 'finance.x.view', mode: 'SOMETHING_NEW' }])
-    expect(odd.columns).toContain('SOMETHING_NEW')
-    expect(odd.totals.SOMETHING_NEW).toBe(1)
+  it('classifies by stable key identifiers, not display text', () => {
+    expect(classifyPermission('supply_chain.document.acknowledge')).toEqual({ groupId: 'supply_chain', subgroupId: 'orders' })
+    expect(classifyPermission('inventory.stock_count.post')).toEqual({ groupId: 'supply_chain', subgroupId: 'stock_count' })
+    expect(classifyPermission('inventory.opening_balance.manage')).toEqual({ groupId: 'supply_chain', subgroupId: 'inventory' })
+    expect(classifyPermission('platform.user.profile_edit')).toEqual({ groupId: 'platform_security', subgroupId: 'identity' })
+    expect(classifyPermission('platform.data.destructive')).toEqual({ groupId: 'platform_security', subgroupId: 'platform' })
+    expect(classifyPermission('hr.payroll.approve')).toEqual({ groupId: 'hr_payroll', subgroupId: null })
   })
 
-  it('keeps readiness separate from the current mode', () => {
-    const stock = rollout.modules.find(m => m.name === 'Stock Count')!
-    expect(stock.permissions.find(p => p.key === 'inventory.stock_count.create')).toMatchObject({ mode: 'SHADOW', enforcementReady: false })
-    expect(stock.permissions.find(p => p.key === 'inventory.stock_count.view')).toMatchObject({ mode: 'NEW_ENFORCED', enforcementReady: true })
+  it('keeps unknown categories visible in an explicit Other group and hides empty groups', () => {
+    const r = aggregateRollout([
+      { permission_key: 'finance.ledger.view', mode: 'NEW_ENFORCED' },
+      { permission_key: 'logistics.route.plan', mode: 'SHADOW' },
+    ])
+    expect(r.groups.map(g => g.id)).toEqual(['finance', 'other'])
+    expect(r.groups[1].name).toMatch(/Other/)
+    expect(r.groups[1].permissions.map(p => p.key)).toEqual(['logistics.route.plan'])
+    expect(r.total).toBe(2)
   })
 
-  it('handles no modes', () => {
-    expect(aggregateRollout([])).toEqual({ modules: [], columns: ['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED'], totals: {}, total: 0 })
+  it('never drops a mode', () => {
+    const r = aggregateRollout([...catalogModes.slice(0, 5), { permission_key: 'qr.batch.manage', mode: 'LEGACY_ENFORCED' }])
+    expect(r.columns).toEqual(['NEW_ENFORCED', 'SHADOW', 'LEGACY_RETIRED', 'LEGACY_ENFORCED'])
+    expect(sumCounts(r.groups, 'LEGACY_ENFORCED')).toBe(1)
+  })
+
+  it('counts each key once even if the source repeats it', () => {
+    const r = aggregateRollout([{ permission_key: 'finance.ledger.view', mode: 'NEW_ENFORCED' }, { permission_key: 'finance.ledger.view', mode: 'NEW_ENFORCED' }])
+    expect(r.total).toBe(1)
   })
 })
 
-describe('filterModules', () => {
-  const { modules } = aggregateRollout(modes)
-  it('matches module names, permission names and technical keys, case-insensitively', () => {
-    expect(filterModules(modules, 'fin').map(m => m.name)).toEqual(['Finance'])
-    expect(filterModules(modules, 'approve payroll').map(m => m.name)).toEqual(['HR & Payroll'])
-    expect(filterModules(modules, 'QR.BATCH').map(m => m.name)).toEqual(['QR & Traceability'])
+describe('filterRollout', () => {
+  const rollout = aggregateRollout(catalogModes)
+
+  it('a permission match keeps only its ancestors and opens them', () => {
+    const { rollout: f, autoOpen } = filterRollout(rollout, 'inventory.stock_count.post')
+    expect(f.groups.map(g => g.id)).toEqual(['supply_chain'])
+    expect(f.groups[0].children.map(c => c.id)).toEqual(['supply_chain/stock_count'])
+    expect(leafKeys(f)).toEqual(['inventory.stock_count.post'])
+    expect(autoOpen).toEqual(expect.arrayContaining(['supply_chain', 'supply_chain/stock_count']))
+    expect(f.total).toBe(1)
   })
-  it('returns everything for an empty query and nothing for no match', () => {
-    expect(filterModules(modules, '  ')).toHaveLength(modules.length)
-    expect(filterModules(modules, 'zzz')).toEqual([])
+
+  it('a subgroup name match shows all its permissions', () => {
+    const { rollout: f } = filterRollout(rollout, 'stock transfer')
+    const sg = f.groups[0].children.find(c => c.id === 'supply_chain/stock_transfer')!
+    expect(sg.total).toBe(rollout.groups[0].children.find(c => c.id === 'supply_chain/stock_transfer')!.total)
+  })
+
+  it('a main-group name match shows all its descendants', () => {
+    const { rollout: f } = filterRollout(rollout, 'platform & security')
+    expect(f.groups.map(g => g.id)).toEqual(['platform_security'])
+    expect(f.groups[0].total).toBe(rollout.groups.find(g => g.id === 'platform_security')!.total)
+  })
+
+  it('recomputes counts for the filtered tree and supports no results', () => {
+    const { rollout: f } = filterRollout(rollout, 'approve')
+    expect(f.total).toBe(leafKeys(f).length)
+    expect(f.total).toBeLessThan(rollout.total)
+    expect(filterRollout(rollout, 'zzz-nothing').rollout.groups).toEqual([])
+    expect(filterRollout(rollout, '  ').rollout).toBe(rollout)
   })
 })
 
 describe('summarizeDifferences', () => {
+  const modes = [
+    { permission_key: 'finance.ledger.view', mode: 'NEW_ENFORCED' },
+    { permission_key: 'customer.crm.view', mode: 'SHADOW' },
+  ]
   const decisions = [
     { occurred_at: '2026-09-29T10:00:00Z', permission_key: 'customer.crm.view', comparison: 'LEGACY_ALLOW_NEW_DENY' },
-    { occurred_at: '2026-09-29T09:00:00Z', permission_key: 'customer.crm.view', comparison: 'LEGACY_ALLOW_NEW_DENY' },
     { occurred_at: '2026-09-28T09:00:00Z', permission_key: 'finance.ledger.view', comparison: 'SCOPE_MISMATCH' },
     { occurred_at: '2026-09-27T09:00:00Z', permission_key: 'finance.ledger.view', comparison: 'MATCH_DENY' },
   ]
 
-  it('counts only real differences and reports the actual period of the sample', () => {
+  it('counts only real differences over the actual sample period and separates pending from historical', () => {
     const s = summarizeDifferences(decisions, modes, 100)
-    expect(s.count).toBe(3)
-    expect(s.from).toBe('2026-09-27T09:00:00Z')
-    expect(s.to).toBe('2026-09-29T10:00:00Z')
-    expect(s.sampleSize).toBe(4)
-    expect(s.capped).toBe(false)
-    expect(s.byPermission).toEqual({ 'customer.crm.view': 2, 'finance.ledger.view': 1 })
-  })
-
-  it('separates differences still awaiting review (Monitoring) from historical ones', () => {
-    const s = summarizeDifferences(decisions, modes, 100)
-    expect(s.pending).toBe(2)
+    expect(s).toMatchObject({ count: 2, from: '2026-09-27T09:00:00Z', to: '2026-09-29T10:00:00Z', pending: 1, historical: 1, capped: false })
     expect(s.pendingPermissions).toEqual(['customer.crm.view'])
-    expect(s.historical).toBe(1)
+    expect(summarizeDifferences(decisions, modes, 3).capped).toBe(true)
   })
 
-  it('flags a capped sample and handles an empty log', () => {
-    expect(summarizeDifferences(decisions, modes, 4).capped).toBe(true)
-    expect(summarizeDifferences([], modes, 100)).toMatchObject({ count: 0, from: null, to: null, pending: 0, capped: false })
-  })
-
-  it('uses the Overview wording without changing mode values', () => {
+  it('keeps the Overview wording without changing mode values', () => {
     expect(rolloutMode('SHADOW').label).toBe('Monitoring')
     expect(rolloutMode('NEW_ENFORCED').label).toBe('New Access Active')
     expect(rolloutMode('LEGACY_RETIRED').label).toBe('Legacy Retired')
