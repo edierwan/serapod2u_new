@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ClipboardCheck, GitBranch, KeyRound, Lock, Send, XCircle } from 'lucide-react'
 import SearchableSelect from './SearchableSelect'
 import { callApi, formatDate, toIso } from './client-api'
-import { DisclosurePanel, EmptyState, FilterChips, SectionTabs, ToggleButton } from './ui'
+import { Collapsible, DisclosurePanel, EmptyState, FilterChips, FOCUS, SearchInput, SectionTabs, ShowMore, ToggleButton, useLimit } from './ui'
+import { OUTCOMES, RULE_KINDS, enforcementOf, groupSodRules, humanize, outcomeOf, ruleKindLabel, type SodMitigation, type SodRule, type SodViolation } from '@/lib/security-access/sod'
 import { permissionLabel } from '@/lib/security-access/labels'
 
 type Section = 'requests' | 'delegations' | 'reviews' | 'sod' | 'emergency'
@@ -263,30 +264,166 @@ function Reviews({ data, nameOf, orgName, roleName }: any) {
   </div>
 }
 
+const SOD_ROW = 'grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-[minmax(0,1fr)_8rem_7rem_5rem_6rem] md:items-center'
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 function SegregationOfDuties({ nameOf }: any) {
   const { state, error } = useList('/api/security-access/sod')
-  const ruleName = useMemo(() => new Map((state?.rules || []).map((r: any) => [r.id, r.name])), [state])
+  const rules: SodRule[] = useMemo(() => state?.rules || [], [state])
+  const violations: SodViolation[] = useMemo(() => state?.violations || [], [state])
+  const mitigations: SodMitigation[] = useMemo(() => state?.mitigations || [], [state])
+  const ruleName = useMemo(() => new Map(rules.map(r => [r.id, r.name])), [rules])
+  const conflictsByRule = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const v of violations) m.set(v.rule_id, (m.get(v.rule_id) ?? 0) + 1)
+    return m
+  }, [violations])
+
+  const [query, setQuery] = useState('')
+  const [enforcement, setEnforcement] = useState<'all' | 'enforce' | 'monitor'>('all')
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const [filterOpen, setFilterOpen] = useState<Set<string>>(new Set())
+  const [openRule, setOpenRule] = useState<string | null>(null)
+  const q = query.trim().toLowerCase()
+  const filtering = q.length > 0 || enforcement !== 'all'
+  const shown = useMemo(() => rules.filter(r => (enforcement === 'all' || r.enforcement === enforcement)
+    && (!q || `${r.name} ${r.description ?? ''} ${humanize(r.document_type)} ${permissionLabel(r.left_key).label} ${permissionLabel(r.right_key).label}`.toLowerCase().includes(q))), [rules, enforcement, q])
+  const groups = useMemo(() => groupSodRules(shown, conflictsByRule), [shown, conflictsByRule])
+  useEffect(() => { setFilterOpen(new Set(groups.map(g => g.id))) }, [groups])
+  const expanded = filtering ? filterOpen : open
+  const setExpanded = filtering ? setFilterOpen : setOpen
+  const flip = (id: string) => setExpanded(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const clear = () => { setQuery(''); setEnforcement('all') }
+
+  if (!state && !error) return <div role="status" className="p-6 text-sm text-gray-500">Loading segregation of duties…</div>
+  const enforced = rules.filter(r => r.enforcement === 'enforce').length
+
   return <div className="space-y-4">
-    {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-    <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="font-semibold">Rules</h3>
-        <p className="text-sm text-gray-500">Enforced rules block the conflicting step; monitored rules record the conflict for review without changing workflow authority. Only rules backed by documented business practice are enforced.</p></div>
-      <div className="divide-y">{(state?.rules || []).map((r: any) => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
-        <div><div className="font-medium">{r.name}</div><div className="text-xs text-gray-500">{r.description}</div>
-          <div className="text-xs text-gray-400">{r.rule_kind.replace(/_/g, ' ')}{r.document_type ? ` · ${r.document_type.replace(/_/g, ' ')}` : ''}</div></div>
-        <div className="flex gap-2"><Pill value={r.enforcement} /><Pill value={r.status} /></div>
-      </div>)}</div>
+    {error && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+    <section className="rounded-xl border border-gray-200 bg-white shadow-sm" aria-label="Segregation of duties rules">
+      <div className="space-y-3 border-b border-gray-100 p-4">
+        <div>
+          <h3 className="font-semibold text-gray-950">Rules</h3>
+          <p className="text-sm text-gray-500">
+            <span className="font-medium text-red-700">Blocks</span> refuses the conflicting step. <span className="font-medium text-amber-800">Monitors</span> allows it and records the conflict for review.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search rules or permissions" label="Search rules" className="basis-full sm:basis-auto sm:w-72" />
+          <FilterChips label="Enforcement" value={enforcement} onChange={setEnforcement} items={[
+            { id: 'all', label: 'All', count: rules.length },
+            { id: 'enforce', label: 'Blocks', count: enforced },
+            { id: 'monitor', label: 'Monitors', count: rules.filter(r => r.enforcement === 'monitor').length },
+          ]} />
+          <div className="ml-auto flex items-center gap-2">
+            {filtering && <button type="button" onClick={clear} className={`rounded text-xs font-medium text-orange-600 hover:text-orange-700 ${FOCUS}`}>Clear filters</button>}
+            <button type="button" onClick={() => setExpanded(new Set())} disabled={expanded.size === 0}
+              className={`rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-default disabled:opacity-40 ${FOCUS}`}>Collapse all</button>
+          </div>
+        </div>
+      </div>
+      {filtering && rules.length > 0 && <p role="status" className="border-b border-gray-100 bg-orange-50/40 px-4 py-1.5 text-xs text-gray-600">Showing {shown.length} of {plural(rules.length, 'rule')}.</p>}
+      {rules.length === 0 ? <EmptyState>No segregation of duties rules are defined.</EmptyState>
+        : shown.length === 0 ? <EmptyState>No rules match. <button type="button" onClick={clear} className={`rounded font-medium text-orange-600 ${FOCUS}`}>Clear filters</button></EmptyState>
+        : <div>
+          <div className={`${SOD_ROW} hidden border-b border-gray-100 px-4 py-2 text-xs font-medium text-gray-500 md:grid`} aria-hidden>
+            <span>Module / rule</span><span>Type</span><span>Enforcement</span><span>Status</span><span className="md:text-right">Conflicts</span>
+          </div>
+          <ul>{groups.map(g => {
+            const gOpen = expanded.has(g.id)
+            return <li key={g.id} className="border-t border-gray-100 first:border-t-0">
+              <div className="bg-gray-50/70 px-4 py-2">
+                <ToggleButton open={gOpen} onClick={() => flip(g.id)} label={`${g.name}, ${plural(g.rules.length, 'rule')}`}>
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-semibold text-gray-900">{g.name}</span>
+                    <span className="text-xs text-gray-400">{plural(g.rules.length, 'rule')}</span>
+                    <span className="text-xs font-normal text-gray-500">
+                      {[g.enforced && `${g.enforced} blocking`, g.monitored && `${g.monitored} monitoring`, g.conflicts && plural(g.conflicts, 'conflict')].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </ToggleButton>
+              </div>
+              {gOpen && <ul className="divide-y divide-gray-50">{g.rules.map(r => {
+                const rOpen = openRule === r.id
+                const e = enforcementOf(r.enforcement)
+                const conflicts = conflictsByRule.get(r.id) ?? 0
+                return <li key={r.id}>
+                  <div className={`${SOD_ROW} py-2 pl-6 pr-4 text-sm md:pl-10`}>
+                    <ToggleButton open={rOpen} onClick={() => setOpenRule(rOpen ? null : r.id)} label={r.name}>
+                      <span className="min-w-0"><span className="block truncate font-medium text-gray-900">{r.name}</span>
+                        <span className="block truncate text-xs text-gray-500">{r.description}</span></span>
+                    </ToggleButton>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 md:contents">
+                      <span title={RULE_KINDS[r.rule_kind]?.help} className="text-xs text-gray-600">{ruleKindLabel(r.rule_kind)}</span>
+                      <span><span title={e.help} className={`rounded-full px-2 py-0.5 text-xs font-medium ${e.tone}`}>{e.label}</span></span>
+                      <span className="text-xs text-gray-600">{r.status === 'active' ? 'Active' : humanize(r.status)}</span>
+                      <span className={`text-xs tabular-nums md:text-right ${conflicts ? 'font-medium text-gray-900' : 'text-gray-400'}`}>{conflicts}<span className="md:sr-only"> {conflicts === 1 ? 'conflict' : 'conflicts'}</span></span>
+                    </div>
+                  </div>
+                  {rOpen && <SodRuleDetails r={r} nameOf={nameOf}
+                    exceptions={mitigations.filter(m => m.rule_id === r.id && m.status === 'active').length}
+                    recent={violations.filter(v => v.rule_id === r.id).slice(0, 5)} />}
+                </li>
+              })}</ul>}
+            </li>
+          })}</ul>
+        </div>}
     </section>
-    <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="font-semibold">Recent conflicts</h3></div>
-      <div className="divide-y">{(state?.violations || []).map((v: any) => <div key={v.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-        <div><div className="font-medium">{String(ruleName.get(v.rule_id) || 'Rule')}</div>
-          <div className="text-xs text-gray-500">{nameOf(v.user_id)} · {v.document_type ? `${v.document_type.replace(/_/g, ' ')} ` : ''}{formatDate(v.detected_at)}</div></div>
-        <Pill value={v.outcome.replace('allowed_', '')} />
-      </div>)}
-        {state && !(state.violations || []).length && <div className="p-4 text-sm text-gray-500">No conflicts recorded.</div>}</div>
-    </section>
+    <SodConflicts violations={violations} ruleName={ruleName} nameOf={nameOf} />
   </div>
+}
+
+function SodRuleDetails({ r, nameOf, exceptions, recent }: { r: SodRule; nameOf: (id: string) => string; exceptions: number; recent: SodViolation[] }) {
+  const sameDoc = r.rule_kind === 'same_document'
+  return <div className="space-y-3 bg-gray-50/60 py-3 pl-12 pr-4 text-xs md:pl-16">
+    <dl className="grid gap-3 sm:grid-cols-3">
+      <div><dt className="text-gray-400">{sameDoc ? 'First step' : 'Permission'}</dt><dd className="text-gray-800">{permissionLabel(r.left_key).label}</dd></div>
+      <div><dt className="text-gray-400">{sameDoc ? `Must be a different person for` : 'Conflicts with'}</dt><dd className="text-gray-800">{permissionLabel(r.right_key).label}</dd></div>
+      <div><dt className="text-gray-400">Applies to</dt><dd className="text-gray-800">{sameDoc ? `The same ${humanize(r.document_type) || 'document'}` : 'Anyone holding both'}</dd></div>
+      <div><dt className="text-gray-400">In effect</dt><dd className="text-gray-800">{r.effective_from ? `From ${formatDate(r.effective_from)}` : 'Since creation'}{r.effective_until ? ` until ${formatDate(r.effective_until)}` : ''}</dd></div>
+      <div><dt className="text-gray-400">Approved exceptions</dt><dd className="text-gray-800">{exceptions ? `${exceptions} active` : 'None'}</dd></div>
+      <div><dt className="text-gray-400">What happens</dt><dd className="text-gray-800">{enforcementOf(r.enforcement).help}</dd></div>
+    </dl>
+    <div>
+      <div className="text-gray-400">Latest conflicts</div>
+      {recent.length === 0 ? <div className="text-gray-500">None recorded.</div>
+        : <ul className="mt-1 space-y-1">{recent.map(v => <li key={v.id} className="flex flex-wrap items-center gap-2 text-gray-700">
+          <span className={`rounded-full px-2 py-0.5 ${outcomeOf(v.outcome).tone}`}>{outcomeOf(v.outcome).label}</span>
+          <span>{nameOf(v.user_id)}</span><span className="text-gray-400">{formatDate(v.detected_at)}</span>
+        </li>)}</ul>}
+    </div>
+    <code className="block text-[11px] text-gray-400">{r.left_key} ↔ {r.right_key}</code>
+  </div>
+}
+
+function SodConflicts({ violations, ruleName, nameOf }: { violations: SodViolation[]; ruleName: Map<string, string>; nameOf: (id: string) => string }) {
+  const [outcome, setOutcome] = useState<string>('all')
+  const [query, setQuery] = useState('')
+  const page = useLimit(10)
+  const count = (o: string) => violations.filter(v => v.outcome === o).length
+  const q = query.trim().toLowerCase()
+  const rows = violations.filter(v => (outcome === 'all' || v.outcome === outcome)
+    && (!q || `${ruleName.get(v.rule_id) ?? ''} ${nameOf(v.user_id)} ${humanize(v.document_type)}`.toLowerCase().includes(q)))
+  const blocked = count('blocked')
+  return <Collapsible title="Recent conflicts" meta={violations.length ? `${plural(violations.length, 'conflict')}${blocked ? ` · ${blocked} blocked` : ''}` : 'None recorded'}>
+    {violations.length === 0 ? <EmptyState>No conflicts recorded.</EmptyState> : <>
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 p-4">
+        <SearchInput value={query} onChange={v => { setQuery(v); page.reset() }} placeholder="Search person or rule" label="Search conflicts" />
+        <FilterChips label="Outcome" value={outcome} onChange={v => { setOutcome(v); page.reset() }} items={[
+          { id: 'all', label: 'All', count: violations.length },
+          ...Object.keys(OUTCOMES).filter(o => count(o)).map(o => ({ id: o, label: OUTCOMES[o].label, count: count(o) })),
+        ]} />
+      </div>
+      {rows.length === 0 ? <EmptyState>No conflicts match.</EmptyState> : <ul className="divide-y divide-gray-100">
+        {rows.slice(0, page.limit).map(v => <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+          <div className="min-w-0"><div className="font-medium text-gray-900">{ruleName.get(v.rule_id) ?? 'Rule'}</div>
+            <div className="text-xs text-gray-500">{nameOf(v.user_id)}{v.document_type ? ` · ${humanize(v.document_type)}` : ''} · {formatDate(v.detected_at)}</div></div>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${outcomeOf(v.outcome).tone}`}>{outcomeOf(v.outcome).label}</span>
+        </li>)}
+      </ul>}
+      <ShowMore shown={Math.min(page.limit, rows.length)} total={rows.length} onMore={page.more} />
+    </>}
+  </Collapsible>
 }
 
 function EmergencyAccess({ governance }: { governance: any }) {
