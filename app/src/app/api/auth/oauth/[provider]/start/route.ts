@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { publicOriginFromRequest } from '@/lib/http/public-origin'
+import { sameHostOriginFromRequest } from '@/lib/http/public-origin'
 import {
   isCustomSocialProvider,
   newOAuthState,
@@ -17,7 +17,7 @@ export async function GET(
   context: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await context.params
-  const origin = publicOriginFromRequest(request)
+  const origin = sameHostOriginFromRequest(request)
   const rawNext = request.nextUrl.searchParams.get('next')
   const nextPath = rawNext?.startsWith('/outdoor')
     ? sanitizeOutdoorReturnPath(rawNext)
