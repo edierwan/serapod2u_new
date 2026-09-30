@@ -24,6 +24,7 @@ export default function SecurityAccessView({ userProfile }: { userProfile: any }
   const [tab, setTab] = useState<Tab>('overview')
   const [data, setData] = useState<any>(null)
   const [governance, setGovernance] = useState<any>(null)
+  const [governanceError, setGovernanceError] = useState<string | null>(null)
   // Overview links open other tabs with a starting filter; switching tabs
   // directly clears it.
   const [auditDifferencesOnly, setAuditDifferencesOnly] = useState(false)
@@ -41,7 +42,7 @@ export default function SecurityAccessView({ userProfile }: { userProfile: any }
     fetch('/api/security-access/overview', { cache: 'no-store' }).then(r => r.json()).then(setData)
       .catch(() => setData({ schemaReady: false, error: 'Unable to load Security & Access data.' }))
     // Governance read model needs security.audit.view; absent → sections stay informational.
-    callApi('/api/security-access/governance').then(r => setGovernance(r.ok ? r.data : null))
+    callApi('/api/security-access/governance').then(r => { setGovernance(r.ok ? r.data : null); setGovernanceError(r.ok ? null : r.error || 'Unavailable') })
   }, [])
   useEffect(() => { load() }, [load])
 
@@ -57,13 +58,13 @@ export default function SecurityAccessView({ userProfile }: { userProfile: any }
       {tab === 'people' && <PeopleAccessPanel data={data} onChanged={load} />}
       {tab === 'roles' && <RolesPoliciesPanel key={`roles-${rolesQuery}`} data={data} governance={governance} onChanged={load} initialQuery={rolesQuery} />}
       {tab === 'governance' && <GovernancePanel data={data} governance={governance} />}
-      {tab === 'technical' && <div className="space-y-4"><TechnicalAccessPanel governance={governance} /><LegacyCompatibilityPanel governance={governance} /></div>}
+      {tab === 'technical' && <div className="space-y-4"><TechnicalAccessPanel governance={governance} error={governanceError} /><LegacyCompatibilityPanel governance={governance} /></div>}
       {tab === 'audit' && <div className="space-y-4">
         <SectionTabs label="Audit & Diagnostics sections" value={auditSection} onChange={setAuditSection} items={[
           { id: 'decisions', label: 'Authorization decisions' }, { id: 'changes', label: 'Access changes' },
           { id: 'parity', label: 'Parity evidence' }, { id: 'simulator', label: 'Access simulator' },
         ]} />
-        {auditSection === 'decisions' && <DecisionLog key={`log-${auditDifferencesOnly}`} initialFilter={auditDifferencesOnly ? 'differences' : 'all'} decisions={auditDifferencesOnly ? data.decisions || [] : data.recentDecisions?.length ? data.recentDecisions : data.decisions || []} actors={data.actors || []} people={data.people || []} organizations={data.organizations || []} />}
+        {auditSection === 'decisions' && <DecisionLog key={`log-${auditDifferencesOnly}`} initialFilter={auditDifferencesOnly ? 'differences' : 'all'} decisions={auditDifferencesOnly ? data.decisions || [] : data.recentDecisions?.length ? data.recentDecisions : data.decisions || []} actors={data.actors || []} people={data.people || []} organizations={data.organizations || []} roles={data.roles || []} />}
         {auditSection === 'changes' && <AccessChangeLog governance={governance} people={data.people || []} actors={data.actors || []} />}
         {auditSection === 'parity' && <ParityEvidence governance={governance} />}
         {auditSection === 'simulator' && <AccessSimulator userProfile={userProfile} people={data.people || []} actors={data.actors || []} permissions={data.permissions || []} organizations={data.organizations || []} disabled={!data.schemaReady} />}

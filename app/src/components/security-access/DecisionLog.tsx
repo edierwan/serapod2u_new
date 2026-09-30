@@ -10,18 +10,26 @@ interface DecisionLogProps {
   actors: any[]
   people: any[]
   organizations: DirectoryOrganization[]
+  /** Business roles, to name the roles that matched a decision. */
+  roles?: any[]
   /** Starting filter (e.g. opened from Overview → Review differences). */
   initialFilter?: 'all' | 'differences'
 }
 
 const DIFFERENCE = (comparison: string) => !['MATCH_ALLOW', 'MATCH_DENY'].includes(comparison)
 
-export default function DecisionLog({ decisions, actors, people, organizations, initialFilter = 'all' }: DecisionLogProps) {
+export default function DecisionLog({ decisions, actors, people, organizations, roles = [], initialFilter = 'all' }: DecisionLogProps) {
   const [filter, setFilter] = useState<'all' | 'differences'>(initialFilter)
   const [open, setOpen] = useState<string | null>(null)
+  const [technical, setTechnical] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const page = useLimit(25)
   const orgById = useMemo(() => new Map(organizations.map(o => [o.id, o.org_name])), [organizations])
+  const roleName = useMemo(() => {
+    const byId = new Map<string, string>(); const byKey = new Map<string, string>()
+    for (const r of roles) { if (r.id) byId.set(r.id, r.name); if (r.role_key) byKey.set(r.role_key, r.name) }
+    return (a: any) => a.roleName ?? byId.get(a.roleId) ?? byKey.get(a.roleKey) ?? (a.roleKey ? String(a.roleKey).replace(/[-_]/g, ' ') : 'Unnamed role')
+  }, [roles])
   const userById = useMemo(() => {
     const map = new Map<string, { name: string; role?: string }>()
     for (const p of people) map.set(p.id, { name: p.full_name || p.email, role: p.role_code })
@@ -38,6 +46,7 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
       .map(s => `${s.scopeType === 'warehouse' ? 'Warehouse' : 'Org'}: ${orgById.get(s.scopeValue) ?? 'Unlisted'}`)
     return Array.from(new Set(shown)).join(' · ') || '—'
   }
+  const matchedRoles = (d: any) => Array.from(new Set((Array.isArray(d.matched_assignments) ? d.matched_assignments : []).map(roleName)))
   const pill = (value: string | null) => value
     ? <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${value === 'ALLOW' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{value}</span>
     : <span className="text-xs text-gray-400">—</span>
@@ -102,18 +111,30 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
                         <td />
                         <td colSpan={8} className="px-3 pb-4 pt-1">
                           <p className="text-sm text-gray-700">{reasonLabel(d.reason_code)}</p>
-                          <p className="mt-1 text-xs text-gray-500">Mode when decided: <span className={`rounded-full px-2 py-0.5 font-semibold ${modeLabel(d.migration_mode).tone}`}>{modeLabel(d.migration_mode).label}</span></p>
-                          <dl className="mt-2 grid gap-2 font-mono text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
-                            <Tech term="Permission key" value={d.permission_key} />
-                            <Tech term="Decision ID" value={d.id} />
-                            <Tech term="Actor ID" value={d.actor_id} />
-                            <Tech term="Resource ID" value={d.resource_id} />
-                            <Tech term="Reason code" value={d.reason_code} />
-                            <Tech term="Correlation ID" value={d.correlation_id} />
-                            <Tech term="Policy version" value={d.policy_version} />
-                            <Tech term="Assignment IDs" value={(Array.isArray(d.matched_assignments) ? d.matched_assignments : []).map((a: any) => a.assignmentId).join(', ')} />
-                            <Tech term="Scope values" value={(Array.isArray(d.resolved_scopes) ? d.resolved_scopes : []).map((s: any) => `${s.scopeType}:${s.scopeValue}`).join(', ')} />
+                          <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                            <Fact term="Checked for">{user ? <>{user.name}{user.role && <span className="text-gray-500"> · {user.role}</span>}</> : 'Unknown user'}</Fact>
+                            <Fact term="Granted by">{matchedRoles(d).join(', ') || <span className="text-gray-400">No matching role</span>}</Fact>
+                            <Fact term="Where it applied">{place(d)}</Fact>
+                            <Fact term="Mode when decided"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${modeLabel(d.migration_mode).tone}`}>{modeLabel(d.migration_mode).label}</span></Fact>
                           </dl>
+                          <button type="button" onClick={() => setTechnical(technical === d.id ? null : d.id)} aria-expanded={technical === d.id}
+                            className="mt-3 inline-flex items-center gap-1 rounded text-xs font-medium text-gray-500 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
+                            {technical === d.id ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+                            Technical reference (for support)
+                          </button>
+                          {technical === d.id && (
+                            <dl className="mt-2 grid gap-2 rounded-lg border border-gray-200 bg-white p-3 font-mono text-xs text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
+                              <Tech term="Permission key" value={d.permission_key} />
+                              <Tech term="Reason code" value={d.reason_code} />
+                              <Tech term="Policy version" value={d.policy_version} />
+                              <Tech term="Decision ID" value={d.id} />
+                              <Tech term="Actor ID" value={d.actor_id} />
+                              <Tech term="Resource ID" value={d.resource_id} />
+                              <Tech term="Correlation ID" value={d.correlation_id} />
+                              <Tech term="Assignment IDs" value={(Array.isArray(d.matched_assignments) ? d.matched_assignments : []).map((a: any) => a.assignmentId).join(', ')} />
+                              <Tech term="Scope values" value={(Array.isArray(d.resolved_scopes) ? d.resolved_scopes : []).map((s: any) => `${s.scopeType}:${s.scopeValue}`).join(', ')} />
+                            </dl>
+                          )}
                         </td>
                       </tr>
                     )}
@@ -126,6 +147,15 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
         </div>
       )}
     </section>
+  )
+}
+
+function Fact({ term, children }: { term: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] uppercase tracking-wide text-gray-400">{term}</dt>
+      <dd className="text-gray-800">{children}</dd>
+    </div>
   )
 }
 
