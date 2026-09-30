@@ -1,4 +1,5 @@
 import { isOutdoorHost } from '@/lib/hosts/outdoor-hosts'
+import { sameHostOrigin } from '@/lib/hosts/same-host'
 
 export const OUTDOOR_OAUTH_NEXT_COOKIE = 'outdoor_oauth_next'
 export const OUTDOOR_AUTH_NEXT_STORAGE = 'outdoor_auth_next'
@@ -107,4 +108,9 @@ export function outdoorPublicOrigin() {
     if (hostname && !/^(0\.0\.0\.0)$/i.test(hostname)) return origin
   }
   return 'https://stg.serapod2u.com'
+}
+
+/** Where an OAuth provider sends the browser back: the host it is on now, so its PKCE cookie is found. */
+export function oauthReturnOrigin() {
+  return sameHostOrigin(outdoorPublicOrigin(), typeof window === 'undefined' ? null : window.location.hostname)
 }

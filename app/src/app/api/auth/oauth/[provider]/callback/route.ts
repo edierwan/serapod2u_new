@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { publicOriginFromRequest } from '@/lib/http/public-origin'
+import { sameHostOriginFromRequest } from '@/lib/http/public-origin'
 import {
   exchangeInstagramCode,
   exchangeTikTokCode,
@@ -26,7 +26,7 @@ export async function GET(
   context: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await context.params
-  const origin = publicOriginFromRequest(request)
+  const origin = sameHostOriginFromRequest(request)
   let nextPath = '/outdoor'
 
   try {
