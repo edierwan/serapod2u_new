@@ -9,6 +9,8 @@ interface Props {
   data: any
   governance: any | null
   onChanged: () => void
+  /** Starting search (e.g. opened from Overview for one permission). */
+  initialQuery?: string
 }
 
 const MODES = ['LEGACY_ENFORCED', 'SHADOW', 'NEW_ENFORCED', 'LEGACY_RETIRED'] as const
@@ -17,8 +19,8 @@ const MODES = ['LEGACY_ENFORCED', 'SHADOW', 'NEW_ENFORCED', 'LEGACY_RETIRED'] as
  * Roles & Policies: business roles, the permission catalogue, migration
  * modes (with enforcement readiness), authority policies and typed scopes.
  */
-export default function RolesPoliciesPanel({ data, governance, onChanged }: Props) {
-  const [query, setQuery] = useState('')
+export default function RolesPoliciesPanel({ data, governance, onChanged, initialQuery = '' }: Props) {
+  const [query, setQuery] = useState(initialQuery)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const readiness = useMemo(() => new Map((governance?.readiness || []).map((r: any) => [r.permission_key, r])), [governance])
   const permissions = (data.permissions || []).filter((p: any) => !query || `${permissionLabel(p.permission_key).label} ${p.permission_key}`.toLowerCase().includes(query.toLowerCase()))

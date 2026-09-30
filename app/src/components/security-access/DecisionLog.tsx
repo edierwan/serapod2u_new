@@ -9,12 +9,14 @@ interface DecisionLogProps {
   actors: any[]
   people: any[]
   organizations: DirectoryOrganization[]
+  /** Starting filter (e.g. opened from Overview → Review differences). */
+  initialFilter?: 'all' | 'differences'
 }
 
 const DIFFERENCE = (comparison: string) => !['MATCH_ALLOW', 'MATCH_DENY'].includes(comparison)
 
-export default function DecisionLog({ decisions, actors, people, organizations }: DecisionLogProps) {
-  const [filter, setFilter] = useState<'all' | 'differences'>('all')
+export default function DecisionLog({ decisions, actors, people, organizations, initialFilter = 'all' }: DecisionLogProps) {
+  const [filter, setFilter] = useState<'all' | 'differences'>(initialFilter)
   const [open, setOpen] = useState<string | null>(null)
   const orgById = useMemo(() => new Map(organizations.map(o => [o.id, o.org_name])), [organizations])
   const userById = useMemo(() => {
