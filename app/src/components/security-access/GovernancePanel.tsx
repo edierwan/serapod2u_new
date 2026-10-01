@@ -185,7 +185,10 @@ function Delegations({ data, nameOf, orgName }: any) {
       description="Scoped and time-boxed. A delegate can never exceed what you currently hold, and cannot delegate onward.">
       <div className="grid gap-4 p-4 md:grid-cols-3">
         <SearchableSelect label="Delegate" value={form.delegateId} onChange={v => setForm({ ...form, delegateId: v })}
-          options={(data.people || []).filter((p: any) => p.id !== data.viewerId).map((p: any) => ({ value: p.id, label: p.full_name || p.email }))} />
+          options={(data.people || [])
+            // Only active people with an active membership can receive a delegation.
+            .filter((p: any) => p.id !== data.viewerId && p.is_active && (p.membership || []).some((m: any) => m.status === 'active'))
+            .map((p: any) => ({ value: p.id, label: p.full_name || p.email, description: p.email }))} />
         <SearchableSelect label="Organization" value={form.organizationId} onChange={v => setForm({ ...form, organizationId: v })}
           options={(data.organizations || []).map((o: any) => ({ value: o.id, label: o.org_name }))} />
         <SearchableSelect label="Permission" value={form.permission} onChange={v => setForm({ ...form, permission: v })}

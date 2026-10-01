@@ -519,6 +519,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "security-access/delegations": { kind: 'ENTERPRISE', permissions: ["security.delegation.manage"] },
   "security-access/governance": { kind: 'ENTERPRISE', permissions: ["security.audit.view"] },
   "security-access/me/capabilities": { kind: 'SELF', reason: "Read-only view of the caller's own S&A answers for UI display; every operation is still decided on the server" },
+  "security-access/me/request-options": { kind: 'SELF', reason: "Read-only options for the caller's own access requests (memberships, scopes, requestable roles); submission and approval are re-checked by the governance functions" },
   "security-access/modes": { kind: 'ENTERPRISE', permissions: ["security.permission.manage"] },
   "security-access/overview": { kind: 'ENTERPRISE', permissions: ["security.access.view"] },
   "security-access/pilot/transfer-shadow": { kind: 'ENTERPRISE', permissions: ["inventory.transfer.approve", "inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.request"] },

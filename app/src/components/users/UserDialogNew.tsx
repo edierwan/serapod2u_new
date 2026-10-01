@@ -316,12 +316,22 @@ export default function UserDialogNew({
   // Optional initial Security & Access business role (create mode only; the
   // list is empty unless the administrator may assign roles in that org).
   const [initialRoles, setInitialRoles] = useState<Array<{ id: string; name: string; description: string | null }>>([])
+  // canAssign: the administrator may grant business roles in this org.
+  // legacyReadOnly: legacy role codes no longer grant access here, so a new
+  // user without a business role can use only employee self-service.
+  const [accessInfo, setAccessInfo] = useState<{ canAssign: boolean; legacyReadOnly: boolean } | null>(null)
   useEffect(() => {
-    if (user || !open || isGuest || !formData.organization_id) { setInitialRoles([]); return }
+    if (user || !open || isGuest || !formData.organization_id) { setInitialRoles([]); setAccessInfo(null); return }
     let cancelled = false
-    listInitialAccessRoles(formData.organization_id).then(r => { if (!cancelled) setInitialRoles(r.roles || []) }).catch(() => undefined)
+    listInitialAccessRoles(formData.organization_id).then(r => {
+      if (cancelled) return
+      setInitialRoles(r.roles || [])
+      setAccessInfo({ canAssign: Boolean((r as any).canAssign), legacyReadOnly: Boolean((r as any).legacyReadOnly) })
+    }).catch(() => undefined)
     return () => { cancelled = true }
   }, [user, open, isGuest, formData.organization_id])
+  // Business access must be an explicit choice when it can be granted here.
+  const accessChoiceRequired = !user && !isGuest && Boolean(accessInfo?.canAssign) && initialRoles.length > 0
   const showBusinessStep = organizationType === 'SHOP' || selectedOrgIsShop
   const showHrFields = Boolean(
     formData.organization_id &&
@@ -695,7 +705,12 @@ export default function UserDialogNew({
 
   const validateAccess = () => {
     const next: Record<string, string> = {}
-    if (!formData.role_code) next.role_code = 'Role is required'
+    if (!formData.role_code) next.role_code = 'Legacy level is required'
+    if (accessChoiceRequired) {
+      const choice = (formData as any).initial_role_id
+      if (!choice) next.initial_role_id = 'Choose the business access for this person (or employee self-service only)'
+      else if (choice !== 'self' && ((formData as any).initial_access_reason || '').trim().length < 5) next.initial_access_reason = 'A reason is required (at least 5 characters)'
+    }
     if (!isGuest && !formData.organization_id) {
       next.organization_id = `${organizationType === 'HQ' ? 'HQ' : getOrgTypeName(organizationType)} organization is required`
     }
@@ -747,7 +762,7 @@ export default function UserDialogNew({
     if (Object.keys(next).length > 0) {
       const first = Object.keys(next)[0]
       if (['full_name', 'email', 'phone', 'password', 'confirmPassword'].includes(first)) setCurrentStep('basic')
-      else if (['role_code', 'organization_id'].includes(first)) setCurrentStep('access')
+      else if (['role_code', 'organization_id', 'initial_role_id', 'initial_access_reason'].includes(first)) setCurrentStep('access')
       else setCurrentStep('banking')
       return false
     }
@@ -969,9 +984,16 @@ export default function UserDialogNew({
 
   const renderAccessStep = () => (
     <div className="sera-sc-page space-y-6">
-      {sectionHeader(<Shield className="h-5 w-5" />, 'Role & Access', "Select the user's role and organization in one place.")}
+      {sectionHeader(<Shield className="h-5 w-5" />, 'Role & Access', "Choose the organization and the business access this person gets.")}
       <div className="space-y-3">
-        <Label>Select Role <span className="text-red-500">*</span></Label>
+        <Label>Legacy level (compatibility) <span className="text-red-500">*</span></Label>
+        <p className="text-xs text-[var(--sera-muted)]">
+          {!accessInfo
+            ? 'Compatibility level for features still being moved to Security & Access. Business access is chosen after the organization.'
+            : accessInfo.legacyReadOnly
+              ? 'Used only by features still being moved to Security & Access. It does not grant access by itself; business access is chosen below.'
+              : 'Still decides access for features not yet moved to Security & Access. Business roles below are the new access model.'}
+        </p>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {availableRoles.map(role => {
             const active = formData.role_code === role.role_code
@@ -1135,22 +1157,32 @@ export default function UserDialogNew({
           </div>
         </div>
       ) : null}
-      {!user && initialRoles.length > 0 ? (
-        <div className="space-y-2 rounded-lg border border-[var(--sera-line)] p-4">
-          <Label>Initial access (optional)</Label>
-          <p className="text-xs text-[var(--sera-muted)]">Grant a Security &amp; Access business role now. The legacy role above is compatibility only; access comes from business roles.</p>
-          <Select value={(formData as any).initial_role_id || 'none'} onValueChange={v => setFormData(prev => ({ ...prev, initial_role_id: v === 'none' ? '' : v } as any))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Employee self-service only</SelectItem>
-              {initialRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {(formData as any).initial_role_id ? (
-            <Input placeholder="Reason (recorded in the access audit)" value={(formData as any).initial_access_reason || ''}
-              onChange={e => setFormData(prev => ({ ...prev, initial_access_reason: e.target.value } as any))} />
-          ) : null}
-        </div>
+      {!user && !isGuest && formData.organization_id && accessInfo ? (
+        accessChoiceRequired ? (
+          <div className="space-y-2 rounded-lg border border-[var(--sera-line)] p-4">
+            <Label>Business access <span className="text-red-500">*</span></Label>
+            <p className="text-xs text-[var(--sera-muted)]">A Security &amp; Access business role decides what this person can do. Add more roles later in Security &amp; Access → People &amp; Access.</p>
+            <Select value={(formData as any).initial_role_id || undefined} onValueChange={v => { setFormData(prev => ({ ...prev, initial_role_id: v } as any)); clearFieldError('initial_role_id') }}>
+              <SelectTrigger aria-label="Business access"><SelectValue placeholder="Choose business access" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="self">Employee self-service only (no business role)</SelectItem>
+                {initialRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {renderFieldError('initial_role_id')}
+            {(formData as any).initial_role_id && (formData as any).initial_role_id !== 'self' ? (
+              <>
+                <Input placeholder="Reason (recorded in the access audit)" value={(formData as any).initial_access_reason || ''}
+                  onChange={e => { setFormData(prev => ({ ...prev, initial_access_reason: e.target.value } as any)); clearFieldError('initial_access_reason') }} />
+                {renderFieldError('initial_access_reason')}
+              </>
+            ) : null}
+          </div>
+        ) : !accessInfo.canAssign ? (
+          <div role="note" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+            You cannot grant business access in this organization.{accessInfo.legacyReadOnly ? ' The new user will only have employee self-service until' : ' Ask'} a Security &amp; Access administrator {accessInfo.legacyReadOnly ? 'grants a business role' : 'to grant business roles'} in Security &amp; Access → People &amp; Access.
+          </div>
+        ) : null
       ) : null}
     </div>
   )

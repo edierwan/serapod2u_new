@@ -87,7 +87,12 @@ export default function PeopleAccessPanel({ data, onChanged }: Props) {
   const eligibleMemberships = (userId: string): any[] =>
     ((people.find(p => p.id === userId)?.membership) || []).filter((m: any) => m.status === 'active')
   const memberships: any[] = form.userId ? eligibleMemberships(form.userId) : []
-  const roleOptions = grantableRoles.filter(r => roleInModule(r, form.module, roleModules.get(r.id)))
+  // Roles the person already holds in this membership (granted or automatic)
+  // are not offered: granting again would take over automatic access.
+  const heldRoleIds = new Set<string>(memberships.filter(m => m.organization_id === form.organizationId)
+    .flatMap((m: any) => (m.assignments || []).filter((a: any) => a.status === 'active' && !(a.effective_until && new Date(a.effective_until) <= new Date())))
+    .map((a: any) => one(a.role)?.id).filter(Boolean))
+  const roleOptions = grantableRoles.filter(r => !heldRoleIds.has(r.id) && roleInModule(r, form.module, roleModules.get(r.id)))
   const scopeOptions = scopes.filter(s => !!form.organizationId && s.organization_id === form.organizationId && s.scope_type !== 'own_record')
   // Never submit a selection that is no longer offered (stale after a filter change).
   const roleValid = roleOptions.some(r => r.id === form.roleId)
@@ -336,7 +341,7 @@ function AssignmentList({ list, kind, roleModules, canRevoke, onRevoke, restorab
         <span className="text-xs text-gray-500">Scope: {scopeNames}</span>
         {a.source === 'access_request' && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700">Approved request</span>}
         {kind !== 'granted' && AUTOMATIC_SOURCE[a.source] && <span className="text-[11px] text-gray-400">{AUTOMATIC_SOURCE[a.source]}</span>}
-        {a.effective_until && <span className="inline-flex items-center gap-1 text-xs text-amber-700"><Clock className="h-3 w-3" aria-hidden />{expired ? 'Expired' : 'Until'} {formatDate(a.effective_until)}</span>}
+        {a.effective_until && <span className="inline-flex items-center gap-1 text-xs text-amber-700"><Clock className="h-3 w-3" aria-hidden />{a.status === 'revoked' ? 'Ended' : expired ? 'Expired' : 'Until'} {formatDate(a.effective_until)}</span>}
         {a.status !== 'active' && <span className="text-xs text-gray-400">{a.status}</span>}
         {restorable.has(a.id) && <span className="text-[11px] text-gray-400">Automatic access revoked by an administrator</span>}
       </div>

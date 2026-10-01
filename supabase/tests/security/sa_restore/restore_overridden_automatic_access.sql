@@ -29,13 +29,17 @@ commit;
 select u.email, r.role_key, a.status, a.source from sa_role_assignments a join sa_business_roles r on r.id = a.role_id join users u on u.id = a.user_id order by 1, 2;
 select sa_permission_mode('security.role.assign') as role_assign_mode;
 
+-- The "succeeded" failure is raised OUTSIDE the inner handler, so it can
+-- never be mistaken for the expected error.
 create or replace function pg_temp.expect_error(p_sql text, p_pattern text) returns text language plpgsql as $$
 begin
-  execute p_sql;
+  begin
+    execute p_sql;
+  exception when others then
+    if sqlerrm !~ p_pattern then raise exception 'EXPECTED % GOT %', p_pattern, sqlerrm; end if;
+    return 'ok: ' || p_pattern;
+  end;
   raise exception 'EXPECTED ERROR % but statement succeeded: %', p_pattern, p_sql;
-exception when others then
-  if sqlerrm !~ p_pattern then raise exception 'EXPECTED % GOT %', p_pattern, sqlerrm; end if;
-  return 'ok: ' || p_pattern;
 end $$;
 create or replace function pg_temp.assert(p_ok boolean, p_what text) returns text language plpgsql as $$
 begin if p_ok is not true then raise exception 'ASSERT FAILED: %', p_what; end if; return 'ok: ' || p_what; end $$;

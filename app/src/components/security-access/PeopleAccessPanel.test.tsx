@@ -163,6 +163,16 @@ describe('People & Access', () => {
     expect(onChanged).toHaveBeenCalled()
   })
 
+  it('never offers a role the person already holds (granting it would take over automatic access)', async () => {
+    render(<PeopleAccessPanel data={data} onChanged={vi.fn()} />)
+    await openGrantFor('Jafar Admin')
+    await userEvent.click(screen.getByRole('combobox', { name: 'Business role' }))
+    // CRM User is held automatically (backfill) and Order Approver is granted.
+    expect(screen.queryByRole('option', { name: /CRM User/ })).toBeNull()
+    expect(screen.queryByRole('option', { name: /Order Approver/ })).toBeNull()
+    expect(screen.getByRole('option', { name: /GL Clerk/ })).toBeTruthy()
+  })
+
   it('keeps the grant form closed until asked for; one membership is selected for you', async () => {
     render(<PeopleAccessPanel data={data} onChanged={vi.fn()} />)
     expect(screen.queryByText('Business role')).toBeNull()
