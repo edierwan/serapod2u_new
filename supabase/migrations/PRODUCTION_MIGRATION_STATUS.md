@@ -2,7 +2,7 @@
 
 **Living document.** Update it in the same commit as every new migration, and again whenever a migration is applied to staging or production (see [How to update this file](#how-to-update-this-file)).
 
-Last updated: **2026-10-01 20:45 MYT (+08:00)** — `origin/staging` at `44f79083`; `origin/main` at `1671bd79`.
+Last updated: **2026-10-01 22:40 MYT (+08:00)** — localhost branch at `8d874601` (not yet pushed); `origin/staging` at `539e874e`; `origin/main` at `1671bd79`.
 
 Original full audit: 2026-10-01 15:07 MYT at `2961c21a` (read-only; every row below up to `20260930100000` comes from it unless the change log says otherwise).
 
@@ -12,13 +12,13 @@ This report records **database state**, not merely whether a file is present on 
 
 | Order | Migration | Staging | Production |
 |---|---|---|---|
-| — | none | — | — |
+| 1 | `20261001130000_sa_grant_keeps_automatic_access.sql` | **Pending** | **Pending** |
 
-**No migration is pending** on staging or production. Production rows marked owner-reported should be confirmed once with the verification query below (all seven rows `true`).
+Apply staging first (with the matching application revision), verify, then production. Production rows marked owner-reported should be confirmed once with the verification query below.
 
 ## Executive result
 
-- **Production pending:** none. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
+- **Production pending:** `20261001130000_sa_grant_keeps_automatic_access.sql`. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
 - **Partial, drifted, or unknown migrations requiring investigation:** none in the migration set below.
 - Production and staging do **not** have a Supabase schema-migration ledger (`supabase_migrations.schema_migrations`) in the application database. `public.migration_history` is business data-import history and is not a schema ledger. Applied status therefore means that the migration's material effects, postconditions, or a later superseding definition were verified read-only.
 - The two different files with version `20260928100000` were checked independently. Both sets of effects exist on both databases. The duplicate version remains an operational hazard for any filename/version-based runner and must not be “fixed” by renaming either file during this release.
@@ -88,6 +88,7 @@ Principal evidence used across the table:
 | `20260930100000_sa_stage2d_deferred_closure.sql` | Add readable-organization scope, actor dominance, thirteen deferred permissions/roles, and guarded backfill | **Verified applied** | **Applied 2026-10-01 (owner-reported)** | Staging: four expected function signatures/helpers, thirteen `SHADOW` permissions and holders, correct grants, zero readable-organization/invariant mismatches. Production was verified pending at the 15:07 audit and applied afterwards by the owner. Requires the S&A final wave and Identity Stage 2 through `20260929190000`. Keep all thirteen keys in `SHADOW`. |
 | `20261001100000_sa_restore_overridden_automatic_access.sql` | Restore path for automatic/legacy access an administrator revoked (`sa_restore_assignment`, `sa_restorable_assignments`, `sa_assignment_overridden_source`; revoke records `previous_source`) | **Verified applied** (2026-10-01: three functions present, service_role-only execute, revoke definition records `previous_source`) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/restore_overridden_automatic_access.sql` (22 assertions; unpatched schema fails). Idempotent. Compatible with the older main application (only adds functions and extra audit detail). |
 | `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Delete the `legacy-guest` compatibility role and its assignments; `sa_refresh_compat_role` never (re)creates a role for `GUEST` | **Verified applied** (2026-10-01 20:20: verification query all `true`; one assignment removed and audited, `role.deleted` logged, zero GUEST identities holding a compatibility role) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/remove_legacy_guest_compat_role.sql` (15 assertions, includes the refusal path and a `read_only=false` production simulation); negative control: a plain delete is re-created by the next lifecycle sync. Refuses to run while an access request/review item references the role. GUEST identities lose `inventory.transfer.cancel` (already `NEW_ENFORCED` on staging). Idempotent. |
+| `20261001130000_sa_grant_keeps_automatic_access.sql` | A grant/approval never takes over automatic access (`sa_role_already_held`); access requests for an already-held role are refused | **Pending** | **Pending** | Staging UAT bug: re-granting an automatically held role converted it into a temporary manual grant. Replica test `supabase/tests/security/sa_restore/grant_keeps_automatic_access.sql` (9 assertions; unpatched schema fails as negative control). Idempotent. Compatible with older application code (only adds an error for a case the new UI no longer offers). |
 
 ## Applying a pending migration
 
@@ -108,10 +109,11 @@ union all select 'restore_fn', exists (select 1 from pg_proc where proname = 'sa
 union all select 'restore_fn_service_only', not has_function_privilege('authenticated', 'public.sa_restore_assignment(uuid,uuid,text)', 'execute')
 union all select 'revoke_records_previous_source', pg_get_functiondef('public.sa_revoke_assignment'::regproc) like '%previous_source%'
 union all select 'legacy_guest_removed', not exists (select 1 from public.sa_business_roles where role_key = 'legacy-guest')
-union all select 'guest_refresh_guard', pg_get_functiondef('public.sa_refresh_compat_role'::regproc) like '%GUEST carries no authority%';
+union all select 'guest_refresh_guard', pg_get_functiondef('public.sa_refresh_compat_role'::regproc) like '%GUEST carries no authority%'
+union all select 'grant_keeps_automatic', pg_get_functiondef('public.sa_create_assignment_internal'::regproc) like '%sa_role_already_held%';
 ```
 
-All rows must be `true` once every migration listed here is applied (before `20261001120000`, the last two are expected `false`).
+All rows must be `true` once every migration listed here is applied (`grant_keeps_automatic` stays `false` until `20261001130000`).
 
 ## Partial, drifted, or unknown requiring investigation
 
@@ -154,3 +156,4 @@ The repository's `.gitignore` explicitly re-includes `supabase/migrations/**/*.m
 | 2026-10-01 20:10 | Added `20261001120000_sa_remove_legacy_guest_compat_role.sql` (owner request: delete `legacy-guest`). Pending on both. |
 | 2026-10-01 20:20 | Owner applied `20261001120000` to staging; verified (all seven checks `true`). |
 | 2026-10-01 20:45 | Owner applied `20261001120000` to production (owner-reported). Nothing pending on either database. |
+| 2026-10-01 22:40 | Added `20261001130000_sa_grant_keeps_automatic_access.sql` (UAT fix). Pending on both. |
