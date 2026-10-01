@@ -1,3 +1,4 @@
+import { STAGE2D_PERMISSION_KEYS } from './stage2d-catalog'
 import { IDENTITY_ENFORCEMENT_READY } from './identity-catalog'
 
 /**
@@ -108,8 +109,8 @@ export const ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [
   'inventory.transfer.view',
 ]
 
-/** Final Wave registrations (20260928130000) plus Identity Foundation (20260929110000). */
-export const ALL_ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [...ENFORCEMENT_READY_PERMISSIONS, ...IDENTITY_ENFORCEMENT_READY]
+/** Final Wave registrations (20260928130000), Identity Foundation (20260929110000) and Stage 2D (20260930100000). */
+export const ALL_ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [...ENFORCEMENT_READY_PERMISSIONS, ...IDENTITY_ENFORCEMENT_READY, ...STAGE2D_PERMISSION_KEYS]
 
 export function isEnforcementReady(permissionKey: string): boolean {
   return ALL_ENFORCEMENT_READY_PERMISSIONS.includes(permissionKey)

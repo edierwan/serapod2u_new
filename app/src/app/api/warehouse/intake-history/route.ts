@@ -1,4 +1,5 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
+import { readableOrganizations, readableOrganizationsOfTypes } from '@/lib/security-access/scope'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { extractOrderNumber } from '@/lib/qr-code-utils'
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
     const saDenied = await guardUserOperation(user.id, 'inventory.report.view')
     if (saDenied) return saDenied
 
-    // Check if user is Super Admin (role_level = 1)
+    // Legacy rule: the Super Admin (role_level 1) may list every warehouse.
     const { data: profile } = await supabase
       .from('users')
       .select('role_code, roles(role_level)')
@@ -64,8 +65,16 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const warehouseOrgId = searchParams.get('warehouse_org_id')
 
-    // Super Admin can view ALL warehouses if no warehouse_org_id is provided
-    if (!warehouseOrgId && !isSuperAdmin) {
+    // Without a warehouse_org_id the list covers every warehouse the caller
+    // may read: S&A readable organizations (inventory.report.view, HQ and WH)
+    // once enforced; until then only the Super Admin may omit it (all).
+    const intakeScope = warehouseOrgId
+      ? null
+      : await readableOrganizationsOfTypes(
+          await readableOrganizations(user.id, 'inventory.report.view', () =>
+            isSuperAdmin ? { all: true } : { all: false, organizationIds: [] }),
+          ['HQ', 'WH'])
+    if (intakeScope !== null && intakeScope !== 'all' && intakeScope.length === 0) {
       return NextResponse.json({ error: 'warehouse_org_id is required' }, { status: 400 })
     }
 
@@ -135,9 +144,10 @@ export async function GET(request: NextRequest) {
       .order('warehouse_received_at', { ascending: false })
       .limit(2000)
 
-    // Only filter by warehouse_org_id if provided (Super Admin can view all)
     if (warehouseOrgId) {
       query = query.eq('warehouse_org_id', warehouseOrgId)
+    } else if (Array.isArray(intakeScope)) {
+      query = query.in('warehouse_org_id', intakeScope)
     }
 
     const { data, error } = await query
@@ -277,6 +287,8 @@ export async function GET(request: NextRequest) {
 
       if (warehouseOrgId) {
         masterQuery = masterQuery.eq('warehouse_org_id', warehouseOrgId)
+      } else if (Array.isArray(intakeScope)) {
+        masterQuery = masterQuery.in('warehouse_org_id', intakeScope)
       }
 
       const { data: allMasterCodes, error: masterError } = await masterQuery

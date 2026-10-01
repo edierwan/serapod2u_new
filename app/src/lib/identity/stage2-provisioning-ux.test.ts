@@ -43,7 +43,7 @@ describe('Add User wizard — initial Security & Access role', () => {
     authGetUser.mockResolvedValue({ data: { user: { id: 'admin' } }, error: null })
     checkPermissionForUser.mockResolvedValue({ allowed: false, context: { role_level: 20 } })
     const { listInitialAccessRoles } = await import('@/lib/actions')
-    expect(await listInitialAccessRoles('org-a')).toEqual({ success: true, roles: [] })
+    expect(await listInitialAccessRoles('org-a')).toEqual({ success: true, roles: [], canAssign: false, legacyReadOnly: false })
     expect(roleFilters).toEqual([])
   })
 
@@ -53,6 +53,7 @@ describe('Add User wizard — initial Security & Access role', () => {
     const { listInitialAccessRoles } = await import('@/lib/actions')
     const result = await listInitialAccessRoles('org-a')
     expect(result.roles).toEqual([{ id: 'r-1', name: 'Order Approver', description: 'Approves orders' }])
+    expect(result.canAssign).toBe(true)
     expect(roleFilters).toEqual(expect.arrayContaining([
       ['eq', 'status', 'active'], ['neq', 'source', 'legacy'], ['neq', 'role_key', 'employee-self-service'],
     ]))

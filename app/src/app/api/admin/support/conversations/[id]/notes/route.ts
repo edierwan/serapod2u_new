@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
@@ -26,7 +26,10 @@ async function checkAdminRole(supabaseAdmin: any, userId: string): Promise<boole
     .single()
 
   if (error || !userData) return false
-  return ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code)
+  // Support inbox administration is an S&A decision
+  // (customer.support.administer); the historical admin role list is the
+  // legacy evaluator.
+  return userAllowed(userId, 'customer.support.administer', () => ['SA', 'HQ', 'POWER_USER', 'HQ_ADMIN', 'admin', 'super_admin', 'hq_admin'].includes(userData.role_code))
 }
 
 /**

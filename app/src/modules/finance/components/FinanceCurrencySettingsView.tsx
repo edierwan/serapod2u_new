@@ -22,6 +22,7 @@ import {
     Settings2,
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 interface FinanceCurrencySettingsViewProps {
     userProfile: {
@@ -96,7 +97,9 @@ export default function FinanceCurrencySettingsView({ userProfile }: FinanceCurr
     })
     const [savingRate, setSavingRate] = useState(false)
 
-    const isAdmin = userProfile.roles?.role_level <= 20
+    // Shown when Security & Access allows finance.settings.manage (the server decides the
+    // operation); the historical role-level rule applies until it is enforced.
+    const isAdmin = useSaCapability('finance.settings.manage', userProfile.roles?.role_level <= 20)
 
     const loadSettings = useCallback(async () => {
         try {

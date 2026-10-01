@@ -1,4 +1,5 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
+import { targetProtectionAllows } from '@/lib/security-access/scope'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -65,19 +66,21 @@ export async function POST(request: NextRequest) {
             .single()
 
         const roleLevel = (profile as any)?.roles?.role_level
-        if (typeof roleLevel !== 'number' || roleLevel > 10) {
+        // Deleting an identity is an S&A decision (platform.identity.delete);
+        // the historical HQ Admin / Super Admin rule is the legacy evaluator.
+        const identityDenied = await guardUserOperation(user.id, 'platform.identity.delete', {
+            legacy: () => typeof roleLevel === 'number' && roleLevel <= 10,
+        })
+        if (identityDenied) {
             await logDeletionAudit(admin, {
                 operation: 'delete_user_otp_request',
                 userId: user.id,
                 userEmail: user.email || null,
                 allowed: false,
-                reason: `Insufficient role (role_level=${roleLevel})`,
+                reason: `Security & Access denied platform.identity.delete (legacy role_level=${roleLevel})`,
                 ip,
             })
-            return NextResponse.json(
-                { error: 'Access denied. HQ Admin or Super Admin only.' },
-                { status: 403 }
-            )
+            return identityDenied
         }
 
         const { targetUserId } = await request.json()
@@ -166,7 +169,11 @@ export async function POST(request: NextRequest) {
         }
 
         const targetRoleLevel = (targetUser as any)?.roles?.role_level
-        if (typeof targetRoleLevel === 'number' && targetRoleLevel < roleLevel) {
+        // Target protection: once platform.identity.delete is enforced the actor
+        // must hold every grant the target holds (sa_actor_dominates); until
+        // then the historical "not a higher legacy role" rule decides.
+        if (!(await targetProtectionAllows(user.id, targetUserId, 'platform.identity.delete',
+            () => !(typeof targetRoleLevel === 'number' && targetRoleLevel < roleLevel)))) {
             await logDeletionAudit(admin, {
                 operation: 'delete_user_otp_request',
                 userId: user.id,

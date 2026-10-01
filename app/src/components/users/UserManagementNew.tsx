@@ -43,6 +43,8 @@ import {
   ArrowUp,
   ArrowDown,
   Power,
+  PauseCircle,
+  PlayCircle,
   Save,
   ChevronLeft,
   ChevronRight,
@@ -127,6 +129,7 @@ interface User {
   referral_phone: string | null;
   consumer_claim_confirmed_at: string | null;
   is_active: boolean;
+  account_status?: string | null;
   is_verified: boolean;
   last_login_at: string | null;
   created_at: string;
@@ -1031,7 +1034,8 @@ export default function UserManagementNew({
           join_date: (userData as any).join_date || undefined,
           employment_status: (userData as any).employment_status || 'active',
           can_be_reference: Boolean((userData as any).can_be_reference),
-          initial_role_id: (userData as any).initial_role_id || null,
+          // 'self' = employee self-service only: no business role is granted.
+          initial_role_id: (userData as any).initial_role_id && (userData as any).initial_role_id !== 'self' ? (userData as any).initial_role_id : null,
           initial_access_reason: (userData as any).initial_access_reason || null,
         }, {
           id: userProfile.id,
@@ -1152,11 +1156,23 @@ export default function UserManagementNew({
     }
   };
 
-  const handleToggleActive = async (
+  /**
+   * Account lifecycle from User Management. SUSPENDED is a temporary hold:
+   * business access is suspended and restored exactly on resume. DISABLED is
+   * treated as leaving: every business assignment is revoked and reactivation
+   * restores only the automatic employee baseline.
+   */
+  const handleAccountStatus = async (
     userId: string,
-    currentStatus: boolean,
+    target: "ACTIVE" | "SUSPENDED" | "DISABLED",
     userName: string,
   ) => {
+    const confirmText = target === "DISABLED"
+      ? `Deactivate ${userName}?\n\nThis is treated as the person leaving: ALL their business access (granted and automatic) is removed. Activating them later restores only the employee baseline; other access must be granted again.\n\nTo pause access temporarily, use Suspend instead.`
+      : target === "SUSPENDED"
+        ? `Suspend ${userName}?\n\nSign-in and business access are paused. Resuming restores exactly the access they had.`
+        : null;
+    if (confirmText && !window.confirm(confirmText)) return;
     try {
       setIsSaving(true);
 
@@ -1173,15 +1189,15 @@ export default function UserManagementNew({
       // the database rejects direct browser writes to is_active.
       const result = await setUserAccountStatus(
         userId,
-        currentStatus ? "DISABLED" : "ACTIVE",
-        currentStatus ? "Deactivated in User Management" : "Activated in User Management",
+        target,
+        target === "DISABLED" ? "Deactivated in User Management" : target === "SUSPENDED" ? "Suspended in User Management" : "Activated in User Management",
       );
 
       if (!result.success) throw new Error(result.error || "Failed to update user status");
 
       toast({
         title: "Success",
-        description: `${userName} ${!currentStatus ? "activated" : "deactivated"} successfully`,
+        description: `${userName} ${target === "ACTIVE" ? "activated" : target === "SUSPENDED" ? "suspended" : "deactivated"} successfully`,
       });
 
       await loadUsers();
@@ -2239,13 +2255,36 @@ export default function UserManagementNew({
                                   </TooltipContent>
                                 </Tooltip>
                               )}
+                              {user.account_status === "SUSPENDED" ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleAccountStatus(user.id, "ACTIVE", user.full_name || user.email)}
+                                  disabled={isSaving || user.id === userProfile.id}
+                                  className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  title="Resume user (restores the access they had)"
+                                >
+                                  <PlayCircle className="w-4 h-4" />
+                                </Button>
+                              ) : user.is_active ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleAccountStatus(user.id, "SUSPENDED", user.full_name || user.email)}
+                                  disabled={isSaving || user.id === userProfile.id}
+                                  className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  title={user.id === userProfile.id ? "Cannot suspend yourself" : "Suspend user (temporary; keeps their access)"}
+                                >
+                                  <PauseCircle className="w-4 h-4" />
+                                </Button>
+                              ) : null}
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() =>
-                                  handleToggleActive(
+                                  handleAccountStatus(
                                     user.id,
-                                    user.is_active,
+                                    user.is_active || user.account_status === "SUSPENDED" ? "DISABLED" : "ACTIVE",
                                     user.full_name || user.email,
                                   )
                                 }
@@ -2258,8 +2297,8 @@ export default function UserManagementNew({
                                 title={
                                   user.id === userProfile.id
                                     ? "Cannot deactivate yourself"
-                                    : user.is_active
-                                      ? "Deactivate user"
+                                    : user.is_active || user.account_status === "SUSPENDED"
+                                      ? "Deactivate user (leaver: removes all business access)"
                                       : "Activate user"
                                 }
                               >

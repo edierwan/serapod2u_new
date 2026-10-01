@@ -99,6 +99,9 @@ describe('Decision log', () => {
     expect(screen.queryByText('corr-1')).toBeNull()
 
     await user.click(screen.getByText('Marcus Manager'))
+    expect(screen.getByText('No matching role')).toBeTruthy()
+    expect(screen.queryByText('corr-1')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Technical reference/ }))
     expect(screen.getByText('corr-1')).toBeTruthy()
     expect(screen.getByText('d1')).toBeTruthy()
 

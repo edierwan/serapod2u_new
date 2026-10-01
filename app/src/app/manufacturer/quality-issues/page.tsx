@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { userAllowed } from '@/lib/security-access/operation'
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 
 export const dynamic = 'force-dynamic'
@@ -33,7 +34,12 @@ export default async function ManufacturerQualityIssuesPage() {
 
   const isManufacturerOrg = !!org && org.org_type_code === 'MFG'
 
-  if (!(userProfile.role_code === 'SA' || isManufacturerOrg)) {
+  // Manufacturer organizations see their own issues; seeing every
+  // manufacturer's issues is an S&A decision (manufacturing.adjustment.administer)
+  // with the Super Admin rule as the legacy evaluator.
+  const isAdministrator = !isManufacturerOrg && await userAllowed(user.id, 'manufacturing.adjustment.administer',
+    () => userProfile.role_code === 'SA')
+  if (!(isAdministrator || isManufacturerOrg)) {
     return (
       <div className="p-8">
         <h2 className="text-xl font-semibold">Unauthorized</h2>

@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -19,7 +19,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (saDenied) return saDenied
 
     const { data: userProfile } = await supabase.from('users').select('role_code').eq('id', user.id).single()
-    if (!userProfile || userProfile.role_code !== 'SA') {
+    // Cross-manufacturer adjustment administration is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (!userProfile || !(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       return NextResponse.json({ error: 'Forbidden - super admin only' }, { status: 403 })
     }
 

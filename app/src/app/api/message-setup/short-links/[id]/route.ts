@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
@@ -89,7 +89,9 @@ export async function PATCH(
         .single();
 
     const roleLevel = (userProfile?.roles as any)?.role_level || 100;
-    if (roleLevel > 20) {
+    // Outbound messaging administration is an S&A decision
+    // (customer.messaging.manage); role_level <= 20 is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'customer.messaging.manage', () => roleLevel <= 20))) {
         return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
@@ -156,7 +158,9 @@ export async function DELETE(
         .single();
 
     const roleLevel = (userProfile?.roles as any)?.role_level || 100;
-    if (roleLevel > 20) {
+    // Outbound messaging administration is an S&A decision
+    // (customer.messaging.manage); role_level <= 20 is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'customer.messaging.manage', () => roleLevel <= 20))) {
         return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 

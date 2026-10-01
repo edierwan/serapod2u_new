@@ -1,4 +1,5 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
+import { readableOrganizations, readableOrganizationsOfTypes } from '@/lib/security-access/scope'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -33,12 +34,20 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const warehouse_org_id = searchParams.get('warehouse_org_id')
 
-    // Super Admin can view ALL warehouses if no warehouse_org_id is provided
-    if (!warehouse_org_id && !isSuperAdmin) {
+    // Without a warehouse_org_id the list covers every warehouse the caller
+    // may read: S&A readable organizations (inventory.report.view, HQ and WH)
+    // once enforced; until then only the Super Admin may omit it (all).
+    const pendingScope = warehouse_org_id
+      ? null
+      : await readableOrganizationsOfTypes(
+          await readableOrganizations(user.id, 'inventory.report.view', () =>
+            isSuperAdmin ? { all: true } : { all: false, organizationIds: [] }),
+          ['HQ', 'WH'])
+    if (pendingScope !== null && pendingScope !== 'all' && pendingScope.length === 0) {
       return NextResponse.json({ error: 'warehouse_org_id is required' }, { status: 400 })
     }
 
-    console.log('🔍 Fetching pending receives for warehouse_org_id:', warehouse_org_id || 'ALL (Super Admin)')
+    console.log('🔍 Fetching pending receives for warehouse_org_id:', warehouse_org_id || pendingScope)
 
     let pendingBatches: any[] | null = null
     let queryError: any = null
@@ -51,10 +60,10 @@ export async function GET(request: NextRequest) {
         })
       pendingBatches = result.data
       queryError = result.error
-    } else if (isSuperAdmin) {
-      // Super Admin: Query only ready_to_ship orders across all warehouses
+    } else if (pendingScope) {
+      // Every readable warehouse: only ready_to_ship orders
       // Only show orders that are ready for warehouse receiving (not still in 'packed' status)
-      const result = await supabase
+      let readyQuery = supabase
         .from('qr_master_codes')
         .select(`
           id,
@@ -85,6 +94,10 @@ export async function GET(request: NextRequest) {
         .eq('status', 'ready_to_ship')
         .is('warehouse_received_at', null)
         .order('manufacturer_scanned_at', { ascending: false })
+      if (Array.isArray(pendingScope)) {
+        readyQuery = readyQuery.in('warehouse_org_id', pendingScope)
+      }
+      const result = await readyQuery
 
       if (result.data) {
         // Transform to match RPC output format

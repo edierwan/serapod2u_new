@@ -46,6 +46,15 @@ async function canManagePayrollIntegration(
     () => ctx.role_level !== null && ctx.role_level <= 20, organizationId)
 }
 
+// Reading the HR→GL configuration is a Finance decision for that organization:
+// finance.payroll_integration.manage or finance.ledger.view. It had no
+// application-level check before Stage 2D (row-level security only), so the
+// legacy evaluator keeps it open for any signed-in caller until enforced.
+async function canReadPayrollIntegration(userId: string, organizationId: string): Promise<boolean> {
+  return (await financeAllowed(userId, 'finance.payroll_integration.manage', () => true, organizationId))
+    || (await financeAllowed(userId, 'finance.ledger.view', () => true, organizationId))
+}
+
 // ── Load HR Accounting Config ────────────────────────────────────
 
 export async function getHrAccountingConfig(
@@ -53,6 +62,10 @@ export async function getHrAccountingConfig(
 ): Promise<{ success: boolean; data?: HrAccountingConfig; error?: string }> {
   try {
     const supabase = (await createClient()) as any
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData?.user?.id || !(await canReadPayrollIntegration(authData.user.id, organizationId))) {
+      return { success: false, error: 'Insufficient permissions' }
+    }
 
     // Get company_id via RPC
     const { data: companyId, error: companyError } = await supabase.rpc(
@@ -264,6 +277,10 @@ export async function validateHrGlMappings(
 ): Promise<{ success: boolean; valid: boolean; missing: string[]; error?: string }> {
   try {
     const supabase = (await createClient()) as any
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData?.user?.id || !(await canReadPayrollIntegration(authData.user.id, organizationId))) {
+      return { success: false, valid: false, missing: [], error: 'Insufficient permissions' }
+    }
 
     const { data: mappings, error } = await supabase
       .from('hr_gl_mappings')

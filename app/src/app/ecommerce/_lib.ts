@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { authorizeOperation, organizationResource } from '@/lib/security-access/operation'
 
 /**
  * Server-only context helper for E-commerce pages.
@@ -54,7 +55,14 @@ export async function getEcommercePageContext() {
     // E-commerce is accessible to HQ org type with role level ≤ 30
     const orgType = organization?.org_type_code
     const roleLevel = roles?.role_level ?? 999
-    const canViewEcommerce = orgType === 'HQ' && roleLevel <= 30
+    // Module entry is an S&A decision (ecommerce.module.view) in the user's own
+    // organization; the historical page rule is the legacy evaluator.
+    const canViewEcommerce = await authorizeOperation({
+        actorId: user.id,
+        permission: 'ecommerce.module.view',
+        resource: organizationResource('ecommerce_module', organizationId),
+        legacy: () => orgType === 'HQ' && roleLevel <= 30,
+    }).then(d => d.decision === 'ALLOW').catch(() => false)
 
     return { user, userProfile: transformedUserProfile, canViewEcommerce }
 }

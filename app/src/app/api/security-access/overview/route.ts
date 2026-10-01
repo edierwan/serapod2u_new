@@ -54,7 +54,9 @@ export async function GET() {
     // Final Wave read models (optional before the migration is applied).
     const { data: scopeDefinitions } = await admin.from('sa_scope_definitions')
       .select('id,organization_id,scope_type,scope_value,display_name,status').eq('status', 'active').order('display_name').limit(1000)
-    return NextResponse.json({ schemaReady: true, metrics: { businessIdentities: memberships || 0, activeAssignments: assignments || 0, shadowMismatches: (decisions || []).filter((d: any) => !['MATCH_ALLOW','MATCH_DENY'].includes(d.comparison)).length }, modes: (modes || []).map((m: any) => ({ ...m, enforcementReady: isEnforcementReady(m.permission_key) })), decisions: decisions || [], permissions: permissions || [], roles: roles || [], people: people || [], retention: retentionError ? null : retention, scopeDefinitions: scopeDefinitions || [], viewerId: actor.userId, viewerOrganizationId: actor.organizationId, ...directory })
+    // Administrator-overridden automatic access that may be restored (optional before the restore migration).
+    const { data: restorable, error: restorableError } = await admin.rpc('sa_restorable_assignments')
+    return NextResponse.json({ schemaReady: true, metrics: { businessIdentities: memberships || 0, activeAssignments: assignments || 0, shadowMismatches: (decisions || []).filter((d: any) => !['MATCH_ALLOW','MATCH_DENY'].includes(d.comparison)).length }, modes: (modes || []).map((m: any) => ({ ...m, enforcementReady: isEnforcementReady(m.permission_key) })), decisions: decisions || [], permissions: permissions || [], roles: roles || [], people: people || [], retention: retentionError ? null : retention, scopeDefinitions: scopeDefinitions || [], restorableAssignmentIds: restorableError ? [] : (restorable || []).map((r: any) => r.assignment_id), viewerId: actor.userId, viewerOrganizationId: actor.organizationId, ...directory })
   } catch (error) {
     return NextResponse.json({ schemaReady: false, error: 'Wave 1 schema has not been applied in this environment.', metrics: {}, modes: [], decisions: [], permissions: [], roles: [], people: [] })
   }

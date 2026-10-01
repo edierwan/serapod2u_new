@@ -79,18 +79,22 @@ export async function guardUserOperation(
   } = {},
 ): Promise<NextResponse | null> {
   let organizationId = options.organizationId ?? null
-  if (!organizationId && !options.warehouseId) {
+  let warehouseId = options.warehouseId ?? null
+  if (!organizationId && !warehouseId) {
     const admin = createAdminClient() as any
-    const { data } = await admin.from('users').select('organization_id').eq('id', userId).maybeSingle()
+    const { data } = await admin.from('users').select('organization_id, organizations:organization_id(org_type_code)').eq('id', userId).maybeSingle()
     organizationId = data?.organization_id ?? null
+    // A warehouse organization is its own warehouse (see warehouseResource):
+    // without this, warehouse-scoped assignments resolve as MISSING_CONTEXT.
+    if (organizationId && data?.organizations?.org_type_code === 'WH') warehouseId = organizationId
   }
   return guardOperation({
     actorId: userId,
     permission,
     resource: {
       type: options.resourceType ?? permission.split('.').slice(0, 2).join('_'),
-      organizationId: organizationId ?? options.warehouseId ?? null,
-      ...(options.warehouseId ? { warehouseId: options.warehouseId } : {}),
+      organizationId: organizationId ?? warehouseId ?? null,
+      ...(warehouseId ? { warehouseId } : {}),
       ...(options.ownerUserId ? { ownerUserId: options.ownerUserId } : {}),
     },
     legacy: options.legacy ?? (() => true),

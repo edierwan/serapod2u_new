@@ -1,4 +1,5 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
+import { canReadOrganization, readableOrganizations } from '@/lib/security-access/scope'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -107,8 +108,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: postgrestError(orgsError) }, { status: 500 })
     }
 
+    // Which requested organizations the caller may read is an S&A scope
+    // decision (customer.program.manage readable organizations) once enforced;
+    // until then the historical rule (role_level <= 50, or own / child
+    // organization) decides.
+    const scope = await readableOrganizations(user.id, 'customer.program.manage', () => ({
+      all: false,
+      organizationIds: (requestedOrgs || [])
+        .filter((org) => roleLevel <= 50 || org.id === callerOrgId || org.parent_org_id === callerOrgId)
+        .map((org) => org.id),
+    }))
     const allowedOrgIds = (requestedOrgs || [])
-      .filter((org) => roleLevel <= 50 || org.id === callerOrgId || org.parent_org_id === callerOrgId)
+      .filter((org) => canReadOrganization(scope, org.id))
       .map((org) => org.id)
 
     if (allowedOrgIds.length === 0) {

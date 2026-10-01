@@ -37,6 +37,7 @@ import { POST } from './route'
 // S&A in legacy mode: this suite tests the route's own rules.
 vi.mock('@/lib/security-access/operation', async () => (await import('@/test-support/sa-legacy-mode')).operationModule)
 vi.mock('@/lib/security-access/resource-context', async () => (await import('@/test-support/sa-legacy-mode')).resourceContextModule)
+vi.mock('@/lib/security-access/scope', async () => (await import('@/test-support/sa-legacy-mode')).scopeModule)
 
 const request = () => new NextRequest('http://localhost/api/users/reset-password', {
   method: 'POST',

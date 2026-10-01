@@ -17,6 +17,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import SignatureUpload from '@/components/profile/SignatureUpload'
 import ChangePasswordCard from '@/components/profile/ChangePasswordCard'
+import MyAccessRequests from '@/components/security-access/MyAccessRequests'
 import { updateUserWithAuth } from '@/lib/actions'
 import { normalizePhone, validatePhoneNumber, getStorageUrl, type PhoneValidationResult } from '@/lib/utils'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
@@ -1892,6 +1893,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
 
       {/* Change Password Card */}
       <ChangePasswordCard userEmail={userProfile.email} userPhone={userProfile.phone} />
+
+      <MyAccessRequests />
     </div>
   )
 }

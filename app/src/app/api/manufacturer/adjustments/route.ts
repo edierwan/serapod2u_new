@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -49,7 +49,9 @@ export async function GET(request: NextRequest) {
       .in('reason_id', reasonIds)
       .order('created_at', { ascending: false })
 
-    if (userProfile.role_code !== 'SA') {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       // limit to adjustments assigned to the manufacturer organization
       query = query
         .eq('target_manufacturer_org_id', userProfile.organization_id)

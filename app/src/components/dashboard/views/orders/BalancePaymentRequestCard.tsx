@@ -12,6 +12,7 @@ import {
   AlertCircle,
   FileText 
 } from 'lucide-react'
+import { useSaCapability } from '@/hooks/useSaCapability'
 
 interface BalancePaymentRequestCardProps {
   orderId: string
@@ -48,11 +49,14 @@ export default function BalancePaymentRequestCard({
 }: BalancePaymentRequestCardProps) {
   const [approving, setApproving] = useState(false)
 
-  const isHQAdmin = () => {
-    return userProfile?.role_code === 'HQ_ADMIN' || 
-           userProfile?.role_code === 'POWER_USER' ||
-           userProfile?.organizations?.org_type_code === 'HQ'
-  }
+  // The approve button follows the S&A decision finance.payment.approve (the
+  // server decides the approval for the request's company); the historical
+  // HQ / role rule applies until it is enforced.
+  const canApprovePayment = useSaCapability('finance.payment.approve',
+    userProfile?.role_code === 'HQ_ADMIN' ||
+    userProfile?.role_code === 'POWER_USER' ||
+    userProfile?.organizations?.org_type_code === 'HQ')
+  const isHQAdmin = () => canApprovePayment
 
   const isFinalProofMissing = requireFinalProof && !finalPaymentProofUrl
 

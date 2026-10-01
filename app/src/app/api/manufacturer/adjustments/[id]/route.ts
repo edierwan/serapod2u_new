@@ -1,4 +1,4 @@
-import { guardUserOperation } from '@/lib/security-access/operation'
+import { guardUserOperation, userAllowed } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -32,7 +32,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (error || !adjustment) return NextResponse.json({ error: 'Adjustment not found' }, { status: 404 })
 
     // authorization: manufacturers see assigned to their org OR SA can see all
-    if (userProfile.role_code !== 'SA') {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (!(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       if (adjustment.target_manufacturer_org_id !== userProfile.organization_id) {
         return NextResponse.json({ error: 'Not allowed to view this adjustment' }, { status: 403 })
       }
@@ -68,7 +70,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!adjustment) return NextResponse.json({ error: 'Adjustment not found' }, { status: 404 })
 
-    if (userProfile.role_code !== 'SA' && adjustment.target_manufacturer_org_id !== userProfile.organization_id) {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (adjustment.target_manufacturer_org_id !== userProfile.organization_id && !(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       return NextResponse.json({ error: 'Not allowed to acknowledge this adjustment' }, { status: 403 })
     }
 
@@ -118,7 +122,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .single()
 
     if (!adjustment) return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
-    if (userProfile.role_code !== 'SA' && userProfile.organization_id !== adjustment.organization_id) {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (userProfile.organization_id !== adjustment.organization_id && !(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       return NextResponse.json({ error: 'Not allowed to edit this issue' }, { status: 403 })
     }
     if (normalizeManufacturerWorkflowStatus(adjustment.manufacturer_status) !== 'draft') {
@@ -278,7 +284,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       .single()
 
     if (!adjustment) return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
-    if (userProfile.role_code !== 'SA' && userProfile.organization_id !== adjustment.organization_id) {
+    // Seeing every manufacturer's adjustments is an S&A decision
+    // (manufacturing.adjustment.administer); the Super Admin rule is the legacy evaluator.
+    if (userProfile.organization_id !== adjustment.organization_id && !(await userAllowed(user.id, 'manufacturing.adjustment.administer', () => userProfile.role_code === 'SA'))) {
       return NextResponse.json({ error: 'Not allowed to delete this issue' }, { status: 403 })
     }
     if (normalizeManufacturerWorkflowStatus(adjustment.manufacturer_status) !== 'draft') {

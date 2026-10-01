@@ -138,7 +138,7 @@ export async function createUserWithAuth(userData: {
         employmentType: userData.employment_type ?? null,
         joinDate: userData.join_date ?? null,
       },
-      initialAccess: userData.initial_role_id
+      initialAccess: userData.initial_role_id && userData.initial_role_id !== 'self'
         ? { roleId: userData.initial_role_id, reason: userData.initial_access_reason?.trim() || 'Initial access at onboarding' }
         : undefined,
       source: 'user_management',
@@ -235,23 +235,32 @@ export async function createUserWithAuth(userData: {
  * organization (the database re-checks it, plus SoD, at provisioning).
  * Compatibility (legacy-*) roles and the employee baseline are never offered.
  */
+/**
+ * Business roles an administrator may grant while creating a user in this
+ * organization, plus whether they may grant at all and whether legacy role
+ * codes still grant access here (legacy_authorization.read_only = false).
+ */
 export async function listInitialAccessRoles(organizationId: string | null) {
+  type InitialRole = { id: string; name: string; description: string | null }
+  const none = (success: boolean, legacyReadOnly = false) => ({ success, roles: [] as InitialRole[], canAssign: false, legacyReadOnly })
   try {
-    if (!organizationId) return { success: true, roles: [] as Array<{ id: string; name: string; description: string | null }> }
+    if (!organizationId) return none(true)
     const supabase = await createClient()
     const { data: { user }, error } = await supabase.auth.getUser()
-    if (error || !user) return { success: false, roles: [] }
+    if (error || !user) return none(false)
+    const admin = createAdminClient() as any
+    const { data: setting } = await admin.from('sa_settings').select('setting_value').eq('setting_key', 'legacy_authorization.read_only').maybeSingle()
+    const legacyReadOnly = setting?.setting_value === true
     const allowed = await userAllowed(user.id, 'security.role.assign',
       async () => (await checkPermissionForUser(user.id, 'manage_authorization')).allowed, { organizationId })
-    if (!allowed) return { success: true, roles: [] }
-    const admin = createAdminClient() as any
+    if (!allowed) return none(true, legacyReadOnly)
     const { data } = await admin.from('sa_business_roles')
       .select('id, name, description, role_key, source')
       .eq('status', 'active').neq('source', 'legacy').neq('role_key', 'employee-self-service')
       .order('name')
-    return { success: true, roles: (data || []).map((r: any) => ({ id: r.id, name: r.name, description: r.description ?? null })) }
+    return { success: true, roles: (data || []).map((r: any) => ({ id: r.id, name: r.name, description: r.description ?? null })) as InitialRole[], canAssign: true, legacyReadOnly }
   } catch {
-    return { success: false, roles: [] }
+    return none(false)
   }
 }
 
