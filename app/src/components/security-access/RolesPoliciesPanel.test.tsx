@@ -31,6 +31,7 @@ describe('Roles & Policies', () => {
     expect(screen.getByRole('button', { name: /^Finance, 1 permission, expand/ })).toBeTruthy()
     await userEvent.click(screen.getByRole('tab', { name: /^Business roles\s*2$/ }))
     expect(screen.queryByRole('button', { name: /^Finance, 1 permission/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^Finance, 1 role, expand/ }))
     expect(screen.getByRole('button', { name: /^Finance Viewer, 1 permission/ })).toBeTruthy()
   })
 
@@ -56,11 +57,30 @@ describe('Roles & Policies', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Business roles/ }))
     expect(screen.queryByText('Legacy HQ')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: /^Compatibility\s*1$/ }))
+    // A role with no mapped permissions stays visible under Other / Unmapped.
+    await userEvent.click(screen.getByRole('button', { name: /^Other \/ Unmapped, 1 role/ }))
     expect(screen.getByText('Legacy HQ')).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: /^Business roles\s*1$/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Finance, 1 role/ }))
     expect(screen.queryByText('View Ledger')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: /^Finance Viewer/ }))
     expect(screen.getByText('View Ledger')).toBeTruthy()
+    expect(screen.getByText(/Finance · General Ledger · 1/)).toBeTruthy()
+  })
+
+  it('keeps cross-module roles discoverable from each module filter', async () => {
+    const roles = [...data.roles, { id: 'r3', name: 'Payroll Finance Approver', role_key: 'pfa', source: 'template', status: 'active',
+      permissions: [{ permission: { permission_key: 'hr.payroll.approve' } }, { permission: { permission_key: 'finance.payment.approve' } }] }]
+    render(<RolesPoliciesPanel data={{ ...data, roles }} governance={governance} onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('tab', { name: /Business roles/ }))
+    expect(screen.getByRole('button', { name: /^Shared \/ Cross-module, 1 role/ })).toBeTruthy()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Module' }), 'hr_payroll')
+    expect(screen.getByText('Payroll Finance Approver')).toBeTruthy()
+    expect(screen.queryByText('Finance Viewer')).toBeNull()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Module' }), 'finance')
+    expect(screen.getByText('Payroll Finance Approver')).toBeTruthy()
+    expect(screen.getByText('Finance Viewer')).toBeTruthy()
+    expect(screen.getByText(/Showing 2 of 2 roles/)).toBeTruthy()
   })
 
   it('groups scopes by type and lists the catalogue with descriptions', async () => {

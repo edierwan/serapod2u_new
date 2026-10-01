@@ -5,7 +5,7 @@ import { Bot, History, KeyRound } from 'lucide-react'
 import { formatDate } from './client-api'
 import { Collapsible, EmptyState, FilterChips, FOCUS, SearchInput, ToggleButton } from './ui'
 import {
-  CREDENTIAL_STATES, LIFECYCLE, credentialState, filterServices, groupServices, lifecycleLabel, serviceKindLabel,
+  CREDENTIAL_STATES, LIFECYCLE, credentialState, moduleOfService, filterServices, groupServices, lifecycleLabel, serviceKindLabel,
   type CredentialState, type ServiceGroup, type ServiceIdentity,
 } from '@/lib/security-access/service-identities'
 
@@ -129,7 +129,8 @@ export default function TechnicalAccessPanel({ governance, error }: { governance
                 return <li key={s.id}>
                   <div className={`${ROW} py-2 pl-6 pr-4 text-sm md:pl-10`}>
                     <ToggleButton open={sOpen} onClick={() => flip(setOpenService, s.id)} label={s.name}>
-                      <span className="truncate font-medium text-gray-900">{s.name}</span>
+                      <span className="min-w-0"><span className="block truncate font-medium text-gray-900">{s.name}</span>
+                        {moduleOfService(s).areaName && <span className="block truncate text-xs text-gray-400">{moduleOfService(s).areaName}</span>}</span>
                     </ToggleButton>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 md:contents">
                       <span><span className="inline-block whitespace-nowrap rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-600">{serviceKindLabel(s.identity_kind)}</span></span>

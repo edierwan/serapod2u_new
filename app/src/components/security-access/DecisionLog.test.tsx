@@ -27,4 +27,17 @@ describe('Authorization decision details', () => {
     await userEvent.click(screen.getByRole('button', { name: /Technical reference/ }))
     expect(screen.getByText(decision.id)).toBeTruthy()
   })
+
+  it('filters by module through the permission key, with a no-results state', async () => {
+    const hr = { ...decision, id: 'hr-1', permission_key: 'hr.payroll.approve' }
+    render(<DecisionLog decisions={[decision, hr]} actors={[]} people={[{ id: 'u1', full_name: 'Super Admin', role_code: 'SA' }]}
+      organizations={[{ id: 'org-1', org_name: 'Serapod Technology Sdn Bhd' } as any]} />)
+    const select = screen.getByRole('combobox', { name: 'Module' }) as HTMLSelectElement
+    expect(Array.from(select.options).map(o => o.text)).toEqual(['All modules', 'HR & Payroll', 'Platform & Security'])
+    await userEvent.selectOptions(select, 'hr_payroll')
+    expect(screen.getByText('Approve Payroll')).toBeTruthy()
+    expect(screen.queryByText('View Security & Access')).toBeNull()
+    await userEvent.type(screen.getByRole('textbox', { name: 'Search decisions' }), 'zzz')
+    expect(screen.getByText('No decisions match these filters.')).toBeTruthy()
+  })
 })

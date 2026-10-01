@@ -24,21 +24,22 @@ describe('Technical Access → Service identities', () => {
   it('groups by module, collapsed, with credential and lifecycle summaries', () => {
     render(<TechnicalAccessPanel governance={governance} />)
     const groups = screen.getAllByRole('button', { name: /service(s)?, expand$/ }).map(b => b.getAttribute('aria-label'))
+    // Shared taxonomy: E-Commerce is an area of Customer & Growth; Platform and Security are Platform & Security.
     expect(groups).toEqual([
-      'Supply Chain, 2 services, expand', 'Customer & Growth, 1 service, expand', 'E-Commerce, 1 service, expand',
-      'Platform, 1 service, expand', 'Other, 1 service, expand',
+      'Supply Chain, 2 services, expand', 'Customer & Growth, 2 services, expand',
+      'Platform & Security, 1 service, expand', 'Other / Unmapped, 1 service, expand',
     ])
     expect(screen.queryByText('QR generation worker')).toBeNull()
     expect(screen.getByText('2 configured here')).toBeTruthy()
     expect(screen.getByText('1 active · 1 disabled')).toBeTruthy()
-    expect(screen.getByText('1 no credential')).toBeTruthy()
+    expect(screen.getByText('1 not configured here · 1 no credential')).toBeTruthy()
     expect(screen.getByText('1 managed elsewhere')).toBeTruthy()
   })
 
   it('expands several groups, shows service columns and existing details', async () => {
     render(<TechnicalAccessPanel governance={governance} />)
     await userEvent.click(screen.getByRole('button', { name: /^Supply Chain, 2 services/ }))
-    await userEvent.click(screen.getByRole('button', { name: /^Platform, 1 service/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Platform & Security, 1 service/ }))
     expect(screen.getByText('QR generation worker')).toBeTruthy()
     expect(screen.getAllByText('Queue Worker').length).toBe(2)
     expect(screen.getAllByText('No usage recorded').length).toBe(2)
@@ -52,7 +53,7 @@ describe('Technical Access → Service identities', () => {
 
   it('combines search, type and credential filters, auto-opens matches and restores on clear', async () => {
     render(<TechnicalAccessPanel governance={governance} />)
-    await userEvent.click(screen.getByRole('button', { name: /^Platform, 1 service/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Platform & Security, 1 service/ }))
     await userEvent.type(screen.getByRole('textbox', { name: 'Search service identities' }), 'supply')
     expect(screen.getByText('QR generation worker')).toBeTruthy()
     expect(screen.getByText(/Showing 2 of 6 services/)).toBeTruthy()
@@ -64,6 +65,14 @@ describe('Technical Access → Service identities', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0])
     expect(screen.getByText('Application server')).toBeTruthy()
     expect(screen.queryByText('QR generation worker')).toBeNull()
+  })
+
+  it('shows the area as a tag and keeps unknown teams visible', async () => {
+    render(<TechnicalAccessPanel governance={governance} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Customer & Growth,/ }))
+    expect(screen.getByText('E-Commerce')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: /^Other \/ Unmapped,/ }))
+    expect(screen.getByText('Mystery job')).toBeTruthy()
   })
 
   it('shows loading and error states', () => {

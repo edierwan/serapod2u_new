@@ -31,16 +31,18 @@ describe('Overview hierarchy (Main group → Subgroup → Permission)', () => {
       ['Supply Chain', 'Customer & Growth', 'HR & Payroll', 'Finance', 'Platform & Security', 'Reporting'])
   })
 
-  it('uses the agreed subgroups, and groups without subcategories expand straight to permissions', () => {
+  it('uses the shared taxonomy areas; Reporting expands straight to permissions', () => {
     const sub = (id: string) => rollout.groups.find(g => g.id === id)!.children.map(c => c.name)
     expect(sub('supply_chain')).toEqual(['Orders & Documents', 'Stock Count', 'Stock Transfer', 'Inventory', 'Warehouse', 'Manufacturing', 'Product Catalogue', 'QR & Traceability'])
-    expect(sub('customer_growth')).toEqual(['Customer Engagement', 'RoadTour', 'E-Commerce', 'Marketing'])
-    expect(sub('platform_security')).toEqual(['Identity', 'Platform', 'Security Administration'])
-    for (const id of ['hr_payroll', 'finance', 'reporting']) {
-      const g = rollout.groups.find(x => x.id === id)!
-      expect(g.children).toEqual([])
-      expect(g.permissions.length).toBe(g.total)
-    }
+    expect(sub('customer_growth')).toEqual(['CRM & Customers', 'Loyalty & Rewards', 'Messaging & Support', 'RoadTour', 'Marketing & Campaigns', 'Outdoor Store', 'E-Commerce'])
+    expect(sub('hr_payroll')).toEqual(['Payroll & Compensation', 'Employees & Contracts', 'Time, Leave & Expenses', 'Performance & Learning', 'Employee Self-Service', 'HR Administration'])
+    expect(sub('finance')).toEqual(['General Ledger', 'Payables & Payments', 'Receivables', 'Cash & Bank', 'Financial Reports', 'Finance Administration'])
+    expect(sub('platform_security')).toEqual(['Identity', 'User Administration', 'Notifications', 'Integrations & Settings', 'Organizations & Data', 'Security Governance'])
+    const reporting = rollout.groups.find(x => x.id === 'reporting')!
+    expect(reporting.children).toEqual([])
+    expect(reporting.permissions.length).toBe(reporting.total)
+    // Every catalogue permission has an area: nothing is left loose under a group with areas.
+    for (const g of rollout.groups) if (g.children.length) expect(g.permissions).toEqual([])
   })
 
   it('reconciles subgroup → main group → overall totals for every mode', () => {
@@ -59,9 +61,11 @@ describe('Overview hierarchy (Main group → Subgroup → Permission)', () => {
     expect(classifyPermission('supply_chain.document.acknowledge')).toEqual({ groupId: 'supply_chain', subgroupId: 'orders' })
     expect(classifyPermission('inventory.stock_count.post')).toEqual({ groupId: 'supply_chain', subgroupId: 'stock_count' })
     expect(classifyPermission('inventory.opening_balance.manage')).toEqual({ groupId: 'supply_chain', subgroupId: 'inventory' })
-    expect(classifyPermission('platform.user.profile_edit')).toEqual({ groupId: 'platform_security', subgroupId: 'identity' })
-    expect(classifyPermission('platform.data.destructive')).toEqual({ groupId: 'platform_security', subgroupId: 'platform' })
-    expect(classifyPermission('hr.payroll.approve')).toEqual({ groupId: 'hr_payroll', subgroupId: null })
+    expect(classifyPermission('platform.user.profile_edit')).toEqual({ groupId: 'platform_security', subgroupId: 'user_admin' })
+    expect(classifyPermission('platform.data.destructive')).toEqual({ groupId: 'platform_security', subgroupId: 'organizations' })
+    expect(classifyPermission('hr.payroll.approve')).toEqual({ groupId: 'hr_payroll', subgroupId: 'payroll' })
+    expect(classifyPermission('ecommerce.outdoor.operate')).toEqual({ groupId: 'customer_growth', subgroupId: 'outdoor' })
+    expect(classifyPermission('reporting.analytics.view')).toEqual({ groupId: 'reporting', subgroupId: null })
   })
 
   it('keeps unknown categories visible in an explicit Other group and hides empty groups', () => {

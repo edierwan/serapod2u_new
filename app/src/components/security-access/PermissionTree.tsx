@@ -16,7 +16,7 @@ interface Props {
   description?: string
   /** Show a count column per authorization mode (and the mode legend). */
   showModes?: boolean
-  /** Content of the Details cell for a permission row. */
+  /** Extra facts / actions shown on a permission row (no separate column). */
   renderDetails?: (p: RolloutPermission) => React.ReactNode
   /** Extra line under the permission name (e.g. its description). */
   renderSubtitle?: (p: RolloutPermission) => React.ReactNode
@@ -44,7 +44,7 @@ export default function PermissionTree({
   const view = filtered.rollout
   const expanded = searching ? searchOpen : open
   const columns = showModes ? view.columns : []
-  const span = columns.length + 2
+  const span = columns.length + 1
 
   const toggle = (id: string) => (searching ? setSearchOpen : setOpen)(prev => {
     const next = new Set(prev)
@@ -64,16 +64,20 @@ export default function PermissionTree({
   const permissionRow = (p: RolloutPermission, indent: string) => (
     <tr key={p.key} className="border-t border-gray-50">
       <th scope="row" className={`py-1.5 pr-4 text-left font-normal ${indent}`}>
-        <div className="text-sm text-gray-900">{p.label}</div>
-        {renderSubtitle?.(p)}
-        <code className="text-[11px] text-gray-400">{p.key}</code>
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+          <div className="min-w-0">
+            <div className="text-sm text-gray-900">{p.label}</div>
+            {renderSubtitle?.(p)}
+            <code className="text-[11px] text-gray-400">{p.key}</code>
+          </div>
+          {renderDetails && <div className="text-xs">{renderDetails(p)}</div>}
+        </div>
       </th>
       {columns.map(mode => (
-        <td key={mode} className="px-3 py-1.5 text-right">
+        <td key={mode} className="px-3 py-1.5 text-right align-top">
           {p.mode === mode ? <ModeStatus mode={mode} short /> : <span className="sr-only">no</span>}
         </td>
       ))}
-      <td className="px-4 py-1.5 text-right text-xs">{renderDetails?.(p)}</td>
     </tr>
   )
 
@@ -94,14 +98,17 @@ export default function PermissionTree({
       </div>
 
       {showModes && (
-        <dl className="flex flex-wrap gap-x-6 gap-y-1.5 border-b border-gray-100 bg-gray-50/50 px-4 py-2 text-xs text-gray-500">
-          {view.columns.map(mode => (
-            <div key={mode} className="flex items-baseline gap-1.5">
-              <dt className="shrink-0 whitespace-nowrap"><ModeStatus mode={mode} /></dt>
-              <dd>{rolloutMode(mode).help}</dd>
-            </div>
-          ))}
-        </dl>
+        <details className="group border-b border-gray-100 bg-gray-50/50 text-xs text-gray-500">
+          <summary className={`cursor-pointer select-none px-4 py-1.5 font-medium text-gray-600 hover:text-gray-900 ${FOCUS}`}>About access modes</summary>
+          <dl className="grid gap-x-6 gap-y-1.5 px-4 pb-2.5 sm:grid-cols-2">
+            {view.columns.map(mode => (
+              <div key={mode} className="flex items-baseline gap-1.5">
+                <dt className="shrink-0 whitespace-nowrap"><ModeStatus mode={mode} /></dt>
+                <dd>{rolloutMode(mode).help}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       )}
 
       {searching && view.total > 0 && (
@@ -120,9 +127,8 @@ export default function PermissionTree({
               <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-500">
                 <th scope="col" className="px-4 py-2">Module</th>
                 {columns.map(mode => (
-                  <th key={mode} scope="col" className="w-32 px-3 py-2 text-right"><ModeStatus mode={mode} /></th>
+                  <th key={mode} scope="col" className="w-28 px-3 py-2 text-right"><ModeStatus mode={mode} /></th>
                 ))}
-                <th scope="col" className="w-48 px-4 py-2 text-right">Details</th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +149,6 @@ export default function PermissionTree({
                         </ToggleButton>
                       </th>
                       {countCells(g, true)}
-                      <td />
                     </tr>
                     {gOpen && g.children.map(c => {
                       const cOpen = expanded.has(c.id)
@@ -157,7 +162,6 @@ export default function PermissionTree({
                               </ToggleButton>
                             </th>
                             {countCells(c)}
-                            <td />
                           </tr>
                           {cOpen && c.permissions.map(p => permissionRow(p, 'pl-[5.5rem]'))}
                         </Fragment>
@@ -176,7 +180,6 @@ export default function PermissionTree({
                 {columns.map(mode => (
                   <td key={mode} className="px-3 py-2 text-right tabular-nums">{view.totals[mode] ?? 0}</td>
                 ))}
-                <td />
               </tr>
             </tfoot>
           </table>

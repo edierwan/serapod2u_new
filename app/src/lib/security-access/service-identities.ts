@@ -4,6 +4,7 @@
  * owner_team) and describes credential and lifecycle state as two separate
  * dimensions. Metadata only — no credential value ever reaches this module.
  */
+import { classifyServiceTeam, groupByModule, moduleGroupName } from './modules'
 
 export interface ServiceIdentity {
   id: string
@@ -25,17 +26,8 @@ export const SERVICE_KINDS: Record<string, string> = {
   integration: 'Integration', webhook: 'Webhook', application_server: 'Application Server',
 }
 
-/** Known modules, in display order. Keys are the normalised owner_team. */
-const KNOWN_MODULES: Array<{ id: string; name: string }> = [
-  { id: 'supplychain', name: 'Supply Chain' },
-  { id: 'customergrowth', name: 'Customer & Growth' },
-  { id: 'ecommerce', name: 'E-Commerce' },
-  { id: 'platform', name: 'Platform' },
-  { id: 'security', name: 'Security' },
-]
-export const OTHER_MODULE = { id: 'other', name: 'Other' }
-
-export const moduleKey = (team?: string | null) => (team ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+/** Module grouping comes from the shared S&A taxonomy (modules.ts). */
+export const moduleOfService = (s: { owner_team?: string | null }) => classifyServiceTeam(s.owner_team)
 
 export function serviceKindLabel(kind: string) {
   return SERVICE_KINDS[kind] ?? (kind ? kind.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unspecified')
@@ -73,30 +65,20 @@ export interface ServiceGroup {
 }
 
 /**
- * Groups by module. Known modules keep their order; any other named module
- * follows alphabetically; services with no module go to "Other". Empty
- * groups are never returned.
+ * Groups by the shared module taxonomy (owner_team → module group). Unknown
+ * teams stay visible under Other / Unmapped. Empty groups are never returned.
  */
 export function groupServices(services: ServiceIdentity[]): ServiceGroup[] {
-  const groups = new Map<string, ServiceGroup>()
-  for (const s of services) {
-    const key = moduleKey(s.owner_team)
-    const known = KNOWN_MODULES.find(m => m.id === key)
-    const meta = known ?? (key ? { id: key, name: String(s.owner_team).trim() } : OTHER_MODULE)
-    let g = groups.get(meta.id)
-    if (!g) { g = { id: meta.id, name: meta.name, services: [], credentials: {}, lifecycle: {} }; groups.set(meta.id, g) }
-    g.services.push(s)
-    const c = credentialState(s)
-    g.credentials[c] = (g.credentials[c] ?? 0) + 1
-    g.lifecycle[s.status] = (g.lifecycle[s.status] ?? 0) + 1
-  }
-  const rank = (id: string) => {
-    const i = KNOWN_MODULES.findIndex(m => m.id === id)
-    return i >= 0 ? i : id === OTHER_MODULE.id ? KNOWN_MODULES.length + 1 : KNOWN_MODULES.length
-  }
-  return Array.from(groups.values())
-    .map(g => ({ ...g, services: [...g.services].sort((a, b) => a.name.localeCompare(b.name)) }))
-    .sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name))
+  return groupByModule(services, s => moduleOfService(s).groupId).map(g => {
+    const credentials: ServiceGroup['credentials'] = {}
+    const lifecycle: Record<string, number> = {}
+    for (const s of g.items) {
+      const c = credentialState(s)
+      credentials[c] = (credentials[c] ?? 0) + 1
+      lifecycle[s.status] = (lifecycle[s.status] ?? 0) + 1
+    }
+    return { id: g.id, name: g.name, credentials, lifecycle, services: [...g.items].sort((a, b) => a.name.localeCompare(b.name)) }
+  })
 }
 
 export interface ServiceFilter { query: string; kind: string; credential: 'all' | 'missing' }
@@ -107,5 +89,5 @@ export function filterServices(services: ServiceIdentity[], f: ServiceFilter) {
   return services.filter(s =>
     (f.credential === 'all' || credentialState(s) === 'missing')
     && (f.kind === 'all' || s.identity_kind === f.kind)
-    && (!q || `${s.name} ${s.owner_team ?? ''} ${serviceKindLabel(s.identity_kind)}`.toLowerCase().includes(q)))
+    && (!q || `${s.name} ${s.owner_team ?? ''} ${moduleGroupName(moduleOfService(s).groupId)} ${serviceKindLabel(s.identity_kind)}`.toLowerCase().includes(q)))
 }

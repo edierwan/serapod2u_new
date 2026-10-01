@@ -70,3 +70,22 @@ describe('Governance → Segregation of Duties', () => {
     expect(screen.queryByText('Payroll prepare vs approve')).toBeNull()
   })
 })
+
+describe('Governance → Access Requests module filter', () => {
+  it('maps requests to modules through their business role and keeps unknown roles visible', async () => {
+    const requests = [
+      { id: 'q1', role_id: 'role-gl', target_user_id: 'u1', requester_id: 'u1', organization_id: 'o', status: 'requested', reason: 'month end close', created_at: '2026-09-29T02:00:00Z' },
+      { id: 'q2', role_id: 'role-gone', target_user_id: 'u1', requester_id: 'u1', organization_id: 'o', status: 'requested', reason: 'old role', created_at: '2026-09-29T02:00:00Z' },
+    ]
+    const roles = [{ id: 'role-gl', name: 'GL Clerk', source: 'template', status: 'active', permissions: [{ permission: { permission_key: 'finance.ledger.view' } }] }]
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => (url.includes('access-requests') ? { requests, canApprove: true } : {}) })))
+    render(<GovernancePanel data={{ ...data, roles }} governance={{}} />)
+    const select = await screen.findByRole('combobox', { name: 'Module' }) as HTMLSelectElement
+    await screen.findByText(/month end close/)
+    expect(Array.from(select.options).map(o => o.text)).toEqual(['All modules', 'Finance', 'Other / Unmapped'])
+    await userEvent.selectOptions(select, 'other')
+    expect(screen.getByText(/old role/)).toBeTruthy()
+    expect(screen.queryByText(/month end close/)).toBeNull()
+  })
+})
+

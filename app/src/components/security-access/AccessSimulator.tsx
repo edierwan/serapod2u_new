@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react'
 import { CheckCircle2, KeyRound, XCircle } from 'lucide-react'
 import SearchableSelect, { type SelectOption } from './SearchableSelect'
 import {
-  PERMISSION_GROUP_ORDER, RESOURCE_TYPE_LABELS, modeLabel, orgTypeLabel, permissionLabel, reasonLabel,
+  RESOURCE_TYPE_LABELS, modeLabel, orgTypeLabel, permissionLabel, reasonLabel,
   resourceTypeLabel, warehousesForOrganization, type DirectoryOrganization,
 } from '@/lib/security-access/labels'
+import { classifyPermission, moduleGroupRank, permissionModuleLabel } from '@/lib/security-access/modules'
 
 interface SimulatorProps {
   userProfile: any
@@ -47,9 +48,9 @@ export default function AccessSimulator({ userProfile, people, actors, permissio
     description: [u.role, u.orgName].filter(Boolean).join(' · '), keywords: u.email ?? '',
   }))
   const permissionOptions: SelectOption[] = [...permissions]
-    .map(p => ({ key: p.permission_key, meta: permissionLabel(p.permission_key) }))
-    .sort((a, b) => PERMISSION_GROUP_ORDER.indexOf(a.meta.group) - PERMISSION_GROUP_ORDER.indexOf(b.meta.group) || a.meta.label.localeCompare(b.meta.label))
-    .map(({ key, meta }) => ({ value: key, label: meta.label, description: key, group: meta.group }))
+    .map(p => ({ key: p.permission_key, label: permissionLabel(p.permission_key).label, group: permissionModuleLabel(p.permission_key), rank: moduleGroupRank(classifyPermission(p.permission_key).groupId) }))
+    .sort((a, b) => a.rank - b.rank || a.group.localeCompare(b.group) || a.label.localeCompare(b.label))
+    .map(({ key, label, group }) => ({ value: key, label, description: key, group }))
   const orgOptions: SelectOption[] = organizations.filter(o => o.org_type_code !== 'WH' || o.id === organizationId).map(o => ({
     value: o.id, label: o.org_name, description: orgTypeLabel(o.org_type_code), group: orgTypeLabel(o.org_type_code) || 'Other',
   }))

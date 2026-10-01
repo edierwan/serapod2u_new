@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search, X } from 'lucide-react'
 import { rolloutMode } from '@/lib/security-access/rollout'
+import { moduleGroupName, moduleGroupRank } from '@/lib/security-access/modules'
 
 export const FOCUS = 'focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500'
 
@@ -152,5 +153,22 @@ export function ShowMore({ shown, total, onMore }: { shown: number; total: numbe
         Show more <span className="text-gray-400">({shown} of {total})</span>
       </button>
     </div>
+  )
+}
+
+/**
+ * Module filter (shared S&A taxonomy). Lists only the module groups present in
+ * `available`; filtering is display only and never narrows authorization.
+ */
+export function ModuleFilterSelect({ value, onChange, available, label = 'Module' }: {
+  value: string; onChange: (v: string) => void; available: Iterable<string>; label?: string
+}) {
+  const ids = Array.from(new Set(available)).sort((a, b) => moduleGroupRank(a) - moduleGroupRank(b))
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} aria-label={label}
+      className={`rounded-lg border border-gray-200 bg-white py-1.5 pl-2.5 pr-7 text-sm text-gray-700 ${FOCUS}`}>
+      <option value="all">All modules</option>
+      {ids.map(id => <option key={id} value={id}>{moduleGroupName(id)}</option>)}
+    </select>
   )
 }

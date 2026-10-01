@@ -2,7 +2,8 @@
 
 import { Fragment, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { SearchInput, ShowMore, useLimit } from './ui'
+import { ModuleFilterSelect, SearchInput, ShowMore, useLimit } from './ui'
+import { classifyPermission } from '@/lib/security-access/modules'
 import { comparisonLabel, modeLabel, permissionLabel, reasonLabel, resourceTypeLabel, type DirectoryOrganization } from '@/lib/security-access/labels'
 
 interface DecisionLogProps {
@@ -23,6 +24,7 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
   const [open, setOpen] = useState<string | null>(null)
   const [technical, setTechnical] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [moduleFilter, setModuleFilter] = useState('all')
   const page = useLimit(25)
   const orgById = useMemo(() => new Map(organizations.map(o => [o.id, o.org_name])), [organizations])
   const roleName = useMemo(() => {
@@ -38,6 +40,7 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
   }, [people, actors])
   const q = query.trim().toLowerCase()
   const rows = (filter === 'differences' ? decisions.filter(d => DIFFERENCE(d.comparison)) : decisions)
+    .filter(d => moduleFilter === 'all' || classifyPermission(d.permission_key).groupId === moduleFilter)
     .filter(d => !q || `${permissionLabel(d.permission_key).label} ${d.permission_key} ${userById.get(d.actor_id)?.name ?? ''} ${comparisonLabel(d.comparison).label}`.toLowerCase().includes(q))
 
   const place = (d: any) => {
@@ -60,6 +63,7 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
         <SearchInput value={query} onChange={v => { setQuery(v); page.reset() }} placeholder="Search user or permission" label="Search decisions" />
+        <ModuleFilterSelect value={moduleFilter} onChange={v => { setModuleFilter(v); page.reset() }} available={decisions.map(d => classifyPermission(d.permission_key).groupId)} />
         <div className="flex rounded-lg border p-0.5 text-xs font-medium">
           {(['all', 'differences'] as const).map(f => (
             <button key={f} type="button" onClick={() => setFilter(f)} className={`rounded-md px-3 py-1.5 ${filter === f ? 'bg-gray-950 text-white' : 'text-gray-600'}`}>
@@ -70,7 +74,7 @@ export default function DecisionLog({ decisions, actors, people, organizations, 
         </div>
       </div>
       {rows.length === 0 ? (
-        <p className="p-6 text-sm text-gray-500">{q ? 'No decisions match.' : filter === 'differences' ? 'No differences between legacy and new decisions.' : 'No decisions recorded yet.'}</p>
+        <p className="p-6 text-sm text-gray-500">{q || moduleFilter !== 'all' ? 'No decisions match these filters.' : filter === 'differences' ? 'No differences between legacy and new decisions.' : 'No decisions recorded yet.'}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">

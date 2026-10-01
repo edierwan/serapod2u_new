@@ -5,6 +5,7 @@
  * participates in an authorization decision.
  */
 import { permissionLabel } from './labels'
+import { MODULE_TAXONOMY, OTHER_MODULE, classifyPermission as classifyModule, type ModuleGroup } from './modules'
 
 /** Overview wording for each migration mode (enum values unchanged). */
 export const ROLLOUT_MODES: Record<string, { label: string; shortLabel: string; help: string; dot: string; text: string }> = {
@@ -71,64 +72,17 @@ export interface Rollout {
   total: number
 }
 
-type Matcher = (module: string, resource: string) => boolean
-interface SubgroupDef { id: string; name: string; match: Matcher }
-interface GroupDef { id: string; name: string; match: Matcher; subgroups?: SubgroupDef[] }
-
-const mod = (...modules: string[]): Matcher => (m) => modules.includes(m)
-const res = (m: string, ...resources: string[]): Matcher => (mm, r) => mm === m && resources.includes(r)
-
 /**
- * Overview display hierarchy (presentation only). Classification uses the
- * permission key's module / resource — the same identifiers labels.ts uses —
- * so stored categories and keys are unchanged. Subgroup order is display
- * order; the first matching subgroup wins.
+ * Overview display hierarchy: the shared S&A module taxonomy (modules.ts),
+ * Group → Area → Permission. Presentation only.
  */
-export const ROLLOUT_HIERARCHY: readonly GroupDef[] = [
-  {
-    id: 'supply_chain', name: 'Supply Chain', match: mod('supply_chain', 'inventory', 'warehouse', 'manufacturing', 'product', 'qr'),
-    subgroups: [
-      { id: 'orders', name: 'Orders & Documents', match: mod('supply_chain') },
-      { id: 'stock_count', name: 'Stock Count', match: res('inventory', 'stock_count') },
-      { id: 'stock_transfer', name: 'Stock Transfer', match: res('inventory', 'transfer') },
-      { id: 'inventory', name: 'Inventory', match: mod('inventory') },
-      { id: 'warehouse', name: 'Warehouse', match: mod('warehouse') },
-      { id: 'manufacturing', name: 'Manufacturing', match: mod('manufacturing') },
-      { id: 'product_catalogue', name: 'Product Catalogue', match: mod('product') },
-      { id: 'qr', name: 'QR & Traceability', match: mod('qr') },
-    ],
-  },
-  {
-    id: 'customer_growth', name: 'Customer & Growth', match: mod('customer', 'roadtour', 'ecommerce', 'marketing'),
-    subgroups: [
-      { id: 'customer_engagement', name: 'Customer Engagement', match: mod('customer') },
-      { id: 'roadtour', name: 'RoadTour', match: mod('roadtour') },
-      { id: 'ecommerce', name: 'E-Commerce', match: mod('ecommerce') },
-      { id: 'marketing', name: 'Marketing', match: mod('marketing') },
-    ],
-  },
-  { id: 'hr_payroll', name: 'HR & Payroll', match: mod('hr') },
-  { id: 'finance', name: 'Finance', match: mod('finance') },
-  {
-    id: 'platform_security', name: 'Platform & Security', match: mod('platform', 'security'),
-    subgroups: [
-      { id: 'identity', name: 'Identity', match: res('platform', 'identity', 'identity_access', 'user') },
-      { id: 'platform', name: 'Platform', match: mod('platform') },
-      { id: 'security_admin', name: 'Security Administration', match: mod('security') },
-    ],
-  },
-  { id: 'reporting', name: 'Reporting', match: mod('reporting') },
-]
-
-/** Unmapped modules stay visible here until they are added to the hierarchy. */
-export const OTHER_GROUP = { id: 'other', name: 'Other (not yet grouped)' }
+export const ROLLOUT_HIERARCHY = MODULE_TAXONOMY
+/** Unmapped modules stay visible here until they are added to the taxonomy. */
+export const OTHER_GROUP = OTHER_MODULE
 
 export function classifyPermission(permissionKey: string): { groupId: string; subgroupId: string | null } {
-  const [module = '', resource = ''] = permissionKey.split('.')
-  const group = ROLLOUT_HIERARCHY.find(g => g.match(module, resource))
-  if (!group) return { groupId: OTHER_GROUP.id, subgroupId: null }
-  const sub = group.subgroups?.find(sg => sg.match(module, resource))
-  return { groupId: group.id, subgroupId: group.subgroups ? (sub?.id ?? null) : null }
+  const c = classifyModule(permissionKey)
+  return { groupId: c.groupId, subgroupId: c.areaId }
 }
 
 const tally = (permissions: RolloutPermission[]) => {
@@ -145,17 +99,17 @@ function node(id: string, name: string, level: 'group' | 'subgroup', children: R
 /** Builds the tree; each unique permission key appears exactly once. */
 export function buildRollout(permissions: RolloutPermission[]): Rollout {
   const unique = Array.from(new Map(permissions.map(p => [p.key, p])).values())
-  const defs = [...ROLLOUT_HIERARCHY, { ...OTHER_GROUP, match: () => false } as GroupDef]
+  const defs: ModuleGroup[] = [...ROLLOUT_HIERARCHY, { ...OTHER_GROUP, match: () => false }]
   const groups: RolloutNode[] = []
   for (const def of defs) {
     const mine = unique.filter(p => classifyPermission(p.key).groupId === def.id)
     if (mine.length === 0) continue
     const byLabel = (a: RolloutPermission, b: RolloutPermission) => a.label.localeCompare(b.label)
-    if (!def.subgroups) {
+    if (!def.areas) {
       groups.push(node(def.id, def.name, 'group', [], [...mine].sort(byLabel)))
       continue
     }
-    const children = def.subgroups
+    const children = def.areas
       .map(sg => node(`${def.id}/${sg.id}`, sg.name, 'subgroup', [],
         mine.filter(p => classifyPermission(p.key).subgroupId === sg.id).sort(byLabel)))
       .filter(c => c.total > 0)

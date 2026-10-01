@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ClipboardCheck, GitBranch, KeyRound, Lock, Send, XCircle } from 'lucide-react'
 import SearchableSelect from './SearchableSelect'
 import { callApi, formatDate, toIso } from './client-api'
-import { Collapsible, DisclosurePanel, EmptyState, FilterChips, FOCUS, SearchInput, SectionTabs, ShowMore, ToggleButton, useLimit } from './ui'
+import { Collapsible, DisclosurePanel, EmptyState, FilterChips, FOCUS, ModuleFilterSelect, SearchInput, SectionTabs, ShowMore, ToggleButton, useLimit } from './ui'
+import { OTHER_MODULE, classifyPermission, classifyRole, moduleGroupName, permissionModuleLabel } from '@/lib/security-access/modules'
 import { OUTCOMES, RULE_KINDS, enforcementOf, groupSodRules, humanize, outcomeOf, ruleKindLabel, type SodMitigation, type SodRule, type SodViolation } from '@/lib/security-access/sod'
 import { permissionLabel } from '@/lib/security-access/labels'
 
@@ -79,8 +80,13 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [status, setStatus] = useState<'pending' | 'decided' | 'all'>('pending')
+  const [moduleFilter, setModuleFilter] = useState('all')
+  const roleById = useMemo(() => new Map<string, any>((data.roles || []).map((r: any) => [r.id, r])), [data.roles])
+  // A request maps to modules through its business role; an unknown role stays under Other / Unmapped.
+  const requestModules = (r: any): string[] => { const role = roleById.get(r.role_id); if (!role) return [OTHER_MODULE.id]; const c = classifyRole(role); return [c.groupId, ...c.modules] }
   const allRequests: any[] = state?.requests || []
-  const requests = allRequests.filter((r: any) => status === 'all' || (status === 'pending') === (r.status === 'requested'))
+  const requests = allRequests.filter((r: any) => (status === 'all' || (status === 'pending') === (r.status === 'requested'))
+    && (moduleFilter === 'all' || requestModules(r).includes(moduleFilter)))
   const roles = (data.roles || []).filter((r: any) => r.source !== 'legacy' && r.status === 'active')
   const target = (data.people || []).find((p: any) => p.id === (form.targetUserId || data.viewerId))
   const memberships = (target?.membership || []).filter((m: any) => m.status === 'active')
@@ -108,7 +114,7 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
       <div className="grid gap-4 p-4 md:grid-cols-3">
         <SearchableSelect label="For" value={form.targetUserId} onChange={v => setForm({ ...form, targetUserId: v, organizationId: '', scopeId: '' })}
           options={(data.people || []).map((p: any) => ({ value: p.id, label: p.id === data.viewerId ? `${p.full_name || p.email} (me)` : p.full_name || p.email }))} placeholder="Myself" allowClear />
-        <SearchableSelect label="Business role" value={form.roleId} onChange={v => setForm({ ...form, roleId: v })} options={roles.map((r: any) => ({ value: r.id, label: r.name }))} />
+        <SearchableSelect label="Business role" value={form.roleId} onChange={v => setForm({ ...form, roleId: v })} options={roles.map((r: any) => ({ value: r.id, label: r.name, description: r.description || undefined, group: moduleGroupName(classifyRole(r).groupId) }))} />
         <SearchableSelect label="Membership organization" value={form.organizationId} onChange={v => setForm({ ...form, organizationId: v, scopeId: '' })}
           options={memberships.map((m: any) => ({ value: m.organization_id, label: String(orgName.get(m.organization_id) || 'Organization') }))} />
         <SearchableSelect label="Scope" value={form.scopeId} onChange={v => setForm({ ...form, scopeId: v })} options={scopeOptions} disabled={!form.organizationId} />
@@ -122,11 +128,13 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
     </DisclosurePanel>
     <section className="rounded-xl border border-gray-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><h3 className="font-semibold">{state?.canApprove ? 'All access requests' : 'My access requests'}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+        <ModuleFilterSelect value={moduleFilter} onChange={setModuleFilter} available={allRequests.flatMap(requestModules)} />
         <FilterChips label="Request status" value={status} onChange={setStatus} items={[
           { id: 'pending', label: 'Waiting for a decision', count: allRequests.filter((r: any) => r.status === 'requested').length },
           { id: 'decided', label: 'Decided', count: allRequests.filter((r: any) => r.status !== 'requested').length },
           { id: 'all', label: 'All', count: allRequests.length },
-        ]} /></div>
+        ]} /></div></div>
       {error && <div className="p-4 text-sm text-red-700">{error}</div>}
       <div className="divide-y">{requests.map((r: any) => <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
         <div>
@@ -142,7 +150,7 @@ function AccessRequests({ data, nameOf, orgName, roleName }: any) {
           {r.status === 'requested' && r.requester_id === data.viewerId && <button onClick={() => act({ action: 'cancel', requestId: r.id }, 'Request cancelled.')} className="rounded-md border px-2 py-1 text-xs">Cancel</button>}
         </div>
       </div>)}
-        {state && !requests.length && <EmptyState>{status === 'pending' ? 'Nothing is waiting for a decision.' : 'No access requests.'}</EmptyState>}</div>
+        {state && !requests.length && <EmptyState>{moduleFilter !== 'all' ? 'No requests in this module.' : status === 'pending' ? 'Nothing is waiting for a decision.' : 'No access requests.'}</EmptyState>}</div>
     </section>
   </div>
 }
@@ -152,6 +160,10 @@ function Delegations({ data, nameOf, orgName }: any) {
   const [form, setForm] = useState({ delegateId: '', organizationId: data.viewerOrganizationId || '', permission: '', until: '', reason: '' })
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [moduleFilter, setModuleFilter] = useState('all')
+  const delegationModules = (d: any): string[] => { const ids = (d.permission_keys || []).map((k: string) => classifyPermission(k).groupId); return ids.length ? ids : [OTHER_MODULE.id] }
+  const allDelegations: any[] = state?.delegations || []
+  const delegations = allDelegations.filter(d => moduleFilter === 'all' || delegationModules(d).includes(moduleFilter))
   async function create() {
     const result = await callApi('/api/security-access/delegations', { body: {
       action: 'create', delegateId: form.delegateId, organizationId: form.organizationId, permissionKeys: [form.permission],
@@ -177,7 +189,7 @@ function Delegations({ data, nameOf, orgName }: any) {
         <SearchableSelect label="Organization" value={form.organizationId} onChange={v => setForm({ ...form, organizationId: v })}
           options={(data.organizations || []).map((o: any) => ({ value: o.id, label: o.org_name }))} />
         <SearchableSelect label="Permission" value={form.permission} onChange={v => setForm({ ...form, permission: v })}
-          options={(data.permissions || []).filter((p: any) => !p.permission_key.startsWith('security.')).map((p: any) => ({ value: p.permission_key, label: permissionLabel(p.permission_key).label, group: permissionLabel(p.permission_key).group }))} />
+          options={(data.permissions || []).filter((p: any) => !p.permission_key.startsWith('security.')).map((p: any) => ({ value: p.permission_key, label: permissionLabel(p.permission_key).label, group: permissionModuleLabel(p.permission_key) }))} />
         <label className="text-sm"><span className="text-gray-600">Ends</span>
           <input type="datetime-local" value={form.until} onChange={e => setForm({ ...form, until: e.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
         <label className="text-sm md:col-span-2"><span className="text-gray-600">Reason</span>
@@ -187,16 +199,17 @@ function Delegations({ data, nameOf, orgName }: any) {
         className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Create delegation</button></div>
     </DisclosurePanel>
     <section className="rounded-xl border border-gray-200 bg-white">
-      <div className="border-b p-4"><h3 className="font-semibold">{state?.canManage ? 'All delegations' : 'My delegations'}</h3></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><h3 className="font-semibold">{state?.canManage ? 'All delegations' : 'My delegations'}</h3>
+        <ModuleFilterSelect value={moduleFilter} onChange={setModuleFilter} available={allDelegations.flatMap(delegationModules)} /></div>
       {error && <div className="p-4 text-sm text-red-700">{error}</div>}
-      <div className="divide-y">{(state?.delegations || []).map((d: any) => <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+      <div className="divide-y">{delegations.map((d: any) => <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
         <div><div className="font-medium">{nameOf(d.delegator_id)} → {nameOf(d.delegate_id)}</div>
           <div className="text-xs text-gray-500">{(d.permission_keys || []).map((k: string) => permissionLabel(k).label).join(', ')} · {orgName.get(d.organization_id) || 'Organization'} · until {formatDate(d.effective_until)}</div>
           <div className="text-xs text-gray-600">“{d.reason}”</div></div>
         <div className="flex items-center gap-2"><Pill value={d.status} />
           {d.status === 'active' && <button onClick={() => revoke(d.id)} className="rounded-md border px-2 py-1 text-xs">Revoke</button>}</div>
       </div>)}
-        {state && !(state.delegations || []).length && <EmptyState>No delegations.</EmptyState>}</div>
+        {state && !delegations.length && <EmptyState>{moduleFilter !== 'all' ? 'No delegations in this module.' : 'No delegations.'}</EmptyState>}</div>
     </section>
   </div>
 }
