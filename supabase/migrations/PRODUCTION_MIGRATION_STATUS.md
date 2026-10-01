@@ -2,7 +2,7 @@
 
 **Living document.** Update it in the same commit as every new migration, and again whenever a migration is applied to staging or production (see [How to update this file](#how-to-update-this-file)).
 
-Last updated: **2026-10-01 22:40 MYT (+08:00)** — localhost branch at `8d874601` (not yet pushed); `origin/staging` at `539e874e`; `origin/main` at `1671bd79`.
+Last updated: **2026-10-01 23:20 MYT (+08:00)** — `origin/staging` at `da47ab0d` (deployed, healthy); `origin/main` at `1671bd79`.
 
 Original full audit: 2026-10-01 15:07 MYT at `2961c21a` (read-only; every row below up to `20260930100000` comes from it unless the change log says otherwise).
 
@@ -12,9 +12,9 @@ This report records **database state**, not merely whether a file is present on 
 
 | Order | Migration | Staging | Production |
 |---|---|---|---|
-| 1 | `20261001130000_sa_grant_keeps_automatic_access.sql` | **Pending** | **Pending** |
+| 1 | `20261001130000_sa_grant_keeps_automatic_access.sql` | Verified applied 2026-10-01 | **Pending** |
 
-Apply staging first (with the matching application revision), verify, then production. Production rows marked owner-reported should be confirmed once with the verification query below.
+Staging is complete. Apply production with the same file at the release SHA, then run the verification query (all eight rows `true`). Production rows marked owner-reported should be confirmed once with the verification query below.
 
 ## Executive result
 
@@ -88,7 +88,7 @@ Principal evidence used across the table:
 | `20260930100000_sa_stage2d_deferred_closure.sql` | Add readable-organization scope, actor dominance, thirteen deferred permissions/roles, and guarded backfill | **Verified applied** | **Applied 2026-10-01 (owner-reported)** | Staging: four expected function signatures/helpers, thirteen `SHADOW` permissions and holders, correct grants, zero readable-organization/invariant mismatches. Production was verified pending at the 15:07 audit and applied afterwards by the owner. Requires the S&A final wave and Identity Stage 2 through `20260929190000`. Keep all thirteen keys in `SHADOW`. |
 | `20261001100000_sa_restore_overridden_automatic_access.sql` | Restore path for automatic/legacy access an administrator revoked (`sa_restore_assignment`, `sa_restorable_assignments`, `sa_assignment_overridden_source`; revoke records `previous_source`) | **Verified applied** (2026-10-01: three functions present, service_role-only execute, revoke definition records `previous_source`) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/restore_overridden_automatic_access.sql` (22 assertions; unpatched schema fails). Idempotent. Compatible with the older main application (only adds functions and extra audit detail). |
 | `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Delete the `legacy-guest` compatibility role and its assignments; `sa_refresh_compat_role` never (re)creates a role for `GUEST` | **Verified applied** (2026-10-01 20:20: verification query all `true`; one assignment removed and audited, `role.deleted` logged, zero GUEST identities holding a compatibility role) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/remove_legacy_guest_compat_role.sql` (15 assertions, includes the refusal path and a `read_only=false` production simulation); negative control: a plain delete is re-created by the next lifecycle sync. Refuses to run while an access request/review item references the role. GUEST identities lose `inventory.transfer.cancel` (already `NEW_ENFORCED` on staging). Idempotent. |
-| `20261001130000_sa_grant_keeps_automatic_access.sql` | A grant/approval never takes over automatic access (`sa_role_already_held`); access requests for an already-held role are refused | **Pending** | **Pending** | Staging UAT bug: re-granting an automatically held role converted it into a temporary manual grant. Replica test `supabase/tests/security/sa_restore/grant_keeps_automatic_access.sql` (9 assertions; unpatched schema fails as negative control). Idempotent. Compatible with older application code (only adds an error for a case the new UI no longer offers). |
+| `20261001130000_sa_grant_keeps_automatic_access.sql` | A grant/approval never takes over automatic access (`sa_role_already_held`); access requests for an already-held role are refused | **Verified applied** (2026-10-01 23:15: verification query all eight `true`) | **Pending** | Staging UAT bug: re-granting an automatically held role converted it into a temporary manual grant. Replica test `supabase/tests/security/sa_restore/grant_keeps_automatic_access.sql` (9 assertions; unpatched schema fails as negative control). Idempotent. Compatible with older application code (only adds an error for a case the new UI no longer offers). |
 
 ## Applying a pending migration
 
@@ -157,3 +157,4 @@ The repository's `.gitignore` explicitly re-includes `supabase/migrations/**/*.m
 | 2026-10-01 20:20 | Owner applied `20261001120000` to staging; verified (all seven checks `true`). |
 | 2026-10-01 20:45 | Owner applied `20261001120000` to production (owner-reported). Nothing pending on either database. |
 | 2026-10-01 22:40 | Added `20261001130000_sa_grant_keeps_automatic_access.sql` (UAT fix). Pending on both. |
+| 2026-10-01 23:15 | Owner applied `20261001130000` to staging; verified (eight checks `true`). Production pending. |
