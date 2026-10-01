@@ -134,6 +134,35 @@ describe('People & Access', () => {
     }))
   })
 
+  it('offers restore only for automatic access an administrator revoked', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('prompt', vi.fn(() => 'Revoked by mistake'))
+    const onChanged = vi.fn()
+    const restorable = {
+      ...data,
+      restorableAssignmentIds: ['a9'],
+      people: data.people.map((p: any) => p.id !== 'u1' ? p : { ...p, membership: p.membership.map((m: any) => ({
+        ...m, assignments: [...m.assignments,
+          assignment('a9', 'r-legacy', 'manual', { status: 'revoked', role: { ...role('r-legacy'), id: 'r-legacy-2', name: 'Legacy Manager' } }),
+          assignment('a8', 'r-gl', 'manual', { status: 'revoked' })],
+      })) }),
+    }
+    render(<PeopleAccessPanel data={restorable} onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Jafar Admin/ }))
+    // The revoked manual grant is not restorable (grant it again instead).
+    expect(screen.queryByRole('button', { name: /Restore GL Clerk/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^Legacy access, 2, expand/ }))
+    for (const group of screen.getAllByRole('button', { name: /^Legacy access: .*expand/ })) await userEvent.click(group)
+    expect(screen.getByText('Automatic access revoked by an administrator')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Revoke Legacy Manager/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Restore Legacy Manager/ }))
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/security-access/assignments', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ action: 'restore', assignmentId: 'a9', reason: 'Revoked by mistake' }),
+    }))
+    expect(onChanged).toHaveBeenCalled()
+  })
+
   it('keeps the grant form closed until asked for; one membership is selected for you', async () => {
     render(<PeopleAccessPanel data={data} onChanged={vi.fn()} />)
     expect(screen.queryByText('Business role')).toBeNull()

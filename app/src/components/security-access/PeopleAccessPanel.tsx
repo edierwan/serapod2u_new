@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Clock, Plus, ShieldOff, UserRound } from 'lucide-react'
+import { Clock, Plus, RotateCcw, ShieldOff, UserRound } from 'lucide-react'
 import SearchableSelect from './SearchableSelect'
 import { callApi, formatDate, one, toIso } from './client-api'
 import { DisclosurePanel, EmptyState, FilterChips, FOCUS, SearchInput, ShowMore, ToggleButton, useLimit } from './ui'
@@ -38,13 +38,15 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
  * membership separates explicitly Granted access, Automatic (lifecycle)
  * access and Legacy compatibility access; within each, roles are grouped by
  * the shared S&A module taxonomy (display only — never an authorization
- * boundary). Grant / revoke use the audited governance functions unchanged.
+ * boundary). Grant / revoke / restore use the audited governance functions.
  */
 export default function PeopleAccessPanel({ data, onChanged }: Props) {
   const people: any[] = data.people || []
   const allRoles: any[] = useMemo(() => data.roles || [], [data.roles])
   const grantableRoles: any[] = allRoles.filter((r: any) => r.source !== 'legacy' && r.status === 'active')
   const scopes: any[] = data.scopeDefinitions || []
+  // Automatic access an administrator revoked; restoring hands it back to the lifecycle.
+  const restorable = useMemo(() => new Set<string>(data.restorableAssignmentIds || []), [data.restorableAssignmentIds])
   const orgName = useMemo(() => new Map((data.organizations || []).map((o: any) => [o.id, o.org_name])), [data.organizations])
   const roleModules = useMemo(() => new Map<string, RoleModules>(allRoles.map((r: any) => [r.id, classifyRole(r)])), [allRoles])
   const [query, setQuery] = useState('')
@@ -128,11 +130,20 @@ export default function PeopleAccessPanel({ data, onChanged }: Props) {
     const name = one(assignment.role)?.name || 'this role'
     const automatic = accessKind(assignment) !== 'granted'
     const reason = window.prompt(automatic
-      ? `${name} is automatic access (${AUTOMATIC_SOURCE[assignment.source] ?? 'lifecycle'}). Revoking overrides the automatic rule for this person; it will not be re-added automatically. Reason for revoking?`
+      ? `${name} is automatic access (${AUTOMATIC_SOURCE[assignment.source] ?? 'lifecycle'}). Revoking overrides the automatic rule for this person; it will not be re-added automatically (an administrator can restore it later). Reason for revoking?`
       : `Reason for revoking ${name}?`)
     if (!reason || reason.trim().length < 5) return
     const result = await callApi('/api/security-access/assignments', { body: { action: 'revoke', assignmentId: assignment.id, reason } })
     setMessage(result.ok ? { tone: 'ok', text: 'Access revoked.' } : { tone: 'error', text: result.error || 'Unable to revoke' })
+    if (result.ok) onChanged()
+  }
+
+  async function restore(assignment: any) {
+    const name = one(assignment.role)?.name || 'this role'
+    const reason = window.prompt(`Restore ${name}? It returns to automatic access managed by HR / User Management. Reason for restoring?`)
+    if (!reason || reason.trim().length < 5) return
+    const result = await callApi('/api/security-access/assignments', { body: { action: 'restore', assignmentId: assignment.id, reason } })
+    setMessage(result.ok ? { tone: 'ok', text: 'Access restored to automatic management.' } : { tone: 'error', text: result.error || 'Unable to restore' })
     if (result.ok) onChanged()
   }
 
@@ -238,7 +249,7 @@ export default function PeopleAccessPanel({ data, onChanged }: Props) {
                 )}
               </div>
             </div>
-            {isOpen && <PersonDetail person={p} orgName={orgName} roleModules={roleModules} canRevoke={p.id !== data.viewerId} onRevoke={revoke} />}
+            {isOpen && <PersonDetail person={p} orgName={orgName} roleModules={roleModules} canRevoke={p.id !== data.viewerId} onRevoke={revoke} restorable={restorable} onRestore={restore} />}
           </li>
         })}
       </ul>
@@ -253,8 +264,9 @@ const SECTIONS: Array<{ kind: AccessKind; title: string; help: string }> = [
   { kind: 'legacy', title: 'Legacy access', help: 'Compatibility roles mirroring the legacy role code.' },
 ]
 
-function PersonDetail({ person: p, orgName, roleModules, canRevoke, onRevoke }: {
+function PersonDetail({ person: p, orgName, roleModules, canRevoke, onRevoke, restorable, onRestore }: {
   person: any; orgName: Map<any, any>; roleModules: Map<string, RoleModules>; canRevoke: boolean; onRevoke: (a: any) => void
+  restorable: Set<string>; onRestore: (a: any) => void
 }) {
   // Toggled ids; granted sections and their modules start open, the rest folded.
   const [toggled, setToggled] = useState<Set<string>>(new Set())
@@ -296,7 +308,7 @@ function PersonDetail({ person: p, orgName, roleModules, canRevoke, onRevoke }: 
                   </ToggleButton>
                   {!gOpen && <span className="hidden min-w-0 truncate text-xs text-gray-400 md:inline">{g.items.map(a => one(a.role)?.name).filter(Boolean).join(', ')}</span>}
                 </div>
-                {gOpen && <AssignmentList list={g.items} kind={section.kind} roleModules={roleModules} canRevoke={canRevoke} onRevoke={onRevoke} />}
+                {gOpen && <AssignmentList list={g.items} kind={section.kind} roleModules={roleModules} canRevoke={canRevoke} onRevoke={onRevoke} restorable={restorable} onRestore={onRestore} />}
               </li>
             })}</ul>}
           </div>
@@ -306,8 +318,9 @@ function PersonDetail({ person: p, orgName, roleModules, canRevoke, onRevoke }: 
   </div>
 }
 
-function AssignmentList({ list, kind, roleModules, canRevoke, onRevoke }: {
+function AssignmentList({ list, kind, roleModules, canRevoke, onRevoke, restorable, onRestore }: {
   list: any[]; kind: AccessKind; roleModules: Map<string, RoleModules>; canRevoke: boolean; onRevoke: (a: any) => void
+  restorable: Set<string>; onRestore: (a: any) => void
 }) {
   return <ul className="divide-y divide-gray-50">{list.map((a: any) => {
     const role = one(a.role)
@@ -325,11 +338,16 @@ function AssignmentList({ list, kind, roleModules, canRevoke, onRevoke }: {
         {kind !== 'granted' && AUTOMATIC_SOURCE[a.source] && <span className="text-[11px] text-gray-400">{AUTOMATIC_SOURCE[a.source]}</span>}
         {a.effective_until && <span className="inline-flex items-center gap-1 text-xs text-amber-700"><Clock className="h-3 w-3" aria-hidden />{expired ? 'Expired' : 'Until'} {formatDate(a.effective_until)}</span>}
         {a.status !== 'active' && <span className="text-xs text-gray-400">{a.status}</span>}
+        {restorable.has(a.id) && <span className="text-[11px] text-gray-400">Automatic access revoked by an administrator</span>}
       </div>
       {a.status === 'active' && canRevoke && <button type="button" onClick={() => onRevoke(a)}
         title={kind === 'granted' ? undefined : 'Overrides the automatic rule for this person'}
         className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-red-50 hover:text-red-700 ${FOCUS}`}>
         <ShieldOff className="h-3 w-3" aria-hidden />Revoke<span className="sr-only"> {role?.name || 'role'}</span></button>}
+      {restorable.has(a.id) && canRevoke && <button type="button" onClick={() => onRestore(a)}
+        title="Returns this role to automatic management"
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-emerald-50 hover:text-emerald-700 ${FOCUS}`}>
+        <RotateCcw className="h-3 w-3" aria-hidden />Restore<span className="sr-only"> {role?.name || 'role'}</span></button>}
     </li>
   })}</ul>
 }
