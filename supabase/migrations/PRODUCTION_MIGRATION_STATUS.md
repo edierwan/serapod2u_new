@@ -2,7 +2,7 @@
 
 **Living document.** Update it in the same commit as every new migration, and again whenever a migration is applied to staging or production (see [How to update this file](#how-to-update-this-file)).
 
-Last updated: **2026-10-01 23:20 MYT (+08:00)** — `origin/staging` at `da47ab0d` (deployed, healthy); `origin/main` at `1671bd79`.
+Last updated: **2026-10-02 00:15 MYT (+08:00)** — `origin/staging` deployed; `origin/main` at `1671bd79`. Production read directly (read-only) 2026-10-02: verification query seven `true`, the two pending migrations `false`.
 
 Original full audit: 2026-10-01 15:07 MYT at `2961c21a` (read-only; every row below up to `20260930100000` comes from it unless the change log says otherwise).
 
@@ -13,13 +13,13 @@ This report records **database state**, not merely whether a file is present on 
 | Order | Migration | Staging | Production |
 |---|---|---|---|
 | 1 | `20261001130000_sa_grant_keeps_automatic_access.sql` | Verified applied 2026-10-01 | **Pending** |
-| 2 | `20261001140000_orders_approve_creator_only_rule.sql` | **Pending** | **Pending** |
+| 2 | `20261001140000_orders_approve_creator_only_rule.sql` | Verified applied 2026-10-01 | **Pending** |
 
 Staging is complete. Apply production with the same file at the release SHA, then run the verification query (all eight rows `true`). Production rows marked owner-reported should be confirmed once with the verification query below.
 
 ## Executive result
 
-- **Production pending:** `20261001130000_sa_grant_keeps_automatic_access.sql`. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
+- **Production pending:** `20261001130000_sa_grant_keeps_automatic_access.sql`, `20261001140000_orders_approve_creator_only_rule.sql`. The owner-reported production rows were confirmed by a direct read-only verification on 2026-10-02. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
 - **Partial, drifted, or unknown migrations requiring investigation:** none in the migration set below.
 - Production and staging do **not** have a Supabase schema-migration ledger (`supabase_migrations.schema_migrations`) in the application database. `public.migration_history` is business data-import history and is not a schema ledger. Applied status therefore means that the migration's material effects, postconditions, or a later superseding definition were verified read-only.
 - The two different files with version `20260928100000` were checked independently. Both sets of effects exist on both databases. The duplicate version remains an operational hazard for any filename/version-based runner and must not be “fixed” by renaming either file during this release.
@@ -90,7 +90,7 @@ Principal evidence used across the table:
 | `20261001100000_sa_restore_overridden_automatic_access.sql` | Restore path for automatic/legacy access an administrator revoked (`sa_restore_assignment`, `sa_restorable_assignments`, `sa_assignment_overridden_source`; revoke records `previous_source`) | **Verified applied** (2026-10-01: three functions present, service_role-only execute, revoke definition records `previous_source`) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/restore_overridden_automatic_access.sql` (22 assertions; unpatched schema fails). Idempotent. Compatible with the older main application (only adds functions and extra audit detail). |
 | `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Delete the `legacy-guest` compatibility role and its assignments; `sa_refresh_compat_role` never (re)creates a role for `GUEST` | **Verified applied** (2026-10-01 20:20: verification query all `true`; one assignment removed and audited, `role.deleted` logged, zero GUEST identities holding a compatibility role) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/remove_legacy_guest_compat_role.sql` (15 assertions, includes the refusal path and a `read_only=false` production simulation); negative control: a plain delete is re-created by the next lifecycle sync. Refuses to run while an access request/review item references the role. GUEST identities lose `inventory.transfer.cancel` (already `NEW_ENFORCED` on staging). Idempotent. |
 | `20261001130000_sa_grant_keeps_automatic_access.sql` | A grant/approval never takes over automatic access (`sa_role_already_held`); access requests for an already-held role are refused | **Verified applied** (2026-10-01 23:15: verification query all eight `true`) | **Pending** | Staging UAT bug: re-granting an automatically held role converted it into a temporary manual grant. Replica test `supabase/tests/security/sa_restore/grant_keeps_automatic_access.sql` (9 assertions; unpatched schema fails as negative control). Idempotent. Compatible with older application code (only adds an error for a case the new UI no longer offers). |
-| `20261001140000_orders_approve_creator_only_rule.sql` | Order approval: creator can never approve; no approver-above-creator level comparison (S&A decides where enforced, legacy = Manager level or above) | **Pending** | **Pending** | Owner decision 2026-10-01. Patches the live `orders_approve` in place (one known line; refuses if absent; idempotent) because its body carries runtime-injected guard lines. Replica: applied twice, S&A guard and SECURITY DEFINER/grants kept, refuses an unexpected body. Ship with the matching Orders screen change. |
+| `20261001140000_orders_approve_creator_only_rule.sql` | Order approval: creator can never approve; no approver-above-creator level comparison (S&A decides where enforced, legacy = Manager level or above) | **Verified applied** | **Pending** | Owner decision 2026-10-01. Patches the live `orders_approve` in place (one known line; refuses if absent; idempotent) because its body carries runtime-injected guard lines. Replica: applied twice, S&A guard and SECURITY DEFINER/grants kept, refuses an unexpected body. Staging: verified applied 2026-10-01 (verification query nine `true`). Production precondition verified read-only 2026-10-02 00:10 (expected line, S&A guard, maker-checker present). Ship with the matching Orders screen change. |
 
 ## Applying a pending migration
 
@@ -161,4 +161,5 @@ The repository's `.gitignore` explicitly re-includes `supabase/migrations/**/*.m
 | 2026-10-01 20:45 | Owner applied `20261001120000` to production (owner-reported). Nothing pending on either database. |
 | 2026-10-01 22:40 | Added `20261001130000_sa_grant_keeps_automatic_access.sql` (UAT fix). Pending on both. |
 | 2026-10-01 23:15 | Owner applied `20261001130000` to staging; verified (eight checks `true`). Production pending. |
+| 2026-10-02 00:10 | Production read-only (direct): seven checks `true`; `orders_approve` precondition holds; 111 SHADOW / 3 LEGACY_ENFORCED, legacy not locked; 54 active portal users all with membership + compatibility role; HR/Finance real-use signals all 0 (cleanup would remove 1 GL journal, 3 lines, 1 posting). Staging: `20261001140000` verified (nine `true`). |
 | 2026-10-01 23:45 | Added `20261001140000_orders_approve_creator_only_rule.sql` (owner decision). Pending on both. Data scripts (not migrations): `supabase/diagnostics/hr_finance_inventory_readonly.sql`, `supabase/operations/hr_finance_test_data_cleanup.sql`. |

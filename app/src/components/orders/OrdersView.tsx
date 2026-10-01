@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber } from '@/lib/utils/formatters'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useSaCapability } from '@/hooks/useSaCapability'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
 import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
 import { getOrderDisplayOrgName, orderMatchesSearch } from '@/lib/orders/order-search'
@@ -168,6 +169,9 @@ async function hydrateOrderActors<T extends { id: string; created_by?: string; a
 
 export default function OrdersView({ userProfile, onViewChange }: OrdersViewProps) {
   const [orders, setOrders] = useState<Order[]>([])
+  // Who may approve: S&A once supply_chain.order.approve is enforced (role
+  // grants such as Order Approver decide); until then Manager level or above.
+  const approvePermitted = useSaCapability('supply_chain.order.approve', userProfile.roles.role_level <= 30)
   const [summary, setSummary] = useState<OrderSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -636,11 +640,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     if (order.status !== 'submitted') return false
 
     // The creator never approves their own order (also enforced in
-    // orders_approve). Otherwise Manager level or above may approve; where
-    // S&A enforces supply_chain.order.approve the server decides by role.
+    // orders_approve); otherwise the approve permission decides.
     if (order.created_by_user?.id === userProfile.id) return false
-    const userLevel = userProfile.roles.role_level
-    if (!(userLevel <= 30)) return false
+    if (!approvePermitted) return false
 
     const userOrgType = userProfile.organizations.org_type_code
 
