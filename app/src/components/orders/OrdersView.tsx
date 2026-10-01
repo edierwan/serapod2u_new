@@ -635,24 +635,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // Must be submitted status
     if (order.status !== 'submitted') return false
 
-    // Check role level authority
+    // The creator never approves their own order (also enforced in
+    // orders_approve). Otherwise Manager level or above may approve; where
+    // S&A enforces supply_chain.order.approve the server decides by role.
+    if (order.created_by_user?.id === userProfile.id) return false
     const userLevel = userProfile.roles.role_level
-    const creatorLevel = order.created_by_user?.roles?.role_level ?? 999 // Default to high number (low rank) if unknown
-
-    let hasLevelAuthority = false
-
-    if (userLevel === 1) {
-      // Super Admin can approve any order (self-approval is blocked separately)
-      hasLevelAuthority = true
-    } else if (creatorLevel === 10) {
-      // Special condition: If creator is Level 10, only Level 10 or 20 can approve
-      hasLevelAuthority = (userLevel === 10 || userLevel === 20)
-    } else {
-      // General rule: Approver must be higher rank (lower number) than creator
-      hasLevelAuthority = (userLevel < creatorLevel)
-    }
-
-    if (!hasLevelAuthority) return false
+    if (!(userLevel <= 30)) return false
 
     const userOrgType = userProfile.organizations.org_type_code
 
