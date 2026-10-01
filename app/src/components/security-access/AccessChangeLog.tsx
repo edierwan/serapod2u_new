@@ -7,6 +7,7 @@ import { EmptyState, FilterChips, SearchInput, ShowMore, useLimit } from './ui'
 
 const ACTION_LABELS: Record<string, string> = {
   'assignment.granted': 'Access granted', 'assignment.revoked': 'Access revoked', 'assignment.derived': 'Lifecycle access derived',
+  'assignment.restored': 'Automatic access restored', 'assignment.removed': 'Access removed with its role', 'role.deleted': 'Role deleted',
   'legacy_authorization.locked': 'Legacy authorization locked',
   'access_request.submitted': 'Access requested', 'access_request.approved': 'Request approved', 'access_request.denied': 'Request denied',
   'access_request.cancelled': 'Request cancelled', 'access_request.expired': 'Request expired',
