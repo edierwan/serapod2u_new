@@ -2,7 +2,7 @@
 
 **Living document.** Update it in the same commit as every new migration, and again whenever a migration is applied to staging or production (see [How to update this file](#how-to-update-this-file)).
 
-Last updated: **2026-10-01 20:10 MYT (+08:00)** — `origin/staging` at `b1b4c29c` + legacy-guest removal; `origin/main` at `1671bd79`.
+Last updated: **2026-10-01 20:25 MYT (+08:00)** — `origin/staging` at `cec6d07e`; `origin/main` at `1671bd79`.
 
 Original full audit: 2026-10-01 15:07 MYT at `2961c21a` (read-only; every row below up to `20260930100000` comes from it unless the change log says otherwise).
 
@@ -12,9 +12,9 @@ This report records **database state**, not merely whether a file is present on 
 
 | Order | Migration | Staging | Production |
 |---|---|---|---|
-| 1 | `20261001120000_sa_remove_legacy_guest_compat_role.sql` | **Pending** | **Pending** |
+| 1 | `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Verified applied 2026-10-01 | **Pending** |
 
-Nothing else is pending. Apply staging first, verify, then production with the same file at the same SHA.
+Nothing else is pending. Staging is complete; apply production with the same file at the same SHA, then run the verification query.
 
 ## Executive result
 
@@ -87,7 +87,7 @@ Principal evidence used across the table:
 | `20260929230000_outdoor_admin_updates_offer_kinds.sql` | Extend allowed Outdoor admin-update/offer kinds | Verified applied | Verified applied | Updated kind constraint exists. |
 | `20260930100000_sa_stage2d_deferred_closure.sql` | Add readable-organization scope, actor dominance, thirteen deferred permissions/roles, and guarded backfill | **Verified applied** | **Applied 2026-10-01 (owner-reported)** | Staging: four expected function signatures/helpers, thirteen `SHADOW` permissions and holders, correct grants, zero readable-organization/invariant mismatches. Production was verified pending at the 15:07 audit and applied afterwards by the owner. Requires the S&A final wave and Identity Stage 2 through `20260929190000`. Keep all thirteen keys in `SHADOW`. |
 | `20261001100000_sa_restore_overridden_automatic_access.sql` | Restore path for automatic/legacy access an administrator revoked (`sa_restore_assignment`, `sa_restorable_assignments`, `sa_assignment_overridden_source`; revoke records `previous_source`) | **Verified applied** (2026-10-01: three functions present, service_role-only execute, revoke definition records `previous_source`) | **Applied 2026-10-01 (owner-reported)** | Replica test `supabase/tests/security/sa_restore/restore_overridden_automatic_access.sql` (22 assertions; unpatched schema fails). Idempotent. Compatible with the older main application (only adds functions and extra audit detail). |
-| `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Delete the `legacy-guest` compatibility role and its assignments; `sa_refresh_compat_role` never (re)creates a role for `GUEST` | **Pending** | **Pending** | Replica test `supabase/tests/security/sa_restore/remove_legacy_guest_compat_role.sql` (15 assertions, includes the refusal path and a `read_only=false` production simulation); negative control: a plain delete is re-created by the next lifecycle sync. Refuses to run while an access request/review item references the role. GUEST identities lose `inventory.transfer.cancel` (already `NEW_ENFORCED` on staging). Idempotent. |
+| `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Delete the `legacy-guest` compatibility role and its assignments; `sa_refresh_compat_role` never (re)creates a role for `GUEST` | **Verified applied** (2026-10-01 20:20: verification query all `true`; one assignment removed and audited, `role.deleted` logged, zero GUEST identities holding a compatibility role) | **Pending** | Replica test `supabase/tests/security/sa_restore/remove_legacy_guest_compat_role.sql` (15 assertions, includes the refusal path and a `read_only=false` production simulation); negative control: a plain delete is re-created by the next lifecycle sync. Refuses to run while an access request/review item references the role. GUEST identities lose `inventory.transfer.cancel` (already `NEW_ENFORCED` on staging). Idempotent. |
 
 ## Applying a pending migration
 
@@ -152,3 +152,4 @@ The repository's `.gitignore` explicitly re-includes `supabase/migrations/**/*.m
 | 2026-10-01 ~15:30 | `origin/staging` → `6cdcf81e` (main→staging ancestry merge, tree unchanged) → `b1b4c29c` (warehouse context fix + restore feature). Added `20261001100000`. |
 | 2026-10-01 afternoon | Owner applied `20261001100000` to staging (verified 20:04: functions, grants, revoke definition) and `20260930100000` + `20261001100000` to production (owner-reported). |
 | 2026-10-01 20:10 | Added `20261001120000_sa_remove_legacy_guest_compat_role.sql` (owner request: delete `legacy-guest`). Pending on both. |
+| 2026-10-01 20:20 | Owner applied `20261001120000` to staging; verified (all seven checks `true`). Production pending. |
