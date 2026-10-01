@@ -18,7 +18,7 @@ export async function DELETE(
 
     const { data: userProfile } = await supabase
         .from('users')
-        .select('organization_id, role_code')
+        .select('organization_id')
         .eq('id', user.id)
         .single();
 
@@ -27,18 +27,11 @@ export async function DELETE(
     }
 
     try {
-        const isSuperAdmin = userProfile?.role_code === 'SUPER_ADMIN';
-
-        let deleteQuery = supabase
+        const { error } = await supabase
             .from('marketing_campaigns' as any)
             .delete()
-            .eq('id', id);
-
-        if (!isSuperAdmin) {
-            deleteQuery = deleteQuery.eq('org_id', userProfile.organization_id);
-        }
-
-        const { error } = await deleteQuery;
+            .eq('id', id)
+            .eq('org_id', userProfile.organization_id);
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });

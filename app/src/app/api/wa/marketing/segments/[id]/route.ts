@@ -43,28 +43,22 @@ export async function DELETE(
     const saDenied = await guardUserOperation(user.id, 'customer.campaign.manage')
     if (saDenied) return saDenied
 
-    // Get user profile with role
     const { data: userProfile } = await supabase
         .from('users')
-        .select('organization_id, role_code')
+        .select('organization_id')
         .eq('id', user.id)
         .single();
 
-    try {
-        // Check if user is super admin - can delete any segment
-        const isSuperAdmin = userProfile?.role_code === 'SUPER_ADMIN';
+    if (!userProfile?.organization_id) {
+        return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
 
-        let deleteQuery = supabase
+    try {
+        const { error } = await supabase
             .from('marketing_segments' as any)
             .delete()
-            .eq('id', id);
-
-        // Only restrict by org_id for non-super admins
-        if (!isSuperAdmin && userProfile?.organization_id) {
-            deleteQuery = deleteQuery.eq('org_id', userProfile.organization_id);
-        }
-
-        const { error, count } = await deleteQuery;
+            .eq('id', id)
+            .eq('org_id', userProfile.organization_id);
 
         if (error) {
             console.error('Delete segment error:', error);
