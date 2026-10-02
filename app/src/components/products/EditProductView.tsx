@@ -26,7 +26,7 @@ import {
   validateStructuredAttributes,
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
-import { linkedValues, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
+import { chainedValues, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,7 +93,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       manufacturer_id: formData.manufacturer_id,
     }
     const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
-      narrowOptions(options, linkedValues(productLinks, selection, field), selection[field as keyof typeof selection])
+      narrowOptions(options, chainedValues(productLinks, selection, field), selection[field as keyof typeof selection])
     return {
       brands: narrow('brand_id', brands),
       // Category leads the form, so its list is never narrowed.

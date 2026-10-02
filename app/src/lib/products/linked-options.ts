@@ -43,23 +43,54 @@ export function linkedValues(links: ProductLink[], selection: LinkSelection, fie
 }
 
 /**
- * Category leads the other fields. After it changes, these chosen fields are no longer
- * used with the new category by any product and should be cleared. A category without
- * products keeps every choice, since its lists fall back to the full lists.
+ * Category leads, then brand, then manufacturer. Each list is narrowed only by the fields
+ * above it, so any field can be reopened and changed without the lower ones locking it.
  */
-export function fieldsToClearForCategory(
+export const LINK_CHAIN: LinkField[] = ['category_id', 'brand_id', 'manufacturer_id']
+
+function upstreamSelection(field: LinkField, selection: LinkSelection, chain: LinkField[]): LinkSelection {
+  const upstream: LinkSelection = {}
+  for (const above of chain.slice(0, Math.max(chain.indexOf(field), 0))) {
+    if (selection[above]) upstream[above] = selection[above]
+  }
+  return upstream
+}
+
+/** Values of `field` that existing products pair with the fields above it in the chain. */
+export function chainedValues(
   links: ProductLink[],
-  categoryId: string,
   selection: LinkSelection,
-  fields: LinkField[] = ['brand_id', 'manufacturer_id'],
+  field: LinkField,
+  chain: LinkField[] = LINK_CHAIN,
+): Set<string> | null {
+  return linkedValues(links, upstreamSelection(field, selection, chain), field)
+}
+
+/**
+ * After `changed` is set, the fields below it whose current choice no product pairs with
+ * the fields above them any more. Choices are kept when nothing is linked, since those
+ * lists fall back to the full lists.
+ */
+export function fieldsToClearBelow(
+  links: ProductLink[],
+  selection: LinkSelection,
+  changed: LinkField,
+  chain: LinkField[] = LINK_CHAIN,
 ): LinkField[] {
-  if (!categoryId) return []
-  return fields.filter((field) => {
-    const chosen = selection[field]
-    if (!chosen) return false
-    const linked = linkedValues(links, { category_id: categoryId }, field)
-    return Boolean(linked && linked.size > 0 && !linked.has(chosen))
-  })
+  const start = chain.indexOf(changed)
+  if (start < 0) return []
+  const working: LinkSelection = { ...selection }
+  const cleared: LinkField[] = []
+  for (const field of chain.slice(start + 1)) {
+    const chosen = working[field]
+    if (!chosen) continue
+    const linked = chainedValues(links, working, field, chain)
+    if (linked && linked.size > 0 && !linked.has(chosen)) {
+      delete working[field]
+      cleared.push(field)
+    }
+  }
+  return cleared
 }
 
 /**
