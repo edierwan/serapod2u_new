@@ -1,5 +1,5 @@
 import DashboardContent from '@/components/dashboard/DashboardContent'
-import SmsDeliveryMonitor from '@/components/settings/SmsDeliveryMonitor'
+import NotificationMonitor from '@/components/settings/monitor/NotificationMonitor'
 import { getSettingsPageContext } from '@/app/settings/_lib'
 
 export const dynamic = 'force-dynamic'
@@ -10,7 +10,7 @@ export default async function SmsActivityPage() {
   return (
     <DashboardContent userProfile={userProfile} initialView="notifications/sms-activity">
       <div className="p-4 sm:p-6">
-        <SmsDeliveryMonitor />
+        <NotificationMonitor initialChannel="sms" />
       </div>
     </DashboardContent>
   )

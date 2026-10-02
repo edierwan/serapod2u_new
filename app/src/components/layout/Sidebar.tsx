@@ -204,6 +204,8 @@ const SidebarNavItem = ({
   return (
     <button
       onClick={onClick}
+      // Leaf items navigate away; pages with unsaved edits can guard on this.
+      data-nav-href={hasChildren ? undefined : label}
       className={cn(
         "sera-sidebar__nav-btn select-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40",
         isActive && "is-active",
@@ -383,8 +385,11 @@ export default function Sidebar({
           // We wrap this in a try-catch because if the migration hasn't run, this might fail
           let loadedFromPrefs = false;
           try {
-            const { data: prefs, error: prefsError } = (await supabase
-              .from("system_preferences" as any)
+            // The table lives in the `core` schema (same as SettingsView's
+            // read/save path); the default `public` schema has no such table.
+            const { data: prefs, error: prefsError } = (await (supabase as any)
+              .schema("core")
+              .from("system_preferences")
               .select("*")
               .eq("company_id", userProfile.organization_id)
               .eq("module", "qr_tracking")) as {

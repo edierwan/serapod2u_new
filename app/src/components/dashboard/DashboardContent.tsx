@@ -92,9 +92,7 @@ import NotificationsTopNav from '@/modules/notifications/components/Notification
 import SettingsView from '@/components/settings/SettingsView'
 import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
-import { WhatsAppRecoveryCenter } from '@/components/settings/WhatsAppRecoveryCenter'
-import SmsDeliveryMonitor from '@/components/settings/SmsDeliveryMonitor'
-import EmailDeliveryMonitor from '@/components/settings/EmailDeliveryMonitor'
+import NotificationMonitor from '@/components/settings/monitor/NotificationMonitor'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
 import AuthorizationTab from '@/components/settings/AuthorizationTab'
@@ -751,15 +749,15 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <NotificationTypesTab userProfile={userProfile} />
       case 'notifications/whatsapp-activity-recovery':
       case 'settings/notifications/whatsapp-activity':
-        return <WhatsAppRecoveryCenter userProfile={userProfile} />
+        return <NotificationMonitor initialChannel="whatsapp" />
       case 'notifications/sms-activity':
       case 'settings/notifications/sms-activity':
       case 'sms-activity':
-        return <SmsDeliveryMonitor />
+        return <NotificationMonitor initialChannel="sms" />
       case 'notifications/email-activity':
       case 'settings/notifications/email-activity':
       case 'email-activity':
-        return <EmailDeliveryMonitor />
+        return <NotificationMonitor initialChannel="email" />
       case 'settings/notifications':
         return <NotificationsLandingView />
       case 'settings/authorization':
