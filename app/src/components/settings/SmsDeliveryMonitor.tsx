@@ -18,6 +18,8 @@ interface SmsMessage {
   id: string
   source: 'log' | 'outbox'
   outboxId: string | null
+  orgId: string | null
+  orgName: string | null
   createdAt: string | null
   queuedAt: string | null
   sentAt: string | null
@@ -137,6 +139,7 @@ export default function SmsDeliveryMonitor() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [checkPhone, setCheckPhone] = useState('')
+  const [checkMessage, setCheckMessage] = useState('')
   const [sendingCheck, setSendingCheck] = useState(false)
   const [checkResult, setCheckResult] = useState<string | null>(null)
   const sendingCheckRef = useRef(false)
@@ -198,8 +201,13 @@ export default function SmsDeliveryMonitor() {
 
   const sendCheckSms = async () => {
     const to = checkPhone.trim()
+    const message = checkMessage.trim()
     if (!to) {
       setCheckResult('Enter a phone number first')
+      return
+    }
+    if (!message) {
+      setCheckResult('Enter the SMS message first')
       return
     }
     if (sendingCheckRef.current) return
@@ -210,7 +218,7 @@ export default function SmsDeliveryMonitor() {
       const response = await fetch('/api/notifications/sms-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to }),
+        body: JSON.stringify({ to, message }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'SMS check failed')
@@ -276,6 +284,22 @@ export default function SmsDeliveryMonitor() {
   }, [load])
 
   useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await fetch('/api/notifications/sms-check')
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || cancelled) return
+        const message = String(result.message || '').trim()
+        if (message) setCheckMessage(message)
+      } catch {
+        /* Server still resolves the saved Notification Types template on send. */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
     const hasOpen = messages.some((row) => row.status === 'sent' || row.status === 'pending')
     if (!hasOpen) return
     const timer = window.setInterval(() => {
@@ -298,6 +322,7 @@ export default function SmsDeliveryMonitor() {
       return [
         row.phone,
         formatSmsPhone(row.phone),
+        row.orgName,
         row.orderNo,
         row.orderId,
         row.eventCode,
@@ -311,10 +336,11 @@ export default function SmsDeliveryMonitor() {
   }, [messages, search, statusTab, eventFilter])
 
   const exportCsv = () => {
-    const header = ['Time', 'Phone', 'Order', 'Event', 'Status', 'Provider', 'Message ID', 'Error', 'Retries']
+    const header = ['Time', 'Phone', 'Organization', 'Order', 'Event', 'Status', 'Provider', 'Message ID', 'Error', 'Retries']
     const rows = filtered.map((row) => [
       formatTime(row.createdAt),
       formatSmsPhone(row.phone) || row.phone || '',
+      row.orgName || '',
       formatOrder(row),
       row.eventCode || '',
       row.status,
@@ -358,27 +384,35 @@ export default function SmsDeliveryMonitor() {
             </div>
           </div>
         </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
             <form
-              className="flex items-center gap-2"
+              className="flex flex-col items-stretch gap-2 sm:items-end"
               onSubmit={(event) => {
                 event.preventDefault()
                 void sendCheckSms()
               }}
             >
-              <Input
-                placeholder="Phone e.g. 0123456789"
-                value={checkPhone}
-                onChange={(event) => setCheckPhone(event.target.value)}
-                className="h-9 w-[190px]"
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Phone e.g. 0123456789"
+                  value={checkPhone}
+                  onChange={(event) => setCheckPhone(event.target.value)}
+                  className="h-9 w-[190px]"
+                />
+                <Button type="submit" size="sm" disabled={sendingCheck}>
+                  {sendingCheck ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                  Send check SMS
+                </Button>
+              </div>
+              <Textarea
+                placeholder="SMS check message"
+                value={checkMessage}
+                onChange={(event) => setCheckMessage(event.target.value)}
+                className="min-h-[72px] w-full sm:w-[420px] text-sm"
               />
-              <Button type="submit" size="sm" disabled={sendingCheck}>
-                {sendingCheck ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-                Send check SMS
-              </Button>
             </form>
-            <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
               <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
@@ -483,6 +517,7 @@ export default function SmsDeliveryMonitor() {
                 <tr className="border-b border-slate-100 text-left">
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Time</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Phone</th>
+                  <th className="px-2 py-2 text-xs font-medium text-slate-500">Organization</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Order</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Event</th>
                   <th className="px-2 py-2 text-xs font-medium text-slate-500">Status</th>
@@ -497,6 +532,7 @@ export default function SmsDeliveryMonitor() {
                   <tr key={`${row.source}-${row.id}`} className="hover:bg-slate-50/60">
                     <td className="px-2 py-2.5 align-top text-xs text-slate-600">{formatTime(row.createdAt)}</td>
                     <td className="px-2 py-2.5 align-top font-mono text-xs text-slate-800">{formatSmsPhone(row.phone) || row.phone || '-'}</td>
+                    <td className="px-2 py-2.5 align-top text-xs text-slate-600">{row.orgName || '-'}</td>
                     <td className="px-2 py-2.5 align-top">
                       {formatOrder(row) ? (
                         <div className="font-mono text-xs text-slate-800" title={row.orderId || undefined}>{formatOrder(row)}</div>
@@ -552,6 +588,7 @@ export default function SmsDeliveryMonitor() {
               </div>
               <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 px-3">
                 <DetailRow label="Phone" value={formatSmsPhone(selected.phone) || selected.phone} />
+                <DetailRow label="Organization" value={selected.orgName} />
                 <DetailRow label="Order" value={formatOrder(selected) || '-'} />
                 {selected.orderId && selected.orderNo ? <DetailRow label="Order ID" value={selected.orderId} /> : null}
                 <DetailRow label="Message" value={selected.messageBody} />
