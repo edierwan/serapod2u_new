@@ -17,7 +17,7 @@ import {
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
 import { needsUniqueCombination } from '@/lib/products/combination-rule'
-import { fieldsToClearForCategory, linkedValues, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
+import { LINK_CHAIN, chainedValues, fieldsToClearBelow, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
 import { 
   ArrowLeft,
   Package,
@@ -561,8 +561,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const handleChange = (field: string, value: any) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value }
-      if (field === 'category_id') {
-        for (const stale of fieldsToClearForCategory(productLinks, value, prev)) next[stale] = ''
+      if (LINK_CHAIN.includes(field as LinkField)) {
+        for (const stale of fieldsToClearBelow(productLinks, next, field as LinkField)) next[stale] = ''
       }
       return next
     })
@@ -590,20 +590,18 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       brand_id: formData.brand_id,
       category_id: formData.category_id,
       manufacturer_id: formData.manufacturer_id,
-      group_id: formData.group_id,
-      subgroup_id: formData.subgroup_id,
     }
     const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
-      narrowOptions(options, linkedValues(productLinks, selection, field), selection[field])
+      narrowOptions(options, chainedValues(productLinks, selection, field), selection[field as keyof typeof selection])
     return {
-      brands: narrow('brand_id', brands),
-      // Category leads the form, so its list is never narrowed.
       categories: { options: categories, narrowed: false },
+      brands: narrow('brand_id', brands),
       manufacturers: narrow('manufacturer_id', manufacturers),
-      groups: narrow('group_id', groups),
-      subgroups: narrow('subgroup_id', subgroups),
+      // Group and SubGroup follow their Category/Group hierarchy only.
+      groups: { options: groups, narrowed: false },
+      subgroups: { options: subgroups, narrowed: false },
     }
-  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, formData.group_id, formData.subgroup_id, productLinks, brands, categories, manufacturers, groups, subgroups])
+  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, productLinks, brands, categories, manufacturers, groups, subgroups])
 
   return (
     <div className="space-y-6">

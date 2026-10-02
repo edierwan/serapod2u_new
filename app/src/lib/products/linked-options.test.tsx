@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fieldsToClearForCategory, linkedValues, narrowOptions, type ProductLink } from '@/lib/products/linked-options'
+import { chainedValues, fieldsToClearBelow, linkedValues, narrowOptions, type ProductLink } from '@/lib/products/linked-options'
 
 const links: ProductLink[] = [
   { brand_id: 'b1', category_id: 'c1', manufacturer_id: 'm1', group_id: 'g1', subgroup_id: 's1' },
@@ -27,22 +27,45 @@ describe('linkedValues', () => {
   })
 })
 
-describe('fieldsToClearForCategory', () => {
-  it('clears a brand or manufacturer the new category is never used with', () => {
-    expect(fieldsToClearForCategory(links, 'c2', { brand_id: 'b2', manufacturer_id: 'm1' })).toEqual(['brand_id', 'manufacturer_id'])
+describe('chainedValues', () => {
+  it('lists every category, whatever is chosen below it', () => {
+    expect(chainedValues(links, { brand_id: 'b2', manufacturer_id: 'm3' }, 'category_id')).toBeNull()
   })
 
-  it('keeps choices that the new category is used with', () => {
-    expect(fieldsToClearForCategory(links, 'c1', { brand_id: 'b2', manufacturer_id: 'm1' })).toEqual([])
+  it('narrows brand by category only, so a chosen manufacturer never locks the brand list', () => {
+    expect(ids(chainedValues(links, { category_id: 'c1', manufacturer_id: 'm3' }, 'brand_id'))).toEqual(['b1', 'b2'])
+  })
+
+  it('narrows manufacturer by category and brand', () => {
+    expect(ids(chainedValues(links, { category_id: 'c1', brand_id: 'b1' }, 'manufacturer_id'))).toEqual(['m1'])
+    expect(ids(chainedValues(links, { category_id: 'c1' }, 'manufacturer_id'))).toEqual(['m1', 'm3'])
+  })
+
+  it('leaves group and subgroup to their category/group hierarchy', () => {
+    expect(chainedValues(links, { category_id: 'c1', brand_id: 'b1', manufacturer_id: 'm1' }, 'group_id')).toBeNull()
+    expect(chainedValues(links, { group_id: 'g1', brand_id: 'b1' }, 'subgroup_id')).toBeNull()
+  })
+})
+
+describe('fieldsToClearBelow', () => {
+  it('clears a brand and manufacturer the new category is never used with', () => {
+    expect(fieldsToClearBelow(links, { category_id: 'c2', brand_id: 'b2', manufacturer_id: 'm3' }, 'category_id')).toEqual(['brand_id', 'manufacturer_id'])
+  })
+
+  it('clears only the manufacturer when the new brand is not used with it', () => {
+    expect(fieldsToClearBelow(links, { category_id: 'c1', brand_id: 'b2', manufacturer_id: 'm1' }, 'brand_id')).toEqual(['manufacturer_id'])
+  })
+
+  it('keeps choices that are still linked', () => {
+    expect(fieldsToClearBelow(links, { category_id: 'c1', brand_id: 'b1', manufacturer_id: 'm1' }, 'category_id')).toEqual([])
   })
 
   it('keeps every choice for a category without products', () => {
-    expect(fieldsToClearForCategory(links, 'c9', { brand_id: 'b1', manufacturer_id: 'm1' })).toEqual([])
+    expect(fieldsToClearBelow(links, { category_id: 'c9', brand_id: 'b1', manufacturer_id: 'm1' }, 'category_id')).toEqual([])
   })
 
-  it('does nothing when the category is cleared or nothing else is chosen', () => {
-    expect(fieldsToClearForCategory(links, '', { brand_id: 'b1' })).toEqual([])
-    expect(fieldsToClearForCategory(links, 'c2', {})).toEqual([])
+  it('never clears anything above the changed field', () => {
+    expect(fieldsToClearBelow(links, { category_id: 'c2', brand_id: 'b2', manufacturer_id: 'm3' }, 'manufacturer_id')).toEqual([])
   })
 })
 
