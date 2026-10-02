@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import {
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
 import { needsUniqueCombination } from '@/lib/products/combination-rule'
+import { linkedValues, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
 import { 
   ArrowLeft,
   Package,
@@ -79,6 +80,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null)
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
+  const [productLinks, setProductLinks] = useState<ProductLink[]>([])
+  const [showAllOptions, setShowAllOptions] = useState(false)
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -88,6 +91,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       fetchBrands()
       fetchCategories()
       fetchManufacturers()
+      fetchProductLinks()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -204,6 +208,10 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
         variant: 'destructive'
       })
     }
+  }
+
+  const fetchProductLinks = async () => {
+    setProductLinks(await loadProductLinks(supabase))
   }
 
   const fetchGroups = async (categoryId: string) => {
@@ -575,6 +583,29 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
     }
   }
 
+  const linkedOptions = useMemo(() => {
+    const selection = {
+      brand_id: formData.brand_id,
+      category_id: formData.category_id,
+      manufacturer_id: formData.manufacturer_id,
+      group_id: formData.group_id,
+      subgroup_id: formData.subgroup_id,
+    }
+    const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
+      showAllOptions
+        ? { options, narrowed: false }
+        : narrowOptions(options, linkedValues(productLinks, selection, field), selection[field])
+    return {
+      brands: narrow('brand_id', brands),
+      categories: narrow('category_id', categories),
+      manufacturers: narrow('manufacturer_id', manufacturers),
+      groups: narrow('group_id', groups),
+      subgroups: narrow('subgroup_id', subgroups),
+    }
+  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, formData.group_id, formData.subgroup_id, showAllOptions, productLinks, brands, categories, manufacturers, groups, subgroups])
+
+  const anyOptionsNarrowed = Object.values(linkedOptions).some((list) => list.narrowed)
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -679,6 +710,23 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               />
             </div>
 
+            {(anyOptionsNarrowed || showAllOptions) && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                <span>
+                  {showAllOptions
+                    ? 'Showing every option.'
+                    : 'Lists show only options used together with your selections in existing products.'}
+                </span>
+                <label className="flex cursor-pointer items-center gap-2 font-medium text-gray-700">
+                  <Checkbox
+                    checked={showAllOptions}
+                    onCheckedChange={(checked) => setShowAllOptions(checked === true)}
+                  />
+                  Show all options (new combination)
+                </label>
+              </div>
+            )}
+
             {/* Brand and Category */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -690,7 +738,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder="Select a brand" />
                   </SelectTrigger>
                   <SelectContent>
-                    {brands.map((brand) => (
+                    {linkedOptions.brands.options.map((brand) => (
                       <SelectItem key={brand.id} value={brand.id}>
                         {brand.brand_name}
                       </SelectItem>
@@ -714,7 +762,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder="Select a category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
+                    {linkedOptions.categories.options.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.category_name}
                       </SelectItem>
@@ -740,7 +788,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                   <SelectValue placeholder="Select a manufacturer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {manufacturers.map((manufacturer) => (
+                  {linkedOptions.manufacturers.options.map((manufacturer) => (
                     <SelectItem key={manufacturer.id} value={manufacturer.id}>
                       {manufacturer.org_name} ({manufacturer.org_code})
                     </SelectItem>
@@ -770,7 +818,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder={formData.category_id ? "Select a group" : "Select Category first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {groups.map((group) => (
+                    {linkedOptions.groups.options.map((group) => (
                       <SelectItem key={group.id} value={group.id}>
                         {group.group_name}
                       </SelectItem>
@@ -798,7 +846,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder={formData.group_id ? "Select a subgroup" : "Select Group first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {subgroups.map((subgroup) => (
+                    {linkedOptions.subgroups.options.map((subgroup) => (
                       <SelectItem key={subgroup.id} value={subgroup.id}>
                         {subgroup.subgroup_name}
                       </SelectItem>

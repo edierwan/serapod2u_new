@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import {
   validateStructuredAttributes,
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
+import { linkedValues, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +55,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null)
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
+  const [productLinks, setProductLinks] = useState<ProductLink[]>([])
+  const [showAllOptions, setShowAllOptions] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -79,9 +82,29 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       fetchBrands()
       fetchCategories()
       fetchManufacturers()
+      loadProductLinks(supabase).then(setProductLinks)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+
+  const linkedOptions = useMemo(() => {
+    const selection = {
+      brand_id: formData.brand_id,
+      category_id: formData.category_id,
+      manufacturer_id: formData.manufacturer_id,
+    }
+    const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
+      showAllOptions
+        ? { options, narrowed: false }
+        : narrowOptions(options, linkedValues(productLinks, selection, field), selection[field as keyof typeof selection])
+    return {
+      brands: narrow('brand_id', brands),
+      categories: narrow('category_id', categories),
+      manufacturers: narrow('manufacturer_id', manufacturers),
+    }
+  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, showAllOptions, productLinks, brands, categories, manufacturers])
+
+  const anyOptionsNarrowed = Object.values(linkedOptions).some((list) => list.narrowed)
 
   const fetchProductDetails = async () => {
     const productId = sessionStorage.getItem('selectedProductId')
@@ -679,6 +702,23 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                 />
               </div>
 
+              {(anyOptionsNarrowed || showAllOptions) && (
+                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  <span>
+                    {showAllOptions
+                      ? 'Showing every option.'
+                      : 'Brand, category and manufacturer lists show only options used together in existing products.'}
+                  </span>
+                  <label className="flex cursor-pointer items-center gap-2 font-medium text-gray-700">
+                    <Checkbox
+                      checked={showAllOptions}
+                      onCheckedChange={(checked) => setShowAllOptions(checked === true)}
+                    />
+                    Show all options (new combination)
+                  </label>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="brand_id">Brand</Label>
                 <Select value={formData.brand_id || 'none'} onValueChange={(value) => setFormData({ ...formData, brand_id: value === 'none' ? '' : value })}>
@@ -687,7 +727,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Brand</SelectItem>
-                    {brands.map((brand) => (
+                    {linkedOptions.brands.options.map((brand) => (
                       <SelectItem key={brand.id} value={brand.id}>
                         {brand.brand_name}
                       </SelectItem>
@@ -704,7 +744,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Category</SelectItem>
-                    {categories.map((category) => (
+                    {linkedOptions.categories.options.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.category_name}
                       </SelectItem>
@@ -721,7 +761,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Manufacturer</SelectItem>
-                    {manufacturers.map((mfg) => (
+                    {linkedOptions.manufacturers.options.map((mfg) => (
                       <SelectItem key={mfg.id} value={mfg.id}>
                         {mfg.org_name}
                       </SelectItem>
