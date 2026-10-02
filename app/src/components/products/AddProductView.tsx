@@ -81,7 +81,6 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   const [productLinks, setProductLinks] = useState<ProductLink[]>([])
-  const [showAllOptions, setShowAllOptions] = useState(false)
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -592,9 +591,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       subgroup_id: formData.subgroup_id,
     }
     const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
-      showAllOptions
-        ? { options, narrowed: false }
-        : narrowOptions(options, linkedValues(productLinks, selection, field), selection[field])
+      narrowOptions(options, linkedValues(productLinks, selection, field), selection[field])
     return {
       brands: narrow('brand_id', brands),
       categories: narrow('category_id', categories),
@@ -602,9 +599,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       groups: narrow('group_id', groups),
       subgroups: narrow('subgroup_id', subgroups),
     }
-  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, formData.group_id, formData.subgroup_id, showAllOptions, productLinks, brands, categories, manufacturers, groups, subgroups])
-
-  const anyOptionsNarrowed = Object.values(linkedOptions).some((list) => list.narrowed)
+  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, formData.group_id, formData.subgroup_id, productLinks, brands, categories, manufacturers, groups, subgroups])
 
   return (
     <div className="space-y-6">
@@ -709,23 +704,6 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                 placeholder="Brief description of the product..."
               />
             </div>
-
-            {(anyOptionsNarrowed || showAllOptions) && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                <span>
-                  {showAllOptions
-                    ? 'Showing every option.'
-                    : 'Lists show only options used together with your selections in existing products.'}
-                </span>
-                <label className="flex cursor-pointer items-center gap-2 font-medium text-gray-700">
-                  <Checkbox
-                    checked={showAllOptions}
-                    onCheckedChange={(checked) => setShowAllOptions(checked === true)}
-                  />
-                  Show all options (new combination)
-                </label>
-              </div>
-            )}
 
             {/* Brand and Category */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

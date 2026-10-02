@@ -56,7 +56,6 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
   const [productLinks, setProductLinks] = useState<ProductLink[]>([])
-  const [showAllOptions, setShowAllOptions] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -94,17 +93,13 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       manufacturer_id: formData.manufacturer_id,
     }
     const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
-      showAllOptions
-        ? { options, narrowed: false }
-        : narrowOptions(options, linkedValues(productLinks, selection, field), selection[field as keyof typeof selection])
+      narrowOptions(options, linkedValues(productLinks, selection, field), selection[field as keyof typeof selection])
     return {
       brands: narrow('brand_id', brands),
       categories: narrow('category_id', categories),
       manufacturers: narrow('manufacturer_id', manufacturers),
     }
-  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, showAllOptions, productLinks, brands, categories, manufacturers])
-
-  const anyOptionsNarrowed = Object.values(linkedOptions).some((list) => list.narrowed)
+  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, productLinks, brands, categories, manufacturers])
 
   const fetchProductDetails = async () => {
     const productId = sessionStorage.getItem('selectedProductId')
@@ -701,23 +696,6 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                   required
                 />
               </div>
-
-              {(anyOptionsNarrowed || showAllOptions) && (
-                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                  <span>
-                    {showAllOptions
-                      ? 'Showing every option.'
-                      : 'Brand, category and manufacturer lists show only options used together in existing products.'}
-                  </span>
-                  <label className="flex cursor-pointer items-center gap-2 font-medium text-gray-700">
-                    <Checkbox
-                      checked={showAllOptions}
-                      onCheckedChange={(checked) => setShowAllOptions(checked === true)}
-                    />
-                    Show all options (new combination)
-                  </label>
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label htmlFor="brand_id">Brand</Label>
