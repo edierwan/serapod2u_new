@@ -1,5 +1,6 @@
 import { isCanonicalStaff } from '@/lib/identity/staff'
 import { userAllowed } from '@/lib/security-access/operation'
+import { canViewMonitor, loadMonitorViewer } from '@/lib/notifications/monitorScope'
 
 /**
  * Shared authorization check for the SMS delivery monitor endpoints
@@ -10,7 +11,10 @@ import { userAllowed } from '@/lib/security-access/operation'
 export async function canViewSmsMonitor(supabase: any, userId: string): Promise<boolean> {
   // The delivery monitors are an S&A decision (platform.notification_monitor.view);
   // the historical canonical-staff rule below is the legacy evaluator.
-  return userAllowed(userId, 'platform.notification_monitor.view', () => legacyCanViewSmsMonitor(supabase, userId))
+  const allowed = await userAllowed(userId, 'platform.notification_monitor.view', () => legacyCanViewSmsMonitor(supabase, userId))
+  if (!allowed) return false
+  const viewer = await loadMonitorViewer(supabase, userId)
+  return viewer ? canViewMonitor(viewer) : false
 }
 
 async function legacyCanViewSmsMonitor(supabase: any, userId: string): Promise<boolean> {

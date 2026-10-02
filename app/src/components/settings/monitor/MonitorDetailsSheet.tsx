@@ -62,6 +62,7 @@ export function MonitorDetailsSheet({
                             <dl>
                                 <Row label="Recipient">{record.recipientName ? <>{record.recipientName} · {record.recipient}</> : record.recipient || "—"}</Row>
                                 <Row label="Contact source">{record.recipientSource}</Row>
+                                <Row label="Organization">{record.organizationName}</Row>
                                 <Row label="Reference">{record.reference ? `${record.reference.label}${record.reference.id && record.reference.id !== record.reference.label ? ` (${record.reference.id})` : ""}` : null}</Row>
                                 <Row label="Notification key"><span className="font-mono text-xs">{record.eventCode || record.purpose || "—"}</span></Row>
                             </dl>

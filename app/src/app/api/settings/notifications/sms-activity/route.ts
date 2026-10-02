@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { canViewSmsMonitor } from '@/lib/notifications/smsMonitorAccess'
-import { LEGACY_LIMIT, loadSmsMessages, resolveSmsOrgIds } from '@/lib/notifications/monitor/channelLoaders'
+import { LEGACY_LIMIT, loadSmsMessages } from '@/lib/notifications/monitor/channelLoaders'
+import { canViewMonitor, loadMonitorViewer, resolveMonitorScope } from '@/lib/notifications/monitorScope'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,11 +26,15 @@ export async function GET(_request: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const { data: profile } = await admin.from('users').select('organization_id').eq('id', user.id).single()
-    const orgIds = await resolveSmsOrgIds(admin, profile?.organization_id || null)
+    const viewer = await loadMonitorViewer(admin, user.id)
+    if (!viewer || !canViewMonitor(viewer)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    // HQ staff oversee every organization; everyone else sees only their own.
+    const scope = resolveMonitorScope(viewer)
     // Never calls the SMS gateway: this reads what the outbox worker last wrote,
     // so the page stays fast even when the gateway is unreachable.
-    const { messages } = await loadSmsMessages(admin, orgIds, { limit: LEGACY_LIMIT })
+    const { messages } = await loadSmsMessages(admin, scope, { limit: LEGACY_LIMIT })
 
     const kpis = {
       pending: messages.filter((row) => row.status === 'pending').length,

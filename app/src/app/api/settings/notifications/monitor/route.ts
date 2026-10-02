@@ -8,14 +8,13 @@ import { canViewEmailMonitor } from '@/lib/notifications/emailMonitorAccess'
 import { emailProviderBlockedByUiTest } from '@/lib/notifications/emailProviderReady'
 import { isFailedStatus } from '@/lib/wa-recovery/activity-status'
 import { moduleName } from '@/lib/notifications/notificationTypeModules'
+import { canViewMonitor, loadMonitorViewer, resolveMonitorScope, type MonitorScope } from '@/lib/notifications/monitorScope'
 import {
     MONITOR_SOURCE_LIMIT,
     emailToMonitorRecord,
     loadEmailMessages,
     loadSmsMessages,
     loadWhatsAppRecords,
-    resolveEmailOrgIds,
-    resolveSmsOrgIds,
     smsToMonitorRecord,
     whatsAppToMonitorRecord,
 } from '@/lib/notifications/monitor/channelLoaders'
@@ -69,6 +68,13 @@ export async function GET(request: NextRequest) {
         const admin = createAdminClient() as any
         const { data: profile } = await admin.from('users').select('organization_id').eq('id', user.id).single()
         const orgId: string | null = profile?.organization_id || null
+        // SMS / Email: HQ staff oversee every organization; everyone else sees only their own.
+        let scope: MonitorScope = { kind: 'orgs', orgIds: [] }
+        if (filters.channel !== 'whatsapp') {
+            const viewer = await loadMonitorViewer(admin, user.id)
+            if (!viewer || !canViewMonitor(viewer)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+            scope = resolveMonitorScope(viewer)
+        }
         const window = { ...dateRangeBounds(filters.from, filters.to), limit: MONITOR_SOURCE_LIMIT }
 
         let records: MonitorRecord[]
@@ -78,11 +84,11 @@ export async function GET(request: NextRequest) {
             records = loaded.records.map(whatsAppToMonitorRecord)
             truncated = loaded.truncated
         } else if (filters.channel === 'sms') {
-            const loaded = await loadSmsMessages(admin, await resolveSmsOrgIds(admin, orgId), window)
+            const loaded = await loadSmsMessages(admin, scope, window)
             records = loaded.messages.map(smsToMonitorRecord)
             truncated = loaded.truncated
         } else {
-            const loaded = await loadEmailMessages(admin, await resolveEmailOrgIds(admin, orgId), window)
+            const loaded = await loadEmailMessages(admin, scope, window)
             records = loaded.messages.map(emailToMonitorRecord)
             truncated = loaded.truncated
         }

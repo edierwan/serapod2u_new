@@ -179,6 +179,8 @@ export interface MonitorRecord {
     recipient: string | null
     recipientName?: string | null
     recipientSource?: string | null
+    /** Owning organization, when a viewer can see several (SMS / Email). */
+    organizationName?: string | null
     /** Stored identifier, never rewritten: event_code / event_type. */
     eventCode: string | null
     /** WhatsApp purpose, used for unmapped names and recovery templates. */
@@ -245,7 +247,7 @@ function matchesSearch(record: AnnotatedRecord, q: string) {
     const needleDigits = digits(q)
     const fields = [
         record.recipient, record.recipientName, record.notificationName, record.eventCode, record.purpose,
-        record.reference?.label, record.providerMessageId, record.errorMessage, record.subject, record.moduleName,
+        record.reference?.label, record.providerMessageId, record.errorMessage, record.subject, record.moduleName, record.organizationName,
     ]
     if (fields.some((field) => String(field || '').toLowerCase().includes(needle))) return true
     return needleDigits.length >= 3 && digits(String(record.recipient || '')).includes(needleDigits)
@@ -345,9 +347,9 @@ export function allMatchingRows(annotated: AnnotatedRecord[], filters: MonitorFi
 const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`
 
 export function monitorCsv(rows: AnnotatedRecord[]): string {
-    const header = ['time', 'channel', 'recipient', 'recipient_name', 'notification', 'notification_key', 'module', 'reference', 'status', 'raw_status', 'provider', 'provider_message_id', 'error']
+    const header = ['time', 'channel', 'recipient', 'recipient_name', 'organization', 'notification', 'notification_key', 'module', 'reference', 'status', 'raw_status', 'provider', 'provider_message_id', 'error']
     const lines = rows.map((row) => [
-        row.createdAt, row.channel, row.recipient, row.recipientName, row.notificationName, typeKeyOf(row), row.moduleName,
+        row.createdAt, row.channel, row.recipient, row.recipientName, row.organizationName, row.notificationName, typeKeyOf(row), row.moduleName,
         row.reference?.label, STATUS_LABELS[row.status], row.rawStatus, row.provider, row.providerMessageId, row.errorMessage,
     ].map(csvCell).join(','))
     return [header.map(csvCell).join(','), ...lines].join('\n')

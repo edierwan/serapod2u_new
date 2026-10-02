@@ -14,11 +14,11 @@ This report records **database state**, not merely whether a file is present on 
 |---|---|---|---|
 | — | none | — | — |
 
-**No migration is pending** on staging or production (verification query: nine `true` on both, 2026-10-02). Production rows marked owner-reported should be confirmed once with the verification query below.
+**No migration is pending** on staging or production (verification query: the first nine `true` on both, 2026-10-02; the three `_sms` checks `true` on both, 2026-10-02 10:35).
 
 ## Executive result
 
-- **Production pending:** none. All migrations through `20261001140000` verified on production 2026-10-02 (nine `true`); the earlier owner-reported rows were confirmed by a direct read-only verification. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
+- **Production pending:** none. `20260911120000`, `20260911130000`, `20260911140000` (notification-type SMS channels from the `sms-dynamic-enhancement` merge) were applied and verified on production 2026-10-02 10:35. All S&A migrations through `20261001140000` verified on production 2026-10-02 (nine `true`); the earlier owner-reported rows were confirmed by a direct read-only verification. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
 - **Partial, drifted, or unknown migrations requiring investigation:** none in the migration set below.
 - Production and staging do **not** have a Supabase schema-migration ledger (`supabase_migrations.schema_migrations`) in the application database. `public.migration_history` is business data-import history and is not a schema ledger. Applied status therefore means that the migration's material effects, postconditions, or a later superseding definition were verified read-only.
 - The two different files with version `20260928100000` were checked independently. Both sets of effects exist on both databases. The duplicate version remains an operational hazard for any filename/version-based runner and must not be “fixed” by renaming either file during this release.
@@ -54,6 +54,9 @@ Principal evidence used across the table:
 
 | Version and canonical filename | Purpose | Staging | Production | Evidence / dependency / current-code note |
 |---|---|---|---|---|
+| `20260911120000_password_reset_otp_sms_channel.sql` | Offer SMS beside email for the consumer password-reset OTP | **Verified applied** (2026-10-02: `["email","sms"]`, sort 25) | **Verified applied** (2026-10-02 10:35, after row backup: `{email,sms}`, sort 25) | Upsert of one `notification_types` row; organization `notification_settings` are untouched, so delivery stays email until an administrator selects SMS. The application's `REQUIRED_NOTIFICATION_TYPES` upsert writes the same values. Idempotent. |
+| `20260911130000_registration_otp_sms_channel.sql` | Offer SMS beside email for the consumer registration OTP | **Verified applied** (2026-10-02: `["email","sms"]`, sort 24) | **Verified applied** (2026-10-02 10:35: `{email,sms}`, sort 24; was sort 26) | As above; with SMS selected the account's email is not verified by the OTP (phone only). Idempotent. |
+| `20260911140000_user_created_sms_channel.sql` | Offer SMS for User Account Created; `is_system=false`, sort 14 | **Verified applied** (2026-10-02: `["email","sms"]`, not system, sort 14) | **Verified applied** (2026-10-02 10:35: `{email,sms}`, not system, sort 14; was system, sort 10) | `is_system` only drives the "System" badge in Notification Types. Does not change `default_enabled`. Idempotent. |
 | `20260926200000_phase0a_identity_containment.sql` | Contain direct identity/profile writes and establish guarded identity synchronization | Verified applied; superseded | Verified applied; superseded | Protected identity columns and current guard/sync triggers exist. Later Identity Foundation migrations intentionally replace parts of the original definitions. Prerequisite for Phase 0B and Identity Foundation. |
 | `20260927100000_phase0b_privileged_rpc_containment.sql` | Restrict privileged RPC execution and classify browser/server/public callers | Verified applied; superseded | Verified applied; superseded | Current grants and server-authoritative paths reflect the containment end-state; later S&A and reward migrations replace selected functions. Must precede later S&A enforcement. |
 | `20260927110000_phase0b_sensitive_tables_hr_rls.sql` | Close sensitive-table and HR/consumer RLS exposure | Verified applied; superseded | Verified applied; superseded | RLS/policy end-state and service-only sensitive paths are present; later migrations intentionally refine selected policies. |
@@ -112,10 +115,13 @@ union all select 'revoke_records_previous_source', pg_get_functiondef('public.sa
 union all select 'legacy_guest_removed', not exists (select 1 from public.sa_business_roles where role_key = 'legacy-guest')
 union all select 'guest_refresh_guard', pg_get_functiondef('public.sa_refresh_compat_role'::regproc) like '%GUEST carries no authority%'
 union all select 'grant_keeps_automatic', pg_get_functiondef('public.sa_create_assignment_internal'::regproc) like '%sa_role_already_held%'
-union all select 'orders_creator_only_rule', pg_get_functiondef('public.orders_approve(uuid)'::regprocedure) like '%approval-rule:creator-only%';
+union all select 'orders_creator_only_rule', pg_get_functiondef('public.orders_approve(uuid)'::regprocedure) like '%approval-rule:creator-only%'
+union all select 'password_reset_otp_sms', exists (select 1 from public.notification_types where event_code = 'password_reset_otp' and 'sms' = any(available_channels))
+union all select 'registration_otp_sms', exists (select 1 from public.notification_types where event_code = 'registration_otp' and 'sms' = any(available_channels))
+union all select 'user_created_sms', exists (select 1 from public.notification_types where event_code = 'user_created' and 'sms' = any(available_channels) and is_system = false);
 ```
 
-All rows must be `true` once every migration listed here is applied (`grant_keeps_automatic` stays `false` until `20261001130000`).
+All rows must be `true` once every migration listed here is applied (`grant_keeps_automatic` stays `false` until `20261001130000`; the three `_sms` rows stay `false` until `20260911120000`–`20260911140000`).
 
 ## Partial, drifted, or unknown requiring investigation
 
@@ -162,4 +168,6 @@ The repository's `.gitignore` explicitly re-includes `supabase/migrations/**/*.m
 | 2026-10-01 23:15 | Owner applied `20261001130000` to staging; verified (eight checks `true`). Production pending. |
 | 2026-10-02 00:40 | **Production release.** Backup `/root/backups/serapod-prd-pre-sa-release-20261001-1540.dump` (KVM8, 137 MB, 409 tables). Applied `20261001130000`, `20261001140000`; verification nine `true`. HR/Finance cleanup on production: 1 GL journal, 3 lines, 1 posting removed (staging already clean). PR #64 merged (`main` = `87873e58`), production deployed and healthy. |
 | 2026-10-02 00:10 | Production read-only (direct): seven checks `true`; `orders_approve` precondition holds; 111 SHADOW / 3 LEGACY_ENFORCED, legacy not locked; 54 active portal users all with membership + compatibility role; HR/Finance real-use signals all 0 (cleanup would remove 1 GL journal, 3 lines, 1 posting). Staging: `20261001140000` verified (nine `true`). |
+| 2026-10-02 10:35 | Production: backed up the three `notification_types` rows (`/root/backups/notification_types-pre-sms-channels-20261002-0228.csv`, KVM8), applied `20260911120000`–`20260911140000` in one transaction; three `_sms` checks `true`. Organization `notification_settings` unchanged (password reset and registration stay email). |
+| 2026-10-02 10:30 | Merged `sms-dynamic-enhancement` into staging: added `20260911120000`, `20260911130000`, `20260911140000` (notification-type rows only). Staging already has all three (read 2026-10-02); production pending. Verification query extended with three `_sms` checks. |
 | 2026-10-01 23:45 | Added `20261001140000_orders_approve_creator_only_rule.sql` (owner decision). Pending on both. Data scripts (not migrations): `supabase/diagnostics/hr_finance_inventory_readonly.sql`, `supabase/operations/hr_finance_test_data_cleanup.sql`. |

@@ -14,8 +14,10 @@ import {
     extractEmailReceiver,
     extractEmailSubject,
     overlayEmailStatusForFailedProvider,
+    passwordResetEventAlreadyLogged,
     toEmailMonitorStatus,
 } from '@/lib/notifications/emailActivity'
+import type { MonitorScope } from '@/lib/notifications/monitorScope'
 import { extractOrderRef, type NotificationOrderRef } from '@/lib/notifications/orderRef'
 import { isMonitoringDismissed, normalizeActivityMetadata, RECOVERY_PURPOSES } from '@/lib/wa-recovery/activity-status'
 import { resolveRecoveryContacts } from '@/lib/wa-recovery/contact-resolver'
@@ -85,33 +87,33 @@ function smsPayloadMessage(payload: unknown, eventCode?: string): string {
     return ''
 }
 
-async function providerOrgIds(admin: any, userOrgId: string | null, channel: 'sms' | 'email') {
-    const ids = new Set<string>()
-    if (userOrgId) ids.add(userOrgId)
-    const [{ data: hq }, { data: providers }] = await Promise.all([
-        admin.from('organizations').select('id').eq('org_type_code', 'HQ').eq('is_active', true).limit(5),
-        admin.from('notification_provider_configs').select('org_id').eq('channel', channel),
-    ])
-    for (const row of hq || []) if (row?.id) ids.add(row.id)
-    for (const row of providers || []) if (row?.org_id) ids.add(row.org_id)
-    return Array.from(ids)
+/** A non-HQ viewer without an organization sees nothing (fail closed). */
+const emptyScope = (scope: MonitorScope) => scope.kind === 'orgs' && scope.orgIds.length === 0
+
+function scoped(query: any, scope: MonitorScope) {
+    return scope.kind === 'orgs' ? query.in('org_id', scope.orgIds) : query
 }
 
-export const resolveSmsOrgIds = (admin: any, userOrgId: string | null) => providerOrgIds(admin, userOrgId, 'sms')
-export const resolveEmailOrgIds = (admin: any, userOrgId: string | null) => providerOrgIds(admin, userOrgId, 'email')
-
-const SMS_OUTBOX_COLUMNS = 'id, created_at, scheduled_for, sent_at, status, to_phone, event_code, provider_name, provider_message_id, error, retry_count, max_retries, payload_json, template_code, priority'
-
-export async function loadSmsMessages(admin: any, orgIds: string[], window: LoadWindow) {
-    let logsQuery = admin
-        .from('notification_logs')
-        .select('id, created_at, queued_at, sent_at, delivered_at, failed_at, status, recipient_value, recipient_type, event_code, provider_name, provider_message_id, error_message, retry_count, provider_response, outbox_id')
-        .eq('channel', 'sms')
-    let outboxQuery = admin.from('notifications_outbox').select(SMS_OUTBOX_COLUMNS).eq('channel', 'sms')
-    if (orgIds.length > 0) {
-        logsQuery = logsQuery.in('org_id', orgIds)
-        outboxQuery = outboxQuery.in('org_id', orgIds)
+/** HQ sees several organizations at once, so each row says whose it is. */
+async function attachOrgNames(admin: any, messages: any[]) {
+    const ids = Array.from(new Set(messages.map((row) => row.orgId).filter(Boolean))) as string[]
+    const names = new Map<string, string>()
+    if (ids.length) {
+        const { data } = await admin.from('organizations').select('id, org_name').in('id', ids)
+        for (const row of data || []) if (row?.id) names.set(row.id, asString(row.org_name))
     }
+    for (const row of messages) row.orgName = row.orgId ? names.get(row.orgId) || null : null
+}
+
+const SMS_OUTBOX_COLUMNS = 'id, org_id, created_at, scheduled_for, sent_at, status, to_phone, event_code, provider_name, provider_message_id, error, retry_count, max_retries, payload_json, template_code, priority'
+
+export async function loadSmsMessages(admin: any, scope: MonitorScope, window: LoadWindow) {
+    if (emptyScope(scope)) return { messages: [] as any[], truncated: false }
+    const logsQuery = scoped(admin
+        .from('notification_logs')
+        .select('id, org_id, created_at, queued_at, sent_at, delivered_at, failed_at, status, recipient_value, recipient_type, event_code, provider_name, provider_message_id, error_message, retry_count, provider_response, outbox_id')
+        .eq('channel', 'sms'), scope)
+    const outboxQuery = scoped(admin.from('notifications_outbox').select(SMS_OUTBOX_COLUMNS).eq('channel', 'sms'), scope)
 
     const [logsRes, outboxRes] = await Promise.all([windowed<any>(logsQuery, window), windowed<any>(outboxQuery, window)])
     if (logsRes.error) throw new Error(logsRes.error.message)
@@ -137,6 +139,7 @@ export async function loadSmsMessages(admin: any, orgIds: string[], window: Load
             id: log.id,
             source: 'log',
             outboxId: log.outbox_id || null,
+            orgId: asString(log.org_id) || asString(outbox?.org_id) || null,
             createdAt: log.created_at || log.queued_at || outbox?.created_at || null,
             queuedAt: log.queued_at || outbox?.created_at || null,
             sentAt: log.sent_at || outbox?.sent_at || null,
@@ -169,6 +172,7 @@ export async function loadSmsMessages(admin: any, orgIds: string[], window: Load
             id: outbox.id,
             source: 'outbox',
             outboxId: outbox.id,
+            orgId: asString(outbox.org_id) || null,
             createdAt: outbox.created_at || null,
             queuedAt: outbox.created_at || outbox.scheduled_for || null,
             sentAt: outbox.sent_at || null,
@@ -195,6 +199,7 @@ export async function loadSmsMessages(admin: any, orgIds: string[], window: Load
     }
 
     messages.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    await attachOrgNames(admin, messages)
     return { messages, truncated: hitLimit(logsRes.data, window) || hitLimit(outboxRes.data, window) }
 }
 
@@ -211,6 +216,7 @@ export function smsToMonitorRecord(message: any): MonitorRecord {
         status: message.status,
         rawStatus: message.rawStatus,
         recipient: message.phone,
+        organizationName: message.orgName || null,
         eventCode: message.eventCode,
         provider: message.providerName,
         providerMessageId: message.providerMessageId,
@@ -267,16 +273,13 @@ const EMAIL_OTP_EVENT_TYPES = [
     'password_reset_otp_resend_sent',
 ]
 
-export async function loadEmailMessages(admin: any, orgIds: string[], window: LoadWindow) {
-    let logsQuery = admin
+export async function loadEmailMessages(admin: any, scope: MonitorScope, window: LoadWindow) {
+    if (emptyScope(scope)) return { messages: [] as any[], truncated: false }
+    const logsQuery = scoped(admin
         .from('notification_logs')
         .select('id, org_id, created_at, queued_at, sent_at, delivered_at, failed_at, status, recipient_value, recipient_type, event_code, provider_name, provider_message_id, error_message, retry_count, provider_response, outbox_id')
-        .eq('channel', 'email')
-    let outboxQuery = admin.from('notifications_outbox').select(EMAIL_OUTBOX_COLUMNS).eq('channel', 'email')
-    if (orgIds.length > 0) {
-        logsQuery = logsQuery.in('org_id', orgIds)
-        outboxQuery = outboxQuery.in('org_id', orgIds)
-    }
+        .eq('channel', 'email'), scope)
+    const outboxQuery = scoped(admin.from('notifications_outbox').select(EMAIL_OUTBOX_COLUMNS).eq('channel', 'email'), scope)
 
     // OTP events were capped at 200 (vs 500 for logs/outbox) by the original endpoint.
     const otpWindow = { ...window, limit: window.limit === LEGACY_LIMIT ? 200 : window.limit }
@@ -284,13 +287,16 @@ export async function loadEmailMessages(admin: any, orgIds: string[], window: Lo
         windowed<any>(logsQuery, window),
         windowed<any>(outboxQuery, window),
         admin.from('notification_provider_configs').select('org_id, last_test_status, last_test_error, last_test_at').eq('channel', 'email').eq('is_active', true),
-        windowed<any>(
-            admin.from('notification_events')
-                .select('id, created_at, sent_at, status, event_type, recipient_email, provider, provider_message_id, error_message, meta')
-                .eq('channel', 'email')
-                .in('event_type', EMAIL_OTP_EVENT_TYPES),
-            otpWindow,
-        ),
+        // notification_events rows carry no organization, so only all-org viewers may see them.
+        scope.kind === 'all'
+            ? windowed<any>(
+                admin.from('notification_events')
+                    .select('id, created_at, sent_at, status, event_type, recipient_email, provider, provider_message_id, error_message, meta')
+                    .eq('channel', 'email')
+                    .in('event_type', EMAIL_OTP_EVENT_TYPES),
+                otpWindow,
+            )
+            : Promise.resolve({ data: [] as any[], error: null }),
     ])
     if (logsRes.error) throw new Error(logsRes.error.message)
     if (outboxRes.error) throw new Error(outboxRes.error.message)
@@ -329,6 +335,7 @@ export async function loadEmailMessages(admin: any, orgIds: string[], window: Lo
             id: log.id,
             source: 'log',
             outboxId: log.outbox_id || null,
+            orgId: asString(log.org_id) || asString(outbox?.org_id) || null,
             createdAt,
             queuedAt: log.queued_at || outbox?.created_at || null,
             sentAt,
@@ -366,6 +373,7 @@ export async function loadEmailMessages(admin: any, orgIds: string[], window: Lo
             id: outbox.id,
             source: 'outbox',
             outboxId: outbox.id,
+            orgId: asString(outbox.org_id) || null,
             createdAt,
             queuedAt: outbox.created_at || outbox.scheduled_for || null,
             sentAt,
@@ -392,6 +400,7 @@ export async function loadEmailMessages(admin: any, orgIds: string[], window: Lo
     }
 
     for (const event of otpRes.data || []) {
+        if (passwordResetEventAlreadyLogged(event, logsRes.data || [])) continue
         const eventCode = asString(event.event_type) || 'shop_contact_otp_sent'
         const rawStatus = eventCode.includes('failed') ? 'failed' : (asString(event.status) || 'sent')
         const createdAt = event.created_at || event.sent_at || null
@@ -402,6 +411,7 @@ export async function loadEmailMessages(admin: any, orgIds: string[], window: Lo
             id: event.id,
             source: 'log',
             outboxId: null,
+            orgId: null,
             createdAt,
             queuedAt: createdAt,
             sentAt,
@@ -428,6 +438,7 @@ export async function loadEmailMessages(admin: any, orgIds: string[], window: Lo
     }
 
     messages.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    await attachOrgNames(admin, messages)
     return {
         messages,
         truncated: hitLimit(logsRes.data, window) || hitLimit(outboxRes.data, window) || hitLimit(otpRes.data, otpWindow),
@@ -447,6 +458,7 @@ export function emailToMonitorRecord(message: any): MonitorRecord {
         status: message.status,
         rawStatus: message.rawStatus,
         recipient: message.receiver,
+        organizationName: message.orgName || null,
         eventCode: message.eventCode,
         provider: message.providerName,
         providerMessageId: message.providerMessageId,

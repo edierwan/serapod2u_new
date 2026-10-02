@@ -186,6 +186,11 @@ const EVENT_VARIABLES: Record<string, string[]> = {
     roadtour_qr_delivery: ['campaign_name', 'reference_name', 'qr_url', 'qr_image_url'],
     // lib/notifications/transactional-otp-router
     delete_user_otp: ['verification_code', 'target_user_name', 'requester_email', 'otp_expiry_minutes'],
+    // server/auth buildPasswordResetOtpSms / buildRegistrationOtpSms (SMS)
+    password_reset_otp: ['verification_code', 'otp_expiry_minutes'],
+    registration_otp: ['verification_code', 'otp_expiry_minutes'],
+    // api/notifications/sms-check sends the saved SMS text as is
+    system_sms_check: [],
     // lib/returns/notifications
     return_draft_created: RETURN_PAYLOAD,
     return_submitted: RETURN_PAYLOAD,
@@ -205,7 +210,6 @@ const DOCUMENT_PAYLOAD = ['doc_type', 'doc_no', 'order_no', 'issued_by', 'issued
 export const FIXED_MESSAGE_EVENTS: Record<string, string> = {
     delete_organization_verification_code: 'The verification message is built by the deletion flow.',
     stock_count_posting_verification: 'The verification email is built by the Stock Count posting flow.',
-    system_sms_check: 'The SMS check sends a fixed test message.',
     return_report_email: 'The subject and message are written when the report is sent.',
 }
 

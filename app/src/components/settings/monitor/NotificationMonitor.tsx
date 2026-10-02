@@ -276,15 +276,26 @@ export default function NotificationMonitor({ initialChannel = "whatsapp" }: { i
     }
 
     // ---- SMS actions (unchanged endpoints) ----------------------------------
-    const [smsCheck, setSmsCheck] = useState<{ open: boolean; phone: string; sending: boolean; result: string | null }>({ open: false, phone: "", sending: false, result: null })
+    const [smsCheck, setSmsCheck] = useState<{ open: boolean; phone: string; message: string; sending: boolean; result: string | null }>({ open: false, phone: "", message: "", sending: false, result: null })
     const [smsEdit, setSmsEdit] = useState<{ record: AnnotatedRecord; phone: string; message: string; saving: boolean; error: string | null } | null>(null)
     const [refreshingStatus, setRefreshingStatus] = useState(false)
+
+    // Prefills the saved SMS Delivery Check template; the server falls back to it when empty.
+    const openSmsCheck = async () => {
+        setSmsCheck({ open: true, phone: "", message: "", sending: false, result: null })
+        try {
+            const response = await fetch("/api/notifications/sms-check")
+            const result = await response.json().catch(() => ({}))
+            const message = String(result.message || "").trim()
+            if (response.ok && message) setSmsCheck((state) => (state.message ? state : { ...state, message }))
+        } catch { /* the server still resolves the saved template on send */ }
+    }
 
     const sendSmsCheck = async () => {
         if (!smsCheck.phone.trim() || smsCheck.sending) return
         setSmsCheck((state) => ({ ...state, sending: true, result: null }))
         try {
-            const response = await fetch("/api/notifications/sms-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: smsCheck.phone.trim() }) })
+            const response = await fetch("/api/notifications/sms-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: smsCheck.phone.trim(), message: smsCheck.message.trim() }) })
             const result = await response.json()
             if (!response.ok) throw new Error(result.error || "SMS check failed")
             setSmsCheck((state) => ({ ...state, sending: false, result: `Sent to ${result.to}.` }))
@@ -402,7 +413,7 @@ export default function NotificationMonitor({ initialChannel = "whatsapp" }: { i
                                 : [
                                     { label: "Check delivery reports with the SMS gateway", onSelect: () => void refreshSmsStatus(), disabled: refreshingStatus },
                                     "separator" as const,
-                                    { label: "Send a test SMS (SMS check)…", onSelect: () => setSmsCheck({ open: true, phone: "", sending: false, result: null }) },
+                                    { label: "Send a test SMS (SMS check)…", onSelect: () => void openSmsCheck() },
                                 ]}
                         />
                     ) : null}
@@ -585,6 +596,7 @@ export default function NotificationMonitor({ initialChannel = "whatsapp" }: { i
                                             <td className="max-w-[200px] px-2 py-2.5">
                                                 {row.recipientName ? <div className="truncate text-slate-900">{row.recipientName}</div> : null}
                                                 <div className={`truncate font-mono text-xs ${row.recipientName ? "text-slate-500" : "text-slate-800"}`}>{row.recipient || "—"}</div>
+                                                {row.organizationName ? <div className="truncate text-[11px] text-slate-500">{row.organizationName}</div> : null}
                                             </td>
                                             <td className="max-w-[240px] px-2 py-2.5">
                                                 <div className="truncate text-slate-900">{row.notificationName}</div>
@@ -632,11 +644,13 @@ export default function NotificationMonitor({ initialChannel = "whatsapp" }: { i
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>Send a test SMS</DialogTitle>
-                        <DialogDescription>Sends one fixed SMS check message through the active SMS provider to the number you enter. Nothing is sent until you click Send.</DialogDescription>
+                        <DialogDescription>Sends one SMS check through the active SMS provider to the number you enter. Nothing is sent until you click Send.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-1.5">
                         <Label htmlFor="sms-check-phone">Phone number</Label>
                         <Input id="sms-check-phone" placeholder="0123456789 or +60123456789" value={smsCheck.phone} onChange={(event) => setSmsCheck((state) => ({ ...state, phone: event.target.value }))} />
+                        <Label htmlFor="sms-check-message" className="pt-1">Message</Label>
+                        <Textarea id="sms-check-message" rows={3} placeholder="Leave empty to use the saved SMS Delivery Check template" value={smsCheck.message} onChange={(event) => setSmsCheck((state) => ({ ...state, message: event.target.value }))} />
                         {smsCheck.result ? <p role="status" className="text-xs text-slate-600">{smsCheck.result}</p> : null}
                     </div>
                     <DialogFooter>

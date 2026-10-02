@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { canViewEmailMonitor } from '@/lib/notifications/emailMonitorAccess'
-import { LEGACY_LIMIT, loadEmailMessages, resolveEmailOrgIds } from '@/lib/notifications/monitor/channelLoaders'
+import { LEGACY_LIMIT, loadEmailMessages } from '@/lib/notifications/monitor/channelLoaders'
+import { canViewMonitor, loadMonitorViewer, resolveMonitorScope } from '@/lib/notifications/monitorScope'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,9 +20,12 @@ export async function GET(_request: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const { data: profile } = await admin.from('users').select('organization_id').eq('id', user.id).single()
-    const orgIds = await resolveEmailOrgIds(admin, profile?.organization_id || null)
-    const { messages } = await loadEmailMessages(admin, orgIds, { limit: LEGACY_LIMIT })
+    const viewer = await loadMonitorViewer(admin, user.id)
+    if (!viewer || !canViewMonitor(viewer)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    // HQ staff oversee every organization; everyone else sees only their own.
+    const { messages } = await loadEmailMessages(admin, resolveMonitorScope(viewer), { limit: LEGACY_LIMIT })
 
     const kpis = {
       pending: messages.filter((row) => row.status === 'pending').length,
