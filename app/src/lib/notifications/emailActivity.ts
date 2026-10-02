@@ -136,3 +136,28 @@ export function emailOrderFields(payload: unknown) {
     const ref = extractOrderRef(payload)
     return { orderId: ref.orderId, orderNo: ref.orderNo }
 }
+
+const PASSWORD_RESET_SENT_EVENTS = ['password_reset_otp_sent', 'password_reset_otp_resend_sent']
+const PASSWORD_RESET_LOG_EVENT = 'password_reset_otp'
+const SAME_SEND_WINDOW_MS = 2 * 60 * 1000
+
+/**
+ * Password reset emails are written both to notification_events (auth audit) and to
+ * notification_logs (delivery). The event copy is only shown when no delivery log row
+ * matches it, so older sends stay visible without listing newer ones twice.
+ */
+export function passwordResetEventAlreadyLogged(
+    event: { event_type?: unknown; recipient_email?: unknown; created_at?: unknown },
+    logs: Array<{ event_code?: unknown; recipient_value?: unknown; created_at?: unknown }>,
+): boolean {
+    if (!PASSWORD_RESET_SENT_EVENTS.includes(asString(event.event_type))) return false
+    const email = asString(event.recipient_email).toLowerCase()
+    const at = Date.parse(asString(event.created_at))
+    if (!email || Number.isNaN(at)) return false
+    return logs.some((log) => {
+        if (asString(log.event_code) !== PASSWORD_RESET_LOG_EVENT) return false
+        if (asString(log.recipient_value).toLowerCase() !== email) return false
+        const loggedAt = Date.parse(asString(log.created_at))
+        return !Number.isNaN(loggedAt) && Math.abs(loggedAt - at) <= SAME_SEND_WINDOW_MS
+    })
+}
