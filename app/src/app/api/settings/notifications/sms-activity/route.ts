@@ -2,67 +2,15 @@ import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { extractOrderRef } from '@/lib/notifications/orderRef'
 import { canViewSmsMonitor } from '@/lib/notifications/smsMonitorAccess'
+import { LEGACY_LIMIT, loadSmsMessages, resolveSmsOrgIds } from '@/lib/notifications/monitor/channelLoaders'
 
 export const dynamic = 'force-dynamic'
 
-export type SmsMonitorStatus = 'pending' | 'sent' | 'delivered' | 'failed'
+export type { SmsMonitorStatus } from '@/lib/notifications/monitor/channelLoaders'
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-function toMonitorStatus(raw: string): SmsMonitorStatus {
-  const status = raw.toLowerCase()
-  if (['failed', 'error', 'cancelled', 'canceled', 'undelivered', 'rejected', 'bounced'].includes(status)) {
-    return 'failed'
-  }
-  if (['delivered', 'success', 'completed'].includes(status)) {
-    return 'delivered'
-  }
-  if (['sent', 'accepted', 'processed'].includes(status)) {
-    return 'sent'
-  }
-  return 'pending'
-}
-
-function truncate(value: unknown, max = 2000): string | null {
-  if (value == null) return null
-  const text = typeof value === 'string' ? value : JSON.stringify(value)
-  if (!text) return null
-  return text.length > max ? `${text.slice(0, max)}…` : text
-}
-
-function orderFields(payload: unknown) {
-  const ref = extractOrderRef(payload)
-  return { orderId: ref.orderId, orderNo: ref.orderNo }
-}
-
-function payloadMessage(payload: unknown, eventCode?: string): string {
-  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-    const row = payload as Record<string, unknown>
-    const stored = asString(row._sms_body) || asString(row.message) || asString(row.message_body)
-    if (stored) return stored
-  }
-  if (eventCode === 'system_sms_check') {
-    return 'Serapod2U SMS check. If you received this, Local Malaysian SMS is working.'
-  }
-  return ''
-}
-
-async function resolveSmsOrgIds(admin: any, userOrgId: string | null) {
-  const ids = new Set<string>()
-  if (userOrgId) ids.add(userOrgId)
-
-  const [{ data: hq }, { data: providers }] = await Promise.all([
-    admin.from('organizations').select('id').eq('org_type_code', 'HQ').eq('is_active', true).limit(5),
-    admin.from('notification_provider_configs').select('org_id').eq('channel', 'sms'),
-  ])
-
-  for (const row of hq || []) if (row?.id) ids.add(row.id)
-  for (const row of providers || []) if (row?.org_id) ids.add(row.org_id)
-  return Array.from(ids)
 }
 
 export async function GET(_request: NextRequest) {
@@ -77,133 +25,11 @@ export async function GET(_request: NextRequest) {
     }
 
     const admin = createAdminClient()
-    const { data: profile } = await admin
-      .from('users')
-      .select('organization_id')
-      .eq('id', user.id)
-      .single()
-
+    const { data: profile } = await admin.from('users').select('organization_id').eq('id', user.id).single()
     const orgIds = await resolveSmsOrgIds(admin, profile?.organization_id || null)
-
-    // NOTE: Do NOT call refreshOpenSmsStatuses() here. This route must always return the
-    // page's data straight from the database, independent of the local SMS gateway's
-    // availability. The gateway can be unreachable (e.g. an expired trycloudflare tunnel),
-    // and refreshOpenSmsStatuses() checks each open message sequentially with a 15s timeout
-    // per message -- with the gateway down that blocked this endpoint for minutes while the
-    // UI sat on "Loading SMS messages...".
-    //
-    // Status refresh already runs safely in the background via
-    // app/api/cron/notification-outbox-worker/route.ts (refreshOpenSmsStatuses call there is
-    // wrapped in .catch() and doesn't block anything else). This page just reads whatever
-    // that worker last wrote, so it stays fast no matter what the gateway is doing.
-
-    let logsQuery = admin
-      .from('notification_logs')
-      .select('id, created_at, queued_at, sent_at, delivered_at, failed_at, status, recipient_value, recipient_type, event_code, provider_name, provider_message_id, error_message, retry_count, provider_response, outbox_id')
-      .eq('channel', 'sms')
-      .order('created_at', { ascending: false })
-      .limit(500)
-
-    let outboxQuery = admin
-      .from('notifications_outbox')
-      .select('id, created_at, scheduled_for, sent_at, status, to_phone, event_code, provider_name, provider_message_id, error, retry_count, max_retries, payload_json, template_code, priority')
-      .eq('channel', 'sms')
-      .order('created_at', { ascending: false })
-      .limit(500)
-
-    if (orgIds.length > 0) {
-      logsQuery = logsQuery.in('org_id', orgIds)
-      outboxQuery = outboxQuery.in('org_id', orgIds)
-    }
-
-    const [logsRes, outboxRes] = await Promise.all([logsQuery, outboxQuery])
-
-    if (logsRes.error) return NextResponse.json({ error: logsRes.error.message }, { status: 500 })
-    if (outboxRes.error) return NextResponse.json({ error: outboxRes.error.message }, { status: 500 })
-
-    const outboxById = new Map((outboxRes.data || []).map((row: any) => [row.id, row]))
-    const missingOutboxIds = Array.from(new Set(
-      (logsRes.data || [])
-        .map((log: any) => log.outbox_id)
-        .filter((id: string | null) => id && !outboxById.has(id)),
-    ))
-    if (missingOutboxIds.length > 0) {
-      const { data: extraOutbox } = await admin
-        .from('notifications_outbox')
-        .select('id, created_at, scheduled_for, sent_at, status, to_phone, event_code, provider_name, provider_message_id, error, retry_count, max_retries, payload_json, template_code, priority')
-        .in('id', missingOutboxIds)
-      for (const row of extraOutbox || []) outboxById.set(row.id, row)
-    }
-    const loggedOutboxIds = new Set<string>()
-    const messages = []
-
-    for (const log of logsRes.data || []) {
-      if (log.outbox_id && loggedOutboxIds.has(log.outbox_id)) continue
-      const outbox = log.outbox_id ? outboxById.get(log.outbox_id) : null
-      if (log.outbox_id) loggedOutboxIds.add(log.outbox_id)
-      const rawStatus = asString(log.status) || asString(outbox?.status)
-      messages.push({
-        id: log.id,
-        source: 'log',
-        outboxId: log.outbox_id || null,
-        createdAt: log.created_at || log.queued_at || outbox?.created_at || null,
-        queuedAt: log.queued_at || outbox?.created_at || null,
-        sentAt: log.sent_at || outbox?.sent_at || null,
-        deliveredAt: log.delivered_at || (toMonitorStatus(rawStatus) === 'delivered' ? log.sent_at : null),
-        failedAt: log.failed_at || null,
-        status: toMonitorStatus(rawStatus),
-        rawStatus,
-        phone: asString(log.recipient_value) || asString(outbox?.to_phone) || null,
-        eventCode: asString(log.event_code) || asString(outbox?.event_code) || null,
-        providerName: asString(log.provider_name) || asString(outbox?.provider_name) || 'local_my',
-        providerMessageId: asString(log.provider_message_id) || asString(outbox?.provider_message_id) || null,
-        errorMessage: asString(log.error_message) || asString(outbox?.error) || null,
-        errorCode: null,
-        retryCount: Number(log.retry_count ?? outbox?.retry_count ?? 0),
-        maxRetries: outbox?.max_retries != null ? Number(outbox.max_retries) : null,
-        templateCode: asString(outbox?.template_code) || null,
-        priority: asString(outbox?.priority) || null,
-        payload: outbox?.payload_json || null,
-        messageBody: payloadMessage(outbox?.payload_json, asString(log.event_code) || asString(outbox?.event_code)),
-        ...orderFields(outbox?.payload_json),
-        providerResponse: log.provider_response || null,
-        statusDetails: truncate(log.provider_response),
-      })
-    }
-
-    for (const outbox of outboxRes.data || []) {
-      if (loggedOutboxIds.has(outbox.id)) continue
-      const rawStatus = asString(outbox.status)
-      messages.push({
-        id: outbox.id,
-        source: 'outbox',
-        outboxId: outbox.id,
-        createdAt: outbox.created_at || null,
-        queuedAt: outbox.created_at || outbox.scheduled_for || null,
-        sentAt: outbox.sent_at || null,
-        deliveredAt: toMonitorStatus(rawStatus) === 'delivered' ? outbox.sent_at : null,
-        failedAt: toMonitorStatus(rawStatus) === 'failed' ? outbox.sent_at || outbox.created_at : null,
-        status: toMonitorStatus(rawStatus),
-        rawStatus,
-        phone: asString(outbox.to_phone) || null,
-        eventCode: asString(outbox.event_code) || null,
-        providerName: asString(outbox.provider_name) || 'local_my',
-        providerMessageId: asString(outbox.provider_message_id) || null,
-        errorMessage: asString(outbox.error) || null,
-        errorCode: null,
-        retryCount: Number(outbox.retry_count || 0),
-        maxRetries: outbox.max_retries != null ? Number(outbox.max_retries) : null,
-        templateCode: asString(outbox.template_code) || null,
-        priority: asString(outbox.priority) || null,
-        payload: outbox.payload_json || null,
-        messageBody: payloadMessage(outbox.payload_json, asString(outbox.event_code)),
-        ...orderFields(outbox.payload_json),
-        providerResponse: null,
-        statusDetails: null,
-      })
-    }
-
-    messages.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    // Never calls the SMS gateway: this reads what the outbox worker last wrote,
+    // so the page stays fast even when the gateway is unreachable.
+    const { messages } = await loadSmsMessages(admin, orgIds, { limit: LEGACY_LIMIT })
 
     const kpis = {
       pending: messages.filter((row) => row.status === 'pending').length,
@@ -212,7 +38,6 @@ export async function GET(_request: NextRequest) {
       failed: messages.filter((row) => row.status === 'failed').length,
       total: messages.length,
     }
-
     return NextResponse.json({ success: true, kpis, messages })
   } catch (error: any) {
     console.error('[sms-activity]', error)
