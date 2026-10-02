@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import {
   type StructuredAttribute,
 } from '@/lib/products/structured-attributes'
 import { needsUniqueCombination } from '@/lib/products/combination-rule'
+import { fieldsToClearForCategory, linkedValues, loadProductLinks, narrowOptions, type LinkField, type ProductLink } from '@/lib/products/linked-options'
 import { 
   ArrowLeft,
   Package,
@@ -79,6 +80,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null)
   const [structuredAttributes, setStructuredAttributes] = useState<StructuredAttribute[]>([])
   const [attributeSaveAttempted, setAttributeSaveAttempted] = useState(false)
+  const [productLinks, setProductLinks] = useState<ProductLink[]>([])
   
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -88,6 +90,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       fetchBrands()
       fetchCategories()
       fetchManufacturers()
+      fetchProductLinks()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -204,6 +207,10 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
         variant: 'destructive'
       })
     }
+  }
+
+  const fetchProductLinks = async () => {
+    setProductLinks(await loadProductLinks(supabase))
   }
 
   const fetchGroups = async (categoryId: string) => {
@@ -552,10 +559,13 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
   }
 
   const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    setFormData(prev => {
+      const next = { ...prev, [field]: value }
+      if (field === 'category_id') {
+        for (const stale of fieldsToClearForCategory(productLinks, value, prev)) next[stale] = ''
+      }
+      return next
+    })
     
     // Trigger dependent field loading
     if (field === 'category_id' && value) {
@@ -574,6 +584,26 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
       }))
     }
   }
+
+  const linkedOptions = useMemo(() => {
+    const selection = {
+      brand_id: formData.brand_id,
+      category_id: formData.category_id,
+      manufacturer_id: formData.manufacturer_id,
+      group_id: formData.group_id,
+      subgroup_id: formData.subgroup_id,
+    }
+    const narrow = <T extends { id: string }>(field: LinkField, options: T[]) =>
+      narrowOptions(options, linkedValues(productLinks, selection, field), selection[field])
+    return {
+      brands: narrow('brand_id', brands),
+      // Category leads the form, so its list is never narrowed.
+      categories: { options: categories, narrowed: false },
+      manufacturers: narrow('manufacturer_id', manufacturers),
+      groups: narrow('group_id', groups),
+      subgroups: narrow('subgroup_id', subgroups),
+    }
+  }, [formData.brand_id, formData.category_id, formData.manufacturer_id, formData.group_id, formData.subgroup_id, productLinks, brands, categories, manufacturers, groups, subgroups])
 
   return (
     <div className="space-y-6">
@@ -679,32 +709,8 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               />
             </div>
 
-            {/* Brand and Category */}
+            {/* Category leads Brand, Manufacturer, Group and SubGroup */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Brand <span className="text-red-600">*</span>
-                </label>
-                <Select value={formData.brand_id} onValueChange={(value) => handleChange('brand_id', value)}>
-                  <SelectTrigger className={errors.brand_id ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Select a brand" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {brands.map((brand) => (
-                      <SelectItem key={brand.id} value={brand.id}>
-                        {brand.brand_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.brand_id && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <AlertCircle className="w-4 h-4" />
-                    {errors.brand_id}
-                  </div>
-                )}
-              </div>
-
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">
                   Category <span className="text-red-600">*</span>
@@ -714,7 +720,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder="Select a category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
+                    {linkedOptions.categories.options.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.category_name}
                       </SelectItem>
@@ -728,6 +734,34 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                   </div>
                 )}
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Brand <span className="text-red-600">*</span>
+                </label>
+                <Select
+                  value={formData.brand_id}
+                  onValueChange={(value) => handleChange('brand_id', value)}
+                  disabled={!formData.category_id}
+                >
+                  <SelectTrigger className={errors.brand_id ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={formData.category_id ? "Select a brand" : "Select Category first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {linkedOptions.brands.options.map((brand) => (
+                      <SelectItem key={brand.id} value={brand.id}>
+                        {brand.brand_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.brand_id && (
+                  <div className="flex items-center gap-2 text-sm text-red-600">
+                    <AlertCircle className="w-4 h-4" />
+                    {errors.brand_id}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Manufacturer */}
@@ -735,12 +769,16 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               <label className="text-sm font-medium text-gray-700">
                 Manufacturer <span className="text-red-600">*</span>
               </label>
-              <Select value={formData.manufacturer_id} onValueChange={(value) => handleChange('manufacturer_id', value)}>
+              <Select
+                value={formData.manufacturer_id}
+                onValueChange={(value) => handleChange('manufacturer_id', value)}
+                disabled={!formData.category_id}
+              >
                 <SelectTrigger className={errors.manufacturer_id ? 'border-red-500' : ''}>
-                  <SelectValue placeholder="Select a manufacturer" />
+                  <SelectValue placeholder={formData.category_id ? "Select a manufacturer" : "Select Category first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {manufacturers.map((manufacturer) => (
+                  {linkedOptions.manufacturers.options.map((manufacturer) => (
                     <SelectItem key={manufacturer.id} value={manufacturer.id}>
                       {manufacturer.org_name} ({manufacturer.org_code})
                     </SelectItem>
@@ -770,7 +808,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder={formData.category_id ? "Select a group" : "Select Category first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {groups.map((group) => (
+                    {linkedOptions.groups.options.map((group) => (
                       <SelectItem key={group.id} value={group.id}>
                         {group.group_name}
                       </SelectItem>
@@ -798,7 +836,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                     <SelectValue placeholder={formData.group_id ? "Select a subgroup" : "Select Group first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {subgroups.map((subgroup) => (
+                    {linkedOptions.subgroups.options.map((subgroup) => (
                       <SelectItem key={subgroup.id} value={subgroup.id}>
                         {subgroup.subgroup_name}
                       </SelectItem>
