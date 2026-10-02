@@ -43,6 +43,26 @@ export function linkedValues(links: ProductLink[], selection: LinkSelection, fie
 }
 
 /**
+ * Category leads the other fields. After it changes, these chosen fields are no longer
+ * used with the new category by any product and should be cleared. A category without
+ * products keeps every choice, since its lists fall back to the full lists.
+ */
+export function fieldsToClearForCategory(
+  links: ProductLink[],
+  categoryId: string,
+  selection: LinkSelection,
+  fields: LinkField[] = ['brand_id', 'manufacturer_id'],
+): LinkField[] {
+  if (!categoryId) return []
+  return fields.filter((field) => {
+    const chosen = selection[field]
+    if (!chosen) return false
+    const linked = linkedValues(links, { category_id: categoryId }, field)
+    return Boolean(linked && linked.size > 0 && !linked.has(chosen))
+  })
+}
+
+/**
  * Narrows a dropdown to the linked options. The current choice always stays listed so
  * it is never dropped silently, and when existing products link nothing the full list
  * is kept so a new combination can still be entered.

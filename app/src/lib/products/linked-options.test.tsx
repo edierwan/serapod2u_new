@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { linkedValues, narrowOptions, type ProductLink } from '@/lib/products/linked-options'
+import { fieldsToClearForCategory, linkedValues, narrowOptions, type ProductLink } from '@/lib/products/linked-options'
 
 const links: ProductLink[] = [
   { brand_id: 'b1', category_id: 'c1', manufacturer_id: 'm1', group_id: 'g1', subgroup_id: 's1' },
@@ -24,6 +24,25 @@ describe('linkedValues', () => {
     expect(ids(linkedValues(links, { manufacturer_id: 'm3' }, 'brand_id'))).toEqual(['b2'])
     expect(ids(linkedValues(links, { category_id: 'c1' }, 'brand_id'))).toEqual(['b1', 'b2'])
     expect(ids(linkedValues(links, { category_id: 'c1', brand_id: 'b1' }, 'manufacturer_id'))).toEqual(['m1'])
+  })
+})
+
+describe('fieldsToClearForCategory', () => {
+  it('clears a brand or manufacturer the new category is never used with', () => {
+    expect(fieldsToClearForCategory(links, 'c2', { brand_id: 'b2', manufacturer_id: 'm1' })).toEqual(['brand_id', 'manufacturer_id'])
+  })
+
+  it('keeps choices that the new category is used with', () => {
+    expect(fieldsToClearForCategory(links, 'c1', { brand_id: 'b2', manufacturer_id: 'm1' })).toEqual([])
+  })
+
+  it('keeps every choice for a category without products', () => {
+    expect(fieldsToClearForCategory(links, 'c9', { brand_id: 'b1', manufacturer_id: 'm1' })).toEqual([])
+  })
+
+  it('does nothing when the category is cleared or nothing else is chosen', () => {
+    expect(fieldsToClearForCategory(links, '', { brand_id: 'b1' })).toEqual([])
+    expect(fieldsToClearForCategory(links, 'c2', {})).toEqual([])
   })
 })
 

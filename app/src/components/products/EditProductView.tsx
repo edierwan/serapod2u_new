@@ -96,7 +96,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
       narrowOptions(options, linkedValues(productLinks, selection, field), selection[field as keyof typeof selection])
     return {
       brands: narrow('brand_id', brands),
-      categories: narrow('category_id', categories),
+      // Category leads the form, so its list is never narrowed.
+      categories: { options: categories, narrowed: false },
       manufacturers: narrow('manufacturer_id', manufacturers),
     }
   }, [formData.brand_id, formData.category_id, formData.manufacturer_id, productLinks, brands, categories, manufacturers])
