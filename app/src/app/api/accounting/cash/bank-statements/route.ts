@@ -51,7 +51,7 @@ const amount = (v: unknown) => parseAmountCents(String(v ?? '')) ?? 0
 export async function GET(request: Request) {
   try {
     const ctx = await loadContext()
-    if ('error' in ctx) return ctx.error
+    if (ctx.error) return ctx.error
     const { supabase, user, orgId, legacyFinanceUser } = ctx
     if (!(await financeAllowed(user.id, 'finance.cash.view', legacyFinanceUser, orgId))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const ctx = await loadContext()
-    if ('error' in ctx) return ctx.error
+    if (ctx.error) return ctx.error
     const { supabase, user, orgId, legacyFinanceUser } = ctx
     if (!(await financeAllowed(user.id, 'finance.reconciliation.perform', legacyFinanceUser, orgId))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

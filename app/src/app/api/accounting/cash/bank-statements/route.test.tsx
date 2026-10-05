@@ -16,7 +16,7 @@ function query(table: string) {
 
   const run = () => {
     if (op === 'insert' || op === 'upsert') {
-      const list = (Array.isArray(payload) ? payload : [payload]).map((r: Row) => ({ id: `id-${nextId++}`, ...r }))
+      const list: Row[] = (Array.isArray(payload) ? payload : [payload]).map((r: Row) => ({ id: `id-${nextId++}`, ...r }))
       const added: Row[] = []
       for (const r of list) {
         if (op === 'upsert' && rows().some(e => upsertKeys.every(k => e[k] === r[k]))) continue
