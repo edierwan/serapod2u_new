@@ -2,7 +2,7 @@
 
 **Living document.** Update it in the same commit as every new migration, and again whenever a migration is applied to staging or production (see [How to update this file](#how-to-update-this-file)).
 
-Last updated: **2026-10-02 00:45 MYT (+08:00)** — released: `origin/main` = `87873e58` (PR #64), deployed to production and healthy; staging = main.
+Last updated: **2026-10-05 13:30 MYT (+08:00)** — `20261005130000` added (staging applied, production pending). Last release: `origin/main` = `87873e58` (PR #64), deployed to production and healthy; staging = main.
 
 Original full audit: 2026-10-01 15:07 MYT at `2961c21a` (read-only; every row below up to `20260930100000` comes from it unless the change log says otherwise).
 
@@ -12,13 +12,13 @@ This report records **database state**, not merely whether a file is present on 
 
 | Order | Migration | Staging | Production |
 |---|---|---|---|
-| — | none | — | — |
+| 1 | `20261005130000_bank_statement_import.sql` | Verified applied (2026-10-05) | **Pending** |
 
-**No migration is pending** on staging or production (verification query: the first nine `true` on both, 2026-10-02; the three `_sms` checks `true` on both, 2026-10-02 10:35).
+Production pending: `20261005130000` (new tables only; ship with the Bank Statements screen). Everything earlier: the first nine checks `true` on both, 2026-10-02; the three `_sms` checks `true` on both, 2026-10-02 10:35.
 
 ## Executive result
 
-- **Production pending:** none. `20260911120000`, `20260911130000`, `20260911140000` (notification-type SMS channels from the `sms-dynamic-enhancement` merge) were applied and verified on production 2026-10-02 10:35. All S&A migrations through `20261001140000` verified on production 2026-10-02 (nine `true`); the earlier owner-reported rows were confirmed by a direct read-only verification. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
+- **Production pending:** `20261005130000_bank_statement_import.sql` (added 2026-10-05; staging verified). `20260911120000`, `20260911130000`, `20260911140000` (notification-type SMS channels from the `sms-dynamic-enhancement` merge) were applied and verified on production 2026-10-02 10:35. All S&A migrations through `20261001140000` verified on production 2026-10-02 (nine `true`); the earlier owner-reported rows were confirmed by a direct read-only verification. `20260930100000`, `20261001100000` and `20261001120000` were applied to production on 2026-10-01 (reported by the owner; confirm with the verification query below — not yet independently re-read).
 - **Partial, drifted, or unknown migrations requiring investigation:** none in the migration set below.
 - Production and staging do **not** have a Supabase schema-migration ledger (`supabase_migrations.schema_migrations`) in the application database. `public.migration_history` is business data-import history and is not a schema ledger. Applied status therefore means that the migration's material effects, postconditions, or a later superseding definition were verified read-only.
 - The two different files with version `20260928100000` were checked independently. Both sets of effects exist on both databases. The duplicate version remains an operational hazard for any filename/version-based runner and must not be “fixed” by renaming either file during this release.
@@ -93,6 +93,7 @@ Principal evidence used across the table:
 | `20261001120000_sa_remove_legacy_guest_compat_role.sql` | Delete the `legacy-guest` compatibility role and its assignments; `sa_refresh_compat_role` never (re)creates a role for `GUEST` | **Verified applied** (2026-10-01 20:20: verification query all `true`; one assignment removed and audited, `role.deleted` logged, zero GUEST identities holding a compatibility role) | **Verified applied** (2026-10-02 direct verification) | Replica test `supabase/tests/security/sa_restore/remove_legacy_guest_compat_role.sql` (15 assertions, includes the refusal path and a `read_only=false` production simulation); negative control: a plain delete is re-created by the next lifecycle sync. Refuses to run while an access request/review item references the role. GUEST identities lose `inventory.transfer.cancel` (already `NEW_ENFORCED` on staging). Idempotent. |
 | `20261001130000_sa_grant_keeps_automatic_access.sql` | A grant/approval never takes over automatic access (`sa_role_already_held`); access requests for an already-held role are refused | **Verified applied** (2026-10-01 23:15: verification query all eight `true`) | **Verified applied** (2026-10-02, after backup) | Staging UAT bug: re-granting an automatically held role converted it into a temporary manual grant. Replica test `supabase/tests/security/sa_restore/grant_keeps_automatic_access.sql` (9 assertions; unpatched schema fails as negative control). Idempotent. Compatible with older application code (only adds an error for a case the new UI no longer offers). |
 | `20261001140000_orders_approve_creator_only_rule.sql` | Order approval: creator can never approve; no approver-above-creator level comparison (S&A decides where enforced, legacy = Manager level or above) | **Verified applied** | **Verified applied** (2026-10-02; SECURITY DEFINER, search_path and grants unchanged) | Owner decision 2026-10-01. Patches the live `orders_approve` in place (one known line; refuses if absent; idempotent) because its body carries runtime-injected guard lines. Replica: applied twice, S&A guard and SECURITY DEFINER/grants kept, refuses an unexpected body. Staging: verified applied 2026-10-01 (verification query nine `true`). Production precondition verified read-only 2026-10-02 00:10 (expected line, S&A guard, maker-checker present). Ship with the matching Orders screen change. |
+| `20261005130000_bank_statement_import.sql` | Finance → Cash & Banking: store bank statement lines uploaded from the bank's CSV export (first format Hong Leong Bank "Transaction Details"); read-only bank data, no bank connection | **Verified applied** (2026-10-05: both tables, RLS on, four policies, `authenticated` = SELECT/INSERT only on lines and SELECT/INSERT + UPDATE(rows_inserted, rows_skipped, status) on imports, unique `(bank_account_id, dedupe_key)`) | **Pending** | New tables `bank_statement_imports`, `bank_statement_transactions` only; existing bank tables untouched. RLS mirrors `bank_reconciliations` (`finance.reconciliation.perform` write, `finance.cash.view` read in NEW modes). The unique key makes overlapping re-imports add only new lines (delta). Contract test `app/src/lib/finance/bank-statements/bank-statement-migration.test.tsx`. Rollback: drop both tables. Idempotent (`if not exists`, policies dropped/re-created). |
 
 ## Applying a pending migration
 
@@ -118,10 +119,11 @@ union all select 'grant_keeps_automatic', pg_get_functiondef('public.sa_create_a
 union all select 'orders_creator_only_rule', pg_get_functiondef('public.orders_approve(uuid)'::regprocedure) like '%approval-rule:creator-only%'
 union all select 'password_reset_otp_sms', exists (select 1 from public.notification_types where event_code = 'password_reset_otp' and 'sms' = any(available_channels))
 union all select 'registration_otp_sms', exists (select 1 from public.notification_types where event_code = 'registration_otp' and 'sms' = any(available_channels))
-union all select 'user_created_sms', exists (select 1 from public.notification_types where event_code = 'user_created' and 'sms' = any(available_channels) and is_system = false);
+union all select 'user_created_sms', exists (select 1 from public.notification_types where event_code = 'user_created' and 'sms' = any(available_channels) and is_system = false)
+union all select 'bank_statement_import', to_regclass('public.bank_statement_transactions') is not null and exists (select 1 from pg_constraint where conname = 'bank_statement_transactions_line_key');
 ```
 
-All rows must be `true` once every migration listed here is applied (`grant_keeps_automatic` stays `false` until `20261001130000`; the three `_sms` rows stay `false` until `20260911120000`–`20260911140000`).
+All rows must be `true` once every migration listed here is applied (`grant_keeps_automatic` stays `false` until `20261001130000`; the three `_sms` rows stay `false` until `20260911120000`–`20260911140000`; `bank_statement_import` stays `false` until `20261005130000`).
 
 ## Partial, drifted, or unknown requiring investigation
 
@@ -158,6 +160,7 @@ The repository's `.gitignore` explicitly re-includes `supabase/migrations/**/*.m
 
 | Date (MYT) | Change |
 |---|---|
+| 2026-10-05 13:30 | Added `20261005130000_bank_statement_import.sql` (Finance bank statement import, new tables only). Applied to staging in one transaction and verified (tables, RLS, policies, grants, unique key). Production pending. |
 | 2026-10-01 15:07 | Full read-only audit at `2961c21a`: production pending exactly `20260930100000`. |
 | 2026-10-01 ~15:30 | `origin/staging` → `6cdcf81e` (main→staging ancestry merge, tree unchanged) → `b1b4c29c` (warehouse context fix + restore feature). Added `20261001100000`. |
 | 2026-10-01 afternoon | Owner applied `20261001100000` to staging (verified 20:04: functions, grants, revoke definition) and `20260930100000` + `20261001100000` to production (owner-reported). |
