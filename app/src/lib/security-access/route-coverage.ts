@@ -173,6 +173,8 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "documents/order/[orderId]/bundle": { kind: 'ENTERPRISE', permissions: ["supply_chain.document.manage"] },
   "documents/order/[orderId]/file": { kind: 'ENTERPRISE', permissions: ["supply_chain.document.manage"] },
   "documents/payment-request/[id]/approve": { kind: 'ENTERPRISE', permissions: ["finance.payment.approve"] },
+  "ecommerce/tiktok-shop": { kind: 'ENTERPRISE', permissions: ["ecommerce.order.manage"], via: ["lib/marketplace/access.ts"] },
+  "ecommerce/tiktok-shop/import": { kind: 'ENTERPRISE', permissions: ["ecommerce.order.manage"], via: ["lib/marketplace/access.ts"] },
   "email/send": { kind: 'ENTERPRISE', permissions: ["platform.settings.manage"] },
   "email/usage": { kind: 'ENTERPRISE', permissions: ["platform.settings.manage"] },
   "engagement/catalog/ellbow/adjust": { kind: 'ENTERPRISE', permissions: ["customer.loyalty.adjust", "customer.reward.manage"], via: ["lib/server/ellbow-catalog.ts"] },
