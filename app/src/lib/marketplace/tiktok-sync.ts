@@ -77,15 +77,29 @@ export async function computeDataFrom(db: any, shopId: string, now = Date.now())
   return start.toISOString().slice(0, 10)
 }
 
-/** Claims the shop for one sync run; false when another run is still active. */
+/**
+ * Claims the shop for one sync run; false when another run is still active.
+ * Compare-and-swap on the status/start time just read, because PostgREST
+ * rejects or=(...) filters on PATCH ("column ... does not exist").
+ */
 export async function claimSyncRun(db: any, shopId: string, now = Date.now()) {
-  const staleBefore = new Date(now - STALE_RUN_MS).toISOString()
-  const { data, error } = await db
+  const { data: current, error: readError } = await db
+    .from('marketplace_shop_connections')
+    .select('last_sync_status, sync_started_at')
+    .eq('shop_id', shopId)
+    .maybeSingle()
+  if (readError) throw readError
+  if (!current) return false
+  const started = toUnix(current.sync_started_at)
+  if (current.last_sync_status === 'running' && started !== null && started * 1000 >= now - STALE_RUN_MS) return false
+
+  let query = db
     .from('marketplace_shop_connections')
     .update({ last_sync_status: 'running', sync_started_at: new Date(now).toISOString() })
     .eq('shop_id', shopId)
-    .or(`last_sync_status.is.null,last_sync_status.neq.running,sync_started_at.lt.${staleBefore}`)
-    .select('shop_id')
+  query = current.last_sync_status === null ? query.is('last_sync_status', null) : query.eq('last_sync_status', current.last_sync_status)
+  query = current.sync_started_at === null ? query.is('sync_started_at', null) : query.eq('sync_started_at', current.sync_started_at)
+  const { data, error } = await query.select('shop_id')
   if (error) throw error
   return (data || []).length > 0
 }
