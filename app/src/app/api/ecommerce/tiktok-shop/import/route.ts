@@ -41,6 +41,18 @@ async function selectIn(db: any, table: string, columns: string, shopFilter: (q:
   return rows
 }
 
+/** First day whose settlements/payouts come from the TikTok Shop API for this shop (also after a disconnect), or null. */
+async function apiDataFrom(db: any, shopId: string): Promise<string | null> {
+  const [conn, firstApi] = await Promise.all([
+    db.from('marketplace_shop_connections').select('data_from').eq('shop_id', shopId).maybeSingle(),
+    db.from('marketplace_settlements').select('settled_date').eq('shop_id', shopId).like('dedupe_key', 'api|%')
+      .not('settled_date', 'is', null).order('settled_date').limit(1).maybeSingle(),
+  ])
+  if (conn.error && conn.error.code !== '42P01' && conn.error.code !== 'PGRST205') throw conn.error
+  if (firstApi.error) throw firstApi.error
+  return [conn.data?.data_from, firstApi.data?.settled_date].filter(Boolean).sort()[0] ?? null
+}
+
 function otherShopNameInFile(fileName: string, shop: any, shops: any[]) {
   const name = fileName.toLowerCase()
   if (name.includes(String(shop.shop_name).toLowerCase())) return null
@@ -143,8 +155,21 @@ export async function POST(request: Request) {
 
     const parsed = parseTikTokSettlements(sheets)
     if (!parsed.value) return bad(parsed.errors[0], 422, { errors: parsed.errors, kind })
-    const file = parsed.value
+    const file = { ...parsed.value }
     warnings.push(...parsed.warnings)
+
+    const apiFrom = await apiDataFrom(db, shop.id)
+    if (apiFrom) {
+      const settlementsBefore = file.settlements.filter(s => !s.settledDate || s.settledDate < apiFrom)
+      const payoutsBefore = file.payouts.filter(p => !p.row.request_date || p.row.request_date < apiFrom)
+      const skipped = file.settlements.length - settlementsBefore.length + file.payouts.length - payoutsBefore.length
+      if (skipped) {
+        warnings.push(`${skipped} row(s) dated ${apiFrom} or later are skipped: this shop's settlements and payouts from that date come from the TikTok Shop API.`)
+        file.settlements = settlementsBefore
+        file.payouts = payoutsBefore
+        if (!file.settlements.length && !file.payouts.length) return bad(`Everything in this file is dated ${apiFrom} or later, which the TikTok Shop API already provides for this shop.`, 422, { kind })
+      }
+    }
     const recordIds = file.settlements.map(s => s.recordId)
 
     if (otherShopIds.length && recordIds.length) {
