@@ -431,6 +431,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "orders/d2h/standard-order-catalog": { kind: 'ENTERPRISE', permissions: ["supply_chain.order.create"] },
   "orders/delete": { kind: 'ENTERPRISE', permissions: ["platform.data.destructive"], via: ["lib/server/destructive-ops-guard.ts"] },
   "orders/from-ellbow": { kind: 'SERVICE', reason: "Webhook / integration authenticated by a registered service credential (sa_service_identities)" },
+  "orders/save": { kind: 'ENTERPRISE', permissions: ["supply_chain.order.create"] },
   "organization/update-bank-details": { kind: 'ENTERPRISE', permissions: ["platform.organization.manage"] },
   "organizations/delete": { kind: 'ENTERPRISE', permissions: ["platform.data.destructive"], via: ["lib/server/destructive-ops-guard.ts"] },
   "organizations/delete/request-otp": { kind: 'ENTERPRISE', permissions: ["platform.organization.manage"] },
