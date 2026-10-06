@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Plus, RefreshCw, Upload } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Link2, Loader2, Plus, RefreshCw, Unlink, Upload } from 'lucide-react'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { TIKTOK_CONNECT_MESSAGES } from '@/lib/marketplace/tiktok-connect-messages'
 
 interface TikTokShopViewProps {
     userProfile: any
@@ -73,6 +74,22 @@ export default function TikTokShopView(_props: TikTokShopViewProps) {
     const [busy, setBusy] = useState<'preview' | 'import' | null>(null)
     const [preview, setPreview] = useState<any>(null)
     const [result, setResult] = useState<string | null>(null)
+    const [syncing, setSyncing] = useState(false)
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        const outcome = params.get('tiktok')
+        if (!outcome) return
+        const message = TIKTOK_CONNECT_MESSAGES[outcome] || TIKTOK_CONNECT_MESSAGES.error
+        if (outcome === 'connected') setResult(message)
+        else setError(message)
+        const shop = params.get('shop')
+        if (shop) setShopId(shop)
+        params.delete('tiktok')
+        params.delete('shop')
+        const query = params.toString()
+        window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`)
+    }, [])
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -84,7 +101,7 @@ export default function TikTokShopView(_props: TikTokShopViewProps) {
             const json = await res.json()
             if (!res.ok) throw new Error(json.error || 'Failed to load')
             setShops(json.shops || [])
-            if (!shopId && json.shops?.length) setShopId(json.shops[0].id)
+            if (!shopId && json.shops?.length) setShopId(prev => prev || json.shops[0].id)
             setData(shopId ? json : null)
         } catch (e) {
             setError((e as Error).message)
@@ -152,6 +169,58 @@ export default function TikTokShopView(_props: TikTokShopViewProps) {
         }
     }
 
+    const syncNow = async () => {
+        if (!shopId) return
+        setSyncing(true)
+        setError(null)
+        setResult(null)
+        const total = { lines: 0, updated: 0, settlements: 0, payouts: 0 }
+        try {
+            for (let run = 0; run < 10; run++) {
+                const res = await fetch('/api/ecommerce/tiktok-shop/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shop_id: shopId }),
+                })
+                const json = await res.json()
+                if (!res.ok) throw new Error(json.error || 'Sync failed')
+                total.lines += json.counts.orderLinesInserted
+                total.updated += json.counts.orderLinesUpdated
+                total.settlements += json.counts.settlementsInserted
+                total.payouts += json.counts.payoutsWritten
+                if (json.done) break
+            }
+            setResult(`Synced from TikTok: ${total.lines} new and ${total.updated} updated order lines, ${total.settlements} new settlement rows, ${total.payouts} payouts.`)
+        } catch (e) {
+            setError((e as Error).message)
+        } finally {
+            setSyncing(false)
+            load()
+        }
+    }
+
+    const disconnect = async () => {
+        if (!shopId || !window.confirm('Disconnect this shop from the TikTok Shop API? Data already brought in is kept.')) return
+        setError(null)
+        try {
+            const res = await fetch('/api/ecommerce/tiktok-shop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'disconnect', shop_id: shopId }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Failed to disconnect')
+            setResult('Disconnected from the TikTok Shop API.')
+            load()
+        } catch (e) {
+            setError((e as Error).message)
+        }
+    }
+
+    const conn = data?.connection
+    const reconnectBy = conn?.refresh_token_expires_at && Date.parse(conn.refresh_token_expires_at) - Date.now() < 14 * 86400_000
+        ? dateOnly(conn.refresh_token_expires_at)
+        : null
     const s = data?.summary
     const p = preview?.summary
     const nothingNew = p && (p.kind === 'orders'
@@ -163,7 +232,7 @@ export default function TikTokShopView(_props: TikTokShopViewProps) {
             <SupplyChainPageHeader
                 eyebrow="Customer & Growth"
                 title="TikTok Shop"
-                description="Sales, settlements and payouts imported from TikTok Seller Center exports"
+                description="Sales, settlements and payouts from the TikTok Shop API or Seller Center exports"
                 actions={
                     <button onClick={load} disabled={loading} className={buttonClass}>
                         <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -208,6 +277,60 @@ export default function TikTokShopView(_props: TikTokShopViewProps) {
                     </button>
                 </div>
             </div>
+
+            {shopId && data && (conn || data.api_configured) && (
+                <div className="sera-sc-panel p-4 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-start gap-2 text-sm text-[var(--sera-ink)] min-w-0">
+                            <Link2 className="h-4 w-4 mt-0.5 shrink-0" />
+                            {conn ? (
+                                <div className="min-w-0">
+                                    <p className="font-medium">
+                                        Connected to TikTok shop {conn.external_shop_name || conn.seller_name || ''}{conn.external_shop_code ? ` (${conn.external_shop_code})` : ''}
+                                    </p>
+                                    <p className="text-xs text-[var(--sera-muted)]">
+                                        Settlements and payouts from {dateOnly(conn.data_from)} come from the API and sync every hour.
+                                        {' '}Last sync: {conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString('en-MY') : 'not yet'}
+                                        {conn.last_sync_status === 'failed' ? ' (failed)' : ''}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="min-w-0">
+                                    <p className="font-medium">Connect this shop to the TikTok Shop API</p>
+                                    <p className="text-xs text-[var(--sera-muted)]">
+                                        Log in to TikTok Seller Center for {shops.find(x => x.id === shopId)?.shop_name} in this browser first, then click Connect and approve.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex gap-2 sm:ml-auto shrink-0">
+                            {conn ? (
+                                <>
+                                    <button onClick={syncNow} disabled={syncing} className={primaryClass}>
+                                        {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                        Sync now
+                                    </button>
+                                    <button onClick={disconnect} disabled={syncing} className={buttonClass}>
+                                        <Unlink className="h-3.5 w-3.5" />
+                                        Disconnect
+                                    </button>
+                                </>
+                            ) : (
+                                <a href={`/api/ecommerce/tiktok-shop/connect?shop_id=${encodeURIComponent(shopId)}`} className={primaryClass}>
+                                    <Link2 className="h-3.5 w-3.5" />
+                                    Connect TikTok
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                    {conn?.last_sync_error && (
+                        <p className="flex items-start gap-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />{conn.last_sync_error}</p>
+                    )}
+                    {reconnectBy && (
+                        <p className="flex items-start gap-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />The TikTok authorization ends on {reconnectBy}. Click Disconnect and connect again before then.</p>
+                    )}
+                </div>
+            )}
 
             {shopId && (
                 <div className="sera-sc-panel p-4 space-y-3">

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { loadMarketplaceContext } from '@/lib/marketplace/access'
+import { API_OTHER_SHIPPING, isTikTokShopApiConfigured } from '@/lib/marketplace/tiktok-api'
 
 /**
- * GET  /api/ecommerce/tiktok-shop?shop_id=…&month=YYYY-MM — shops, imports, month summary and rows
- * POST /api/ecommerce/tiktok-shop — { action: 'add_shop', shop_name }
+ * GET  /api/ecommerce/tiktok-shop?shop_id=…&month=YYYY-MM — shops, imports, month summary, rows and API connection
+ * POST /api/ecommerce/tiktok-shop — { action: 'add_shop', shop_name } | { action: 'disconnect', shop_id }
  */
 
 const PAGE = 1000
@@ -13,12 +14,17 @@ const LIST_LIMIT = 500
 const SHIPPING_FEE_PARTS = new Set([
   'actual_shipping_fee', 'international_leg_delivery_fee', 'platform_shipping_fee_discount', 'customer_shipping_fee',
   'actual_return_shipping_fee', 'refunded_customer_shipping_fee', 'shipping_subsidy', 'guarantee_program_reimbursement',
+  API_OTHER_SHIPPING,
 ])
 const NOT_FEES = new Set([
   'refund_subtotal_before_seller_discounts', 'refund_of_seller_discounts', 'seller_co_funded_voucher_discount',
   'seller_co_funded_voucher_discount_refund', 'platform_discount', 'platform_discount_refund',
   'platform_co_funded_voucher_discount', 'platform_co_funded_voucher_discount_refund', 'seller_shipping_fee_discount',
+  'reserve_amount',
 ])
+
+const CONNECTION_STATUS_COLUMNS =
+  'external_shop_name, external_shop_code, seller_name, data_from, authorized_at, access_token_expires_at, refresh_token_expires_at, last_sync_at, last_sync_status, last_sync_error'
 
 const isCancelled = (status: unknown) => /^cancel/i.test(String(status || ''))
 const num = (v: unknown) => Number(v) || 0
@@ -65,7 +71,8 @@ export async function GET(request: Request) {
       : new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 7)
     const { start, end } = monthRange(month)
 
-    const [imports, lines, settlements, payouts] = await Promise.all([
+    const [connection, imports, lines, settlements, payouts] = await Promise.all([
+      db.from('marketplace_shop_connections').select(CONNECTION_STATUS_COLUMNS).eq('company_id', orgId).eq('shop_id', shopId).maybeSingle(),
       db.from('marketplace_imports')
         .select('id, source, file_kind, file_name, period_start, period_end, rows_in_file, rows_inserted, rows_updated, rows_unchanged, status, imported_at')
         .eq('company_id', orgId).eq('shop_id', shopId)
@@ -126,6 +133,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       shops: shops || [],
+      api_configured: isTikTokShopApiConfigured(),
+      connection: connection.error ? null : connection.data,
       imports: imports.data || [],
       summary,
       order_lines: lines.slice(0, LIST_LIMIT),
@@ -146,6 +155,13 @@ export async function POST(request: Request) {
     const { db, orgId, userId } = ctx
 
     const body = await request.json().catch(() => null)
+    if (body?.action === 'disconnect') {
+      const { data, error } = await db.from('marketplace_shop_connections').delete()
+        .eq('company_id', orgId).eq('shop_id', typeof body.shop_id === 'string' ? body.shop_id : '').select('shop_id')
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      if (!data?.length) return NextResponse.json({ error: 'This shop is not connected to TikTok.' }, { status: 404 })
+      return NextResponse.json({ disconnected: true })
+    }
     if (body?.action !== 'add_shop') return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     const shopName = typeof body.shop_name === 'string' ? body.shop_name.replace(/\s+/g, ' ').trim() : ''
     if (!shopName || shopName.length > 120) return NextResponse.json({ error: 'Shop name is required (max 120 characters)' }, { status: 400 })
