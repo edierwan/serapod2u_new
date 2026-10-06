@@ -201,6 +201,11 @@ describe('mapWithdrawal', () => {
     expect(mapWithdrawal({ id: '7425000000000000002', type: 'SETTLE', amount: '80', status: 'PROCESSING', create_time: 1790000000 })!.transactionType).toBe('Earnings')
     expect(mapWithdrawal({ id: '' })).toBeNull()
   })
+
+  it('shows withdrawals as money out even when the API amount is positive', () => {
+    expect(mapWithdrawal({ id: '3683478646751987069', type: 'WITHDRAW', amount: '24761.2', status: 'SUCCESS', create_time: 1790000000 })!.row.amount).toBe('-24761.20')
+    expect(mapWithdrawal({ id: '3683478646751987070', type: 'SETTLE', amount: '342.83', status: 'SUCCESS', create_time: 1790000000 })!.row.amount).toBe('342.83')
+  })
 })
 
 describe('claimSyncRun', () => {
