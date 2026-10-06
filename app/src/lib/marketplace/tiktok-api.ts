@@ -432,6 +432,9 @@ export function mapWithdrawal(w: any): ApiPayout | null {
   const referenceId = text(w?.id)
   if (!referenceId || !/^[A-Za-z0-9_-]{4,64}$/.test(referenceId)) return null
   const transactionType = PAYOUT_TYPE[String(w.type)] ?? humanize(w.type) ?? 'Other'
+  const raw = cents(w.amount)
+  // The API reports withdrawals as positive; the Excel export (and the ledger) shows them as money out.
+  const value = raw === null ? 0 : String(w.type) === 'WITHDRAW' ? -Math.abs(raw) : raw
   return {
     referenceId,
     transactionType,
@@ -439,7 +442,7 @@ export function mapWithdrawal(w: any): ApiPayout | null {
       reference_id: referenceId,
       transaction_type: transactionType,
       request_date: unixToMyDate(w.create_time),
-      amount: amount(w.amount) ?? '0.00',
+      amount: centsToAmount(value),
       status: PAYOUT_STATUS[String(w.status)] ?? humanize(w.status),
     },
   }
