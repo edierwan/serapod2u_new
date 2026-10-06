@@ -27,6 +27,7 @@ import {
     CreditCard,
     LogIn,
     Map,
+    Music2,
     type LucideIcon,
 } from 'lucide-react'
 import { isCrmViewId } from '@/modules/crm/crmNav'
@@ -150,6 +151,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         children: [
             { id: 'hero-banners', label: 'Hero Banners', icon: ImageIcon, route: '/ecommerce/hero-banners', description: 'Manage storefront and login hero banners', href: '/ecommerce/hero-banners' },
             { id: 'store-orders', label: 'Store Orders', icon: ShoppingBag, route: '/ecommerce/store-orders', description: 'View and manage online store orders', href: '/ecommerce/store-orders' },
+            { id: 'ecommerce/tiktok-shop', label: 'TikTok Shop', icon: Music2, route: '/ecommerce/tiktok-shop', description: 'TikTok Shop sales, settlements and payouts', href: '/ecommerce/tiktok-shop' },
             { id: 'ecommerce/payment-gateway', label: 'Payment Gateway', icon: CreditCard, route: '/ecommerce/payment-gateway', description: 'Configure payment providers for checkout', href: '/ecommerce/payment-gateway' },
         ],
     },
@@ -158,7 +160,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
 // ── Helpers ────────────────────────────────────────────────────
 
 /** E-commerce view IDs */
-const ecommerceViewIds = new Set(['ecommerce', 'hero-banners', 'store-banner-manager', 'login-hero-banner', 'store-orders', 'ecommerce/payment-gateway'])
+const ecommerceViewIds = new Set(['ecommerce', 'hero-banners', 'store-banner-manager', 'login-hero-banner', 'store-orders', 'ecommerce/tiktok-shop', 'ecommerce/payment-gateway'])
 export function isEcommerceViewId(viewId: string): boolean {
     return ecommerceViewIds.has(viewId)
 }
@@ -169,6 +171,7 @@ export const ecommerceViewToPath: Record<string, string> = {
     'store-banner-manager': 'hero-banners',
     'login-hero-banner': 'login-hero',
     'store-orders': 'store-orders',
+    'ecommerce/tiktok-shop': 'tiktok-shop',
     'ecommerce/payment-gateway': 'payment-gateway',
 }
 
@@ -176,6 +179,7 @@ export const ecommercePathToView: Record<string, string> = {
     'hero-banners': 'store-banner-manager',
     'login-hero': 'login-hero-banner',
     'store-orders': 'store-orders',
+    'tiktok-shop': 'ecommerce/tiktok-shop',
     'payment-gateway': 'ecommerce/payment-gateway',
 }
 
