@@ -12,6 +12,7 @@ import {
   unixToMyDate,
 } from './tiktok-api'
 import { pickTikTokShop, readTikTokStateCookie, tiktokStateCookie } from './tiktok-oauth'
+import { claimSyncRun } from './tiktok-sync'
 
 const env = { ...process.env }
 beforeEach(() => {
@@ -199,5 +200,41 @@ describe('mapWithdrawal', () => {
     })
     expect(mapWithdrawal({ id: '7425000000000000002', type: 'SETTLE', amount: '80', status: 'PROCESSING', create_time: 1790000000 })!.transactionType).toBe('Earnings')
     expect(mapWithdrawal({ id: '' })).toBeNull()
+  })
+})
+
+describe('claimSyncRun', () => {
+  const fakeDb = (current: any, updated = [{ shop_id: 's1' }]) => {
+    const calls: any[] = []
+    const builder: any = {}
+    for (const m of ['select', 'eq', 'is', 'update', 'or']) builder[m] = vi.fn((...args: any[]) => { calls.push([m, ...args]); return builder })
+    builder.maybeSingle = vi.fn(async () => ({ data: current, error: null }))
+    builder.then = (resolve: any) => resolve({ data: updated, error: null })
+    return { db: { from: () => builder }, calls }
+  }
+  const now = Date.parse('2026-10-06T06:30:00Z')
+
+  it('claims an idle shop with plain filters on the values it read', async () => {
+    const { db, calls } = fakeDb({ last_sync_status: null, sync_started_at: null })
+    expect(await claimSyncRun(db, 's1', now)).toBe(true)
+    expect(calls).toContainEqual(['update', { last_sync_status: 'running', sync_started_at: '2026-10-06T06:30:00.000Z' }])
+    expect(calls).toContainEqual(['is', 'last_sync_status', null])
+    expect(calls).toContainEqual(['is', 'sync_started_at', null])
+    expect(calls.some((c) => c[0] === 'or')).toBe(false)
+  })
+
+  it('refuses while a recent run is active and takes over a stale one', async () => {
+    const recent = fakeDb({ last_sync_status: 'running', sync_started_at: '2026-10-06T06:25:00+00:00' })
+    expect(await claimSyncRun(recent.db, 's1', now)).toBe(false)
+    expect(recent.calls.some((c) => c[0] === 'update')).toBe(false)
+
+    const stale = fakeDb({ last_sync_status: 'running', sync_started_at: '2026-10-06T06:00:00+00:00' })
+    expect(await claimSyncRun(stale.db, 's1', now)).toBe(true)
+    expect(stale.calls).toContainEqual(['eq', 'sync_started_at', '2026-10-06T06:00:00+00:00'])
+  })
+
+  it('returns false when another run won the swap', async () => {
+    const { db } = fakeDb({ last_sync_status: 'ok', sync_started_at: '2026-10-06T05:00:00+00:00' }, [])
+    expect(await claimSyncRun(db, 's1', now)).toBe(false)
   })
 })
