@@ -9,9 +9,11 @@ import {
   myDateToUnix,
   refreshTikTokToken,
   searchOrders,
+  tiktokAppForShop,
   type ApiOrderLine,
   type ApiPayout,
   type ApiSettlement,
+  type TikTokShopApp,
 } from './tiktok-api'
 
 /**
@@ -104,10 +106,18 @@ export async function claimSyncRun(db: any, shopId: string, now = Date.now()) {
   return (data || []).length > 0
 }
 
-async function validAccessToken(db: any, conn: any) {
+async function shopApp(db: any, conn: any): Promise<TikTokShopApp> {
+  const { data: shop, error } = await db.from('marketplace_shops').select('id, shop_name').eq('id', conn.shop_id).maybeSingle()
+  if (error) throw error
+  const app = tiktokAppForShop(shop ?? { id: conn.shop_id })
+  if (!app) throw new Error('The TikTok Shop app for this shop is not set up on this server.')
+  return app
+}
+
+async function validAccessToken(db: any, conn: any, app: TikTokShopApp) {
   const expires = Date.parse(conn.access_token_expires_at)
   if (Number.isFinite(expires) && expires - Date.now() > REFRESH_BEFORE_MS) return conn.access_token as string
-  const tokens = await refreshTikTokToken(conn.refresh_token)
+  const tokens = await refreshTikTokToken(app, conn.refresh_token)
   const update = {
     access_token: tokens.accessToken,
     access_token_expires_at: tokens.accessTokenExpiresAt,
@@ -230,7 +240,8 @@ export async function syncTikTokShop(db: any, conn: any, deadline: number): Prom
   }
   let done = false
   try {
-    const token = await validAccessToken(db, conn)
+    const app = await shopApp(db, conn)
+    const token = await validAccessToken(db, conn, app)
     const dataFromUnix = myDateToUnix(conn.data_from)
 
     // Orders (created or changed since the cursor)
@@ -238,7 +249,7 @@ export async function syncTikTokShop(db: any, conn: any, deadline: number): Prom
     const orderSince = Math.max(dataFromUnix, (toUnix(conn.orders_synced_to) ?? dataFromUnix) - ORDER_OVERLAP_S)
     let pageToken: string | undefined
     while (Date.now() < deadline) {
-      const page = await searchOrders(token, conn.shop_cipher, { updateTimeGe: orderSince, pageToken })
+      const page = await searchOrders(app, token, conn.shop_cipher, { updateTimeGe: orderSince, pageToken })
       const orders = page?.orders || []
       const lines = orders.flatMap(mapOrderToLines)
       if (lines.length) await writeOrderLines(db, conn, importFor, lines, counts)
@@ -254,14 +265,14 @@ export async function syncTikTokShop(db: any, conn: any, deadline: number): Prom
       const statementSince = Math.max(dataFromUnix, (toUnix(conn.statements_synced_to) ?? dataFromUnix - 1) + 1)
       let statementToken: string | undefined
       outer: while (Date.now() < deadline) {
-        const page = await getStatements(token, conn.shop_cipher, { statementTimeGe: statementSince, pageToken: statementToken })
+        const page = await getStatements(app, token, conn.shop_cipher, { statementTimeGe: statementSince, pageToken: statementToken })
         const statements = (page?.statements || []).filter((s: any) => s?.id && Number(s.statement_time) > 0)
         for (const statement of statements) {
           if (Date.now() >= deadline) break outer
           const rows: ApiSettlement[] = []
           let txToken: string | undefined
           do {
-            const tx = await getStatementTransactions(token, conn.shop_cipher, String(statement.id), txToken)
+            const tx = await getStatementTransactions(app, token, conn.shop_cipher, String(statement.id), txToken)
             for (const t of tx?.transactions || []) {
               const row = mapStatementTransaction(String(statement.id), Number(statement.statement_time), statement.currency ?? tx?.currency ?? null, t)
               if (row) rows.push(row)
@@ -283,7 +294,7 @@ export async function syncTikTokShop(db: any, conn: any, deadline: number): Prom
       const startedAt = new Date().toISOString()
       let withdrawalToken: string | undefined
       while (Date.now() < deadline) {
-        const page = await getWithdrawals(token, conn.shop_cipher, { createTimeGe: payoutSince, pageToken: withdrawalToken })
+        const page = await getWithdrawals(app, token, conn.shop_cipher, { createTimeGe: payoutSince, pageToken: withdrawalToken })
         const items = page?.withdrawals || []
         const rows = items.map(mapWithdrawal).filter((p): p is ApiPayout => Boolean(p?.row.request_date && p.row.request_date >= conn.data_from))
         if (rows.length) await writePayouts(db, conn, importFor, rows, counts)
