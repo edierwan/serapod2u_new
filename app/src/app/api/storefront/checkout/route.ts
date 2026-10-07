@@ -238,27 +238,17 @@ export async function POST(request: NextRequest) {
     let shippingAmount = 0
     let shippingServiceId: string | null = null
     let shippingCourierName: string | null = null
-    let shippingActualCost: number | null = null
-    let shippingSubsidy: number | null = null
     if (salesChannel === 'outdoor') {
       const delivery = await resolveOutdoorShipping(
         supabase,
-        body.items.map((item) => ({
-          productId: String((variantMap.get(item.variantId) as any)?.product_id || ''),
-          quantity: item.quantity,
-        })),
+        variants.map((variant: any) => String(variant.product_id || '')),
         orderTotal,
-        { postcode: body.customer.postcode, state: body.customer.state },
       )
       shippingAmount = delivery.amount
-      const quote = delivery.courier ?? (await cheapestOutdoorCourier(body.customer.postcode, body.customer.state))
+      const quote = await cheapestOutdoorCourier(body.customer.postcode, body.customer.state)
       if (quote) {
         shippingServiceId = quote.serviceId.slice(0, 80)
         shippingCourierName = `${quote.courierName} — ${quote.serviceName}`.slice(0, 120)
-      }
-      if (delivery.actualCost != null) {
-        shippingActualCost = delivery.actualCost
-        shippingSubsidy = delivery.subsidy ?? 0
       }
     }
     const payableTotal = orderTotal + shippingAmount
@@ -293,20 +283,11 @@ export async function POST(request: NextRequest) {
       total_amount: payableTotal,
       currency: 'MYR',
     }
-    if (shippingActualCost != null) {
-      orderPayload.shipping_actual_cost = shippingActualCost
-      orderPayload.shipping_subsidy_amount = shippingSubsidy
-    }
 
     let order: { id: string; order_ref: string } | null = null
     let orderErr: any = null
     {
-      let first = await supabase.from('storefront_orders').insert(orderPayload).select('id, order_ref').single()
-      if (first.error && /shipping_actual_cost|shipping_subsidy_amount/i.test(String(first.error.message || ''))) {
-        delete orderPayload.shipping_actual_cost
-        delete orderPayload.shipping_subsidy_amount
-        first = await supabase.from('storefront_orders').insert(orderPayload).select('id, order_ref').single()
-      }
+      const first = await supabase.from('storefront_orders').insert(orderPayload).select('id, order_ref').single()
       order = first.data
       orderErr = first.error
       // Pre-migration fallback: keep /store checkout working if Outdoor columns are not applied yet.

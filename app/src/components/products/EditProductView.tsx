@@ -14,9 +14,7 @@ import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Truck, U
 import {
   OUTDOOR_FLAT_SHIPPING_RM,
   OUTDOOR_SHIPPING_NOTE,
-  OUTDOOR_SHIPPING_CUSTOMER_SHARE_PERCENT,
   OUTDOOR_SHIPPING_TITLE,
-  outdoorParcelWeightKg,
   outdoorShippingPrice,
 } from '@/lib/outdoor/shipping'
 import SafeImage from '@/components/shared/SafeImage'
@@ -73,8 +71,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     age_restriction: 0,
     outdoor_store: false
   })
-  const [delivery, setDelivery] = useState({ title: '', note: '', price: '', weight: '' })
-  const [savedDelivery, setSavedDelivery] = useState({ title: '', note: '', price: '', weight: '' })
+  const [delivery, setDelivery] = useState({ title: '', note: '', price: '' })
+  const [savedDelivery, setSavedDelivery] = useState({ title: '', note: '', price: '' })
 
   useEffect(() => {
     if (isReady) {
@@ -158,7 +156,6 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         title: row.outdoor_shipping_title || '',
         note: row.outdoor_shipping_note || '',
         price: row.outdoor_shipping_price == null ? '' : String(row.outdoor_shipping_price),
-        weight: row.outdoor_shipping_weight_kg == null ? '' : String(row.outdoor_shipping_weight_kg),
       }
       setDelivery(loadedDelivery)
       setSavedDelivery(loadedDelivery)
@@ -440,15 +437,6 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     const productId = sessionStorage.getItem('selectedProductId')
     if (!productId) return
 
-    const deliveryWeight = outdoorParcelWeightKg(delivery.weight)
-    if (delivery.weight.trim() && deliveryWeight === null) {
-      toast({
-        title: 'Validation Error',
-        description: 'Parcel weight must be more than 0 kg.',
-        variant: 'destructive'
-      })
-      return
-    }
     const deliveryPrice = outdoorShippingPrice(delivery.price)
     if (delivery.price.trim() && deliveryPrice === null) {
       toast({
@@ -495,22 +483,20 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
         delivery.title !== savedDelivery.title ||
         delivery.note !== savedDelivery.note ||
         delivery.price !== savedDelivery.price
-      const weightChanged = delivery.weight !== savedDelivery.weight
-      if (deliveryChanged || weightChanged) {
+      if (deliveryChanged) {
         const { error: deliveryError } = await supabase
           .from('products')
           .update({
             outdoor_shipping_title: delivery.title.trim() || null,
             outdoor_shipping_note: delivery.note.trim() || null,
-            outdoor_shipping_price: deliveryPrice,
-            ...(weightChanged ? { outdoor_shipping_weight_kg: deliveryWeight } : {})
+            outdoor_shipping_price: deliveryPrice
           } as any)
           .eq('id', productId)
         if (deliveryError) {
           toast({
             title: 'Product saved, delivery not saved',
             description: /outdoor_shipping/i.test(deliveryError.message || '')
-              ? 'Apply the Outdoor delivery migrations, then save again.'
+              ? 'Apply the Outdoor delivery migration, then save again.'
               : deliveryError.message,
             variant: 'destructive'
           })
@@ -879,24 +865,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                 onChange={(e) => setDelivery({ ...delivery, note: e.target.value })}
               />
             </div>
-            <div className="space-y-2 md:max-w-[220px]">
-              <Label htmlFor="outdoor_shipping_weight_kg">Parcel weight (kg)</Label>
-              <Input
-                id="outdoor_shipping_weight_kg"
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={delivery.weight}
-                placeholder="e.g. 2.5"
-                onChange={(e) => setDelivery({ ...delivery, weight: e.target.value })}
-              />
-            </div>
             <p className="text-xs text-gray-500">
               Set the price to 0 to show Free shipping. When a bag has several products, checkout charges the highest delivery price.
-            </p>
-            <p className="text-xs text-gray-500">
-              Parcel weight is one packed unit. When every product in the bag has a weight, checkout uses the live EasyParcel rate for the customer&apos;s address and the customer pays {OUTDOOR_SHIPPING_CUSTOMER_SHARE_PERCENT}% of it. The price above is used when the live rate is not available.
             </p>
           </CardContent>
         </Card>
