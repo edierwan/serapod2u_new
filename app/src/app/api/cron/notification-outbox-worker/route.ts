@@ -479,6 +479,10 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                         templateBody = `🎉 Your product return {{return_no}} has been completed.`
                     } else if (event_code === 'system_sms_check') {
                         templateBody = `Serapod2U SMS check. If you received this, Local Malaysian SMS is working.`
+                    } else if (event_code === 'tiktok_shop_daily_report') {
+                        templateBody = `{{report_text}}`
+                    } else if (event_code === 'tiktok_shop_daily_report_sms') {
+                        templateBody = `{{summary_text}}`
                     } else {
                         templateBody = `Update: ${event_code} occurred.\nOrder: {{order_no}}\nStatus: {{status}}`
                     }
@@ -800,7 +804,9 @@ async function runOutbox(supabase: ReturnType<typeof createAdminClient>): Promis
                         failed++
                     }
                 } else if (channel === 'email') {
-                    const emailSubject = event_code === 'roadtour_qr_delivery'
+                    const emailSubject = String(event_code).startsWith('tiktok_shop_daily_report') && payload.email_subject
+                        ? String(payload.email_subject)
+                        : event_code === 'roadtour_qr_delivery'
                         ? `RoadTour QR — ${String(payload.campaign_name || 'Campaign')}`
                         : String(event_code).startsWith('return_')
                             ? `Product Return ${String(payload.return_no || '')} — ${String(payload.return_status || 'Update')}`.trim()
