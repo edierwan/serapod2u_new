@@ -164,6 +164,7 @@ export const ROUTE_COVERAGE: Record<string, RouteCoverage> = {
   "cron/serapp-hold-expiry": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "cron/storefront-unpaid-expiry": { kind: 'SERVICE', reason: "Cron worker authenticated with CRON_SECRET: cancels Outdoor orders unpaid for 24 hours" },
   "cron/tiktok-shop-sync": { kind: 'SERVICE', reason: "Cron worker authenticated with CRON_SECRET: hourly TikTok Shop API sync of connected shops" },
+  "cron/tiktok-daily-report": { kind: 'SERVICE', reason: "Cron worker authenticated with CRON_SECRET: queues the TikTok Shop daily shipping report to Notification Types recipients" },
   "cron/warehouse-debug": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "cron/warehouse-receiving-worker": { kind: 'SERVICE', reason: "Cron/queue worker authenticated with CRON_SECRET (registered service identity)" },
   "debug/sms-provider-check": { kind: 'ENTERPRISE', permissions: ["platform.settings.manage"], via: ["app/api/settings/whatsapp/_utils.ts"] },

@@ -55,6 +55,7 @@ const WORKERS = [
   '/api/cron/sa-governance-maintenance',
   '/api/cron/storefront-unpaid-expiry',
   '/api/cron/tiktok-shop-sync',
+  '/api/cron/tiktok-daily-report',
   // SerApp order holds expire on their own schedule.
   '/api/cron/serapp-hold-expiry',
 ]

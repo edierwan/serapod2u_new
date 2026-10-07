@@ -1092,6 +1092,29 @@ export const notificationTemplates: Record<string, Template[]> = {
     ],
 
     // ══════════════════════════════════════════════════════════
+    // E-COMMERCE (TIKTOK SHOP)
+    // ══════════════════════════════════════════════════════════
+
+    'tiktok_shop_daily_report': [
+        {
+            id: 'tt_daily_email_1', name: 'Daily Shipping Report', channel: 'email',
+            subject: '{{email_subject}}',
+            body: `{{report_text}}`
+        },
+        {
+            id: 'tt_daily_wa_1', name: 'Daily Shipping Report', channel: 'whatsapp',
+            body: `{{report_text}}`
+        },
+    ],
+
+    'tiktok_shop_daily_report_sms': [
+        {
+            id: 'tt_daily_sum_wa_1', name: 'Daily Shipping Summary', channel: 'whatsapp',
+            body: `{{summary_text}}`
+        },
+    ],
+
+    // ══════════════════════════════════════════════════════════
     // SYSTEM CHECK
     // ══════════════════════════════════════════════════════════
 
