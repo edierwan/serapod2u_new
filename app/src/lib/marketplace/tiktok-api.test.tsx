@@ -3,11 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   TikTokApiError,
   callTikTokApi,
+  getTikTokShopApps,
+  isTikTokShopApiConfigured,
   mapOrderToLines,
   mapStatementTransaction,
   mapWithdrawal,
   myDateToUnix,
   signTikTokRequest,
+  tiktokAppForShop,
   tiktokAuthorizeUrl,
   unixToMyDate,
 } from './tiktok-api'
@@ -75,6 +78,34 @@ describe('authorization helpers', () => {
     expect(u.origin + u.pathname).toBe('https://services.tiktokshop.com/open/authorize')
     expect(u.searchParams.get('service_id')).toBe('7000000000000000001')
     expect(u.searchParams.get('state')).toBe('abc123')
+  })
+
+  it('picks the extra app listed for a shop by ID or name, else the default app', () => {
+    process.env.TIKTOK_SHOP_APP_KEY_2 = 'appkey2'
+    process.env.TIKTOK_SHOP_APP_SECRET_2 = 'secret2'
+    process.env.TIKTOK_SHOP_SERVICE_ID_2 = '7000000000000000002'
+    process.env.TIKTOK_SHOP_APP_SHOPS_2 = '0b5c3f2e-0000-4000-8000-000000000002, Ellbow'
+    process.env.TIKTOK_SHOP_APP_KEY_3 = 'appkey3'
+    process.env.TIKTOK_SHOP_APP_SECRET_3 = 'secret3'
+    process.env.TIKTOK_SHOP_SERVICE_ID_3 = '7000000000000000003'
+    expect(getTikTokShopApps().map(a => a.appKey)).toEqual(['appkey1', 'appkey2'])
+    expect(tiktokAppForShop({ id: '0b5c3f2e-0000-4000-8000-000000000002' })?.appKey).toBe('appkey2')
+    expect(tiktokAppForShop({ id: 'other', shop_name: 'ELLBOW' })?.appKey).toBe('appkey2')
+    expect(tiktokAppForShop({ id: 'other', shop_name: 'SeraOutdoor' })?.appKey).toBe('appkey1')
+    expect(new URL(tiktokAuthorizeUrl('s', tiktokAppForShop({ id: 'x', shop_name: 'Ellbow' })!)).searchParams.get('service_id')).toBe('7000000000000000002')
+
+    delete process.env.TIKTOK_SHOP_APP_KEY
+    expect(tiktokAppForShop({ id: 'other', shop_name: 'SeraOutdoor' })).toBeNull()
+    expect(isTikTokShopApiConfigured()).toBe(true)
+  })
+
+  it('signs calls with the given app', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ code: 0, data: {} }), { status: 200 }))
+    const app = { appKey: 'appkey9', appSecret: 'secret9', serviceId: '1', shops: ['x'] }
+    await callTikTokApi({ path: '/x', app, accessToken: 't', fetchImpl: fetchImpl as unknown as typeof fetch })
+    const query = Object.fromEntries(new URL((fetchImpl.mock.calls[0] as unknown as [string])[0]).searchParams.entries())
+    expect(query.app_key).toBe('appkey9')
+    expect(query.sign).toBe(signTikTokRequest('/x', query, '', 'secret9'))
   })
 
   it('round-trips the state cookie with the shop id', () => {
