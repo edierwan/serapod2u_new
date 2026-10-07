@@ -45,6 +45,7 @@ export interface ShopReport {
   orderTo: string | null
   itemTotals: { item: string; quantity: number; variations: { name: string; quantity: number }[] }[]
   parcelLines: string[]
+  parcelRows: { no: number; orderId: string; packageId: string | null; status: string | null; contents: string }[]
 }
 
 export interface DailyReport {
@@ -181,17 +182,17 @@ export function buildShopReport(shop: ReportShop, lines: ReportOrderLine[]): Sho
     }))
     .sort((a, b) => b.quantity - a.quantity || a.item.localeCompare(b.item))
 
-  const parcelLines = Array.from(parcels.values()).map((group, index) => {
+  const parcelRows = Array.from(parcels.values()).map((group, index) => {
     const first = group[0]
-    const what = group
+    const contents = group
       .map((line) => {
         const variation = variationName(line.variation)
         return `${Math.max(0, Number(line.quantity) || 0)}x ${line.seller_sku || first.product_name || 'item'}${variation ? ` (${variation})` : ''}`
       })
       .join(', ')
-    const status = first.order_substatus ? ` [${first.order_substatus}]` : ''
-    return `${index + 1}. Order ${first.order_id}${status}: ${what}`
+    return { no: index + 1, orderId: first.order_id, packageId: first.package_id, status: first.order_substatus, contents }
   })
+  const parcelLines = parcelRows.map((row) => `${row.no}. Order ${row.orderId}${row.status ? ` [${row.status}]` : ''}: ${row.contents}`)
 
   return {
     shop: shop.name,
@@ -201,16 +202,17 @@ export function buildShopReport(shop: ReportShop, lines: ReportOrderLine[]): Sho
     orderTo: orderTo === null ? null : mytDate(new Date(orderTo)),
     itemTotals,
     parcelLines,
+    parcelRows,
   }
 }
 
-function shopBlock(report: ShopReport, slot: DailyReportSlot, today: string): string {
+function shopBlock(report: ShopReport, slot: DailyReportSlot, today: string, pastDay: boolean): string {
   const out = [
     report.shop.toUpperCase(),
     `ACCOUNT : TIKTOK ${report.shop.toUpperCase()}`,
   ]
   if (!report.parcels) {
-    out.push(slot === 'packing' ? 'Nothing to pack.' : 'Nothing shipped today.')
+    out.push(slot === 'packing' ? 'Nothing to pack.' : pastDay ? 'Nothing shipped.' : 'Nothing shipped today.')
     return out.join('\n')
   }
   if (slot === 'shipped') out.push(`SHIP : ${today}`)
@@ -239,23 +241,26 @@ export function buildDailyReport(input: {
   shops: ReportShop[]
   lines: ReportOrderLine[]
   lastSyncAt?: string | null
+  /** Shipped report for an earlier day: `now` is that day and has no meaningful time. */
+  pastDay?: boolean
 }): DailyReport {
   const { slot, now, shops, lines } = input
+  const pastDay = slot === 'shipped' && Boolean(input.pastDay)
   const today = mytDate(now)
   const byShop = new Map<string, ReportOrderLine[]>()
   for (const line of lines) byShop.set(line.shop_id, [...(byShop.get(line.shop_id) || []), line])
   const reports = shops.map((shop) => buildShopReport(shop, byShop.get(shop.id) || []))
 
-  const title = slot === 'packing' ? 'TIKTOK SHOP - TO PACK' : 'TIKTOK SHOP - SHIPPED TODAY'
+  const title = slot === 'packing' ? 'TIKTOK SHOP - TO PACK' : pastDay ? `TIKTOK SHOP - SHIPPED ${today}` : 'TIKTOK SHOP - SHIPPED TODAY'
   const subject = slot === 'packing'
     ? `TikTok Shop - to pack (${today}, ${mytTime(now)})`
-    : `TikTok Shop - shipped today (${today})`
+    : pastDay ? `TikTok Shop - shipped on ${today}` : `TikTok Shop - shipped today (${today})`
   const header = [
     title,
-    `${today}, ${mytTime(now)}`,
+    pastDay ? null : `${today}, ${mytTime(now)}`,
     input.lastSyncAt ? `TikTok data as of ${mytDate(input.lastSyncAt)} ${mytTime(input.lastSyncAt)}` : null,
   ].filter(Boolean).join('\n')
-  const text = [header, ...reports.map((report) => shopBlock(report, slot, today))].join('\n\n==============================\n\n')
+  const text = [header, ...reports.map((report) => shopBlock(report, slot, today, pastDay))].join('\n\n==============================\n\n')
 
   const counts = reports.map((r) => `${r.shop} ${r.parcels} parcel${r.parcels === 1 ? '' : 's'}/${r.items} item${r.items === 1 ? '' : 's'}`).join('; ')
   const summary = slot === 'packing'

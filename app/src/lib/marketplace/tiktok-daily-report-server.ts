@@ -21,11 +21,12 @@ export interface DailyReportRunResult {
   companies: { company_id: string; parcels: number; items: number; queued: Record<string, string> }[]
 }
 
-async function loadLines(db: any, shopIds: string[], slot: DailyReportSlot, now: Date): Promise<ReportOrderLine[]> {
+async function loadLines(db: any, shopIds: string[], slot: DailyReportSlot, now: Date, companyId?: string): Promise<ReportOrderLine[]> {
   const rows: ReportOrderLine[] = []
   const { start, end } = mytDayBounds(now)
   for (let from = 0; ; from += PAGE) {
     let query = db.from('marketplace_order_lines').select(LINE_COLUMNS).in('shop_id', shopIds)
+    if (companyId) query = query.eq('company_id', companyId)
     query = slot === 'packing'
       ? query.eq('order_status', TO_SHIP_STATUS)
       : query.gte('shipped_time', start).lt('shipped_time', end)
@@ -34,6 +35,39 @@ async function loadLines(db: any, shopIds: string[], slot: DailyReportSlot, now:
     rows.push(...(data || []))
     if (!data || data.length < PAGE) return rows
   }
+}
+
+/**
+ * The same report the email carries, built on demand for the TikTok Shop page.
+ * Packing is always "now"; shipped can be any earlier Malaysia day (YYYY-MM-DD).
+ */
+export async function loadTikTokDailyReport(
+  db: any,
+  input: { companyId: string; shopIds: string[]; slot: DailyReportSlot; day?: string | null; now?: Date },
+) {
+  const now = input.now || new Date()
+  const today = mytDayKey(now)
+  const pastDay = input.slot === 'shipped' && Boolean(input.day) && input.day! < today
+  const reportAt = pastDay ? new Date(`${input.day}T12:00:00+08:00`) : now
+
+  const [{ data: shops, error }, { data: connections }] = await Promise.all([
+    db.from('marketplace_shops').select('id, shop_name').eq('company_id', input.companyId).in('id', input.shopIds).order('shop_name'),
+    db.from('marketplace_shop_connections').select('shop_id, last_sync_at').eq('company_id', input.companyId).in('shop_id', input.shopIds),
+  ])
+  if (error) throw error
+  const shopList = (shops || []) as { id: string; shop_name: string }[]
+  const lines = shopList.length ? await loadLines(db, shopList.map((s) => s.id), input.slot, reportAt, input.companyId) : []
+  const syncTimes = ((connections || []) as { last_sync_at: string | null }[]).map((c) => c.last_sync_at).filter(Boolean) as string[]
+  const lastSyncAt = syncTimes.length ? syncTimes.sort()[0] : null
+  const report = buildDailyReport({
+    slot: input.slot,
+    now: reportAt,
+    shops: shopList.map((s) => ({ id: s.id, name: s.shop_name })),
+    lines,
+    lastSyncAt,
+    pastDay,
+  })
+  return { ...report, day: mytDayKey(reportAt), lastSyncAt }
 }
 
 async function loadSetting(db: any, orgId: string, eventCode: string) {
