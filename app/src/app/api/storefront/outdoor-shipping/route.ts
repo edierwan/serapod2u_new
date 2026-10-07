@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveOutdoorShipping } from '@/lib/outdoor/shipping-server'
 import { pickOutdoorShipping } from '@/lib/outdoor/shipping'
 
-/** POST /api/storefront/outdoor-shipping — the delivery line the Outdoor checkout will charge. */
+/** POST /api/storefront/outdoor-shipping — the delivery line the Outdoor checkout will charge for this bag and address. */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
@@ -26,17 +26,19 @@ export async function POST(request: NextRequest) {
 
     const byId = new Map((variants || []).map((variant: any) => [variant.id, variant]))
     let subtotal = 0
+    const lines: Array<{ productId: string; quantity: number }> = []
     for (const item of items) {
       const variant: any = byId.get(String(item?.variantId || ''))
       const quantity = Math.max(0, Math.floor(Number(item?.quantity) || 0))
-      if (variant) subtotal += Number(variant.suggested_retail_price || 0) * quantity
+      if (!variant) continue
+      subtotal += Number(variant.suggested_retail_price || 0) * quantity
+      lines.push({ productId: String(variant.product_id || ''), quantity })
     }
 
-    const shipping = await resolveOutdoorShipping(
-      supabase,
-      (variants || []).map((variant: any) => String(variant.product_id || '')),
-      subtotal,
-    )
+    const shipping = await resolveOutdoorShipping(supabase, lines, subtotal, {
+      postcode: typeof body?.postcode === 'string' ? body.postcode.slice(0, 10) : '',
+      state: typeof body?.state === 'string' ? body.state.slice(0, 60) : '',
+    })
     return NextResponse.json({ shipping })
   } catch (err) {
     console.error('[outdoor-shipping]', err)

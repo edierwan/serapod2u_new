@@ -88,27 +88,37 @@ export default function OutdoorCheckoutPage() {
     })
   }, [router])
 
+  const quotePostcode = /^\d{5}$/.test(form.postcode.trim()) ? form.postcode.trim() : ''
+  const quoteState = quotePostcode ? form.state : ''
+
   useEffect(() => {
     if (!bagKey) return
     let cancelled = false
     setShipping(null)
-    void fetch('/api/storefront/outdoor-shipping', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })) }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled) setShipping(data?.shipping || pickOutdoorShipping([], subtotal))
+    const timer = window.setTimeout(() => {
+      void fetch('/api/storefront/outdoor-shipping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+          postcode: quotePostcode,
+          state: quoteState,
+        }),
       })
-      .catch(() => {
-        if (!cancelled) setShipping(pickOutdoorShipping([], subtotal))
-      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!cancelled) setShipping(data?.shipping || pickOutdoorShipping([], subtotal))
+        })
+        .catch(() => {
+          if (!cancelled) setShipping(pickOutdoorShipping([], subtotal))
+        })
+    }, quotePostcode ? 400 : 0)
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bagKey])
+  }, [bagKey, quotePostcode, quoteState])
 
   useEffect(() => {
     void fetch('/api/storefront/payment/methods')
@@ -313,9 +323,14 @@ export default function OutdoorCheckoutPage() {
                       <p className="font-display text-xl leading-none text-[var(--out-bark)]">{shipping.title}</p>
                       <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-[var(--out-muted)]">{shipping.note}</p>
                     </div>
-                    <p key={shippingCost} className="out-swap shrink-0 whitespace-nowrap font-display text-xl text-[var(--out-bark)] sm:text-2xl">
-                      {freeShipping ? 'Free' : money(shippingCost)}
-                    </p>
+                    <div key={shippingCost} className="out-swap shrink-0 text-right">
+                      {shipping.actualCost != null && shipping.actualCost > shippingCost ? (
+                        <p className="whitespace-nowrap text-xs text-[var(--out-muted)] line-through">{money(shipping.actualCost)}</p>
+                      ) : null}
+                      <p className="whitespace-nowrap font-display text-xl text-[var(--out-bark)] sm:text-2xl">
+                        {freeShipping ? 'Free' : money(shippingCost)}
+                      </p>
+                    </div>
                   </>
                 ) : (
                   <div className="min-w-0 flex-1 animate-pulse space-y-2" aria-label="Loading delivery">
