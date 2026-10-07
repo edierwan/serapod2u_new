@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Link2, Loader2, Plus, RefreshCw, Unlink, Upload } from 'lucide-react'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import { TIKTOK_CONNECT_MESSAGES } from '@/lib/marketplace/tiktok-connect-messages'
+import TikTokDailyReportPanel from './TikTokDailyReportPanel'
 
 interface TikTokShopViewProps {
     userProfile: any
@@ -330,6 +331,10 @@ export default function TikTokShopView(_props: TikTokShopViewProps) {
                         <p className="flex items-start gap-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />The TikTok authorization ends on {reconnectBy}. Click Disconnect and connect again before then.</p>
                     )}
                 </div>
+            )}
+
+            {shopId && (
+                <TikTokDailyReportPanel shopId={shopId} shopName={shops.find(x => x.id === shopId)?.shop_name || ''} shopCount={shops.length} />
             )}
 
             {shopId && (
