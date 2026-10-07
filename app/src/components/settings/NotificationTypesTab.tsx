@@ -132,8 +132,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   qr: 'QR & Consumer',
   return: 'Return Product',
   user: 'User Account',
+  ecommerce: 'E-Commerce',
 }
-const CATEGORY_ORDER = ['system', 'security', 'Delete Organization Masterdata', 'order', 'document', 'inventory', 'qr', 'return', 'user']
+const CATEGORY_ORDER = ['system', 'security', 'Delete Organization Masterdata', 'order', 'document', 'inventory', 'qr', 'return', 'user', 'ecommerce']
 const FORCED_PRESET: Record<string, RoutingPreset> = {
   stock_count_posting_verification: 'email_only',
   [SYSTEM_SMS_CHECK_EVENT]: 'sms_only',
@@ -219,6 +220,7 @@ function CategoryIcon({ category }: { category: string }) {
   if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />
   if (category === 'return') return <RotateCcw className={`${classes} text-rose-600`} />
   if (category === 'system') return <MessageSquare className={`${classes} text-orange-500`} />
+  if (category === 'ecommerce') return <ShoppingCart className={`${classes} text-emerald-600`} />
   return <UserCheck className={`${classes} text-indigo-600`} />
 }
 
