@@ -6,8 +6,9 @@ import {
 import { FINAL_WAVE_PERMISSION_KEYS } from './catalog'
 import { IDENTITY_PERMISSION_KEYS } from './identity-catalog'
 import { STAGE2D_PERMISSION_KEYS } from './stage2d-catalog'
+import { BANK_STATEMENT_PERMISSION_KEYS } from './bank-statement-catalog'
 
-const catalog = Array.from(new Set([...FINAL_WAVE_PERMISSION_KEYS, ...IDENTITY_PERMISSION_KEYS, ...STAGE2D_PERMISSION_KEYS]))
+const catalog = Array.from(new Set([...FINAL_WAVE_PERMISSION_KEYS, ...IDENTITY_PERMISSION_KEYS, ...STAGE2D_PERMISSION_KEYS, ...BANK_STATEMENT_PERMISSION_KEYS]))
 const role = (...keys: string[]) => ({ permissions: keys.map(k => ({ permission: { permission_key: k } })) })
 
 describe('S&A module taxonomy', () => {
