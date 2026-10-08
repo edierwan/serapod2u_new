@@ -1,12 +1,19 @@
 import { guardUserOperation } from '@/lib/security-access/operation'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { generateQRBatch } from '@/lib/qr-generator'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { generateQRBatch, type QRCodeGenerationParams } from '@/lib/qr-generator'
+import { PROCESSING_ORG_TYPES, canProcessBatchForOrder } from '@/lib/qr-batch-access'
 
 /**
  * POST /api/qr-batches/generate
  * Queue QR batch generation for an approved H2M order
  * This endpoint now only creates the batch record and queues it for the background worker.
+ *
+ * qr_batches is read-only to supply partners under RLS, so the order is read
+ * and the batch row written with the service role, after the caller is shown
+ * to be an active HQ/MFG user whose organization owns the order. Orders
+ * outside the caller's organization respond 404 like unknown ones.
  */
 export const dynamic = 'force-dynamic'
 
@@ -34,8 +41,22 @@ export async function POST(request: NextRequest) {
     const saDenied = await guardUserOperation(user.id, 'qr.batch.manage')
     if (saDenied) return saDenied
 
+    const { data: profile, error: profileError } = await (supabase as any)
+      .from('users')
+      .select('is_active, organization_id, organizations:organization_id(org_type_code)')
+      .eq('id', user.id)
+      .single()
+
+    const orgType = String(profile?.organizations?.org_type_code || '').toUpperCase()
+    const orgId = String(profile?.organization_id || '')
+    if (profileError || !profile || profile.is_active === false || !orgId || !PROCESSING_ORG_TYPES.includes(orgType)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const admin = createAdminClient() as any
+
     // 1. Fetch order with all details
-    const { data: order, error: orderError } = await supabase
+    const { data: order, error: orderError } = await admin
       .from('orders')
       .select(`
         *,
@@ -66,9 +87,16 @@ export async function POST(request: NextRequest) {
       .eq('id', order_id)
       .eq('order_type', 'H2M')
       .in('status', ['approved', 'closed'])
-      .single()
+      .maybeSingle()
 
-    if (orderError || !order) {
+    if (orderError) {
+      console.error('❌ Order lookup error:', orderError)
+      return NextResponse.json(
+        { error: 'Failed to load order', details: orderError.message },
+        { status: 500 }
+      )
+    }
+    if (!order || !canProcessBatchForOrder(orgType, orgId, order)) {
       return NextResponse.json(
         { error: 'Order not found or not eligible for QR generation' },
         { status: 404 }
@@ -76,11 +104,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if batch already exists
-    const { data: existingBatch } = await supabase
+    const { data: existingBatch, error: existingBatchError } = await admin
       .from('qr_batches')
       .select('id, status, total_unique_codes, total_master_codes')
       .eq('order_id', order_id)
-      .single()
+      .limit(1)
+      .maybeSingle()
+
+    if (existingBatchError) {
+      console.error('❌ Existing batch lookup error:', existingBatchError)
+      return NextResponse.json(
+        { error: 'Failed to check existing batch', details: existingBatchError.message },
+        { status: 500 }
+      )
+    }
 
     if (existingBatch) {
       return NextResponse.json(
@@ -94,7 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Prepare data for QR generation (to calculate totals)
-    const orderItems = order.order_items.map((item: any) => {
+    const orderItems: QRCodeGenerationParams['orderItems'] = order.order_items.map((item: any) => {
       let itemUnitsPerCase = item.units_per_case
       if (itemUnitsPerCase == null) {
         itemUnitsPerCase = order.units_per_case || 100
@@ -129,7 +166,7 @@ export async function POST(request: NextRequest) {
     })
 
     // 3. Create QR batch record with 'queued' status
-    const { data: batch, error: batchError } = await supabase
+    const { data: batch, error: batchError } = await admin
       .from('qr_batches')
       .insert({
         order_id: order.id,
