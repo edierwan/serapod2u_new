@@ -1,6 +1,7 @@
 import 'server-only'
 import { financeAllowed } from '@/lib/security-access/finance'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { isCanonicalStaff } from '@/lib/identity/staff'
 import { normalizeAccountNumber } from './hlb-csv'
@@ -107,4 +108,29 @@ export function statementErrorResponse(error: { message?: string; details?: stri
   }
   console.error('Bank statement workflow error:', error)
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+}
+
+/**
+ * Display names for the people on a statement (uploader, submitter,
+ * approver, ...). Limited to the given ids inside the caller's own
+ * organization; returns only id -> name, never other user data.
+ * Read with the admin client because users may not see each other's rows.
+ */
+export async function loadPeopleNames(orgId: string, ids: (string | null | undefined)[]): Promise<Record<string, string>> {
+  const unique = Array.from(new Set(ids.filter((v): v is string => typeof v === 'string' && UUID_RE.test(v))))
+  if (unique.length === 0) return {}
+  try {
+    const admin = createAdminClient() as any
+    const { data } = await admin
+      .from('users')
+      .select('id, full_name, email')
+      .eq('organization_id', orgId)
+      .in('id', unique)
+    const out: Record<string, string> = {}
+    for (const u of data || []) out[u.id] = (u.full_name && String(u.full_name).trim()) || u.email || 'Unknown user'
+    return out
+  } catch (error) {
+    console.error('Bank statement people lookup failed:', error)
+    return {}
+  }
 }

@@ -66,10 +66,21 @@ interface StatementImport {
   submitted_at: string | null
   approved_by: string | null
   approved_at: string | null
+  rejected_by?: string | null
   rejected_at: string | null
   rejection_reason: string | null
+  reversed_by?: string | null
   reversed_at: string | null
   reversal_reason: string | null
+}
+
+type People = Record<string, string>
+
+/** Name of a user on the statement; "you" for the signed-in user. */
+function personName(people: People, id: string | null | undefined, currentUserId: string | null) {
+  if (!id) return null
+  if (id === currentUserId) return people[id] ? `${people[id]} (you)` : 'You'
+  return people[id] || 'Unknown user'
 }
 
 interface StatementLine {
@@ -168,6 +179,7 @@ export default function BankStatementsView({ userProfile: _userProfile }: BankSt
   const [totalLines, setTotalLines] = useState(0)
   const [permissions, setPermissions] = useState<Permissions>({ can_view_lines: false, can_import: false, can_approve: false })
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [people, setPeople] = useState<People>({})
   const [loading, setLoading] = useState(true)
   const [listLoading, setListLoading] = useState(false)
 
@@ -210,6 +222,7 @@ export default function BankStatementsView({ userProfile: _userProfile }: BankSt
       setTotalLines(data.total || 0)
       setPermissions(data.permissions || { can_view_lines: false, can_import: false, can_approve: false })
       setCurrentUserId(data.user_id || null)
+      setPeople(data.people || {})
     } catch (e: any) {
       toast({ title: 'Error', description: e.message || 'Failed to load statements', variant: 'destructive' })
     } finally {
@@ -485,6 +498,7 @@ export default function BankStatementsView({ userProfile: _userProfile }: BankSt
                       <TableHead className="text-right">Closing</TableHead>
                       <TableHead className="text-right">Lines</TableHead>
                       <TableHead>Uploaded</TableHead>
+                      <TableHead>Approved by</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right"></TableHead>
                     </TableRow>
@@ -505,7 +519,22 @@ export default function BankStatementsView({ userProfile: _userProfile }: BankSt
                           {imp.rows_in_file}
                           {imp.status === 'completed' && <span className="text-green-700"> ✓</span>}
                         </TableCell>
-                        <TableCell className="text-sm whitespace-nowrap">{formatDate(imp.imported_at)}</TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">
+                          {formatDate(imp.imported_at)}
+                          <div className="text-[11px] text-muted-foreground">{personName(people, imp.imported_by, currentUserId) ?? '-'}</div>
+                        </TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">
+                          {imp.approved_by ? (
+                            <>
+                              {personName(people, imp.approved_by, currentUserId)}
+                              {imp.approved_at && <div className="text-[11px] text-muted-foreground">{formatDate(imp.approved_at)}</div>}
+                            </>
+                          ) : imp.status === 'rejected' && imp.rejected_by ? (
+                            <span className="text-red-700">Rejected by {personName(people, imp.rejected_by, currentUserId)}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell><Badge className={`text-xs ${STATUS[imp.status]?.className ?? STATUS.pending.className}`}>{STATUS[imp.status]?.label ?? imp.status}</Badge></TableCell>
                         <TableCell className="text-right">
                           <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDetailId(imp.id) }}>
@@ -554,6 +583,7 @@ export default function BankStatementsView({ userProfile: _userProfile }: BankSt
       <StatementDetail
         id={detailId}
         currentUserId={currentUserId}
+        people={people}
         onClose={() => setDetailId(null)}
         onChanged={() => loadStatement(bankAccountId)}
       />
@@ -637,9 +667,10 @@ function SubmitReason({ required, value, onChange }: { required: boolean; value:
 
 type DetailAction = 'submit' | 'approve' | 'reject' | 'reverse'
 
-function StatementDetail({ id, currentUserId, onClose, onChanged }: {
+function StatementDetail({ id, currentUserId, people, onClose, onChanged }: {
   id: string | null
   currentUserId: string | null
+  people: People
   onClose: () => void
   onChanged: () => void
 }) {
@@ -718,6 +749,15 @@ function StatementDetail({ id, currentUserId, onClose, onChanged }: {
             {s ? `${s.file_name || 'Statement'} · ${formatDate(s.period_start)} → ${formatDate(s.period_end)}` : 'Loading…'}
           </DialogDescription>
         </DialogHeader>
+        {s && (
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <span><span className="text-muted-foreground">Uploaded by</span> {personName(people, s.imported_by, currentUserId) ?? '-'} <span className="text-xs text-muted-foreground">{formatDateTime(s.imported_at)}</span></span>
+            {s.submitted_by && <span><span className="text-muted-foreground">Submitted by</span> {personName(people, s.submitted_by, currentUserId)} {s.submitted_at && <span className="text-xs text-muted-foreground">{formatDateTime(s.submitted_at)}</span>}</span>}
+            {s.approved_by && <span><span className="text-muted-foreground">Approved by</span> <span className="font-medium text-green-700">{personName(people, s.approved_by, currentUserId)}</span> {s.approved_at && <span className="text-xs text-muted-foreground">{formatDateTime(s.approved_at)}</span>}</span>}
+            {s.rejected_by && <span><span className="text-muted-foreground">Rejected by</span> <span className="text-red-700">{personName(people, s.rejected_by, currentUserId)}</span> {s.rejected_at && <span className="text-xs text-muted-foreground">{formatDateTime(s.rejected_at)}</span>}</span>}
+            {s.reversed_by && <span><span className="text-muted-foreground">Reversed by</span> {personName(people, s.reversed_by, currentUserId)} {s.reversed_at && <span className="text-xs text-muted-foreground">{formatDateTime(s.reversed_at)}</span>}</span>}
+          </div>
+        )}
 
         {loading && !data ? (
           <div className="flex items-center justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
@@ -830,7 +870,7 @@ function StatementDetail({ id, currentUserId, onClose, onChanged }: {
                   <li key={ev.id} className="flex flex-wrap gap-x-2">
                     <span className="text-muted-foreground whitespace-nowrap">{formatDateTime(ev.occurred_at)}</span>
                     <span className="font-medium">{EVENT_LABEL[ev.event] ?? ev.event}</span>
-                    {ev.actor_id && <span className="text-xs text-muted-foreground">{ev.actor_id === currentUserId ? '(you)' : ''}</span>}
+                    {ev.actor_id && <span className="text-muted-foreground">by {personName(people, ev.actor_id, currentUserId)}</span>}
                     {ev.reason && <span className="text-muted-foreground">— {ev.reason}</span>}
                   </li>
                 ))}

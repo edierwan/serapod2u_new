@@ -19,6 +19,7 @@ import {
   maskAccount,
   statementErrorResponse,
   statementFilePath,
+  loadPeopleNames,
 } from '@/lib/finance/bank-statements/server'
 import { NextResponse } from 'next/server'
 
@@ -88,8 +89,12 @@ export async function GET(request: Request) {
       total = count ?? 0
     }
 
+    const people = await loadPeopleNames(orgId, (imports || []).flatMap((i: any) =>
+      [i.imported_by, i.submitted_by, i.approved_by, i.rejected_by, i.reversed_by]))
+
     return NextResponse.json({
       imports: imports || [],
+      people,
       transactions,
       total,
       permissions: { can_view_lines: canView, can_import: canImport, can_approve: canApprove },
