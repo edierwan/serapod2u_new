@@ -37,6 +37,7 @@ function query(table: string) {
     eq: (c: string, v: any) => { filters.push(r => r[c] === v); return b },
     gte: (c: string, v: any) => { filters.push(r => r[c] >= v); return b },
     lte: (c: string, v: any) => { filters.push(r => r[c] <= v); return b },
+    in: (c: string, v: any[]) => { filters.push(r => v.includes(r[c])); return b },
     order: (c: string, o?: { ascending?: boolean }) => { orders.push([c, o?.ascending !== false]); return b },
     limit: (n: number) => { lim = n; return b },
     range: (from: number, to: number) => { range = [from, to]; return b },
@@ -71,7 +72,7 @@ const download = vi.fn(async (path: string) =>
   stored.has(path) ? { data: new Blob([stored.get(path)!]), error: null } : { data: null, error: { message: 'not found' } })
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => supabase }))
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ storage: { from: () => ({ upload, remove, download }) } }) }))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ storage: { from: () => ({ upload, remove, download }) }, from: (t: string) => query(t) }) }))
 vi.mock('@/lib/security-access/finance', () => ({ financeAllowed: vi.fn(async () => true) }))
 vi.mock('@/lib/server/permissions', () => ({ checkPermissionForUser: async () => ({ allowed: false }) }))
 
@@ -261,6 +262,21 @@ describe('bank statement list', () => {
     const body = await (await GET(new Request('http://x/api/accounting/cash/bank-statements?bank_account_id=bank-1'))).json()
     expect(body.imports.map((r: Row) => r.id)).toEqual(['a', 'b'])
     expect(body.permissions).toEqual({ can_view_lines: true, can_import: true, can_approve: false })
+  })
+
+  it('returns the names of who uploaded and approved, from the same organization only', async () => {
+    const U1 = '11111111-1111-4111-8111-111111111111', U2 = '22222222-2222-4222-8222-222222222222', U3 = '33333333-3333-4333-8333-333333333333'
+    db.users.push(
+      { id: U1, organization_id: 'org-1', full_name: 'Allam', email: 'a@x' },
+      { id: U2, organization_id: 'org-1', full_name: '', email: 'b@x' },
+      { id: U3, organization_id: 'org-2', full_name: 'Other org', email: 'c@x' },
+    )
+    db.bank_statement_imports = [
+      { id: 'a', company_id: 'org-1', bank_account_id: 'bank-1', status: 'completed', imported_at: '2026-10-02', imported_by: U1, submitted_by: U1, approved_by: U2 },
+      { id: 'b', company_id: 'org-1', bank_account_id: 'bank-1', status: 'rejected', imported_at: '2026-10-01', imported_by: U1, rejected_by: U3 },
+    ]
+    const body = await (await GET(new Request('http://x/api/accounting/cash/bank-statements?bank_account_id=bank-1'))).json()
+    expect(body.people).toEqual({ [U1]: 'Allam', [U2]: 'b@x' })
   })
 
   it('is forbidden without any statement or cash permission', async () => {

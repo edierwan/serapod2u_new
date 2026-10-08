@@ -68,9 +68,32 @@ export async function GET(request: Request) {
       .eq('is_active', true)
       .order('code', { ascending: true })
 
+    // Bank balance per statement: closing balance of the latest approved
+    // (completed) statement of each account. This is the bank's figure;
+    // current_balance stays the book balance used by reconciliation.
+    // Rows the user may not read (RLS) simply leave it empty.
+    const accountIds = (accounts || []).map((a: any) => a.id)
+    const statementMap: Record<string, { balance: number; date: string }> = {}
+    if (accountIds.length > 0) {
+      const { data: statements } = await (supabase as any)
+        .from('bank_statement_imports')
+        .select('bank_account_id, closing_balance, period_end')
+        .eq('company_id', orgId)
+        .eq('status', 'completed')
+        .in('bank_account_id', accountIds)
+        .order('period_end', { ascending: false })
+      for (const s of statements || []) {
+        if (!statementMap[s.bank_account_id] && s.closing_balance !== null && s.period_end) {
+          statementMap[s.bank_account_id] = { balance: Number(s.closing_balance), date: s.period_end }
+        }
+      }
+    }
+
     const result = (accounts || []).map((a: any) => ({
       ...a,
       gl_account: glMap[a.gl_account_id] || null,
+      statement_balance: statementMap[a.id]?.balance ?? null,
+      statement_balance_date: statementMap[a.id]?.date ?? null,
     }))
 
     return NextResponse.json({

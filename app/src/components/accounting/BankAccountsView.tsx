@@ -31,6 +31,8 @@ interface BankAccount {
   opening_balance_date: string | null
   statement_frequency: 'monthly' | 'daily'
   current_balance: number
+  statement_balance?: number | null
+  statement_balance_date?: string | null
   is_active: boolean
   is_default: boolean
   notes: string | null
@@ -405,6 +407,7 @@ export default function BankAccountsView({ userProfile }: BankAccountsViewProps)
                     <TableHead>GL Account</TableHead>
                     <TableHead className="text-right">Opening</TableHead>
                     <TableHead className="text-right">Current Balance</TableHead>
+                    <TableHead className="text-right">Bank Balance</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -439,6 +442,19 @@ export default function BankAccountsView({ userProfile }: BankAccountsViewProps)
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm font-medium">
                         {formatCurrency(parseFloat(String(acct.current_balance)) || 0)}
+                        <div className="text-[11px] text-muted-foreground font-sans font-normal">book balance</div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {acct.statement_balance !== null && acct.statement_balance !== undefined ? (
+                          <>
+                            {formatCurrency(Number(acct.statement_balance))}
+                            <div className="text-[11px] text-muted-foreground font-sans">
+                              per statement · {acct.statement_balance_date ? formatDate(acct.statement_balance_date) : ''}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic font-sans">No approved statement</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {acct.is_active ? (
