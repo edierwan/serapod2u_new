@@ -1233,6 +1233,17 @@ export default function NotificationFlowDrawer({
                                                 event_name: type.event_name || 'Order Submitted',
                                                 reference_id: sampleId || 'ORD26000048'
                                             }
+                                            if (String(type.event_code || '').startsWith('tiktok_shop_daily_report')) Object.assign(vars, {
+                                                report_title: 'to pack',
+                                                report_date: '7/10/2026',
+                                                report_time: '9:35 am',
+                                                shop_counts: 'SeraOutdoor 3 parcels/8 items; Ellbow 4 parcels/5 items',
+                                                total_parcels: '7',
+                                                total_items: '13',
+                                                summary_text: '[Serapod2U] TikTok to pack 7/10/2026 9:35 am: SeraOutdoor 3 parcels/8 items; Ellbow 4 parcels/5 items.',
+                                                email_subject: 'TikTok Shop - to pack (7/10/2026, 9:35 am)',
+                                                report_text: 'TIKTOK SHOP - TO PACK\n7/10/2026, 9:35 am\n\nSERAOUTDOOR\nACCOUNT : TIKTOK SERAOUTDOOR\nORDER : 6/10/2026\n------------------------------\nTOTAL ITEMS : 8\nTOTAL PARCEL : 3\n------------------------------\nITEMS\nHIGHBACK : 4\nTUMBLER 1L : 3\nMOONCHAIR : 1\n...',
+                                            })
                                             let res = tpl || ''
                                             Object.keys(vars).forEach(k => {
                                                 res = res.replace(new RegExp(`{{${k}}}`, 'g'), vars[k])
@@ -1299,6 +1310,10 @@ export default function NotificationFlowDrawer({
                                                                 return '{{order_no}}, {{status}}, {{customer_name}}, {{deleted_by}}, {{deleted_at}}, {{order_url}}';
                                                             if (code === 'manufacturer_scan_complete')
                                                                 return '{{order_no}}, {{batch_id}}, {{total_master_codes}}, {{total_unique_codes}}, {{production_completed_at}}, {{completed_by}}, {{customer_name}}, {{balance_document_no}}, {{order_url}}';
+                                                            if (code === 'tiktok_shop_daily_report_sms')
+                                                                return '{{report_title}}, {{report_date}}, {{report_time}}, {{shop_counts}}, {{total_parcels}}, {{total_items}}, {{summary_text}}';
+                                                            if (code === 'tiktok_shop_daily_report')
+                                                                return '{{report_title}}, {{report_date}}, {{report_time}}, {{shop_counts}}, {{total_parcels}}, {{total_items}}, {{summary_text}}, {{report_text}}, {{email_subject}}';
                                                             if (code === 'password_reset_otp' || code === 'registration_otp')
                                                                 return '{{verification_code}}, {{otp_expiry_minutes}}';
                                                             if (code === 'stock_count_posting_verification')
