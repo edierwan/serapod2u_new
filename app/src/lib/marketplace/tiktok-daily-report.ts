@@ -54,6 +54,11 @@ export interface DailyReport {
   subject: string
   text: string
   summary: string
+  /** Pieces of the summary for SMS/WhatsApp templates. */
+  label: string
+  date: string
+  time: string
+  shopCounts: string
   parcels: number
   items: number
   shops: ShopReport[]
@@ -273,6 +278,10 @@ export function buildDailyReport(input: {
     subject,
     text,
     summary,
+    label: slot === 'packing' ? 'to pack' : 'shipped',
+    date: today,
+    time: mytTime(now),
+    shopCounts: counts,
     parcels: reports.reduce((sum, r) => sum + r.parcels, 0),
     items: reports.reduce((sum, r) => sum + r.items, 0),
     shops: reports,

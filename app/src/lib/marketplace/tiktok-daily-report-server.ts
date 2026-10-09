@@ -148,6 +148,10 @@ export async function runTikTokDailyReport(
       email_subject: report.subject,
       report_text: report.text,
       summary_text: report.summary,
+      report_title: report.label,
+      report_date: report.date,
+      report_time: report.time,
+      shop_counts: report.shopCounts,
       total_parcels: String(report.parcels),
       total_items: String(report.items),
     }

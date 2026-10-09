@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { REQUIRED_NOTIFICATION_TYPES } from '@/lib/notifications/notificationEventCatalog'
 import { getTemplatesForEvent } from '@/config/notificationTemplates'
 import { categoryLabel, categoryModule } from '@/lib/notifications/notificationTypeModules'
+import { buildNotificationSampleData, notificationVariableContract, renderPreviewSegments, unknownPlaceholders } from '@/lib/notifications/notificationMessagePreview'
 import {
   DAILY_REPORT_EVENT,
   DAILY_REPORT_SCHEDULE,
@@ -131,8 +132,36 @@ describe('Notification Types wiring', () => {
 
   it('templates use the report text for email and the summary for SMS', () => {
     expect(getTemplatesForEvent(DAILY_REPORT_EVENT, 'email')[0].body).toBe('{{report_text}}')
-    expect(getTemplatesForEvent(DAILY_REPORT_EVENT, 'sms')[0].body).toBe('{{summary_text}}')
+    expect(getTemplatesForEvent(DAILY_REPORT_EVENT, 'sms').map((t) => t.body)).toContain('{{summary_text}}')
     expect(getTemplatesForEvent(DAILY_SUMMARY_EVENT, 'email')).toEqual([])
+  })
+
+  it('the default SMS template fills from the report and fits one SMS', () => {
+    const r = buildDailyReport({ slot: 'packing', now: new Date('2026-10-07T04:35:00Z'), shops, lines: [...sera, ...ellbow] })
+    const payload: Record<string, string> = {
+      report_title: r.label, report_date: r.date, report_time: r.time, shop_counts: r.shopCounts,
+      total_parcels: String(r.parcels), total_items: String(r.items), summary_text: r.summary,
+    }
+    for (const event of [DAILY_REPORT_EVENT, DAILY_SUMMARY_EVENT]) {
+      const body = getTemplatesForEvent(event, 'sms')[0].body
+      const sms = body.replace(/\{\{(\w+)\}\}/g, (_, key) => payload[key] ?? `{{${key}}}`)
+      expect(sms).toBe('[Serapod2U] TikTok to pack (7/10/2026 12:35 pm): SeraOutdoor 3 parcels/8 items; Ellbow 4 parcels/5 items. Total 7 parcels, 13 items.')
+      expect(sms.length).toBeLessThanOrEqual(160)
+    }
+  })
+
+  it('the template screen offers the TikTok variables with a filled example', () => {
+    for (const event of [DAILY_REPORT_EVENT, DAILY_SUMMARY_EVENT]) {
+      const type = { event_code: event, category: 'ecommerce' }
+      const { variables, verified } = notificationVariableContract(type)
+      expect(verified).toBe(true)
+      expect(variables).toEqual(expect.arrayContaining(['report_title', 'report_date', 'shop_counts', 'total_parcels', 'total_items']))
+      const body = getTemplatesForEvent(event, 'sms')[0].body
+      expect(unknownPlaceholders(body, variables)).toEqual([])
+      const preview = renderPreviewSegments(body, buildNotificationSampleData(type), variables)
+      expect(preview.some((s) => s.kind === 'unresolved')).toBe(false)
+      expect(preview.map((s) => s.text).join('')).toContain('SeraOutdoor 3 parcels/8 items')
+    }
   })
 
   it('migration seeds the same two catalog rows and nothing else', () => {
