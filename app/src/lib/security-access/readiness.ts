@@ -1,5 +1,6 @@
 import { STAGE2D_PERMISSION_KEYS } from './stage2d-catalog'
 import { IDENTITY_ENFORCEMENT_READY } from './identity-catalog'
+import { BANK_STATEMENT_PERMISSION_KEYS } from './bank-statement-catalog'
 
 /**
  * Operations whose every reachable path enforces the S&A decision: the
@@ -109,8 +110,8 @@ export const ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [
   'inventory.transfer.view',
 ]
 
-/** Final Wave registrations (20260928130000), Identity Foundation (20260929110000) and Stage 2D (20260930100000). */
-export const ALL_ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [...ENFORCEMENT_READY_PERMISSIONS, ...IDENTITY_ENFORCEMENT_READY, ...STAGE2D_PERMISSION_KEYS]
+/** Final Wave registrations (20260928130000), Identity Foundation (20260929110000), Stage 2D (20260930100000) and bank statement approval (20261006160000). */
+export const ALL_ENFORCEMENT_READY_PERMISSIONS: readonly string[] = [...ENFORCEMENT_READY_PERMISSIONS, ...IDENTITY_ENFORCEMENT_READY, ...STAGE2D_PERMISSION_KEYS, ...BANK_STATEMENT_PERMISSION_KEYS]
 
 export function isEnforcementReady(permissionKey: string): boolean {
   return ALL_ENFORCEMENT_READY_PERMISSIONS.includes(permissionKey)
